@@ -7,24 +7,12 @@ import AscentScene from "@/components/scenes/AscentScene";
 import MissionScene from "@/components/MissionScene";
 import DescentScene from "@/components/scenes/DescentScene";
 import ReentryScene from "@/components/scenes/ReentryScene";
+import DescentGame from "@/components/DescentGame";
+import DifficultySelect from "@/components/DifficultySelect";
+import MissionResult from "@/components/MissionResult";
+import AbortModal from "@/components/AbortModal";
+import useMissionAudio from "@/hooks/useMissionAudio";
 
-/**
- * Mission — cinematic state machine. Player sees mostly images, minimal text.
- * Two decision points: STAGE SEPARATION and LUNAR DESCENT.
- *
- * States:
- *   control      → sala de comando + countdown + LAUNCH button
- *   ascent       → foguete subindo, playing progress 0..1
- *   sep_prompt   → subida pausada, player must press SEPARATE
- *   sep_done     → estágio se separando (auto ~2.5s)
- *   space        → cruzeiro Terra→Lua (MissionScene wide shot, auto ~10s)
- *   orbit        → órbita lunar close-up (MissionScene close on Moon) with DESCEND prompt
- *   descent      → módulo descendo (auto ~8s)
- *   surface      → pouso concluído (auto ~4s)
- *   return       → retorno Moon→Earth (MissionScene wide, auto ~8s)
- *   reentry      → reentrada com plasma (auto ~9s)
- *   complete     → tela de missão completa
- */
 const STATES = {
   CONTROL: "control",
   ASCENT: "ascent",
@@ -32,14 +20,16 @@ const STATES = {
   SEP_DONE: "sep_done",
   SPACE: "space",
   ORBIT: "orbit",
-  DESCENT: "descent",
+  DIFFICULTY: "difficulty",
+  MANUAL_DESCENT: "manual_descent",
+  RESULT: "result",
+  DESCENT: "descent",       // cinematic auto-descent (skip path)
   SURFACE: "surface",
   RETURN: "return",
   REENTRY: "reentry",
   COMPLETE: "complete",
 };
 
-// Human-readable event labels per state
 const STATE_LABELS = {
   control: { code: "T-00:00:10", name: "MISSION CONTROL" },
   ascent: { code: "T+00:00:00", name: "ASCENT" },
@@ -47,6 +37,9 @@ const STATE_LABELS = {
   sep_done: { code: "T+00:02:32", name: "STAGE 1 DISCARDED" },
   space: { code: "T+03:00:00", name: "CISLUNAR CRUISE" },
   orbit: { code: "T+80:00:00", name: "LUNAR ORBIT" },
+  difficulty: { code: "T+82:00:00", name: "DESCENT · SETUP" },
+  manual_descent: { code: "T+82:00:00", name: "POWERED DESCENT · MANUAL" },
+  result: { code: "T+82:12:00", name: "MISSION RATING" },
   descent: { code: "T+82:00:00", name: "POWERED DESCENT" },
   surface: { code: "T+82:12:00", name: "TRANQUILITY BASE" },
   return: { code: "T+140:00:00", name: "TRANS-EARTH INJECTION" },
@@ -58,14 +51,19 @@ export default function Mission() {
   const [state, setState] = useState(STATES.CONTROL);
   const [progress, setProgress] = useState(0);
   const [descentAlt, setDescentAlt] = useState(8);
-  const [spaceTime, setSpaceTime] = useState(9840); // starts at TLI
-  const [orbitTime, setOrbitTime] = useState(288000); // lunar orbit
-  const [returnTime, setReturnTime] = useState(504000); // TEI
+  const [spaceTime, setSpaceTime] = useState(9840);
+  const [orbitTime, setOrbitTime] = useState(288000);
+  const [returnTime, setReturnTime] = useState(504000);
   const [reentryProg, setReentryProg] = useState(0);
+  const [difficulty, setDifficulty] = useState("ASTRONAUT");
+  const [descentResult, setDescentResult] = useState(null);
+  const [showAbort, setShowAbort] = useState(false);
   const rafRef = useRef(null);
   const lastTsRef = useRef(0);
   const stateRef = useRef(state);
   const orbitAngleRef = useRef(0);
+
+  const audio = useMissionAudio();
 
   useEffect(() => {
     stateRef.current = state;
@@ -83,7 +81,7 @@ export default function Mission() {
 
       if (s === STATES.ASCENT) {
         setProgress((p) => {
-          const next = p + dt * 0.09; // ~11s to reach 1.0
+          const next = p + dt * 0.09;
           if (next >= 0.35) {
             setState(STATES.SEP_PROMPT);
             return 0.35;
@@ -100,9 +98,8 @@ export default function Mission() {
           return next;
         });
       } else if (s === STATES.SPACE) {
-        // Advance the cislunar cruise position over time
         setSpaceTime((t) => {
-          const next = t + dt * 30000; // fast time
+          const next = t + dt * 30000;
           if (next >= 270000) {
             setState(STATES.ORBIT);
             orbitAngleRef.current = 0;
@@ -111,7 +108,6 @@ export default function Mission() {
           return next;
         });
       } else if (s === STATES.ORBIT) {
-        // Orbit around the Moon; player decides when to descend
         setOrbitTime((t) => t + dt * 300);
         orbitAngleRef.current += dt * 0.6;
       } else if (s === STATES.DESCENT) {
@@ -146,6 +142,7 @@ export default function Mission() {
           const next = p + dt * 0.11;
           if (next >= 1) {
             setState(STATES.COMPLETE);
+            if (audio) audio.splash();
             return 1;
           }
           return next;
@@ -155,10 +152,16 @@ export default function Mission() {
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLaunch = () => {
+    audio.init();
+    // Countdown blips (10s in ControlRoomView but the beep happens per countdown tick handled here)
+    // We fire "ignition" comms and rumble on state change to ASCENT below.
     setState(STATES.ASCENT);
+    setTimeout(() => audio.startRumble(0.9), 100);
+    audio.comms("Ignition sequence start. Liftoff. We have a liftoff.", 200);
     toast.message("LIFTOFF", {
       description: "Todas as âncoras liberadas. Empuxo nominal.",
       duration: 3000,
@@ -167,6 +170,8 @@ export default function Mission() {
 
   const handleSeparate = () => {
     setState(STATES.SEP_DONE);
+    audio.boom(0.5);
+    audio.comms("Stage separation confirmed. Second stage ignition.", 300);
     toast.message("STAGE 1 SEP", {
       description: "Estágio 1 descartado. Ignição do segundo estágio.",
       duration: 3000,
@@ -174,15 +179,45 @@ export default function Mission() {
   };
 
   const handleDescend = () => {
+    audio.stopRumble();
+    setState(STATES.DIFFICULTY);
+  };
+
+  const handleDifficulty = (key) => {
+    setDifficulty(key);
+    setState(STATES.MANUAL_DESCENT);
+    audio.comms("Houston, beginning powered descent.", 400);
+  };
+
+  const handleSkipDifficulty = () => {
     setState(STATES.DESCENT);
     setDescentAlt(8);
-    toast.message("DESCENT — PDI", {
-      description: "Powered Descent Initiation. Motor de pouso ligado.",
-      duration: 3000,
-    });
+    audio.startRumble(0.8);
+  };
+
+  const handleDescentSuccess = (result) => {
+    setDescentResult(result);
+    setState(STATES.RESULT);
+  };
+
+  const handleDescentCrash = (result) => {
+    setDescentResult(result);
+    setState(STATES.RESULT);
+  };
+
+  const handleRestartDescent = () => {
+    setDescentResult(null);
+    setState(STATES.DIFFICULTY);
+  };
+
+  const handleContinueFromResult = () => {
+    setDescentResult(null);
+    // Move into TEI/return only if landing was successful
+    setState(STATES.RETURN);
   };
 
   const resetMission = () => {
+    audio.stopRumble();
     setState(STATES.CONTROL);
     setProgress(0);
     setDescentAlt(8);
@@ -190,16 +225,27 @@ export default function Mission() {
     setOrbitTime(288000);
     setReturnTime(504000);
     setReentryProg(0);
+    setDescentResult(null);
     orbitAngleRef.current = 0;
   };
 
-  // Compute whether the ship is over the "landing zone" — used to signal
-  // the player when it's a good moment to press DESCEND. Purely visual —
-  // player can press whenever.
-  const overLandingZone =
-    Math.sin(orbitAngleRef.current) > 0.7;
+  const overLandingZone = Math.sin(orbitAngleRef.current) > 0.7;
 
-  const label = STATE_LABELS[state];
+  // Fire STAGE 1 rumble during ascent, stop after separation
+  useEffect(() => {
+    if (state === STATES.SEP_DONE) {
+      audio.setRumble(0.7);
+    } else if (state === STATES.SPACE || state === STATES.ORBIT) {
+      audio.stopRumble();
+    } else if (state === STATES.REENTRY) {
+      audio.startRumble(0.6);
+    } else if (state === STATES.COMPLETE) {
+      audio.stopRumble();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  const label = STATE_LABELS[state] || { code: "", name: "" };
 
   return (
     <main
@@ -216,11 +262,7 @@ export default function Mission() {
         <AscentScene progress={0.35} separated={false} thrust={0.15} />
       )}
       {state === STATES.SEP_DONE && (
-        <AscentScene
-          progress={0.35 + progress * 0.4}
-          separated={true}
-          thrust={1}
-        />
+        <AscentScene progress={0.35 + progress * 0.4} separated={true} thrust={1} />
       )}
 
       {state === STATES.SPACE && (
@@ -229,6 +271,40 @@ export default function Mission() {
 
       {state === STATES.ORBIT && (
         <MissionScene missionTime={orbitTime} cinematic={true} />
+      )}
+
+      {state === STATES.DIFFICULTY && (
+        <>
+          {/* Keep orbit in background */}
+          <MissionScene missionTime={orbitTime} cinematic={true} />
+          <DifficultySelect
+            onSelect={handleDifficulty}
+            onSkip={handleSkipDifficulty}
+          />
+        </>
+      )}
+
+      {state === STATES.MANUAL_DESCENT && (
+        <DescentGame
+          difficulty={difficulty}
+          audio={audio}
+          onSuccess={handleDescentSuccess}
+          onCrash={handleDescentCrash}
+          onAbort={resetMission}
+        />
+      )}
+
+      {state === STATES.RESULT && descentResult && (
+        <>
+          {/* Backdrop: keep the landed lander scene visible */}
+          <DescentScene altitude={0} thrust={0} dust={false} />
+          <MissionResult
+            result={descentResult}
+            difficulty={difficulty}
+            onRestart={handleRestartDescent}
+            onExit={handleContinueFromResult}
+          />
+        </>
       )}
 
       {state === STATES.DESCENT && (
@@ -246,11 +322,11 @@ export default function Mission() {
 
       {state === STATES.COMPLETE && <ReentryScene progress={1} />}
 
-      {/* --- Minimal HUD overlay (hidden in control room) --- */}
-      {state !== STATES.CONTROL && (
+      {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
+      {state !== STATES.CONTROL && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && (
         <div
           data-testid="mission-hud-min"
-          className="absolute top-20 left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4"
+          className="absolute top-20 left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
         >
           <span className="font-mono text-[10px] tracking-[0.35em] text-zinc-500">
             {label.code}
@@ -263,7 +339,6 @@ export default function Mission() {
       )}
 
       {/* --- Prompts / interaction gates --- */}
-
       {state === STATES.SEP_PROMPT && (
         <div
           data-testid="prompt-separate"
@@ -282,7 +357,7 @@ export default function Mission() {
             <button
               onClick={handleSeparate}
               data-testid="btn-separate"
-              className="group inline-flex items-center gap-3 px-8 py-3 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00] transition-colors duration-200 font-mono tracking-[0.3em] text-sm"
+              className="inline-flex items-center gap-3 px-8 py-3 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00] transition-colors duration-200 font-mono tracking-[0.3em] text-sm"
             >
               <span className="w-2 h-2 rounded-full bg-[#FF3B00] blink" />
               SEPARATE
@@ -350,7 +425,7 @@ export default function Mission() {
       {state === STATES.COMPLETE && (
         <div
           data-testid="complete-overlay"
-          className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-md"
+          className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-md z-50"
         >
           <div className="text-center max-w-2xl px-8 scan-in">
             <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink mb-4">
@@ -378,16 +453,29 @@ export default function Mission() {
         </div>
       )}
 
-      {/* Quick restart button always visible (except in control) */}
-      {state !== STATES.CONTROL && state !== STATES.COMPLETE && (
-        <button
-          onClick={resetMission}
-          data-testid="btn-abort"
-          className="absolute top-20 right-4 md:right-8 hud-panel px-3 py-2 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em]"
-        >
-          <RotateCcw size={12} /> ABORT
-        </button>
-      )}
+      {/* Global abort button — not shown during control, complete, or manual descent (which has its own) */}
+      {state !== STATES.CONTROL &&
+        state !== STATES.COMPLETE &&
+        state !== STATES.MANUAL_DESCENT &&
+        state !== STATES.DIFFICULTY &&
+        state !== STATES.RESULT && (
+          <button
+            onClick={() => setShowAbort(true)}
+            data-testid="btn-abort"
+            className="absolute top-20 right-4 md:right-8 hud-panel px-3 py-2 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-30"
+          >
+            <RotateCcw size={12} /> ABORT
+          </button>
+        )}
+
+      <AbortModal
+        open={showAbort}
+        onCancel={() => setShowAbort(false)}
+        onConfirm={() => {
+          setShowAbort(false);
+          resetMission();
+        }}
+      />
     </main>
   );
 }
