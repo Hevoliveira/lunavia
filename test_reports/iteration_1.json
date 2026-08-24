@@ -1,0 +1,26 @@
+{
+  "summary": "First-finish smoke test of LUNAVIA. All 6 backend endpoints working, SSE briefing streams Claude Sonnet 5 tokens in Portuguese-BR and terminates with event: done. Frontend: Landing, Mission and Manifesto pages fully functional. 3D canvases (hero-canvas, mission-canvas) render. HUD (MET/telemetry/mission-ident), 9-phase timeline, mission controls (play/speed/reset/scrub), and briefing panel all wired. MET increments over time, phase-jump-p04 changes MET, ctrl-speed cycles (observed ×3,600 -> ×14,400), reset works, and briefing-transmit-btn streams SSE tokens into briefing-text progressively (0 -> 1198 chars, PT-BR flight director voice). Navigation nav-mission / nav-manifesto / nav-home all work.",
+  "tested_scope": ["backend", "frontend", "integration"],
+  "passed": [
+    "GET /api/ returns {service:'LUNAVIA', tagline:'THE ROAD TO THE MOON', status:'nominal'} 200",
+    "GET /api/mission/phases returns 9 phases; p01=PRELAUNCH, p04=TLI, p09=REENTRY & SPLASHDOWN",
+    "GET /api/mission/phases/p04 returns TLI object; /api/mission/phases/pXX -> 404",
+    "POST /api/mission/briefing {p04, concise} streams SSE data: lines from Claude Sonnet 5 in PT-BR, terminates with event: done",
+    "POST /api/mission/briefing invalid phase_id -> 404",
+    "POST /api/mission/log persists entry and GET /api/mission/log/{session_id} returns it",
+    "Landing renders THE ROAD TO THE MOON, hero-canvas, hero-cta-mission, hero-cta-manifesto",
+    "Navbar nav-mission / nav-manifesto / nav-home route correctly",
+    "Mission page renders mission-canvas, hud-mission-ident, hud-met, hud-telemetry, briefing-panel, all ctrl-* and phase-jump-p01..p09",
+    "MET increments over time (T+004:43:59 -> T+006:38:59 during ~1.8s at ×3600)",
+    "phase-jump-p04 updates MET to ~T+02:44:00 range",
+    "ctrl-speed cycles (×3,600 -> ×14,400)",
+    "ctrl-reset returns to T-window (observed T+000:44:00 after brief drift at high speed)",
+    "briefing-transmit-btn streams tokens progressively into briefing-text (final ~1198 chars PT-BR)",
+    "Manifesto page shows IDENTIDADE, FANTASIA CENTRAL, NORTH STAR sections"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}

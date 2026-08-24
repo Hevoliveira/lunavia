@@ -1,0 +1,131 @@
+{
+  "theme": "dark",
+  "project_name": "LUNAVIA",
+  "design_philosophy": {
+    "core_concept": "Realistic Earth-to-Moon journey, scale, science, silence",
+    "tone": "NASA-grade precision, cinematic distance, documentary-style fidelity",
+    "forbidden_elements": [
+      "cyberpunk neons",
+      "cartoony scale",
+      "purple/violet gradients",
+      "generic sci-fi lasers"
+    ]
+  },
+  "typography": {
+    "headings": {
+      "family": "Cabinet Grotesk, Helvetica Neue, sans-serif",
+      "weight": "font-bold to font-black",
+      "tracking": "tracking-tight",
+      "usage": "Marketing hero sections, large impact statements"
+    },
+    "body": {
+      "family": "Inter, sans-serif",
+      "weight": "font-normal",
+      "usage": "Narrative paragraphs, standard UI elements"
+    },
+    "telemetry": {
+      "family": "JetBrains Mono, IBM Plex Mono, monospace",
+      "weight": "font-medium to font-bold",
+      "usage": "HUD data, timestamps, coordinates, technical mission indicators",
+      "tracking": "tracking-widest for labels, tabular-nums for data"
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "#050505",
+      "secondary": "#0A0A0A"
+    },
+    "text": {
+      "primary": "#FAFAFA",
+      "secondary": "#A1A1AA",
+      "muted": "#52525B"
+    },
+    "accents": {
+      "nasa_orange": "#FF3B00",
+      "blueprint_blue": "#2563EB"
+    },
+    "surfaces": {
+      "hud_panel": "rgba(10, 10, 10, 0.85)",
+      "glass": "backdrop-blur-xl bg-black/60 border border-white/10"
+    }
+  },
+  "visual_enhancers": {
+    "textures": [
+      "Subtle film grain overlay (opacity 3-5%)",
+      "High-contrast black/white masking for structural clarity"
+    ],
+    "lighting": [
+      "Harsh stark white solar glare for 3D elements",
+      "Pitch black shadows (true vacuum representation)",
+      "No soft diffuse colored ambient lighting"
+    ],
+    "borders": [
+      "1px solid rgba(255, 255, 255, 0.15) for HUD elements",
+      "Technical crosshairs (+ marks) at container corners"
+    ]
+  },
+  "layouts": {
+    "marketing_page": {
+      "hero": "Full viewport immersive 3D canvas (Earth/Moon) with absolute positioned UI overlay. UI must float silently over the deep space background.",
+      "bento_grid": "Asymmetric 'Tetris' grid (cols-12) for mission phases with wide gaps (gap-8)."
+    },
+    "mission_hud": {
+      "structure": "Modular, role-specific layout. Edges of screen hold critical telemetry (speed, altitude). Open center for 3D view. Follows NASA Open MCT principles.",
+      "components": "Synoptic displays, minimal frames, pure data emphasis, tabular alignment."
+    }
+  },
+  "motion": {
+    "transitions": "Slow, cinematic fades. No bouncy spring animations.",
+    "hud": "Data numbers ticking with tabular-nums. Blinking cursors or technical glitch-reveal for new data.",
+    "3d": "Extremely slow, realistic orbital momentum (use Lenis for smooth scroll on marketing, Drei for 3D dampening)"
+  },
+  "components": {
+    "instructions_to_main_agent": "Use Shadcn primitives but heavily strip them down. Remove rounded corners (use rounded-none or rounded-sm max). Use 1px borders instead of shadows. DO NOT use TypeScript (.tsx), use standard JavaScript (.js/.jsx) for all React components.",
+    "buttons": "Square edges, transparent background with 1px border, filled with NASA orange on hover.",
+    "cards": "Cardless or 'Grid Borders' style. Use pure borders and technical markers (e.g., small squares at corners)."
+  },
+  "media": {
+    "3d_libraries": [
+      "@react-three/fiber",
+      "@react-three/drei",
+      "three"
+    ],
+    "3d_strategy": "Use <Environment> from Drei for harsh spatial lighting. Earth and Moon must use high-res textures with realistic displacement and atmospheric shaders. Keep the void pure black.",
+    "image_urls": {
+      "earth_crescent": {
+        "url": "https://images.unsplash.com/photo-1777047023610-570a81998609?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwzfHxlYXJ0aCUyMGZyb20lMjBzcGFjZSUyMGRhcmt8ZW58MHx8fHwxNzg3NjA0Mzc1fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Crescent Earth for cinematic hero or transition backgrounds"
+      },
+      "moon_surface": {
+        "url": "https://images.unsplash.com/photo-1686861453864-9b2a22a97fc9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwzfHxtb29uJTIwc3VyZmFjZSUyMGhpZ2glMjByZXNvbHV0aW9ufGVufDB8fHx8MTc4NzYwNDM3NXww&ixlib=rb-4.1.0&q=85",
+        "description": "Detailed moon surface texture"
+      },
+      "mission_control": {
+        "url": "https://images.unsplash.com/photo-1652145595413-0a79398e5888?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwyfHxzcGFjZWNyYWZ0JTIwbWlzc2lvbiUyMGNvbnRyb2wlMjBwYW5lbHxlbnwwfHx8fDE3ODc2MDQzNzV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Mission control panel for the About/Vision section"
+      }
+    }
+  },
+  "accessibility": {
+    "contrast": "Maintain strictly high contrast. Light grey on black for secondary text, pure white on black for primary. Orange ONLY for interactive or alert.",
+    "testing": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. Avoid the 'AI slop' aesthetic.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts. Use asymmetrical or heavily structured grid layouts.",
+    "Create depth through layered design elements with z-index hierarchy, especially over 3D canvases.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur), but tint them grey/black, not transparent.",
+    "CRITICAL: DO NOT use complete transparent background in header, overlays, any surface that has content under it. Example: Dropdown with transparent background.",
+    "You MUST NOT apply universal transition. Eg: transition: all. Always add transitions for specific properties.",
+    "You MUST NOT center align the app container. Do not add .App { text-align: center; }.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons. Use Lucide React.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Use 'sonner' for toasts if needed.",
+    "Incorporate data-testid attributes for everything interactive.",
+    "ALL files MUST be standard JavaScript (.js or .jsx), NOT TypeScript (.tsx)."
+  ],
+  "setup_commands": [
+    "yarn add @react-three/fiber @react-three/drei three lucide-react framer-motion"
+  ]
+}
