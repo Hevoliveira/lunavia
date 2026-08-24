@@ -1,103 +1,152 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
-import { Play, Pause, RotateCcw, FastForward, Film, Square } from "lucide-react";
-import MissionScene from "@/components/MissionScene";
-import MissionHUD from "@/components/MissionHUD";
-import PhaseTimeline from "@/components/PhaseTimeline";
-import BriefingPanel from "@/components/BriefingPanel";
-import PhaseTransition from "@/components/PhaseTransition";
-import {
-  EARTH_RADIUS_KM,
-  MOON_RADIUS_KM,
-  trajectoryPosition,
-} from "@/data/missionPhases";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { ArrowUpRight, RotateCcw } from "lucide-react";
+import ControlRoomView from "@/components/scenes/ControlRoomView";
+import AscentScene from "@/components/scenes/AscentScene";
+import MissionScene from "@/components/MissionScene";
+import DescentScene from "@/components/scenes/DescentScene";
+import ReentryScene from "@/components/scenes/ReentryScene";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+/**
+ * Mission — cinematic state machine. Player sees mostly images, minimal text.
+ * Two decision points: STAGE SEPARATION and LUNAR DESCENT.
+ *
+ * States:
+ *   control      → sala de comando + countdown + LAUNCH button
+ *   ascent       → foguete subindo, playing progress 0..1
+ *   sep_prompt   → subida pausada, player must press SEPARATE
+ *   sep_done     → estágio se separando (auto ~2.5s)
+ *   space        → cruzeiro Terra→Lua (MissionScene wide shot, auto ~10s)
+ *   orbit        → órbita lunar close-up (MissionScene close on Moon) with DESCEND prompt
+ *   descent      → módulo descendo (auto ~8s)
+ *   surface      → pouso concluído (auto ~4s)
+ *   return       → retorno Moon→Earth (MissionScene wide, auto ~8s)
+ *   reentry      → reentrada com plasma (auto ~9s)
+ *   complete     → tela de missão completa
+ */
+const STATES = {
+  CONTROL: "control",
+  ASCENT: "ascent",
+  SEP_PROMPT: "sep_prompt",
+  SEP_DONE: "sep_done",
+  SPACE: "space",
+  ORBIT: "orbit",
+  DESCENT: "descent",
+  SURFACE: "surface",
+  RETURN: "return",
+  REENTRY: "reentry",
+  COMPLETE: "complete",
+};
 
-const MAX_TIME = 702000; // reentry
-const SPEED_STEPS = [1, 60, 600, 3600, 14400];
-// Cinematic mode: dynamic speed per phase — slow during burns, fast during cruise.
-const CINEMATIC_SPEED = (t) => {
-  if (t < 690) return 60;          // countdown + launch: 1 min per sec
-  if (t < 9840) return 600;        // LEO parking: 10 min/s
-  if (t < 10200) return 60;        // TLI burn: slow to 1 min/s
-  if (t < 273360) return 14400;    // cruise: 4h/s
-  if (t < 273800) return 60;       // LOI burn: 1 min/s
-  if (t < 504000) return 3600;     // lunar orbit: 1h/s
-  if (t < 504300) return 60;       // TEI burn: 1 min/s
-  if (t < 700000) return 14400;    // return: 4h/s
-  return 60;                        // reentry: 1 min/s
+// Human-readable event labels per state
+const STATE_LABELS = {
+  control: { code: "T-00:00:10", name: "MISSION CONTROL" },
+  ascent: { code: "T+00:00:00", name: "ASCENT" },
+  sep_prompt: { code: "T+00:02:30", name: "STAGE SEPARATION" },
+  sep_done: { code: "T+00:02:32", name: "STAGE 1 DISCARDED" },
+  space: { code: "T+03:00:00", name: "CISLUNAR CRUISE" },
+  orbit: { code: "T+80:00:00", name: "LUNAR ORBIT" },
+  descent: { code: "T+82:00:00", name: "POWERED DESCENT" },
+  surface: { code: "T+82:12:00", name: "TRANQUILITY BASE" },
+  return: { code: "T+140:00:00", name: "TRANS-EARTH INJECTION" },
+  reentry: { code: "T+195:00:00", name: "REENTRY" },
+  complete: { code: "T+195:15:00", name: "SPLASHDOWN · MISSION COMPLETE" },
 };
 
 export default function Mission() {
-  const [phases, setPhases] = useState([]);
-  const [missionTime, setMissionTime] = useState(-600);
-  const [playing, setPlaying] = useState(true);
-  const [speedIdx, setSpeedIdx] = useState(3);
-  const [cinematic, setCinematic] = useState(false);
-  const [transitionPhase, setTransitionPhase] = useState(null);
-  const [error, setError] = useState(null);
+  const [state, setState] = useState(STATES.CONTROL);
+  const [progress, setProgress] = useState(0);
+  const [descentAlt, setDescentAlt] = useState(8);
+  const [spaceTime, setSpaceTime] = useState(9840); // starts at TLI
+  const [orbitTime, setOrbitTime] = useState(288000); // lunar orbit
+  const [returnTime, setReturnTime] = useState(504000); // TEI
+  const [reentryProg, setReentryProg] = useState(0);
   const rafRef = useRef(null);
   const lastTsRef = useRef(0);
-  const prevPhaseIdRef = useRef(null);
+  const stateRef = useRef(state);
+  const orbitAngleRef = useRef(0);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const r = await axios.get(`${API}/mission/phases`);
-        setPhases(r.data);
-      } catch (e) {
-        setError("Não foi possível carregar as fases da missão.");
-      }
-    })();
-  }, []);
+    stateRef.current = state;
+    setProgress(0);
+    lastTsRef.current = 0;
+  }, [state]);
 
-  const activePhase = useMemo(() => {
-    if (!phases.length) return null;
-    let current = phases[0];
-    for (const p of phases) {
-      if (missionTime >= p.t_plus_seconds) current = p;
-    }
-    return current;
-  }, [missionTime, phases]);
-
-  // Detect phase change during cinematic to trigger transition overlay
-  useEffect(() => {
-    if (!activePhase) return;
-    if (prevPhaseIdRef.current === null) {
-      prevPhaseIdRef.current = activePhase.id;
-      return;
-    }
-    if (prevPhaseIdRef.current !== activePhase.id) {
-      prevPhaseIdRef.current = activePhase.id;
-      if (cinematic) {
-        setTransitionPhase(activePhase);
-      }
-    }
-  }, [activePhase, cinematic]);
-
-  // Animation loop
+  // Master animation loop
   useEffect(() => {
     const tick = (ts) => {
       if (!lastTsRef.current) lastTsRef.current = ts;
       const dt = (ts - lastTsRef.current) / 1000;
       lastTsRef.current = ts;
-      if (playing) {
-        setMissionTime((t) => {
-          const speed = cinematic ? CINEMATIC_SPEED(t) : SPEED_STEPS[speedIdx];
-          const next = t + dt * speed;
-          if (next >= MAX_TIME) {
-            setPlaying(false);
-            if (cinematic) {
-              toast.success("Splashdown. Missão completa.", {
-                description: "T+195:00:00 · Pacífico",
-                duration: 6000,
-              });
-              setCinematic(false);
-            }
-            return MAX_TIME;
+      const s = stateRef.current;
+
+      if (s === STATES.ASCENT) {
+        setProgress((p) => {
+          const next = p + dt * 0.09; // ~11s to reach 1.0
+          if (next >= 0.35) {
+            setState(STATES.SEP_PROMPT);
+            return 0.35;
+          }
+          return next;
+        });
+      } else if (s === STATES.SEP_DONE) {
+        setProgress((p) => {
+          const next = p + dt * 0.45;
+          if (next >= 1) {
+            setState(STATES.SPACE);
+            return 1;
+          }
+          return next;
+        });
+      } else if (s === STATES.SPACE) {
+        // Advance the cislunar cruise position over time
+        setSpaceTime((t) => {
+          const next = t + dt * 30000; // fast time
+          if (next >= 270000) {
+            setState(STATES.ORBIT);
+            orbitAngleRef.current = 0;
+            return 270000;
+          }
+          return next;
+        });
+      } else if (s === STATES.ORBIT) {
+        // Orbit around the Moon; player decides when to descend
+        setOrbitTime((t) => t + dt * 300);
+        orbitAngleRef.current += dt * 0.6;
+      } else if (s === STATES.DESCENT) {
+        setDescentAlt((a) => {
+          const next = a - dt * 1.2;
+          if (next <= 0) {
+            setState(STATES.SURFACE);
+            return 0;
+          }
+          return next;
+        });
+      } else if (s === STATES.SURFACE) {
+        setProgress((p) => {
+          const next = p + dt * 0.25;
+          if (next >= 1) {
+            setState(STATES.RETURN);
+            return 1;
+          }
+          return next;
+        });
+      } else if (s === STATES.RETURN) {
+        setReturnTime((t) => {
+          const next = t + dt * 25000;
+          if (next >= 695000) {
+            setState(STATES.REENTRY);
+            return 695000;
+          }
+          return next;
+        });
+      } else if (s === STATES.REENTRY) {
+        setReentryProg((p) => {
+          const next = p + dt * 0.11;
+          if (next >= 1) {
+            setState(STATES.COMPLETE);
+            return 1;
           }
           return next;
         });
@@ -106,217 +155,238 @@ export default function Mission() {
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [playing, speedIdx, cinematic]);
+  }, []);
 
-  const pos = trajectoryPosition(missionTime);
-  const distFromEarth = Math.sqrt(pos.x ** 2 + pos.z ** 2);
-  const distFromMoon = Math.sqrt(
-    (pos.x - pos.moonX) ** 2 + (pos.z - pos.moonZ) ** 2
-  );
-  const altitude = Math.max(0, distFromEarth - EARTH_RADIUS_KM);
-  const posNext = trajectoryPosition(missionTime + 1);
-  const velocity = Math.sqrt(
-    (posNext.x - pos.x) ** 2 + (posNext.z - pos.z) ** 2
-  );
-
-  const spacecraft = {
-    altitude,
-    velocity,
-    moonDistance: Math.max(0, distFromMoon - MOON_RADIUS_KM),
-  };
-
-  const jumpTo = (phase) => {
-    setMissionTime(phase.t_plus_seconds);
-    toast.message(`JUMP → ${phase.name}`, {
-      description: phase.code,
-      duration: 2000,
+  const handleLaunch = () => {
+    setState(STATES.ASCENT);
+    toast.message("LIFTOFF", {
+      description: "Todas as âncoras liberadas. Empuxo nominal.",
+      duration: 3000,
     });
   };
 
-  const reset = () => {
-    setMissionTime(-600);
-    setPlaying(true);
-    setSpeedIdx(3);
-    setCinematic(false);
-    prevPhaseIdRef.current = null;
-  };
-
-  const startCinematic = () => {
-    setCinematic(true);
-    setMissionTime(-600);
-    setPlaying(true);
-    prevPhaseIdRef.current = null;
-    if (phases.length) setTransitionPhase(phases[0]);
-    toast.message("CINEMATIC MODE — LV-001", {
-      description: "A viagem completa. Terra → Lua → Terra.",
-      duration: 4000,
+  const handleSeparate = () => {
+    setState(STATES.SEP_DONE);
+    toast.message("STAGE 1 SEP", {
+      description: "Estágio 1 descartado. Ignição do segundo estágio.",
+      duration: 3000,
     });
   };
 
-  const stopCinematic = () => {
-    setCinematic(false);
-    setTransitionPhase(null);
+  const handleDescend = () => {
+    setState(STATES.DESCENT);
+    setDescentAlt(8);
+    toast.message("DESCENT — PDI", {
+      description: "Powered Descent Initiation. Motor de pouso ligado.",
+      duration: 3000,
+    });
   };
+
+  const resetMission = () => {
+    setState(STATES.CONTROL);
+    setProgress(0);
+    setDescentAlt(8);
+    setSpaceTime(9840);
+    setOrbitTime(288000);
+    setReturnTime(504000);
+    setReentryProg(0);
+    orbitAngleRef.current = 0;
+  };
+
+  // Compute whether the ship is over the "landing zone" — used to signal
+  // the player when it's a good moment to press DESCEND. Purely visual —
+  // player can press whenever.
+  const overLandingZone =
+    Math.sin(orbitAngleRef.current) > 0.7;
+
+  const label = STATE_LABELS[state];
 
   return (
     <main
       className="relative w-full h-screen overflow-hidden bg-[#050505]"
       data-testid="mission-page"
     >
-      {/* Fullscreen 3D scene */}
-      <MissionScene missionTime={missionTime} cinematic={cinematic} />
+      {/* --- Scene layer --- */}
+      {state === STATES.CONTROL && <ControlRoomView onLaunch={handleLaunch} />}
 
-      {/* Phase transition overlay */}
-      <PhaseTransition
-        phase={transitionPhase}
-        onDone={() => setTransitionPhase(null)}
-      />
-
-      {/* HUD overlays */}
-      {activePhase && (
-        <MissionHUD
-          missionTime={missionTime}
-          phase={activePhase}
-          spacecraft={spacecraft}
+      {state === STATES.ASCENT && (
+        <AscentScene progress={progress} separated={false} thrust={1} />
+      )}
+      {state === STATES.SEP_PROMPT && (
+        <AscentScene progress={0.35} separated={false} thrust={0.15} />
+      )}
+      {state === STATES.SEP_DONE && (
+        <AscentScene
+          progress={0.35 + progress * 0.4}
+          separated={true}
+          thrust={1}
         />
       )}
 
-      {/* Left side panel — timeline (hidden in cinematic to keep frame clean) */}
-      {!cinematic && (
-        <aside
-          className="absolute top-36 left-4 md:left-8 w-[320px] max-h-[62vh] overflow-y-auto"
-          data-testid="mission-left-panel"
-        >
-          {phases.length > 0 && (
-            <PhaseTimeline
-              phases={phases}
-              activePhaseId={activePhase?.id}
-              onJump={jumpTo}
-            />
-          )}
-        </aside>
+      {state === STATES.SPACE && (
+        <MissionScene missionTime={spaceTime} cinematic={true} />
       )}
 
-      {/* Right side panel — briefing (hidden in cinematic) */}
-      {!cinematic && (
-        <aside
-          className="absolute top-36 right-4 md:right-8 w-[360px]"
-          data-testid="mission-right-panel"
-        >
-          <BriefingPanel phase={activePhase} />
-        </aside>
+      {state === STATES.ORBIT && (
+        <MissionScene missionTime={orbitTime} cinematic={true} />
       )}
 
-      {/* Cinematic corner label */}
-      {cinematic && (
+      {state === STATES.DESCENT && (
+        <DescentScene altitude={descentAlt} thrust={1} dust={descentAlt < 1.5} />
+      )}
+      {state === STATES.SURFACE && (
+        <DescentScene altitude={0} thrust={0} dust={false} />
+      )}
+
+      {state === STATES.RETURN && (
+        <MissionScene missionTime={returnTime} cinematic={true} />
+      )}
+
+      {state === STATES.REENTRY && <ReentryScene progress={reentryProg} />}
+
+      {state === STATES.COMPLETE && <ReentryScene progress={1} />}
+
+      {/* --- Minimal HUD overlay (hidden in control room) --- */}
+      {state !== STATES.CONTROL && (
         <div
-          data-testid="cinematic-badge"
-          className="absolute top-20 left-1/2 -translate-x-1/2 hud-panel px-4 py-2 relative corners"
+          data-testid="mission-hud-min"
+          className="absolute top-20 left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4"
         >
-          <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink">
-            ● CINEMATIC MODE · AUTO-PILOT ENGAGED
+          <span className="font-mono text-[10px] tracking-[0.35em] text-zinc-500">
+            {label.code}
+          </span>
+          <span className="w-px h-4 bg-white/15" />
+          <span className="font-mono text-[11px] tracking-[0.3em] text-white">
+            {label.name}
+          </span>
+        </div>
+      )}
+
+      {/* --- Prompts / interaction gates --- */}
+
+      {state === STATES.SEP_PROMPT && (
+        <div
+          data-testid="prompt-separate"
+          className="absolute inset-0 pointer-events-none flex items-end justify-center pb-32"
+        >
+          <div className="pointer-events-auto text-center scan-in">
+            <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink mb-3">
+              ● MISSION EVENT · CREW ACTION REQUIRED
+            </div>
+            <div className="font-display font-black text-white text-4xl md:text-5xl mb-2">
+              STAGE SEPARATION
+            </div>
+            <div className="font-mono text-[11px] tracking-widest text-zinc-400 mb-6">
+              STAGE 1 EXHAUSTED · PRESS TO JETTISON
+            </div>
+            <button
+              onClick={handleSeparate}
+              data-testid="btn-separate"
+              className="group inline-flex items-center gap-3 px-8 py-3 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00] transition-colors duration-200 font-mono tracking-[0.3em] text-sm"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#FF3B00] blink" />
+              SEPARATE
+              <span className="w-2 h-2 rounded-full bg-[#FF3B00] blink" />
+            </button>
           </div>
         </div>
       )}
 
-      {/* Playback controls */}
-      <div
-        className="absolute bottom-32 left-1/2 -translate-x-1/2 hud-panel px-5 py-3 flex items-center gap-4 corners"
-        data-testid="mission-controls"
-      >
-        <button
-          onClick={() => setPlaying((p) => !p)}
-          data-testid="ctrl-play"
-          className="flex items-center gap-2 px-3 py-1.5 text-white hover:text-[#FF3B00] transition-colors duration-200"
+      {state === STATES.ORBIT && (
+        <div
+          data-testid="prompt-descend"
+          className="absolute inset-0 pointer-events-none flex items-end justify-center pb-32"
         >
-          {playing ? <Pause size={14} /> : <Play size={14} />}
-          <span className="font-mono text-[10px] tracking-widest">
-            {playing ? "PAUSE" : "RESUME"}
-          </span>
-        </button>
-
-        <div className="w-px h-6 bg-white/10" />
-
-        {!cinematic ? (
-          <button
-            onClick={() => setSpeedIdx((i) => (i + 1) % SPEED_STEPS.length)}
-            data-testid="ctrl-speed"
-            className="flex items-center gap-2 px-3 py-1.5 text-white hover:text-[#FF3B00] transition-colors duration-200"
-          >
-            <FastForward size={14} />
-            <span className="font-mono text-[10px] tracking-widest tabular">
-              ×{SPEED_STEPS[speedIdx].toLocaleString()}
-            </span>
-          </button>
-        ) : (
-          <div className="flex items-center gap-2 px-3 py-1.5 text-zinc-400">
-            <FastForward size={14} />
-            <span className="font-mono text-[10px] tracking-widest tabular">
-              AUTO ×{CINEMATIC_SPEED(missionTime).toLocaleString()}
-            </span>
+          <div className="pointer-events-auto text-center">
+            <div
+              className={`font-mono text-[10px] tracking-[0.4em] mb-3 ${
+                overLandingZone ? "text-[#FF3B00] blink" : "text-zinc-500"
+              }`}
+            >
+              ● {overLandingZone ? "OVER LANDING ZONE — GO FOR PDI" : "STANDBY · WAITING FOR LANDING ZONE"}
+            </div>
+            <div className="font-display font-black text-white text-4xl md:text-5xl mb-2">
+              LUNAR DESCENT
+            </div>
+            <div className="font-mono text-[11px] tracking-widest text-zinc-400 mb-6">
+              MARE TRANQUILLITATIS · WAIT UNTIL "GO FOR PDI"
+            </div>
+            <button
+              onClick={handleDescend}
+              data-testid="btn-descend"
+              className={`inline-flex items-center gap-3 px-8 py-3 border-2 font-mono tracking-[0.3em] text-sm transition-colors duration-200 ${
+                overLandingZone
+                  ? "border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00]"
+                  : "border-zinc-600 text-zinc-500 bg-transparent"
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${overLandingZone ? "bg-[#FF3B00] blink" : "bg-zinc-600"}`} />
+              INITIATE DESCENT
+              <span className={`w-2 h-2 rounded-full ${overLandingZone ? "bg-[#FF3B00] blink" : "bg-zinc-600"}`} />
+            </button>
           </div>
-        )}
-
-        <div className="w-px h-6 bg-white/10" />
-
-        <button
-          onClick={reset}
-          data-testid="ctrl-reset"
-          className="flex items-center gap-2 px-3 py-1.5 text-white hover:text-[#FF3B00] transition-colors duration-200"
-        >
-          <RotateCcw size={14} />
-          <span className="font-mono text-[10px] tracking-widest">RESET</span>
-        </button>
-
-        <div className="w-px h-6 bg-white/10" />
-
-        {!cinematic ? (
-          <button
-            onClick={startCinematic}
-            data-testid="ctrl-cinematic"
-            className="flex items-center gap-2 px-3 py-1.5 text-[#FF3B00] hover:text-white transition-colors duration-200"
-          >
-            <Film size={14} />
-            <span className="font-mono text-[10px] tracking-widest">
-              PLAY MOVIE
-            </span>
-          </button>
-        ) : (
-          <button
-            onClick={stopCinematic}
-            data-testid="ctrl-cinematic-stop"
-            className="flex items-center gap-2 px-3 py-1.5 text-[#FF3B00] hover:text-white transition-colors duration-200"
-          >
-            <Square size={14} />
-            <span className="font-mono text-[10px] tracking-widest">
-              EXIT MOVIE
-            </span>
-          </button>
-        )}
-
-        {!cinematic && (
-          <>
-            <div className="w-px h-6 bg-white/10" />
-            <input
-              type="range"
-              min={-600}
-              max={MAX_TIME}
-              value={missionTime}
-              onChange={(e) => setMissionTime(Number(e.target.value))}
-              className="lv-slider w-[220px]"
-              data-testid="ctrl-scrub"
-            />
-          </>
-        )}
-      </div>
-
-      {error && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 hud-panel px-6 py-4 border-[#FF3B00]">
-          <div className="font-mono text-[10px] text-[#FF3B00] tracking-widest">
-            SYSTEM ERROR
-          </div>
-          <div className="text-sm mt-2">{error}</div>
         </div>
+      )}
+
+      {state === STATES.SURFACE && (
+        <div
+          data-testid="surface-overlay"
+          className="absolute inset-0 pointer-events-none flex items-center justify-center"
+        >
+          <div className="text-center scan-in bg-black/30 backdrop-blur-sm px-10 py-6">
+            <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink mb-3">
+              ● CONTACT LIGHT
+            </div>
+            <div className="font-display font-black text-white text-5xl md:text-6xl">
+              THE EAGLE HAS LANDED
+            </div>
+            <div className="font-mono text-[11px] tracking-widest text-zinc-400 mt-3">
+              MARE TRANQUILLITATIS · 0°41′15″N 23°26′00″E
+            </div>
+          </div>
+        </div>
+      )}
+
+      {state === STATES.COMPLETE && (
+        <div
+          data-testid="complete-overlay"
+          className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-md"
+        >
+          <div className="text-center max-w-2xl px-8 scan-in">
+            <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink mb-4">
+              ● SPLASHDOWN · CREW SAFE
+            </div>
+            <h2 className="font-display font-black text-white text-6xl md:text-7xl mb-6">
+              MISSION COMPLETE
+            </h2>
+            <p className="font-mono text-[11px] tracking-widest text-zinc-400 mb-10">
+              LV-001 · 195 HOURS · 384,400 KM · TRANQUILITY BASE · PACIFIC SPLASHDOWN
+            </p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={resetMission}
+                data-testid="btn-restart"
+                className="btn-hud btn-hud-primary"
+              >
+                <RotateCcw size={14} /> RELAUNCH
+              </button>
+              <Link to="/manifesto" className="btn-hud" data-testid="btn-manifesto">
+                READ MANIFESTO <ArrowUpRight size={14} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick restart button always visible (except in control) */}
+      {state !== STATES.CONTROL && state !== STATES.COMPLETE && (
+        <button
+          onClick={resetMission}
+          data-testid="btn-abort"
+          className="absolute top-20 right-4 md:right-8 hud-panel px-3 py-2 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em]"
+        >
+          <RotateCcw size={12} /> ABORT
+        </button>
       )}
     </main>
   );
