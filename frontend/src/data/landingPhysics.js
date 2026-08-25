@@ -9,10 +9,10 @@ export const DIFFICULTY = {
     initialVy: -14,
     initialVx: 6,
     initialFuel: 220,
-    fuelRate: 4,     // kg/s at full throttle
-    maxThrust: 5.5, // m/s^2 at full throttle
-    tiltRate: 22,   // deg/s
-    tiltAssist: true, // auto-levels when no input
+    fuelRate: 4,
+    maxThrust: 5.5,
+    tiltRate: 22,
+    tiltAssist: true,
     safeVy: 4.5,
     safeVx: 4,
     safeTilt: 22,
@@ -51,8 +51,6 @@ export const DIFFICULTY = {
   },
 };
 
-// Landing site is at horizontalPos = 0.
-// Hazards & safe zones spread across ±80m.
 export const HAZARDS = [
   { x: -55, r: 10, kind: "crater", label: "CRATER · ROUGH" },
   { x: -20, r: 6, kind: "boulders", label: "BOULDERS" },
@@ -67,7 +65,9 @@ export const SAFE_ZONES = [
   { x: 75, r: 6, label: "ALT LZ FAR EAST" },
 ];
 
-/** Returns { landed, safeZone, hazard } for x on the surface. */
+export const PRIMARY_LZ = SAFE_ZONES.find((z) => z.primary);
+
+/** Returns { safeZone, hazard } for touchdown at x. */
 export function evaluateGround(x) {
   for (const h of HAZARDS) {
     if (Math.abs(x - h.x) < h.r) {
@@ -82,67 +82,97 @@ export function evaluateGround(x) {
   return { hazard: null, safeZone: null };
 }
 
+/** Distance band label for a given metric distance (m). */
+export function accuracyLabel(distance) {
+  if (distance < 3) return "EXCELLENT";
+  if (distance < 10) return "GOOD";
+  if (distance < 20) return "ACCEPTABLE";
+  if (distance < 40) return "POOR";
+  return "MISS";
+}
+
 /**
- * Grade a landing outcome given the final state and difficulty.
- * Returns { grade, score, accuracy, touchdownSpeed, fuelRemaining, tilt, crewSafety }.
+ * Grade a touchdown-frame state.
+ *
+ * All values come from the LM's captured touchdown frame — no post-hoc
+ * animation influence. The final grade & fatal flag are the source of
+ * truth for the rest of the mission (mission cannot proceed on fatal).
+ *
+ * Score (max 100):
+ *   40  Vertical speed        40 * max(0, 1 - |vy|/safeVy)^1.5
+ *   30  Landing accuracy      30 * max(0, 1 - dist / 60)
+ *   20  Attitude / tilt       20 * max(0, 1 - |tilt|/safeTilt)^1.2
+ *   10  Fuel remaining        10 * fuel/initialFuel
+ *
+ * Fatal (crashed) if ANY of:
+ *   - |vy| > safeVy
+ *   - |vx| > safeVx
+ *   - |tilt| > safeTilt
+ *   - hazard at touchdown x
+ *   - fuel depleted before touchdown (fuelDepletedInFlight === true)
  */
-export function gradeLanding({
-  vy, vx, tilt, fuel, initialFuel, xPos, safeZone, hazard, crashed,
-}) {
+export function gradeLanding(input) {
+  const {
+    vy, vx, tilt, fuel, initialFuel, xPos,
+    safeZone, hazard,
+    safeVy, safeVx, safeTilt,
+    fuelDepletedInFlight = false,
+  } = input;
+
+  const absVy = Math.abs(vy);
+  const absVx = Math.abs(vx);
+  const absTilt = Math.abs(tilt);
   const touchdownSpeed = Math.sqrt(vy * vy + vx * vx);
-  const fuelPct = Math.round((fuel / initialFuel) * 100);
-  const tiltAbs = Math.abs(tilt);
+  const fuelPct = Math.max(0, Math.min(100, Math.round((fuel / initialFuel) * 100)));
 
-  if (crashed) {
-    return {
-      grade: "D",
-      score: 0,
-      accuracy: 0,
-      touchdownSpeed,
-      fuelRemaining: fuelPct,
-      tilt: tiltAbs,
-      crewSafety: "LOST",
-      crashed: true,
-    };
-  }
+  // Distance from PRIMARY LZ center (mission designated target)
+  const distance = Math.abs(xPos - PRIMARY_LZ.x);
+  const label = accuracyLabel(distance);
 
-  // Landing accuracy: distance from a safe-zone center → 100%
-  let accuracy = 0;
-  if (safeZone) {
-    const dist = Math.abs(xPos - safeZone.x);
-    accuracy = Math.max(0, 100 - (dist / safeZone.r) * 40);
-    if (safeZone.primary) accuracy += 5;
-  } else if (hazard) {
-    accuracy = 40;
-  } else {
-    accuracy = 65;
-  }
-  accuracy = Math.min(100, Math.round(accuracy));
+  // Component scores (derived directly from simulation values)
+  const vyScore = 40 * Math.pow(Math.max(0, 1 - absVy / safeVy), 1.5);
+  const accScore = 30 * Math.max(0, 1 - distance / 60);
+  const tiltScore = 20 * Math.pow(Math.max(0, 1 - absTilt / safeTilt), 1.2);
+  const fuelScore = 10 * Math.max(0, Math.min(1, fuel / initialFuel));
 
-  const speedScore = Math.max(0, 100 - touchdownSpeed * 25);
-  const fuelScore = Math.min(100, fuelPct * 2);
-  const tiltScore = Math.max(0, 100 - tiltAbs * 4);
+  // Failure detection — every reason listed for the result screen
+  const failureReasons = [];
+  if (fuelDepletedInFlight) failureReasons.push("FUEL DEPLETED BEFORE TOUCHDOWN");
+  if (absVy > safeVy) failureReasons.push("VERTICAL SPEED EXCEEDED SAFE LIMIT");
+  if (absVx > safeVx) failureReasons.push("EXCESSIVE HORIZONTAL SPEED");
+  if (absTilt > safeTilt) failureReasons.push("TILT EXCEEDED SAFE LIMIT");
+  if (hazard) failureReasons.push("UNSAFE TERRAIN");
 
-  const total =
-    accuracy * 0.35 +
-    speedScore * 0.3 +
-    fuelScore * 0.2 +
-    tiltScore * 0.15;
+  const crashed = failureReasons.length > 0;
 
-  const grade =
-    total >= 92 ? "S" :
-    total >= 82 ? "A" :
-    total >= 70 ? "B" :
-    total >= 55 ? "C" : "D";
+  // If crashed, we still compute the raw component scores so the player
+  // can see how close each metric was, but the total is capped severely.
+  const rawTotal = vyScore + accScore + tiltScore + fuelScore;
+  const total = crashed ? Math.min(rawTotal, 25) : rawTotal;
+  const score = Math.round(total);
+
+  const grade = crashed ? "F"
+    : total >= 92 ? "S"
+    : total >= 82 ? "A"
+    : total >= 70 ? "B"
+    : total >= 55 ? "C" : "D";
 
   return {
+    crashed,
     grade,
-    score: Math.round(total),
-    accuracy,
+    score,
     touchdownSpeed,
-    fuelRemaining: fuelPct,
-    tilt: tiltAbs,
-    crewSafety: "NOMINAL",
-    crashed: false,
+    fuelPct,
+    // Detailed per-component breakdown for the result screen
+    breakdown: {
+      vy: { value: absVy, limit: safeVy, score: Math.round(vyScore), max: 40, safe: absVy <= safeVy },
+      vx: { value: absVx, limit: safeVx, safe: absVx <= safeVx },
+      tilt: { value: absTilt, limit: safeTilt, score: Math.round(tiltScore), max: 20, safe: absTilt <= safeTilt },
+      accuracy: { distance, score: Math.round(accScore), max: 30, label },
+      fuel: { pct: fuelPct, score: Math.round(fuelScore), max: 10 },
+    },
+    failureReasons,
+    zone: safeZone ? (safeZone.label || (safeZone.primary ? "PRIMARY LZ" : "SAFE ZONE")) : (hazard ? hazard.label : "UNMAPPED TERRAIN"),
+    crewSafety: crashed ? "LOST" : "NOMINAL",
   };
 }

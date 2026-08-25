@@ -211,8 +211,10 @@ export default function Mission() {
   };
 
   const handleContinueFromResult = () => {
+    // Only allow the mission to continue if the landing was successful.
+    // A failed landing (crew lost) must NOT progress to TEI / reentry / splashdown.
+    if (!descentResult || descentResult.crashed) return;
     setDescentResult(null);
-    // Move into TEI/return only if landing was successful
     setState(STATES.RETURN);
   };
 
@@ -302,7 +304,8 @@ export default function Mission() {
             result={descentResult}
             difficulty={difficulty}
             onRestart={handleRestartDescent}
-            onExit={handleContinueFromResult}
+            onContinue={handleContinueFromResult}
+            onEndMission={resetMission}
           />
         </>
       )}

@@ -1,0 +1,44 @@
+{
+  "summary": "Manual descent integrity fixes are NOT working. Root cause: DescentGame.jsx passes an incomplete input object to gradeLanding() — safeVy, safeVx, safeTilt, and fuelDepletedInFlight are missing from the call site. gradeLanding() destructures those from `input` and uses them to compute failure reasons, scores and the crashed flag. With them undefined, the failure list stays empty (crashed=false), vyScore/tiltScore become NaN, and the wrong CTA (CONTINUE MISSION) is rendered even after a hard crash at ~42 m/s.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DescentGame.jsx -> gradeLanding call (lines 579-589)", "issue": "BUG 1/5/6 broken: input object omits safeVy, safeVx, safeTilt, fuelDepletedInFlight. Result: crashed=false always, grade never F, total score = NaN, row-vy/row-tilt limits display 'undefined', failure-reasons block never rendered, result-continue button appears on crashes instead of result-end-mission.", "selector": "[data-testid=mission-result]", "priority": "CRITICAL"},
+      {"component": "MissionResult header", "issue": "Header always reads 'MISSION COMPLETE · CREW SAFE' even on a crash — this string is not gated by isCrash (MissionResult.jsx line 36 uses same text for both branches).", "selector": "[data-testid=mission-result]", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Manual descent -> result -> continue", "issue": "Because crashed=false, handleContinueFromResult in Mission.jsx does NOT block progression; a hard-landed crew would be able to click CONTINUE MISSION and reach [data-testid=complete-overlay]. Mission-fatal guard is bypassed at the source (grading).", "affected_selectors": ["[data-testid=result-continue]","[data-testid=complete-overlay]"]}
+    ],
+    "design_issues": []
+  },
+  "reproduction_steps": [
+    "1. Open /mission",
+    "2. Click LAUNCH SEQUENCE — INITIATE",
+    "3. When STAGE SEPARATION appears click SEPARATE (btn-separate)",
+    "4. When INITIATE DESCENT is available click it (btn-descend)",
+    "5. Pick CADET on difficulty screen",
+    "6. In DescentGame do NOT press throttle — let LM free-fall",
+    "7. Observed: result-title='THE EAGLE HAS LANDED', grade='D', total-score='NaN', row-vy shows '42.64 m/s LIMIT undefined m/s +NaN/40', no failure-reasons element, result-continue exists, result-end-mission missing. Expected: title HARD LANDING, grade F, failure-reasons visible with 'VERTICAL SPEED EXCEEDED SAFE LIMIT', result-end-mission present, result-continue absent."
+  ],
+  "fix_recommendation": "In /app/frontend/src/components/DescentGame.jsx around line 579, change the gradeLanding call to pass the difficulty-scoped safety limits and the fuel-depletion flag:\n\n  const result = gradeLanding({\n    vy: finalVy, vx: finalVx, tilt: finalTilt,\n    fuel: p.fuel, initialFuel: cfg.initialFuel,\n    xPos: p.xPos,\n    safeZone: g.safeZone, hazard: g.hazard,\n    safeVy: cfg.safeVy, safeVx: cfg.safeVx, safeTilt: cfg.safeTilt,\n    fuelDepletedInFlight: fuelDepletedInFlightRef.current,\n  });\n\nAlso: MissionResult.jsx line 36 hard-codes 'MISSION COMPLETE · CREW SAFE' for the isCrash branch too — it should read 'MISSION FAILED · CREW LOST' when isCrash is true (the ternary already exists but both branches print the same success text). Verify the string.",
+  "critical_code_review_comments": [
+    "DescentGame.jsx grades landing via a fragile duplicated logic path: crashConditions is computed locally and passed as `crashed`, but gradeLanding also derives its own `crashed`. This double source of truth invites drift — the actual failure detection lives in gradeLanding which never receives the required limits. Single source of truth needed.",
+    "MissionResult.jsx `isCrash ? 'MISSION FAILED · CREW LOST' : 'MISSION COMPLETE · CREW SAFE'` — both sides show the success string in the rendered output; check whether the ternary was collapsed by a copy-paste bug. In our test with grade D (uncrashed by the buggy grader) it printed 'MISSION COMPLETE · CREW SAFE' — expected, but once crashed is fixed this must be re-verified.",
+    "Row `row-vx` never renders a score/max chip (BreakRow called without score) — BUG 6 expects each row to explain contribution; row-vx and row-crew have no chip which is technically OK per formula, but the requirement states each row should show the contribution 'where applicable' — acceptable.",
+    "DescentGame.jsx is 894 lines — >700 threshold. Consider splitting HUD gauges, scene components, and physics loop into separate modules."
+  ],
+  "test_report_links": [".screenshots/result_crash.png"],
+  "action_items": [
+    "Fix the gradeLanding() call in DescentGame.jsx to pass safeVy/safeVx/safeTilt/fuelDepletedInFlight (see fix_recommendation).",
+    "Verify MissionResult top-right status text branches correctly on isCrash.",
+    "Re-test BUG 1/2/3/4/5/6 after the fix — the physics-pause (BUG 3) and touchdown-lock (BUG 2) could not be verified this iteration because the grader bug short-circuited the whole result flow.",
+    "Regression full-mission flow could not be executed because a successful landing still needs the grader intact to award S/A/B/C/D."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "0% for landing integrity (BUG 1/4/5/6 fail)"},
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent applies the 5-line fix in DescentGame.jsx (pass safeVy/safeVx/safeTilt/fuelDepletedInFlight into gradeLanding), re-run: (a) no-throttle crash — expect grade F, HARD LANDING title, failure-reasons visible, result-end-mission button present and result-continue absent, END MISSION returns to control-room; (b) BUG 2 touchdown lock — press SPACE after mission-result appears, gauges must stay 0; (c) BUG 3 abort-modal pause — open abort modal below 300m, wait 4s, altitude/vspeed must be identical; (d) BUG 4 accuracy dynamic — retry and drift 30m+ to observe POOR/MISS; (e) BUG 5 score sum — soft-land and verify sum(vy+acc+tilt+fuel) == result-total-score and grade S/A/B/C/D; (f) regression full-mission from LAUNCH through complete-overlay after a soft landing.",
+  "rca of the issue": "gradeLanding() in landingPhysics.js destructures safeVy, safeVx, safeTilt from its input (line 118). DescentGame.jsx builds the input at lines 579-589 without those keys, so absVy > undefined is false, no failure reasons are pushed, crashed evaluates to false, and the vy/tilt score formulas divide by undefined producing NaN. This single missing 4-line addition breaks BUGs 1, 4, 5, and 6 simultaneously."
+}

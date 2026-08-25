@@ -41,50 +41,149 @@ function MoonSurface() {
   );
 }
 
-function LandingSiteMarkers() {
+function LandingSiteMarkers({ physRef }) {
+  // Progressive reveal: the guidance computer shows only the PROJECTED LANDING AREA
+  // at high altitude. As the LM descends the terrain visual detail — including
+  // hazards and alternative sites — becomes readable to the pilot.
+  const primaryRef = useRef();
+  const altRefs = useRef([]);
+  const hazardRefs = useRef([]);
+
+  useFrame(() => {
+    if (!physRef.current) return;
+    const alt = physRef.current.alt;
+    // Reveal curves (based on real Apollo LM landing timeline where landmarks
+    // become distinguishable in the last few hundred meters).
+    const altReveal = Math.max(0, Math.min(1, (500 - alt) / 300));   // alt LZs fade in 500 → 200m
+    const hazardReveal = Math.max(0, Math.min(1, (400 - alt) / 250)); // hazards fade in 400 → 150m
+    if (primaryRef.current) primaryRef.current.material.opacity = 0.9;
+    altRefs.current.forEach((m) => {
+      if (m && m.material) m.material.opacity = 0.85 * altReveal;
+    });
+    hazardRefs.current.forEach((entry) => {
+      if (!entry) return;
+      entry.forEach((m) => {
+        if (m && m.material) {
+          m.material.opacity = 0.55 * hazardReveal;
+          m.material.transparent = true;
+        }
+        if (m && m.visible !== undefined) m.visible = hazardReveal > 0.02;
+      });
+    });
+  });
+
   return (
     <group>
       {SAFE_ZONES.map((z, i) => (
         <mesh
           key={i}
+          ref={(el) => {
+            if (z.primary) primaryRef.current = el;
+            else altRefs.current[i] = el;
+          }}
           rotation={[-Math.PI / 2, 0, 0]}
           position={[z.x, 0.02, 0]}
         >
           <ringGeometry args={[z.r - 0.4, z.r, 32]} />
-          <meshBasicMaterial color={z.primary ? "#FF3B00" : "#4a90e2"} transparent opacity={0.9} />
+          <meshBasicMaterial
+            color={z.primary ? "#FF3B00" : "#4a90e2"}
+            transparent
+            opacity={z.primary ? 0.9 : 0}
+          />
         </mesh>
       ))}
-      {HAZARDS.map((h, i) => (
-        <group key={"h" + i}>
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[h.x, 0.02, 0]}>
-            <circleGeometry args={[h.r, 32]} />
-            <meshBasicMaterial color="#3a1a0a" transparent opacity={0.55} />
-          </mesh>
-          {h.kind === "crater" && (
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[h.x, 0.03, 0]}>
-              <ringGeometry args={[h.r - 0.3, h.r, 32]} />
-              <meshBasicMaterial color="#1a0a05" />
+      {HAZARDS.map((h, i) => {
+        const hazardMeshes = [];
+        return (
+          <group key={"h" + i} ref={(el) => (hazardRefs.current[i] = hazardMeshes)}>
+            <mesh
+              ref={(el) => el && hazardMeshes.push(el)}
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[h.x, 0.02, 0]}
+            >
+              <circleGeometry args={[h.r, 32]} />
+              <meshBasicMaterial color="#3a1a0a" transparent opacity={0} />
             </mesh>
-          )}
-          {h.kind === "boulders" &&
-            Array.from({ length: 6 }).map((_, k) => {
-              const a = (k / 6) * Math.PI * 2;
-              return (
-                <mesh
-                  key={k}
-                  position={[
-                    h.x + Math.cos(a) * (h.r * 0.6),
-                    0.5,
-                    Math.sin(a) * (h.r * 0.6),
-                  ]}
-                >
-                  <dodecahedronGeometry args={[0.8, 0]} />
-                  <meshStandardMaterial color="#7a736a" roughness={1} />
-                </mesh>
-              );
-            })}
-        </group>
-      ))}
+            {h.kind === "crater" && (
+              <mesh
+                ref={(el) => el && hazardMeshes.push(el)}
+                rotation={[-Math.PI / 2, 0, 0]}
+                position={[h.x, 0.03, 0]}
+              >
+                <ringGeometry args={[h.r - 0.3, h.r, 32]} />
+                <meshBasicMaterial color="#1a0a05" transparent opacity={0} />
+              </mesh>
+            )}
+            {h.kind === "boulders" &&
+              Array.from({ length: 6 }).map((_, k) => {
+                const a = (k / 6) * Math.PI * 2;
+                return (
+                  <mesh
+                    key={k}
+                    ref={(el) => el && hazardMeshes.push(el)}
+                    position={[
+                      h.x + Math.cos(a) * (h.r * 0.6),
+                      0.5,
+                      Math.sin(a) * (h.r * 0.6),
+                    ]}
+                  >
+                    <dodecahedronGeometry args={[0.8, 0]} />
+                    <meshStandardMaterial
+                      color="#7a736a"
+                      roughness={1}
+                      transparent
+                      opacity={0}
+                    />
+                  </mesh>
+                );
+              })}
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+/** Landing Point Designator — a small crosshair on the surface indicating
+ * the extrapolated touchdown location from current vx and altitude. */
+function LPD({ physRef }) {
+  const ref = useRef();
+  const materialRef = useRef();
+  useFrame(() => {
+    if (!ref.current || !physRef.current) return;
+    const p = physRef.current;
+    // Predicted touchdown time from current vy (assume no thrust from now on)
+    const g = 1.62;
+    // ay = -g if throttle=0. Solve y + vy*t + 0.5*ay*t^2 = 0 for t (t>0).
+    // ay is negative → -0.5g. So: -0.5g*t^2 + vy*t + y = 0 → 0.5g*t^2 - vy*t - y = 0
+    // t = (vy + sqrt(vy^2 + 2*g*y)) / g   (taking positive root, vy is negative)
+    const y = Math.max(0, p.alt);
+    const disc = p.vy * p.vy + 2 * g * y;
+    const t = disc > 0 ? (p.vy + Math.sqrt(disc)) / g : 0; // vy negative usually
+    const tPositive = t > 0 ? t : 0;
+    const targetX = p.xPos + p.vx * tPositive;
+    ref.current.position.set(targetX * 0.5, 0.06, 0);
+    // Fade LPD in as we get below 800m
+    if (materialRef.current) {
+      materialRef.current.opacity = Math.max(0, Math.min(0.9, (800 - p.alt) / 400));
+    }
+    ref.current.visible = p.alt > 3;
+  });
+  return (
+    <group ref={ref}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.6, 1.0, 32]} />
+        <meshBasicMaterial ref={materialRef} color="#FFDD00" transparent opacity={0} />
+      </mesh>
+      {/* cross */}
+      <mesh position={[0, 0.01, 0]}>
+        <boxGeometry args={[2.4, 0.02, 0.08]} />
+        <meshBasicMaterial color="#FFDD00" transparent opacity={0.7} />
+      </mesh>
+      <mesh position={[0, 0.01, 0]}>
+        <boxGeometry args={[0.08, 0.02, 2.4]} />
+        <meshBasicMaterial color="#FFDD00" transparent opacity={0.7} />
+      </mesh>
     </group>
   );
 }
@@ -256,6 +355,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const [view, setView] = useState("EXTERNAL"); // EXTERNAL | COCKPIT | NAV
   const [showAbort, setShowAbort] = useState(false);
   const [contactLight, setContactLight] = useState(false);
+  const [projectedHazard, setProjectedHazard] = useState(false);
+  const [projectedZoneLabel, setProjectedZoneLabel] = useState("PRIMARY LZ");
 
   const inputRef = useRef({
     throttle: false,
@@ -281,7 +382,10 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   });
   const pausedRef = useRef(false);
   const endedRef = useRef(false);
-  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  const fuelDepletedInFlightRef = useRef(false);
+  // Combine user pause + any modal into a single physics pause.
+  // showAbort suspends physics so the LM cannot fall while the confirm dialog is open.
+  useEffect(() => { pausedRef.current = paused || showAbort; }, [paused, showAbort]);
   useEffect(() => { endedRef.current = !!ended; }, [ended]);
 
   // Keyboard
@@ -368,9 +472,9 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
 
       // Multi-step integration to preserve determinism under variable frame rate.
       for (let s = 0; s < subSteps; s++) {
-      // Throttle ramp
+      // Throttle ramp — slower for realistic feel (0.6s to full = 1.6/s rate)
       const throttleTarget = inp.throttle && p.fuel > 0 ? 1 : 0;
-      p.throttle += (throttleTarget - p.throttle) * Math.min(1, dt * 3.0);
+      p.throttle += (throttleTarget - p.throttle) * Math.min(1, dt * 1.6);
 
       // Tilt input
       let dTilt = 0;
@@ -385,9 +489,13 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       if (inp.strafeLeft) p.vx -= 3 * dt;
       if (inp.strafeRight) p.vx += 3 * dt;
 
-      // Fuel consumption
+      // Fuel consumption + record depletion moment
       const usage = p.throttle * cfg.fuelRate * dt;
+      const fuelBefore = p.fuel;
       p.fuel = Math.max(0, p.fuel - usage);
+      if (fuelBefore > 0 && p.fuel <= 0 && p.alt > 5) {
+        fuelDepletedInFlightRef.current = true;
+      }
       const effThrottle = p.fuel > 0 ? p.throttle : 0;
 
       // Integrate (semi-implicit Euler)
@@ -399,7 +507,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       p.vx += ax * dt;
       p.alt += p.vy * dt;
       p.xPos += p.vx * dt;
-      if (p.alt <= 0) break; // stop sub-stepping once we hit the ground
+      if (p.alt <= 0.5) break; // stop sub-stepping once we hit the contact threshold
       }
 
       // Throttle state sync to ~15 Hz to avoid 7 setStates per frame
@@ -442,43 +550,66 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       // Contact light
       setContactLight(p.alt < 5 && p.alt > 0.05);
 
-      // Touchdown
-      if (p.alt <= 0) {
+      // Projected touchdown assessment (drives TERRAIN AHEAD warning + LPD label)
+      if (shouldSync) {
+        const gAcc = MOON_G;
+        const disc = p.vy * p.vy + 2 * gAcc * Math.max(0, p.alt);
+        const tFall = disc > 0 ? (p.vy + Math.sqrt(disc)) / gAcc : 0;
+        const projX = p.xPos + p.vx * (tFall > 0 ? tFall : 0);
+        const g = evaluateGround(projX);
+        setProjectedHazard(!!g.hazard);
+        setProjectedZoneLabel(
+          g.hazard ? g.hazard.label :
+          g.safeZone ? g.safeZone.label || (g.safeZone.primary ? "PRIMARY LZ" : "SAFE ZONE") :
+          "UNMAPPED TERRAIN"
+        );
+      }
+
+      // Touchdown — trigger at CONTACT_ALT (0.5 m) so the LM can never hover
+      // indefinitely just above the surface. endedRef.current locks all further
+      // physics + controls so the outcome cannot be undone.
+      const CONTACT_ALT = 0.5;
+      if (!endedRef.current && p.alt <= CONTACT_ALT) {
         const finalVy = p.vy;
         const finalVx = p.vx;
         const finalTilt = p.tilt;
-        const g = evaluateGround(p.xPos);
-        const crashConditions =
-          Math.abs(finalVy) > cfg.safeVy ||
-          Math.abs(finalVx) > cfg.safeVx ||
-          Math.abs(finalTilt) > cfg.safeTilt ||
-          !!g.hazard;
+        const finalFuel = p.fuel;
+        const finalX = p.xPos;
+        const g = evaluateGround(finalX);
         const result = gradeLanding({
           vy: finalVy,
           vx: finalVx,
           tilt: finalTilt,
-          fuel: p.fuel,
+          fuel: finalFuel,
           initialFuel: cfg.initialFuel,
-          xPos: p.xPos,
+          xPos: finalX,
           safeZone: g.safeZone,
           hazard: g.hazard,
-          crashed: crashConditions,
+          safeVy: cfg.safeVy,
+          safeVx: cfg.safeVx,
+          safeTilt: cfg.safeTilt,
+          fuelDepletedInFlight: fuelDepletedInFlightRef.current,
         });
-        p.alt = 0;
-        p.vy = 0;
-        p.vx = 0;
-        p.throttle = 0;
-        setAlt(0); setVy(0); setVx(0); setThrottle(0);
+        p.alt = 0; p.vy = 0; p.vx = 0; p.throttle = 0;
+        inputRef.current.throttle = false;
+        inputRef.current.left = false;
+        inputRef.current.right = false;
+        inputRef.current.strafeLeft = false;
+        inputRef.current.strafeRight = false;
+        setAlt(0); setVy(0); setVx(0); setThrottle(0); setTilt(finalTilt); setFuel(finalFuel);
         endedRef.current = true;
-        setEnded({ crashed: crashConditions, result });
+        setEnded({ crashed: result.crashed, result });
         if (audio) {
           audio.stopRumble();
-          if (crashConditions) {
+          if (result.crashed) {
             audio.boom(0.55);
+            const primary = result.failureReasons[0] || "";
             audio.comms(
-              g.hazard ? "Ground contact... hazard detected. Structural damage."
-              : Math.abs(finalVy) > cfg.safeVy ? "Hard landing. Structural failure."
-              : "Landing failure. Attitude out of limits."
+              primary.includes("FUEL") ? "Fuel exhausted. We're going in."
+              : primary.includes("TERRAIN") ? "Ground contact... hazard detected. Structural damage."
+              : primary.includes("HORIZONTAL") ? "Excessive lateral velocity at contact."
+              : primary.includes("TILT") ? "Landing failure. Attitude out of limits."
+              : "Hard landing. Structural failure."
             );
             setTimeout(() => onCrash && onCrash(result), 2200);
           } else {
@@ -487,7 +618,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
             setTimeout(() => onSuccess && onSuccess(result), 2800);
           }
         } else {
-          setTimeout(() => (crashConditions ? onCrash?.(result) : onSuccess?.(result)), 2200);
+          setTimeout(() => (result.crashed ? onCrash?.(result) : onSuccess?.(result)), 2200);
         }
       }
 
@@ -547,7 +678,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
             <directionalLight position={[30, 40, 20]} intensity={2.6} color="#ffffff" />
             <directionalLight position={[-10, 6, -20]} intensity={0.2} color="#3a5a8a" />
             <MoonSurface />
-            <LandingSiteMarkers />
+            <LandingSiteMarkers physRef={phys} />
+            <LPD physRef={phys} />
             <DistantEarth />
             <Lander physRef={phys} />
             <Dust altitude={alt} thrust={throttle} />
@@ -620,6 +752,11 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
             ● CONTACT LIGHT
           </div>
         )}
+        {projectedHazard && alt > 5 && (
+          <div className="hud-panel px-3 py-1 font-mono text-[10px] tracking-widest text-[#FF3B00] blink" data-testid="warn-terrain">
+            ● TERRAIN AHEAD — DIVERT
+          </div>
+        )}
       </div>
 
       {/* LEFT: primary instrument HUD */}
@@ -652,6 +789,12 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         <div className="mt-3 font-mono text-[9px] tracking-widest text-zinc-500 flex justify-between">
           <span>DISTANCE TO PRIMARY LZ</span>
           <span className="text-white tabular">{distanceToLZ.toFixed(1)} m</span>
+        </div>
+        <div className="mt-1 font-mono text-[9px] tracking-widest flex justify-between" data-testid="projected-lz">
+          <span className="text-zinc-500">PROJECTED TOUCHDOWN</span>
+          <span className={projectedHazard ? "text-[#FF3B00] blink" : "text-white"}>
+            {projectedZoneLabel}
+          </span>
         </div>
       </div>
 
