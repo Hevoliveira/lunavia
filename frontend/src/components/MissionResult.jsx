@@ -48,7 +48,7 @@ export default function MissionResult({ result, onRestart, onContinue, onEndMiss
         <div className="flex items-end gap-6 md:gap-8 mb-6">
           <div className="flex flex-col">
             <span className="font-mono text-[10px] tracking-[0.4em] text-zinc-500 mb-1">
-              MISSION RATING
+              {isCrash ? "FINAL RESULT" : "MISSION RATING"}
             </span>
             <span
               data-testid="result-grade"
@@ -60,11 +60,19 @@ export default function MissionResult({ result, onRestart, onContinue, onEndMiss
           </div>
           <div className="flex flex-col mb-3">
             <span className="font-mono text-[10px] tracking-[0.4em] text-zinc-500 mb-1">
-              TOTAL SCORE
+              PERFORMANCE SCORE
             </span>
             <span className="font-mono tabular text-white text-3xl md:text-4xl" data-testid="result-total-score">
               {result.score} <span className="text-zinc-500 text-xl">/100</span>
             </span>
+            {isCrash && (
+              <span
+                data-testid="fatal-penalty"
+                className="mt-2 font-mono text-[10px] tracking-[0.3em] text-[#FF3B00] blink"
+              >
+                ● FATAL LANDING PENALTY — MISSION FAILED
+              </span>
+            )}
           </div>
         </div>
 
@@ -103,6 +111,8 @@ export default function MissionResult({ result, onRestart, onContinue, onEndMiss
             value={`${b.vx.value.toFixed(2)} m/s`}
             limit={`LIMIT ${b.vx.limit} m/s`}
             safe={b.vx.safe}
+            score={b.vx.score}
+            max={b.vx.max}
             testId="row-vx"
           />
           <BreakRow

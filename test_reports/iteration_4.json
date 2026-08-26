@@ -1,0 +1,38 @@
+{
+  "summary": "LUNAVIA Phase 1.1 scoring-consistency validation. Verified via 5 live Manual Descent attempts on CADET at https://lunar-journey-3.preview.emergentagent.com/mission that (a) the score chips always sum to the displayed total (no hidden 25 cap), (b) row-vx now shows +X/15 that scales with |vx|, (c) fatal-penalty banner + FINAL RESULT label appear on crash, (d) grade is F on every crash, and (e) no result-continue on crash. Modal-pause regression still passes. Soft-landing S/A/B/C/D and vy-curve verified by direct code inspection of gradeLanding() in /app/frontend/src/data/landingPhysics.js — Playwright cannot reliably fly a soft touchdown on the live URL due to remote-browser gauge-read latency, same limitation as iteration 3.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "gradeLanding() (landingPhysics.js) now correctly derives `score` as the sum of the five rounded chips, so displayed total is provably self-consistent. The latent 25-cap bug flagged in iteration 3 is FIXED — attempt A produced total=32 (>25) on a crash, attempt with strafe+free-fall produced total=39, both matching chip sums.",
+    "Progressive quadratic curves 1-(x/limit)^2 are implemented for vy, vx and tilt. Verified numerically: with vx=1.00 m/s (limit 4), row-vx shows +14/15, matching 15*(1 - (1/4)^2) = 14.06 → round 14.",
+    "Fatal is decoupled from score: grade collapses to F when failureReasons.length>0 but score is unchanged — matches MissionResult.jsx showing fatal-penalty banner + earned PERFORMANCE SCORE.",
+    "MissionResult.jsx only renders result-continue when !isCrash and result-end-mission when isCrash — verified via 4 crash runs.",
+    "Minor: BreakRow accuracy `safe` flag treats POOR (distance 20-40m) as UNSAFE now (['EXCELLENT','GOOD','ACCEPTABLE'].includes(label)); this fixes the iteration-3 design nit."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend only)", "frontend": "100% for automatable checks (7/7); 3 items code-verified only"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Live URL https://lunar-journey-3.preview.emergentagent.com/mission. Ascent→SEP takes ~4s, then STAGE 2 auto→ORBIT ~9s, then click btn-descend (wait for it to enable, class contains 'FF3B00'), then difficulty-cadet, then descent-game appears. Automated soft landings on CADET are impractical (initial vy=-14, initialAlt=500, thrust=5.5, moon-g=1.62 — full-throttle overshoots; remote inner_text() gauge reads add ~80ms latency making reactive control infeasible). The 3 code-only-verified items (S/A/B/C/D grade on success; vyScore≈14 at vy=3.5 and ≈30+ at vy<1; result-continue→complete-overlay) require either manual smoke or in-app cheat/debug hook for automated coverage.",
+  "phase_1_1_verification": {
+    "chip_sum_equals_total": {"status": "PASS", "evidence": "5 attempts on CADET all had chip_sum == displayed total: A(free-fall)=32=32, B(target-3)=19=19, C(target-1)=19=19, D(target-4.3)=19=19, E(strafe-Q)=39=39. All within ±1."},
+    "fatal_penalty_banner": {"status": "PASS", "evidence": "On every crash [data-testid=fatal-penalty] shows text 'FATAL LANDING PENALTY — MISSION FAILED'. 'FINAL RESULT' label appears above grade F. Screenshot confirms."},
+    "score_not_capped_at_25": {"status": "PASS", "evidence": "Crash totals observed above 25 (32 and 39) — proves the old hidden Math.min(rawTotal,25) is removed."},
+    "row_vx_contributes_points": {"status": "PASS", "evidence": "Strafe-Q attempt reduced vx from initial 6→1.00 m/s and row-vx displayed '+14/15'. Attempts where |vx|=6 > safeVx=4 showed row-vx '+0/15' AND 'EXCESSIVE HORIZONTAL SPEED' appeared in [data-testid=failure-reasons]. Formula 15*(1-(1/4)^2)=14.06 matches."},
+    "vy_curve_soft_landing": {"status": "CODE_VERIFIED_ONLY", "evidence": "gradeLanding() uses vyScoreRaw = 35*max(0,1-(|vy|/safeVy)^2). Automation could not achieve a soft touchdown on CADET but formula gives 35*(1-(3.5/4.5)^2)≈13.83→round 14 pts, and 35*(1-(1/4.5)^2)≈33.3→round 33 pts. Matches spec."},
+    "new_weighting_35_15_25_15_10": {"status": "PASS", "evidence": "All observed chips: row-vy /35, row-vx /15, row-accuracy /25, row-tilt /15, row-fuel /10."},
+    "grade_F_on_crash": {"status": "PASS", "evidence": "All 5 crash attempts showed result-grade='F'."},
+    "grade_bands_success": {"status": "CODE_VERIFIED_ONLY", "evidence": "gradeLanding assigns S>=92, A>=82, B>=70, C>=55, else D on !crashed. Correct per spec."},
+    "regression_no_continue_on_crash": {"status": "PASS", "evidence": "In all 5 crashes: result-continue count=0, result-end-mission count=1. Iteration 3 already validated end-mission → control-room."},
+    "regression_touchdown_lock": {"status": "PASS", "evidence": "After result overlay appears, pressing Space/A gauge-altitude locator returns count=0 (HUD is unmounted). Iteration 3 also validated 0 gauge values post-touchdown."},
+    "regression_modal_pauses_physics": {"status": "PASS", "evidence": "Opened descent-abort at alt=346m, altitude froze at 312m for 4s (a1=='312m' == a2=='312m' after 4s wait)."},
+    "regression_camera_switch": {"status": "SKIP_ITER3_VERIFIED", "evidence": "Modal was still open due to script not clicking Cancel button (Escape does not close it); already validated in iteration 3."}
+  }
+}

@@ -94,14 +94,14 @@ export function accuracyLabel(distance) {
 /**
  * Grade a touchdown-frame state.
  *
- * All values come from the LM's captured touchdown frame — no post-hoc
- * animation influence. The final grade & fatal flag are the source of
- * truth for the rest of the mission (mission cannot proceed on fatal).
+ * Single source of truth. Score never uses hidden constants — the
+ * displayed component chips always sum to the displayed total.
  *
  * Score (max 100):
- *   40  Vertical speed        40 * max(0, 1 - |vy|/safeVy)^1.5
- *   30  Landing accuracy      30 * max(0, 1 - dist / 60)
- *   20  Attitude / tilt       20 * max(0, 1 - |tilt|/safeTilt)^1.2
+ *   35  Vertical speed        35 * max(0, 1 - (|vy|/safeVy)^2)
+ *   15  Horizontal speed      15 * max(0, 1 - (|vx|/safeVx)^2)
+ *   25  Landing accuracy      25 * max(0, 1 - dist/60)
+ *   15  Attitude / tilt       15 * max(0, 1 - (|tilt|/safeTilt)^2)
  *   10  Fuel remaining        10 * fuel/initialFuel
  *
  * Fatal (crashed) if ANY of:
@@ -110,6 +110,9 @@ export function accuracyLabel(distance) {
  *   - |tilt| > safeTilt
  *   - hazard at touchdown x
  *   - fuel depleted before touchdown (fuelDepletedInFlight === true)
+ *
+ * Crash and score are decoupled: fatal outcomes still show the earned
+ * performance score plus an explicit FATAL LANDING flag.
  */
 export function gradeLanding(input) {
   const {
@@ -125,37 +128,44 @@ export function gradeLanding(input) {
   const touchdownSpeed = Math.sqrt(vy * vy + vx * vx);
   const fuelPct = Math.max(0, Math.min(100, Math.round((fuel / initialFuel) * 100)));
 
-  // Distance from PRIMARY LZ center (mission designated target)
   const distance = Math.abs(xPos - PRIMARY_LZ.x);
   const label = accuracyLabel(distance);
 
-  // Component scores (derived directly from simulation values)
-  const vyScore = 40 * Math.pow(Math.max(0, 1 - absVy / safeVy), 1.5);
-  const accScore = 30 * Math.max(0, 1 - distance / 60);
-  const tiltScore = 20 * Math.pow(Math.max(0, 1 - absTilt / safeTilt), 1.2);
-  const fuelScore = 10 * Math.max(0, Math.min(1, fuel / initialFuel));
+  // Progressive component curves — over-limit yields exactly 0 pts.
+  const vyRatio = absVy / safeVy;
+  const vxRatio = absVx / safeVx;
+  const tiltRatio = absTilt / safeTilt;
+  const vyScoreRaw   = vyRatio   >= 1 ? 0 : 35 * Math.max(0, 1 - vyRatio * vyRatio);
+  const vxScoreRaw   = vxRatio   >= 1 ? 0 : 15 * Math.max(0, 1 - vxRatio * vxRatio);
+  const tiltScoreRaw = tiltRatio >= 1 ? 0 : 15 * Math.max(0, 1 - tiltRatio * tiltRatio);
+  const accScoreRaw  = 25 * Math.max(0, 1 - distance / 60);
+  const fuelScoreRaw = 10 * Math.max(0, Math.min(1, fuel / initialFuel));
 
-  // Failure detection — every reason listed for the result screen
+  // Round for display. The rounded chips are the truth: the total is their sum
+  // so the arithmetic on screen is always self-consistent.
+  const vyScore   = Math.round(vyScoreRaw);
+  const vxScore   = Math.round(vxScoreRaw);
+  const tiltScore = Math.round(tiltScoreRaw);
+  const accScore  = Math.round(accScoreRaw);
+  const fuelScore = Math.round(fuelScoreRaw);
+  const score = vyScore + vxScore + accScore + tiltScore + fuelScore;
+
   const failureReasons = [];
   if (fuelDepletedInFlight) failureReasons.push("FUEL DEPLETED BEFORE TOUCHDOWN");
   if (absVy > safeVy) failureReasons.push("VERTICAL SPEED EXCEEDED SAFE LIMIT");
   if (absVx > safeVx) failureReasons.push("EXCESSIVE HORIZONTAL SPEED");
   if (absTilt > safeTilt) failureReasons.push("TILT EXCEEDED SAFE LIMIT");
   if (hazard) failureReasons.push("UNSAFE TERRAIN");
-
   const crashed = failureReasons.length > 0;
 
-  // If crashed, we still compute the raw component scores so the player
-  // can see how close each metric was, but the total is capped severely.
-  const rawTotal = vyScore + accScore + tiltScore + fuelScore;
-  const total = crashed ? Math.min(rawTotal, 25) : rawTotal;
-  const score = Math.round(total);
-
+  // Crash flag does NOT modify the performance score.  The grade collapses to
+  // F on crew loss, but the numeric total is unchanged.  UI shows the earned
+  // performance score AND a "FATAL LANDING — MISSION FAILED" banner.
   const grade = crashed ? "F"
-    : total >= 92 ? "S"
-    : total >= 82 ? "A"
-    : total >= 70 ? "B"
-    : total >= 55 ? "C" : "D";
+    : score >= 92 ? "S"
+    : score >= 82 ? "A"
+    : score >= 70 ? "B"
+    : score >= 55 ? "C" : "D";
 
   return {
     crashed,
@@ -163,13 +173,12 @@ export function gradeLanding(input) {
     score,
     touchdownSpeed,
     fuelPct,
-    // Detailed per-component breakdown for the result screen
     breakdown: {
-      vy: { value: absVy, limit: safeVy, score: Math.round(vyScore), max: 40, safe: absVy <= safeVy },
-      vx: { value: absVx, limit: safeVx, safe: absVx <= safeVx },
-      tilt: { value: absTilt, limit: safeTilt, score: Math.round(tiltScore), max: 20, safe: absTilt <= safeTilt },
-      accuracy: { distance, score: Math.round(accScore), max: 30, label },
-      fuel: { pct: fuelPct, score: Math.round(fuelScore), max: 10 },
+      vy: { value: absVy, limit: safeVy, score: vyScore, max: 35, safe: absVy <= safeVy },
+      vx: { value: absVx, limit: safeVx, score: vxScore, max: 15, safe: absVx <= safeVx },
+      accuracy: { distance, score: accScore, max: 25, label },
+      tilt: { value: absTilt, limit: safeTilt, score: tiltScore, max: 15, safe: absTilt <= safeTilt },
+      fuel: { pct: fuelPct, score: fuelScore, max: 10 },
     },
     failureReasons,
     zone: safeZone ? (safeZone.label || (safeZone.primary ? "PRIMARY LZ" : "SAFE ZONE")) : (hazard ? hazard.label : "UNMAPPED TERRAIN"),
