@@ -1,0 +1,141 @@
+diff --git a/frontend/src/components/DifficultySelect.jsx b/frontend/src/components/DifficultySelect.jsx
+index 508cea3..d8bbecf 100644
+--- a/frontend/src/components/DifficultySelect.jsx
++++ b/frontend/src/components/DifficultySelect.jsx
+@@ -45,6 +45,7 @@ export default function DifficultySelect({ onSelect, onSkip }) {
+                 <div>ALT<br/><span className="text-white tabular">{d.initialAlt} m</span></div>
+                 <div>FUEL<br/><span className="text-white tabular">{d.initialFuel} kg</span></div>
+                 <div>MAX Vy<br/><span className="text-white tabular">{d.safeVy} m/s</span></div>
++                    <div>MAX Vx<br/><span className="text-white tabular">{d.safeVx} m/s</span></div>
+                 <div>MAX TILT<br/><span className="text-white tabular">{d.safeTilt}°</span></div>
+               </div>
+               <div className="mt-6 font-mono text-[10px] tracking-[0.3em] text-zinc-500 group-hover:text-[#FF3B00]">
+diff --git a/frontend/src/data/landingPhysics.js b/frontend/src/data/landingPhysics.js
+index 6315c85..a8471d2 100644
+--- a/frontend/src/data/landingPhysics.js
++++ b/frontend/src/data/landingPhysics.js
+@@ -5,10 +5,10 @@ export const DIFFICULTY = {
+     key: "CADET",
+     label: "CADET",
+     desc: "Assistência de estabilidade · combustível generoso · janela larga de pouso",
+-    initialAlt: 500,
+-    initialVy: -14,
+-    initialVx: 6,
+-    initialFuel: 220,
++    initialAlt: 400,
++    initialVy: -4,
++    initialVx: 2,
++    initialFuel: 200,
+     fuelRate: 4,
+     maxThrust: 5.5,
+     tiltRate: 22,
+@@ -21,10 +21,10 @@ export const DIFFICULTY = {
+     key: "ASTRONAUT",
+     label: "ASTRONAUT",
+     desc: "Física intermediária · combustível limitado · janela menor",
+-    initialAlt: 800,
+-    initialVy: -22,
+-    initialVx: 10,
+-    initialFuel: 150,
++    initialAlt: 550,
++    initialVy: -8,
++    initialVx: 4,
++    initialFuel: 140,
+     fuelRate: 6,
+     maxThrust: 4.8,
+     tiltRate: 30,
+@@ -37,10 +37,10 @@ export const DIFFICULTY = {
+     key: "COMMANDER",
+     label: "COMMANDER",
+     desc: "Assistência mínima · combustível apertado · precisão real",
+-    initialAlt: 1000,
+-    initialVy: -28,
+-    initialVx: 14,
+-    initialFuel: 110,
++    initialAlt: 750,
++    initialVy: -14,
++    initialVx: 6,
++    initialFuel: 105,
+     fuelRate: 7.5,
+     maxThrust: 4.2,
+     tiltRate: 38,
+diff --git a/frontend/src/pages/Mission.jsx b/frontend/src/pages/Mission.jsx
+index d11f887..1e78742 100644
+--- a/frontend/src/pages/Mission.jsx
++++ b/frontend/src/pages/Mission.jsx
+@@ -9,6 +9,7 @@ import DescentScene from "@/components/scenes/DescentScene";
+ import ReentryScene from "@/components/scenes/ReentryScene";
+ import DescentGame from "@/components/DescentGame";
+ import DifficultySelect from "@/components/DifficultySelect";
++import PdiBriefing from "@/components/PdiBriefing";
+ import MissionResult from "@/components/MissionResult";
+ import AbortModal from "@/components/AbortModal";
+ import useMissionAudio from "@/hooks/useMissionAudio";
+@@ -21,6 +22,7 @@ const STATES = {
+   SPACE: "space",
+   ORBIT: "orbit",
+   DIFFICULTY: "difficulty",
++  BRIEFING: "briefing",        // Phase 2 - PDI readiness card, sim not yet live
+   MANUAL_DESCENT: "manual_descent",
+   RESULT: "result",
+   DESCENT: "descent",       // cinematic auto-descent (skip path)
+@@ -38,6 +40,7 @@ const STATE_LABELS = {
+   space: { code: "T+03:00:00", name: "CISLUNAR CRUISE" },
+   orbit: { code: "T+80:00:00", name: "LUNAR ORBIT" },
+   difficulty: { code: "T+82:00:00", name: "DESCENT · SETUP" },
++  briefing: { code: "T+82:00:00", name: "PDI · READINESS" },
+   manual_descent: { code: "T+82:00:00", name: "POWERED DESCENT · MANUAL" },
+   result: { code: "T+82:12:00", name: "MISSION RATING" },
+   descent: { code: "T+82:00:00", name: "POWERED DESCENT" },
+@@ -183,8 +186,15 @@ export default function Mission() {
+     setState(STATES.DIFFICULTY);
+   };
+ 
++  // Phase 2 - selecting a difficulty no longer drops the player straight into a
++  // live descent. It opens the readiness card; the simulation starts only when
++  // BEGIN PDI is pressed, so the comms call moves there too.
+   const handleDifficulty = (key) => {
+     setDifficulty(key);
++    setState(STATES.BRIEFING);
++  };
++
++  const handleBeginPdi = () => {
+     setState(STATES.MANUAL_DESCENT);
+     audio.comms("Houston, beginning powered descent.", 400);
+   };
+@@ -286,6 +296,18 @@ export default function Mission() {
+         </>
+       )}
+ 
++      {state === STATES.BRIEFING && (
++        <>
++          {/* Orbit stays in the background, same as the difficulty screen */}
++          <MissionScene missionTime={orbitTime} cinematic={true} />
++          <PdiBriefing
++            difficulty={difficulty}
++            onBegin={handleBeginPdi}
++            onBack={() => setState(STATES.DIFFICULTY)}
++          />
++        </>
++      )}
++
+       {state === STATES.MANUAL_DESCENT && (
+         <DescentGame
+           difficulty={difficulty}
+@@ -326,7 +348,7 @@ export default function Mission() {
+       {state === STATES.COMPLETE && <ReentryScene progress={1} />}
+ 
+       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
+-      {state !== STATES.CONTROL && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && (
++      {state !== STATES.CONTROL && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && state !== STATES.BRIEFING && (
+         <div
+           data-testid="mission-hud-min"
+           className="absolute top-20 left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
+@@ -461,6 +483,7 @@ export default function Mission() {
+         state !== STATES.COMPLETE &&
+         state !== STATES.MANUAL_DESCENT &&
+         state !== STATES.DIFFICULTY &&
++        state !== STATES.BRIEFING &&
+         state !== STATES.RESULT && (
+           <button
+             onClick={() => setShowAbort(true)}

@@ -45,6 +45,7 @@ export default function DifficultySelect({ onSelect, onSkip }) {
                 <div>ALT<br/><span className="text-white tabular">{d.initialAlt} m</span></div>
                 <div>FUEL<br/><span className="text-white tabular">{d.initialFuel} kg</span></div>
                 <div>MAX Vy<br/><span className="text-white tabular">{d.safeVy} m/s</span></div>
+                    <div>MAX Vx<br/><span className="text-white tabular">{d.safeVx} m/s</span></div>
                 <div>MAX TILT<br/><span className="text-white tabular">{d.safeTilt}°</span></div>
               </div>
               <div className="mt-6 font-mono text-[10px] tracking-[0.3em] text-zinc-500 group-hover:text-[#FF3B00]">

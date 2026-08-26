@@ -1,0 +1,25 @@
+28:  DESCENT: "descent",       // cinematic auto-descent (skip path)
+89:            setState(STATES.SEP_PROMPT);
+98:            setState(STATES.SPACE);
+107:            setState(STATES.ORBIT);
+120:            setState(STATES.SURFACE);
+129:            setState(STATES.RETURN);
+138:            setState(STATES.REENTRY);
+147:            setState(STATES.COMPLETE);
+165:    setState(STATES.ASCENT);
+166:    setTimeout(() => audio.startRumble(0.9), 100);
+175:    setState(STATES.SEP_DONE);
+186:    setState(STATES.DIFFICULTY);
+194:    setState(STATES.BRIEFING);
+198:    setState(STATES.MANUAL_DESCENT);
+203:    setState(STATES.DESCENT);
+210:    setState(STATES.RESULT);
+215:    setState(STATES.RESULT);
+220:    setState(STATES.DIFFICULTY);
+228:    setState(STATES.RETURN);
+233:    setState(STATES.CONTROL);
+306:            onBack={() => setState(STATES.DIFFICULTY)}
+383:              onClick={handleSeparate}
+415:              onClick={handleDescend}
+467:                onClick={resetMission}
+489:            onClick={() => setShowAbort(true)}
