@@ -78,7 +78,8 @@ export default function Mission() {
   useEffect(() => {
     const tick = (ts) => {
       if (!lastTsRef.current) lastTsRef.current = ts;
-      const dt = (ts - lastTsRef.current) / 1000;
+      // Cap dt so throttled rAF (background tab, headless) can't skip cinematics
+      const dt = Math.min((ts - lastTsRef.current) / 1000, 0.1);
       lastTsRef.current = ts;
       const s = stateRef.current;
 
@@ -93,7 +94,7 @@ export default function Mission() {
         });
       } else if (s === STATES.SEP_DONE) {
         setProgress((p) => {
-          const next = p + dt * 0.45;
+          const next = p + dt * 0.22;
           if (next >= 1) {
             setState(STATES.SPACE);
             return 1;
