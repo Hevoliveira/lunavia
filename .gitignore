@@ -88,3 +88,6 @@ credentials.json
 .credentials
 frontend/node_modules/.cache/default-development/0.pack
 lunavia.zip
+cd /app
+git apply --check phase2-gaps.patch   # confere antes de aplicar
+git apply phase2-gaps.patch
