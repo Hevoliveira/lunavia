@@ -636,3 +636,84 @@ unchanged:
   `MissionResult.jsx`). All physics values, scoring weights, difficulty
   parameters, safe-touchdown limits, and control mappings are as-shipped
   and were **not** modified during the handoff.
+
+---
+
+## 17. Claude environment migration (post-Emergent)
+
+Sections 1–16 describe the project as handed off from Emergent and are kept
+for history. This section records what changed so LUNAVIA runs with **no
+access to Emergent infrastructure**. No game code under `frontend/src/` was
+modified; physics, visuals, scoring and the scripted reentry are unchanged.
+
+### 17.1 What was removed / isolated
+
+| Item | Change | Why |
+| ---- | ------ | --- |
+| `@emergentbase/visual-edits` (frontend devDep) | Removed from `package.json` and `yarn.lock` (only its own 4-line lock entry; no other versions moved). | Hosted on `assets.emergent.sh`; blocked `yarn install`. `craco.config.js` already skips it when absent. |
+| `emergent-main.js` script tag in `public/index.html` | Removed. | Loaded from `assets.emergent.sh` on every page view. |
+| PostHog snippet in `public/index.html` | Removed. | Sent analytics + session recordings to Emergent's `ap.emergent.sh` under Emergent's project key. Not part of the game. |
+| `emergentintegrations==0.2.0` (backend) | Removed from `requirements.txt`. | Only on Emergent's private index; blocked `pip install`. |
+| `POST /api/mission/briefing` | Now returns **503** when `emergentintegrations` or `EMERGENT_LLM_KEY` is missing (was an unhandled ImportError). | The front-end never calls it (`BriefingPanel.jsx` is not rendered anywhere). |
+| `WDS_SOCKET_PORT=443` in `frontend/.env.example` | Commented out. | Breaks the dev-server websocket on localhost. |
+
+Harmless legacy, intentionally kept: `.emergent/` (platform metadata, unused),
+`frontend/plugins/health-check/` (inactive unless `ENABLE_HEALTH_CHECK=true`),
+the `try/catch` visual-edits hook in `craco.config.js`, the root `.gitconfig`
+(not read by git), and the Emergent-branded `<title>` / meta description in
+`public/index.html` (cosmetic). No supervisor config exists in the repo.
+
+### 17.2 Install & run
+
+The game is fully client-side. **The backend and MongoDB are optional**: the
+current front-end makes no backend calls during the mission.
+
+```bash
+# Front-end (required) — Node 20+/22, Yarn 1.22 classic
+cd frontend
+cp .env.example .env
+yarn install          # uses the committed yarn.lock
+yarn start            # http://localhost:3000
+yarn build            # production bundle in ./build
+
+# Back-end (optional) — Python 3.11
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn server:app --host 0.0.0.0 --port 8001
+```
+
+The backend starts without a running MongoDB (Motor connects lazily); only
+the unused `/api/mission/log` endpoints need one.
+
+### 17.3 Environment variables
+
+| File | Variable | Required | Notes |
+| ---- | -------- | -------- | ----- |
+| `frontend/.env` | `REACT_APP_BACKEND_URL` | yes (build-time) | `http://localhost:8001`. |
+| `frontend/.env` | `ENABLE_HEALTH_CHECK` | no | Leave unset. |
+| `frontend/.env` | `WDS_SOCKET_PORT` | no | Leave unset locally. |
+| `backend/.env` | `MONGO_URL`, `DB_NAME` | yes (read at startup) | Any value works if you don't use the log endpoints. |
+| `backend/.env` | `CORS_ORIGINS` | no | Defaults to `*`. |
+| `backend/.env` | `EMERGENT_LLM_KEY` | no | Briefing endpoint only; returns 503 without it. |
+
+### 17.4 External runtime assets (unchanged, not Emergent)
+
+Earth/Moon textures (`threejs.org`), Google Fonts, and the control-room
+backdrop photo (`images.unsplash.com`, `ControlRoomView.jsx`) are still
+fetched at runtime. See §11 to self-host.
+
+### 17.5 Validation performed at migration
+
+- `yarn install`, `yarn start`, `yarn build`: pass (pre-existing warnings only:
+  a missing third-party source map and one `react-hooks/exhaustive-deps` in
+  `useMissionAudio.js`).
+- Backend: `pip install -r requirements.txt` and `uvicorn` start; `/api/` and
+  `/api/mission/phases` return 200.
+- Automated tests: none exist (no Jest test files; no pytest tests).
+- Headless Chromium end-to-end run (Playwright, keyboard-driven autopilot):
+  full mission CONTROL ROOM → … → MISSION COMPLETE with a CADET landing
+  graded S; COMMANDER no-input crash → RESULT (F) → RETRY; DESCENT → ABORT →
+  CONTROL ROOM; EXT/COCKPIT/NAV cameras. 0 page errors; no requests to any
+  Emergent host.

@@ -94,7 +94,13 @@ async def stream_briefing(req: BriefingRequest):
     if not phase:
         raise HTTPException(status_code=404, detail="Phase not found")
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+    # Optional Emergent-only SDK; the game never calls this route, so its absence must not break the backend.
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Briefing service unavailable: emergentintegrations is not installed")
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="Briefing service unavailable: EMERGENT_LLM_KEY is not set")
 
     system_msg = (
         "You are the LUNAVIA Mission Control flight director's voice: precise, calm, "
