@@ -245,7 +245,7 @@ Serve `frontend/build/` from any static host, and point
 |10 | `MANUAL_DESCENT`     | **PLAYABLE**      | Full lunar-landing gameplay (`DescentGame.jsx`).           |
 |11 | `RESULT`             | **INTERACTIVE**   | Score screen, retry / abort / continue.                    |
 |12 | `RETURN` (TEI + coast)| SCRIPTED cinematic|                                                            |
-|13 | `REENTRY`            | SCRIPTED cinematic| Atmospheric reentry (`ReentryScene.jsx`).                  |
+|13 | `REENTRY`            | **PLAYABLE**      | Earth entry gameplay (`ReentryGame.jsx` + `data/reentryPhysics.js`), see §18. |
 |14 | `MISSION_COMPLETE`   | End screen        | Splashdown wrap.                                           |
 
 Abort/retry: `AbortModal.jsx` is reachable from `MANUAL_DESCENT` and
@@ -717,3 +717,105 @@ fetched at runtime. See §11 to self-host.
   graded S; COMMANDER no-input crash → RESULT (F) → RETRY; DESCENT → ABORT →
   CONTROL ROOM; EXT/COCKPIT/NAV cameras. 0 page errors; no requests to any
   Emergent host.
+
+---
+
+## 18. Playable Earth reentry + LV-001 Fidelity II
+
+The scripted reentry cinematic has been replaced by the second genuine
+flight-gameplay system in LUNAVIA. The manual lunar landing is unchanged.
+
+### 18.1 Files
+
+| File | Role |
+| ---- | ---- |
+| `frontend/src/data/reentryPhysics.js` | Pure, deterministic entry simulation (no React). |
+| `frontend/src/data/reentryPhysics.test.js` | Jest tests: nominal / too shallow / too steep, recovery, corridor, determinism, step convergence. `yarn test` |
+| `frontend/src/data/reentryGuidance.js` | Difficulty, guidance bands, presentation time scale, blackout / phase labels. Never alters physics. |
+| `frontend/src/components/ReentryGame.jsx` | Playable layer: approach, ENTRY PREP, bank control, HUD, corridor gauge, failure / retry, abort. |
+| `frontend/src/components/scenes/ReentryScene.jsx` | Rendered from live sim state: plasma, Earth limb, sky, chutes, ocean, splashdown. |
+| `frontend/src/components/RocketModel.jsx`, `scenes/AscentScene.jsx` | LV-001 Fidelity II geometry/materials and ascent/separation cinematography. |
+
+### 18.2 Physics model (simplified, internally coherent)
+
+- Planar point-mass entry over a spherical, non-rotating Earth; fixed-step
+  RK4 at `SIM_DT = 0.02 s` of simulation time.
+- Atmosphere: `ρ = 1.225·exp(−h/7200 m)`.
+- Capsule: 5560 kg, 11.95 m², C_D 1.29 (β ≈ 361 kg/m²), trim L/D 0.30.
+  Drag `D = ½ρv²·C_D·A/m`; lift `L = (L/D)·D`, and only its vertical
+  component `L·cos(bank)` shapes the trajectory (cross-range ignored).
+- Heating: Sutton-Graves stagnation rate `q = k·√(ρ/R_n)·v³` (R_n 4.69 m),
+  integrated to heat load.
+- G-load: sensed aerodynamic deceleration `|D, L| / g₀`.
+- Vehicle limits (outcomes emerge from these, no angle rules):
+  structural 12 g; heat shield over-design budget 90 J/cm² absorbed above
+  200 W/cm²; ablator capacity 32 kJ/cm².
+- Skip-out: after entering, the capsule climbs back above 121 km.
+- Chutes: drogues when h ≤ 7.3 km and v ≤ 220 m/s; mains when
+  h ≤ 3.2 km and v ≤ 90 m/s after drogue inflation; both inflate over time
+  (reefing), splashdown success requires mains and v < 15 m/s.
+- Roll is rate-limited to 20°/s of simulation time.
+
+Survivable EI flight-path angle under ideal lift modulation: about −5.5° to
+−7.2° (the tests re-derive this), close to Apollo's documented −5.3° to −7.4°.
+
+### 18.3 Time
+
+Simulation time advances only in fixed `SIM_DT` steps. Presentation time
+maps to it through `timeScaleFor()` (4× during the rising heat pulse, up to
+32× under main chutes). Rendering reads the state each frame.
+
+### 18.4 Controls
+
+ENTRY PREP: `W/S` or `↑/↓` trims the planned EI angle with the final RCS
+corridor-correction burn (limited Δv); `A/D` or `←/→` sets the initial lift
+vector; `Enter` commits. Entry: `A/D`, `←/→` or `Q/E` roll the lift vector
+(up = shallower, down = steeper). `P` pauses, `G` toggles CADET lift assist.
+
+### 18.5 Difficulty (guidance only — physics identical)
+
+| | CADET | ASTRONAUT | COMMANDER |
+| - | - | - | - |
+| Entry-angle dispersion to trim out | ±0.6° | ±1.2° | ±1.8° |
+| RCS trim Δv | 8 m/s | 7 m/s | 6.5 m/s |
+| "GO" guidance band around −6.5° | ±0.7° | ±0.5° | ±0.3° |
+| Corridor zones on the gauge | yes | yes | no |
+| Outcome prediction (look-ahead sim) | yes | yes | no |
+| Bank cue + lift assist (`G`) | yes | no | no |
+| Skip-risk warning | yes | yes | no |
+
+The originally proposed ±2.5° / ±1.5° / ±0.8° bands were narrowed: the
+physics corridor is only ~1.7° wide in total, so wider bands would have
+called fatal angles "GO".
+
+### 18.6 Visuals
+
+- Plasma is driven by the simulated heat rate: faint violet ionization,
+  bow-shock cap ahead of the heat shield, edge-lit sheath along the
+  afterbody, downstream wake, ablation sparks, heat-shield glow.
+- Comm blackout (v > 6 km/s and q > 20 W/cm²) silences comms only;
+  telemetry stays live.
+- Earth limb / sky / ocean are placed by true altitude; drogues and mains
+  inflate from the physics deployment events.
+- LV-001 Fidelity II: lathe bells with dark interiors, engine cavity and
+  thrust structure, per-engine plume origins, panel-seam textures, ribbed
+  interstage with separation joint and retro motors, upper-stage thrust
+  cone and vacuum bell, CSM adapter / radiators / CM cover, trussed LES.
+  Static parts are batched by material (fewer draw calls than before).
+
+### 18.7 Validation at delivery
+
+- Unit: 19/19 (`yarn test`). Build: `yarn build` passes (pre-existing
+  warnings only).
+- Headless Chromium, full mission with keyboard-only pilots: nominal −6.5°
+  → splashdown 8.5 m/s (peak 7.4 g, 176 W/cm² at 56.9 km, drogues 7.3 km /
+  132 m/s, mains 3.2 km / 62 m/s); −5.0° → skip-out; −8.0° → thermal loss.
+  Crash→retry and descent→abort unchanged. 0 application console errors.
+
+### 18.8 Known limitations
+
+- Planar model: no cross-range, Earth rotation, Mach-dependent aero or
+  radiative heating.
+- The corridor constants in `CORRIDOR` are guidance display values derived
+  from the physics; the tests fail if they drift from what the physics does.
+- Earth/Moon textures still load from the three.js CDN (see §11).

@@ -23,7 +23,7 @@ const lerp = THREE.MathUtils.lerp;
 function altitudeFor(p) {
   if (p <= 0.35) {
     const u = Math.max(0, (p - IGN_END) / (0.35 - IGN_END));
-    return 4.2 * Math.pow(u, 1.25);
+    return 4.2 * Math.pow(u, 1.7);
   }
   return 4.2 + (p - 0.35) * 12;
 }
@@ -92,10 +92,58 @@ function SkyDome({ progRef }) {
   );
 }
 
+function makeEarthTexture() {
+  const W = 1024;
+  const H = 512;
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#123f73");
+  g.addColorStop(0.5, "#1a5690");
+  g.addColorStop(1, "#0f3a6a");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  const rand = mulberry(33);
+  // Land masses: soft irregular blobs
+  for (let i = 0; i < 14; i++) {
+    const cx = rand() * W, cy = H * (0.25 + rand() * 0.5), r = 30 + rand() * 90;
+    for (let k = 0; k < 18; k++) {
+      const x = cx + (rand() - 0.5) * r * 1.6, y = cy + (rand() - 0.5) * r;
+      const rr = r * (0.25 + rand() * 0.45);
+      const lg = ctx.createRadialGradient(x, y, 0, x, y, rr);
+      lg.addColorStop(0, "rgba(96,110,72,0.85)");
+      lg.addColorStop(1, "rgba(96,110,72,0)");
+      ctx.fillStyle = lg;
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // Cloud field: many soft white puffs, banded like weather systems
+  for (let i = 0; i < 520; i++) {
+    const band = rand() < 0.6 ? H * (0.3 + 0.4 * rand()) : rand() * H;
+    const x = rand() * W, y = band + (rand() - 0.5) * 40, r = 6 + rand() * 34;
+    const cg = ctx.createRadialGradient(x, y, 0, x, y, r);
+    cg.addColorStop(0, `rgba(255,255,255,${0.35 + rand() * 0.4})`);
+    cg.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 1.8, r, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+
 // Curved Earth far below — the horizon bends as the vehicle climbs.
 // The fresnel limb shell fades in only once the camera leaves the pad.
 function EarthCurve({ progRef }) {
   const shellRef = useRef();
+  const earthTex = useMemo(() => makeEarthTexture(), []);
   useFrame(() => {
     if (shellRef.current) {
       shellRef.current.uniforms.uFade.value = smooth(
@@ -107,7 +155,7 @@ function EarthCurve({ progRef }) {
     <group position={[0, -45.05, 0]}>
       <mesh>
         <sphereGeometry args={[45, 64, 48]} />
-        <meshStandardMaterial color="#1c4e8a" roughness={0.85} metalness={0.05} />
+        <meshStandardMaterial map={earthTex} roughness={0.85} metalness={0.05} />
       </mesh>
       <mesh>
         <sphereGeometry args={[45.9, 48, 36]} />
@@ -467,14 +515,14 @@ function Contrail({ progRef }) {
     if (!mesh.current) return;
     const p = progRef.current;
     const alt = altitudeFor(p);
-    const vis = p > 0.1 && p < 0.6;
+    const vis = p > 0.1 && p < 0.3;
     mesh.current.visible = vis;
     if (vis) {
       const len = Math.max(0.01, alt);
       mesh.current.scale.set(1 + len * 0.12, len, 1 + len * 0.12);
       mesh.current.position.y = len / 2 + 0.16;
       mesh.current.material.opacity =
-        0.5 * Math.min(1, (0.6 - p) / 0.15) * Math.min(1, (p - 0.1) / 0.05);
+        0.45 * Math.min(1, (0.3 - p) / 0.1) * Math.min(1, (p - 0.1) / 0.05);
     }
   });
   return (
@@ -489,58 +537,6 @@ function Contrail({ progRef }) {
         alphaMap={tex}
       />
     </mesh>
-  );
-}
-
-// Separation impulse flash at the interstage
-function SepFlash({ sepRef, altRef }) {
-  const ring = useRef();
-  const puff = useRef();
-  useFrame(() => {
-    const s = sepRef.current;
-    const u = s / 0.16;
-    const on = s > 0.001 && u < 1;
-    const y = altRef.current + 1.56;
-    if (ring.current) {
-      ring.current.visible = on;
-      ring.current.position.y = y;
-      if (on) {
-        ring.current.scale.setScalar(0.4 + u * 2.4);
-        ring.current.material.opacity = (1 - u) * 0.8;
-      }
-    }
-    if (puff.current) {
-      puff.current.visible = on;
-      puff.current.position.y = y;
-      if (on) {
-        puff.current.scale.setScalar(0.3 + u * 0.9);
-        puff.current.material.opacity = (1 - u) * 0.9;
-      }
-    }
-  });
-  return (
-    <group>
-      <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
-        <torusGeometry args={[0.5, 0.03, 8, 40]} />
-        <meshBasicMaterial
-          color="#ffffff"
-          transparent
-          opacity={0}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-      <mesh ref={puff} visible={false}>
-        <sphereGeometry args={[0.4, 12, 12]} />
-        <meshBasicMaterial
-          color="#fff2dd"
-          transparent
-          opacity={0}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-    </group>
   );
 }
 
@@ -566,10 +562,12 @@ function CloudLayer({ progRef }) {
     if (!groupRef.current) return;
     const p = progRef.current;
     groupRef.current.position.y = -p * 14;
-    groupRef.current.visible = p < 0.5;
+    groupRef.current.visible = p < 0.28;
+    const fade = 0.3 * Math.min(1, Math.max(0, (0.28 - p) / 0.1));
     groupRef.current.children.forEach((c) => {
       c.position.x += delta * 0.12;
       if (c.position.x > 15) c.position.x = -15;
+      c.material.opacity = fade;
     });
   });
 
@@ -618,31 +616,44 @@ function AscentCamera({ progRef, sepRef, separated }) {
 
     if (separated) {
       const s = sepRef.current;
-      if (s < 0.45) {
-        // Separation shot: side view of the interstage as the gap opens
-        const u = s / 0.45;
-        _dp.set(2.8 + u * 0.8, alt + 0.9 - u * 0.3, 2.6 + u * 0.6);
-        _dl.set(0, alt + 1.3 - u * 0.9, 0);
+      // Stage 1 offset in world units (mirrors RocketModel: (0.85e, -3.1e) x 0.6 scale)
+      const e = 1 - Math.pow(1 - s, 3);
+      const s1y = alt + 0.89 - e * 1.86;
+      const s1x = e * 0.51;
+      const s2y = alt + 2.12;
+      if (s < 0.12) {
+        // Close engineering view on the separation plane as the joint opens
+        _dp.set(0.7, alt + 1.35, 2.5);
+        _dl.set(0.1, alt + 1.5, 0);
+      } else if (s < 0.62) {
+        // Two-stage composition: frame the midpoint, widen as the gap grows
+        const u = smooth((s - 0.12) / 0.5);
+        const my = (s1y + s2y) / 2;
+        const mx = s1x / 2;
+        _dp.set(mx + 1.2 + u * 0.8, my + 0.9, 3.4 + u * 2.6);
+        _dl.set(mx, my, 0);
       } else {
-        // Blend back to a chase shot of stage 2
-        const u = smooth((s - 0.45) / 0.55);
-        _dp.set(lerp(3.6, 5.4, u), alt + 0.8 + u * 0.9, lerp(3.2, 5.2, u));
-        _dl.set(0, alt + 1.0 + u * 1.3, 0);
+        // Favor the active upper stage; spent stage recedes below
+        const u = smooth((s - 0.62) / 0.38);
+        _dp.set(lerp(2.2, 2.6, u), s2y + lerp(1.0, 1.5, u), lerp(6.0, 5.2, u));
+        _dl.set(0, lerp((s1y + s2y) / 2, s2y - 0.2, u), 0);
       }
     } else if (p < 0.03) {
-      // Documentary low pad shot with a hint of handheld drift
-      _dp.set(2.3 + Math.sin(t * 0.4) * 0.06, 0.6, 3.1 + Math.cos(t * 0.33) * 0.06);
-      _dl.set(0, 1.7, 0);
+      // Documentary low pad shot: camera near the apron so the tower sets the scale
+      _dp.set(1.9 + Math.sin(t * 0.4) * 0.04, 0.32, 3.3 + Math.cos(t * 0.33) * 0.04);
+      _dl.set(0.2, 1.9, 0);
     } else if (p < 0.35) {
       // Track the climb, slowly dollying back
       const u = smooth((p - 0.03) / 0.32);
-      _dp.set(lerp(2.6, 5.6, u), Math.max(0.7, alt * 0.8 + 0.7), lerp(3.4, 6.0, u));
+      _dp.set(lerp(2.2, 5.6, u), Math.max(0.45, alt * 0.8 + 0.5), lerp(3.4, 6.0, u));
       _dl.set(0, alt + 1.3, 0);
     } else {
-      // MECO coast: slow arc around the vehicle
-      const a = 0.75 + t * 0.07;
-      _dp.set(Math.sin(a) * 5.4, alt + 1.1, Math.cos(a) * 5.4);
-      _dl.set(0, alt + 1.3, 0);
+      // MECO: engineering view of the engine section and interstage, slow arc.
+      // The frame is offset so the vehicle sits left of the crew-action prompt.
+      // Camera below the engine plane looks up into the bells.
+      const a = 0.9 + t * 0.05;
+      _dp.set(Math.sin(a) * 2.7, alt - 0.75, Math.cos(a) * 2.7);
+      _dl.set(Math.cos(a) * 1.0, alt + 0.2, -Math.sin(a) * 1.0);
     }
 
     if (snap.current) {
@@ -662,6 +673,15 @@ function AscentCamera({ progRef, sepRef, separated }) {
 
 /* ------------------------------------------------------------------ */
 
+// The existing cool back-fill light strengthens into a rim light in near-space (no extra light cost).
+function RimLight({ progRef }) {
+  const ref = useRef();
+  useFrame(() => {
+    if (ref.current) ref.current.intensity = 0.3 + 1.1 * smooth((progRef.current - 0.25) / 0.12);
+  });
+  return <directionalLight ref={ref} position={[-6, 4, -8]} intensity={0.3} color="#9fb8dc" />;
+}
+
 function Scene({ progress, separated, thrust }) {
   const progRef = useRef(progress);
   progRef.current = progress;
@@ -679,7 +699,7 @@ function Scene({ progress, separated, thrust }) {
       )}
       <ambientLight intensity={0.4} />
       <directionalLight position={[10, 8, 8]} intensity={2.2} color="#fff2e2" />
-      <directionalLight position={[-6, 4, -8]} intensity={0.3} color="#8aa8cc" />
+      <RimLight progRef={progRef} />
       <EarthCurve progRef={progRef} />
       <LaunchComplex progRef={progRef} />
       <PadSmoke progRef={progRef} />
@@ -687,7 +707,6 @@ function Scene({ progress, separated, thrust }) {
       <IgnitionFlash progRef={progRef} />
       <Contrail progRef={progRef} />
       <CloudLayer progRef={progRef} />
-      <SepFlash sepRef={sepRef} altRef={altRef} />
       <AscentRocket
         progRef={progRef}
         separated={separated}

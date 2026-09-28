@@ -8,6 +8,7 @@ import MissionScene from "@/components/MissionScene";
 import DescentScene from "@/components/scenes/DescentScene";
 import ReentryScene from "@/components/scenes/ReentryScene";
 import DescentGame from "@/components/DescentGame";
+import ReentryGame from "@/components/ReentryGame";
 import DifficultySelect from "@/components/DifficultySelect";
 import PdiBriefing from "@/components/PdiBriefing";
 import MissionResult from "@/components/MissionResult";
@@ -57,7 +58,6 @@ export default function Mission() {
   const [spaceTime, setSpaceTime] = useState(9840);
   const [orbitTime, setOrbitTime] = useState(288000);
   const [returnTime, setReturnTime] = useState(504000);
-  const [reentryProg, setReentryProg] = useState(0);
   const [difficulty, setDifficulty] = useState("ASTRONAUT");
   const [descentResult, setDescentResult] = useState(null);
   const [showAbort, setShowAbort] = useState(false);
@@ -138,16 +138,6 @@ export default function Mission() {
           if (next >= 695000) {
             setState(STATES.REENTRY);
             return 695000;
-          }
-          return next;
-        });
-      } else if (s === STATES.REENTRY) {
-        setReentryProg((p) => {
-          const next = p + dt * 0.11;
-          if (next >= 1) {
-            setState(STATES.COMPLETE);
-            if (audio) audio.splash();
-            return 1;
           }
           return next;
         });
@@ -237,7 +227,6 @@ export default function Mission() {
     setSpaceTime(9840);
     setOrbitTime(288000);
     setReturnTime(504000);
-    setReentryProg(0);
     setDescentResult(null);
     orbitAngleRef.current = 0;
   };
@@ -250,8 +239,6 @@ export default function Mission() {
       audio.setRumble(0.7);
     } else if (state === STATES.SPACE || state === STATES.ORBIT) {
       audio.stopRumble();
-    } else if (state === STATES.REENTRY) {
-      audio.startRumble(0.6);
     } else if (state === STATES.COMPLETE) {
       audio.stopRumble();
     }
@@ -344,12 +331,19 @@ export default function Mission() {
         <MissionScene missionTime={returnTime} cinematic={true} />
       )}
 
-      {state === STATES.REENTRY && <ReentryScene progress={reentryProg} />}
+      {state === STATES.REENTRY && (
+        <ReentryGame
+          difficulty={difficulty}
+          audio={audio}
+          onComplete={() => setState(STATES.COMPLETE)}
+          onAbort={resetMission}
+        />
+      )}
 
-      {state === STATES.COMPLETE && <ReentryScene progress={1} />}
+      {state === STATES.COMPLETE && <ReentryScene final />}
 
       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
-      {state !== STATES.CONTROL && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && state !== STATES.BRIEFING && (
+      {state !== STATES.CONTROL && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
         <div
           data-testid="mission-hud-min"
           className="absolute top-20 left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
@@ -485,6 +479,7 @@ export default function Mission() {
         state !== STATES.MANUAL_DESCENT &&
         state !== STATES.DIFFICULTY &&
         state !== STATES.BRIEFING &&
+        state !== STATES.REENTRY &&
         state !== STATES.RESULT && (
           <button
             onClick={() => setShowAbort(true)}
