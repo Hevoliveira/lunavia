@@ -116,14 +116,49 @@ audio plays with the silent switch on.
 
 ## Performance
 
-All six `<Canvas>` elements already cap device pixel ratio at 2 (`dpr={[1, 2]}`), so a 3×
-iPhone renders at 2× (about 1704×786 px in landscape on a 6.1" iPhone). Measured
-workload is listed in the validation section below. No global quality reduction was applied.
+Measured on the production build at iPhone 16 Pro landscape (852×393 CSS px, 3× screen),
+Chromium with SwiftShader (a CPU renderer, so frame rates are **not** representative of an
+iPhone GPU; the workload numbers are):
 
-## Validation
+| Scene | Draw calls / frame | Render size | JS heap |
+|---|---|---|---|
+| Landing hero | 19 | 1704×875 | 11 MB |
+| Ascent / staging prompt | 22 | 1704×786 | 14 MB |
+| Stage separation | 34 | 1704×786 | 14 MB |
+| Cislunar / lunar orbit | 17 | 1704×786 | 16 MB |
+| Lunar descent (game) | 26 | 1704×786 | 17 MB |
+| Reentry prep / plasma | 20 | 1704×786 | 19–23 MB |
 
-See the PR description for the run that accompanied this change. In summary, validation
-was done in Linux with Chromium (SwiftShader) emulating iPhone viewports, with touch-only
-input and simulated safe areas. **No physical iPhone, no macOS and no Xcode were available**,
-so the native build, signing, WKWebView behaviour, real-GPU frame rate and the audio
-unlock on a device are **not** verified here.
+- Device pixel ratio: every `<Canvas>` already caps at 2 (`dpr={[1, 2]}`), so a 3× iPhone
+  renders 2× — about 1.3 MP.
+- Textures: the largest are the 2048×1024 Earth colour / normal / specular maps
+  (≈ 11 MB of GPU memory each with mipmaps); clouds and Moon are 1024×512.
+- Particles: fixed counts (star fields 3,500–8,000 points in one draw call each; ascent
+  smoke 108 sprites); nothing accumulates over time.
+- Shaders compile once per scene mount (each scene has its own WebGL context).
+
+Nothing in these numbers calls for a mobile-specific quality cut, so none was applied.
+Watch for thermal throttling on long sessions on older iPhones; the first knob would be
+`dpr={[1, 1.5]}` on phones.
+
+## Validation (this change)
+
+Done in Linux with Chromium emulating iPhones: touch only (multi-touch via the DevTools
+protocol, no keyboard), simulated safe areas, production build, **internet blocked**.
+
+| Check | Result |
+|---|---|
+| Web production build (`yarn build`) | passes |
+| Unit tests (`yarn test`) | 19 / 19 pass |
+| `npx cap sync ios` | passes; 3.7 MB web bundle, no source maps, no `_dbg` |
+| Xcode project integrity | `project.pbxproj` parses; all referenced files exist; one target `App`, bundle id `com.lunavia.app.dev`, iPhone only, iOS 15; Info.plist and storyboard are valid XML; Swift overrides checked against Capacitor's `CAPBridgeViewController` API |
+| Full mission by touch, iPhone 16 Pro (852×393, notch insets 59/59/21) | launch → staging → manual lunar landing (two simultaneous touches) → reentry → parachutes → splashdown → mission complete; no control in an unsafe area, no overlaps |
+| Same, iPhone 16 Pro Max (932×430) | complete, no layout issues |
+| Same, iPhone SE (667×375) | complete, no layout issues |
+| Desktop 1440×900 regression (keyboard) | full mission, skip-out / overheat / nominal reentry cases and failure paths pass; reentry figures identical to before (peak 174 W/cm², 7.23 g, splash 8.5 m/s) |
+| Offline assets | Earth and Moon textures and fonts load with the network blocked; the only failed request is the optional Unsplash backdrop |
+| Application console errors | 0 (only the blocked optional photo is logged) |
+
+**Not verified here:** there is no Mac, Xcode or iPhone in this environment, so the native
+build, code signing, installation, WKWebView rendering, real-GPU frame rate and thermals,
+and the audio unlock on a physical device have not been tested.

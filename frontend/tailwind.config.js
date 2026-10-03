@@ -12,6 +12,8 @@ module.exports = {
       screens: {
         // Phone in landscape: short viewport. Desktop windows never match.
         short: { raw: "(max-height: 520px)" },
+        // Small landscape phones (iPhone SE / mini width): tighter HUD widths.
+        narrow: { raw: "(max-height: 520px) and (max-width: 720px)" },
         // Touch-first devices: keyboard hints are hidden, touch controls stay.
         touch: { raw: "(hover: none) and (pointer: coarse)" },
       },

@@ -755,10 +755,11 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       <button
         onClick={() => setPaused((p) => !p)}
         data-testid="descent-pause"
-        className="absolute top-20 short:top-14 right-32 md:right-36 safe-mr hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
+        aria-label={paused ? "Resume" : "Pause"}
+        className="absolute top-20 short:top-14 right-32 md:right-36 safe-mr hud-panel px-3 py-2 touch:py-3 touch:min-w-[44px] touch:min-h-[44px] justify-center flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
       >
         {paused ? <Play size={12} /> : <Pause size={12} />}
-        {paused ? "RESUME" : "PAUSE"}
+        <span className="narrow:hidden">{paused ? "RESUME" : "PAUSE"}</span>
       </button>
 
       {/* Warnings strip (top center-ish) */}
@@ -799,7 +800,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       </div>
 
       {/* LEFT: primary instrument HUD */}
-      <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-4 short:py-2 w-[300px] short:w-[240px] z-30" data-testid="descent-hud-left">
+      <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-4 short:py-2 w-[300px] short:w-[240px] narrow:w-[215px] z-30" data-testid="descent-hud-left">
         <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:hidden">
           LM-1 · GUIDANCE · {cfg.label}
         </div>

@@ -91,7 +91,7 @@ function CorridorGauge({ fpa, cfg, label }) {
   const bandL = gx(TARGET_FPA + cfg.band);
   const bandR = gx(TARGET_FPA - cfg.band);
   return (
-    <div className="w-[360px] short:w-[230px] max-w-[80vw]" data-testid="reentry-corridor">
+    <div className="w-[360px] short:w-[230px] narrow:w-[190px] max-w-[80vw]" data-testid="reentry-corridor">
       <div className="flex justify-between font-mono text-[9px] tracking-widest text-zinc-500 mb-1">
         <span><span className="short:hidden">TOO SHALLOW · </span>SKIP</span>
         <span>{label}</span>
@@ -504,7 +504,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
 
       {/* LEFT: primary telemetry */}
       {u && phase !== "SPLASHED" && (
-        <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-3 short:py-2 w-[300px] short:w-[210px] z-30" data-testid="reentry-hud-left">
+        <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-3 short:py-2 w-[300px] short:w-[210px] narrow:w-[190px] z-30" data-testid="reentry-hud-left">
           <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:hidden">CM-1 · ENTRY · {difficulty}</div>
           <div className="grid grid-cols-2 gap-3 short:gap-x-2 short:gap-y-1">
             <Readout label="ALTITUDE" value={(u.alt / 1000).toFixed(1)} unit="km" testId="reentry-alt" />
@@ -557,7 +557,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
 
       {/* RIGHT: lift vector + controls */}
       {u && (phase === "PREP" || phase === "ENTRY") && (
-        <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-5 py-4 short:px-3 short:py-2 z-30 w-[230px] short:w-[200px]" data-testid="reentry-hud-right">
+        <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-5 py-4 short:px-3 short:py-2 z-30 w-[230px] short:w-[200px] narrow:w-[188px]" data-testid="reentry-hud-right">
           <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-2 short:hidden">LIFT VECTOR</div>
           <div className="flex items-center gap-3">
             <LiftDial bank={u.bank} cue={cfg.bankCue && inEntry ? u.cue : null} />
@@ -623,7 +623,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
 
       {/* Bottom centre: corridor + status */}
       {u && (phase === "PREP" || phase === "ENTRY") && (
-        <div className="absolute bottom-6 short:bottom-2 safe-mb left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 short:gap-1 short:max-w-[240px] text-center">
+        <div className="absolute bottom-6 short:bottom-2 safe-mb left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 short:gap-1 short:max-w-[240px] narrow:max-w-[195px] text-center">
           <CorridorGauge fpa={phase === "PREP" ? u.prepFpa : u.ei.fpa} cfg={cfg} label={phase === "PREP" ? "PLANNED EI ANGLE" : "FLOWN EI ANGLE"} />
           {phase === "PREP" && (
             <>
