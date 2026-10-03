@@ -3,6 +3,7 @@ import { Stars, useTexture } from "@react-three/drei";
 import { useRef, useState, useEffect, useMemo, Suspense } from "react";
 import * as THREE from "three";
 import LanderModel from "@/components/LanderModel";
+import HoldButton from "@/components/HoldButton";
 import CockpitOverlay from "@/components/CockpitOverlay";
 import AbortModal from "@/components/AbortModal";
 import {
@@ -31,8 +32,8 @@ import {
   Pause, Play, X,
 } from "lucide-react";
 
-const MOON_MAP = "https://threejs.org/examples/textures/planets/moon_1024.jpg";
-const EARTH_MAP = "https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg";
+const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
+const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
 
 /* ============================================================
  * 3D scene layer
@@ -322,7 +323,7 @@ function Gauge({ label, value, unit, warn = false, danger = false, testId }) {
         {label}
       </span>
       <div className="flex items-baseline gap-1.5">
-        <span className={`font-mono tabular text-lg md:text-xl font-medium ${color} ${danger ? "blink" : ""}`}>
+        <span className={`font-mono tabular text-lg md:text-xl short:text-base font-medium ${color} ${danger ? "blink" : ""}`}>
           {value}
         </span>
         {unit && <span className="font-mono text-[10px] text-zinc-500">{unit}</span>}
@@ -726,13 +727,13 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       />
 
       {/* View mode selector */}
-      <div className="absolute top-20 left-1/2 -translate-x-1/2 hud-panel px-3 py-2 flex items-center gap-1 z-40" data-testid="view-selector">
+      <div className="absolute top-20 short:top-14 left-1/2 -translate-x-1/2 hud-panel px-3 py-2 touch:py-1 flex items-center gap-1 z-40" data-testid="view-selector">
         {["EXTERNAL", "COCKPIT", "NAV"].map((v) => (
           <button
             key={v}
             onClick={() => setView(v)}
             data-testid={`view-${v.toLowerCase()}`}
-            className={`px-3 py-1 font-mono text-[10px] tracking-[0.3em] transition-colors duration-150 ${
+            className={`px-3 short:px-2 py-1 touch:py-3.5 font-mono text-[10px] tracking-[0.3em] transition-colors duration-150 ${
               view === v ? "bg-[#FF3B00] text-black" : "text-zinc-400 hover:text-white"
             }`}
           >
@@ -745,7 +746,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       <button
         onClick={() => setShowAbort(true)}
         data-testid="descent-abort"
-        className="absolute top-20 right-4 md:right-8 hud-panel px-3 py-2 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
+        className="absolute top-20 short:top-14 right-4 md:right-8 safe-mr hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
       >
         <X size={12} /> ABORT
       </button>
@@ -754,14 +755,15 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       <button
         onClick={() => setPaused((p) => !p)}
         data-testid="descent-pause"
-        className="absolute top-20 right-32 md:right-36 hud-panel px-3 py-2 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
+        aria-label={paused ? "Resume" : "Pause"}
+        className="absolute top-20 short:top-14 right-32 md:right-36 safe-mr hud-panel px-3 py-2 touch:py-3 touch:min-w-[44px] touch:min-h-[44px] justify-center flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
       >
         {paused ? <Play size={12} /> : <Pause size={12} />}
-        {paused ? "RESUME" : "PAUSE"}
+        <span className="narrow:hidden">{paused ? "RESUME" : "PAUSE"}</span>
       </button>
 
       {/* Warnings strip (top center-ish) */}
-      <div className="absolute top-36 left-1/2 -translate-x-1/2 flex gap-2 z-40">
+      <div className="absolute top-36 short:top-[7.5rem] left-1/2 -translate-x-1/2 flex gap-2 short:flex-col short:items-center short:gap-1 short:whitespace-nowrap z-40">
         {warnFuelLow && (
           <div className={`hud-panel px-3 py-1 font-mono text-[10px] tracking-widest ${dangerFuelCritical ? "text-[#FF3B00] blink" : "text-amber-400"}`} data-testid="warn-fuel">
             ● FUEL LOW
@@ -798,17 +800,17 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       </div>
 
       {/* LEFT: primary instrument HUD */}
-      <div className="absolute bottom-6 left-4 md:left-8 hud-panel corners px-5 py-4 w-[300px] z-30" data-testid="descent-hud-left">
-        <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3">
+      <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-4 short:py-2 w-[300px] short:w-[240px] narrow:w-[215px] z-30" data-testid="descent-hud-left">
+        <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:hidden">
           LM-1 · GUIDANCE · {cfg.label}
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 short:gap-x-3 short:gap-y-1">
           <Gauge label="ALTITUDE" value={alt.toFixed(0)} unit="m" testId="gauge-altitude" />
           <Gauge label="V·SPEED" value={vy.toFixed(1)} unit="m/s" warn={warnVy} danger={dangerVy} testId="gauge-vspeed" />
           <Gauge label="H·SPEED" value={vx.toFixed(1)} unit="m/s" testId="gauge-hspeed" />
           <Gauge label="TILT" value={tilt.toFixed(0) + "°"} warn={warnTilt} danger={dangerTilt} testId="gauge-tilt" />
         </div>
-        <div className="mt-3">
+        <div className="mt-3 short:mt-2">
           <div className="font-mono text-[9px] tracking-widest text-zinc-500 mb-1 flex justify-between">
             <span>FUEL</span>
             <span className={dangerFuelCritical ? "text-[#FF3B00]" : warnFuelLow ? "text-amber-400" : "text-white"}>
@@ -817,7 +819,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           </div>
           <Bar value={fuel / cfg.initialFuel} warn={warnFuelLow} danger={dangerFuelCritical} />
         </div>
-        <div className="mt-2">
+        <div className="mt-2 short:mt-1">
           <div className="font-mono text-[9px] tracking-widest text-zinc-500 mb-1 flex justify-between">
             <span>
                   THROTTLE
@@ -829,7 +831,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           </div>
           <Bar value={throttle} />
         </div>
-        <div className="mt-3 flex items-center justify-between gap-2" data-testid="descent-profile">
+        <div className="mt-3 short:mt-2 flex items-center justify-between gap-2" data-testid="descent-profile">
                 <span className="font-mono text-[9px] tracking-widest text-zinc-500">PROFILE</span>
                 <span
                   className={`font-mono text-[10px] tracking-widest ${
@@ -844,7 +846,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
                   <span className={guidance.level === DANGER ? "text-[#FF3B00]" : "text-amber-400"}>{guidance.text}</span>
                 )}
               </div>
-              <div className="mt-3 font-mono text-[9px] tracking-widest text-zinc-500 flex justify-between">
+              <div className="mt-3 short:mt-1.5 font-mono text-[9px] tracking-widest text-zinc-500 flex justify-between">
           <span>DISTANCE TO PRIMARY LZ</span>
           <span className="text-white tabular">{distanceToLZ.toFixed(1)} m</span>
         </div>
@@ -857,74 +859,61 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       </div>
 
       {/* RIGHT: keys / touch controls */}
-      <div className="absolute bottom-6 right-4 md:right-8 hud-panel corners px-5 py-4 z-30" data-testid="descent-hud-right">
-        <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3">
+      <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-5 py-4 short:px-3 short:py-2.5 z-30" data-testid="descent-hud-right">
+        <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:mb-2">
           FLIGHT CONTROLS
         </div>
         <div className="grid grid-cols-3 gap-2 place-items-center">
           <div />
-          <button
-            onMouseDown={() => (inputRef.current.throttle = true)}
-            onMouseUp={() => (inputRef.current.throttle = false)}
-            onMouseLeave={() => (inputRef.current.throttle = false)}
-            onTouchStart={(e) => { e.preventDefault(); inputRef.current.throttle = true; }}
-            onTouchEnd={() => (inputRef.current.throttle = false)}
+          <HoldButton
+            onHold={(on) => { inputRef.current.throttle = on; setThrottleCmd(on); }}
             data-testid="ctrl-throttle"
+            aria-label="Throttle"
             className="w-14 h-14 border border-white/25 hover:border-[#FF3B00] hover:bg-[#FF3B00]/20 flex items-center justify-center text-white"
           >
             <ArrowUp size={20} />
-          </button>
+          </HoldButton>
           <div />
-          <button
-            onMouseDown={() => (inputRef.current.left = true)}
-            onMouseUp={() => (inputRef.current.left = false)}
-            onMouseLeave={() => (inputRef.current.left = false)}
-            onTouchStart={(e) => { e.preventDefault(); inputRef.current.left = true; }}
-            onTouchEnd={() => (inputRef.current.left = false)}
+          <HoldButton
+            onHold={(on) => (inputRef.current.left = on)}
             data-testid="ctrl-left"
+            aria-label="Tilt left"
             className="w-14 h-14 border border-white/25 hover:border-white flex items-center justify-center text-white"
           >
             <ArrowLeft size={20} />
-          </button>
+          </HoldButton>
           <div className="w-14 h-14 border border-white/10 flex items-center justify-center font-mono text-[9px] text-zinc-500">
             RCS
           </div>
-          <button
-            onMouseDown={() => (inputRef.current.right = true)}
-            onMouseUp={() => (inputRef.current.right = false)}
-            onMouseLeave={() => (inputRef.current.right = false)}
-            onTouchStart={(e) => { e.preventDefault(); inputRef.current.right = true; }}
-            onTouchEnd={() => (inputRef.current.right = false)}
+          <HoldButton
+            onHold={(on) => (inputRef.current.right = on)}
             data-testid="ctrl-right"
+            aria-label="Tilt right"
             className="w-14 h-14 border border-white/25 hover:border-white flex items-center justify-center text-white"
           >
             <ArrowRight size={20} />
-          </button>
-          <button
-            onMouseDown={() => (inputRef.current.strafeLeft = true)}
-            onMouseUp={() => (inputRef.current.strafeLeft = false)}
-            onTouchStart={(e) => { e.preventDefault(); inputRef.current.strafeLeft = true; }}
-            onTouchEnd={() => (inputRef.current.strafeLeft = false)}
+          </HoldButton>
+          <HoldButton
+            onHold={(on) => (inputRef.current.strafeLeft = on)}
             data-testid="ctrl-strafe-left"
-            className="w-14 h-10 border border-white/25 hover:border-white flex items-center justify-center text-zinc-400 text-[10px] font-mono"
+            aria-label="RCS strafe left"
+            className="w-14 h-12 border border-white/25 hover:border-white flex items-center justify-center text-zinc-400 text-[10px] font-mono"
           >
             ◄ RCS
-          </button>
-          <div className="w-14 h-10 border border-white/10 flex items-center justify-center font-mono text-[8px] text-zinc-600 leading-tight text-center">
-            Q · E<br/>STRAFE
+          </HoldButton>
+          <div className="w-14 h-12 border border-white/10 flex items-center justify-center font-mono text-[8px] text-zinc-600 leading-tight text-center">
+            <span className="touch:hidden">Q · E<br/></span>STRAFE
           </div>
-          <button
-            onMouseDown={() => (inputRef.current.strafeRight = true)}
-            onMouseUp={() => (inputRef.current.strafeRight = false)}
-            onTouchStart={(e) => { e.preventDefault(); inputRef.current.strafeRight = true; }}
-            onTouchEnd={() => (inputRef.current.strafeRight = false)}
+          <HoldButton
+            onHold={(on) => (inputRef.current.strafeRight = on)}
             data-testid="ctrl-strafe-right"
-            className="w-14 h-10 border border-white/25 hover:border-white flex items-center justify-center text-zinc-400 text-[10px] font-mono"
+            aria-label="RCS strafe right"
+            className="w-14 h-12 border border-white/25 hover:border-white flex items-center justify-center text-zinc-400 text-[10px] font-mono"
           >
             RCS ►
-          </button>
+          </HoldButton>
         </div>
-        <div className="mt-3 font-mono text-[9px] tracking-widest text-zinc-500 leading-relaxed">
+        <div className="mt-3 font-mono text-[9px] tracking-widest text-zinc-500 leading-relaxed touch:hidden">
           SPACE · THROTTLE<br/>
           A/D · TILT · Q/E · STRAFE<br/>
           P · PAUSE · C · CYCLE VIEW

@@ -78,10 +78,10 @@ export default function CockpitOverlay({ active, onToggle, hint }) {
             <circle cx="60" cy="60" r="1.5" fill="#FF3B00" />
           </svg>
           {/* Corner labels */}
-          <div className="absolute top-24 left-8 font-mono text-[10px] tracking-[0.3em] text-zinc-400">
+          <div className="absolute top-24 short:top-16 left-8 safe-ml font-mono text-[10px] tracking-[0.3em] text-zinc-400">
             IVA · WINDOW #2
           </div>
-          <div className="absolute top-24 right-8 font-mono text-[10px] tracking-[0.3em] text-zinc-400 text-right">
+          <div className="absolute top-24 short:top-16 right-8 safe-mr font-mono text-[10px] tracking-[0.3em] text-zinc-400 text-right">
             RETICLE · ARMED<br />
             <span className="text-[#FF3B00]">● RANGE MODE</span>
           </div>
@@ -96,7 +96,7 @@ export default function CockpitOverlay({ active, onToggle, hint }) {
       <button
         onClick={onToggle}
         data-testid="cockpit-toggle"
-        className="absolute top-20 left-4 md:left-8 hud-panel px-3 py-2 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
+        className="absolute top-20 short:top-14 left-4 md:left-8 safe-ml short:hidden hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
       >
         {active ? <EyeOff size={12} /> : <Eye size={12} />}
         {active ? "EXTERIOR" : "COCKPIT"}

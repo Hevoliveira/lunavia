@@ -1,0 +1,12 @@
+# The built game (App/App/public) and its generated Capacitor config are committed on
+# purpose, so the project opens and installs from Xcode without Node.js.
+# Refresh them with `yarn ios:sync` after changing the web game.
+App/build
+App/Pods
+App/output
+DerivedData
+xcuserdata
+
+# Cordova plugins for Capacitor
+capacitor-cordova-ios-plugins
+

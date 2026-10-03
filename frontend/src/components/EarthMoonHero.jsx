@@ -4,11 +4,11 @@ import { useRef, Suspense } from "react";
 import * as THREE from "three";
 import SpacecraftModel from "@/components/SpacecraftModel";
 
-const EARTH_MAP = "https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg";
-const EARTH_NORMAL = "https://threejs.org/examples/textures/planets/earth_normal_2048.jpg";
-const EARTH_SPEC = "https://threejs.org/examples/textures/planets/earth_specular_2048.jpg";
-const EARTH_CLOUDS = "https://threejs.org/examples/textures/planets/earth_clouds_1024.png";
-const MOON_MAP = "https://threejs.org/examples/textures/planets/moon_1024.jpg";
+const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
+const EARTH_NORMAL = process.env.PUBLIC_URL + "/textures/planets/earth_normal_2048.jpg";
+const EARTH_SPEC = process.env.PUBLIC_URL + "/textures/planets/earth_specular_2048.jpg";
+const EARTH_CLOUDS = process.env.PUBLIC_URL + "/textures/planets/earth_clouds_1024.png";
+const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
 
 function Earth() {
   const [colorMap, normalMap, specMap, cloudMap] = useTexture([

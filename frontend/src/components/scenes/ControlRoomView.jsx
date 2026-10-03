@@ -41,10 +41,10 @@ export default function ControlRoomView({ onLaunch }) {
       <div className="absolute inset-0 grid-bg opacity-40" />
 
       {/* Corner brackets */}
-      <div className="absolute inset-6 border border-white/10 pointer-events-none" />
+      <div className="absolute inset-6 safe-ml safe-mr safe-mb border border-white/10 pointer-events-none" />
 
       {/* Top strip */}
-      <div className="absolute top-20 left-8 right-8 flex justify-between font-mono text-[10px] tracking-[0.35em] text-zinc-400">
+      <div className="absolute top-20 short:top-14 left-8 right-8 safe-ml safe-mr flex justify-between font-mono text-[10px] tracking-[0.35em] text-zinc-400 pointer-events-none">
         <div>
           <div className="text-white">MISSION CONTROL · LC-39A</div>
           <div className="text-zinc-600 mt-1">
@@ -61,11 +61,11 @@ export default function ControlRoomView({ onLaunch }) {
       <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
         {countdown === null && !launching && (
           <>
-            <div className="font-mono text-[11px] tracking-[0.4em] text-zinc-400 mb-4 scan-in">
+            <div className="font-mono text-[11px] tracking-[0.4em] text-zinc-400 mb-4 short:mb-2 short:mt-10 scan-in">
               LV-001 · READY FOR LAUNCH
             </div>
             <h1
-              className="font-display font-black text-6xl md:text-8xl tracking-tight text-white text-center"
+              className="font-display font-black text-6xl md:text-8xl short:text-5xl tracking-tight text-white text-center"
               data-testid="control-room-title"
             >
               THE ROAD<br />
@@ -74,13 +74,13 @@ export default function ControlRoomView({ onLaunch }) {
             <button
               onClick={startCountdown}
               data-testid="control-launch-btn"
-              className="mt-12 group relative inline-flex items-center gap-4 px-8 py-4 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00] transition-colors duration-200 font-mono tracking-[0.35em] text-sm"
+              className="mt-12 short:mt-5 group relative z-10 inline-flex items-center gap-4 px-8 py-4 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00] transition-colors duration-200 font-mono tracking-[0.35em] text-sm"
             >
               <span className="inline-block w-3 h-3 rounded-full bg-[#FF3B00] blink" />
               LAUNCH SEQUENCE — INITIATE
               <span className="inline-block w-3 h-3 rounded-full bg-[#FF3B00] blink" />
             </button>
-            <div className="mt-6 font-mono text-[10px] tracking-[0.3em] text-zinc-500">
+            <div className="mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500">
               PRESS TO BEGIN T-00:00:10 COUNTDOWN
             </div>
           </>
@@ -93,7 +93,7 @@ export default function ControlRoomView({ onLaunch }) {
             </div>
             <div
               className="font-display font-black text-white tabular"
-              style={{ fontSize: "clamp(6rem, 22vw, 22rem)", lineHeight: 1 }}
+              style={{ fontSize: "clamp(6rem, min(22vw, 38vh), 22rem)", lineHeight: 1 }}
               data-testid="control-countdown"
             >
               {String(countdown).padStart(2, "0")}
@@ -117,7 +117,7 @@ export default function ControlRoomView({ onLaunch }) {
       </div>
 
       {/* Bottom telemetry strip */}
-      <div className="absolute bottom-8 left-8 right-8 grid grid-cols-4 gap-6 font-mono text-[10px] tracking-widest text-zinc-500 border-t border-white/10 pt-4">
+      <div className="absolute bottom-8 short:bottom-3 left-8 right-8 safe-ml safe-mr safe-mb grid grid-cols-4 gap-6 font-mono text-[10px] tracking-widest text-zinc-500 border-t border-white/10 pt-4 short:pt-2 pointer-events-none">
         <div>
           <div className="text-zinc-700">VEHICLE</div>
           <div className="text-white tabular mt-1">LV-001 ARTEMIS-CLASS</div>

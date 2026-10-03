@@ -1,0 +1,39 @@
+{
+  "files": {
+    "main.css": "/static/css/main.6ed5cbfa.css",
+    "main.js": "/static/js/main.9dc5b734.js",
+    "static/media/inter-latin-700-normal.woff": "/static/media/inter-latin-700-normal.c73ae7252669254d2588.woff",
+    "static/media/inter-latin-500-normal.woff": "/static/media/inter-latin-500-normal.5014db633e71a7741bf5.woff",
+    "static/media/inter-latin-600-normal.woff": "/static/media/inter-latin-600-normal.f10265da6bd8d66999ac.woff",
+    "static/media/inter-latin-300-normal.woff": "/static/media/inter-latin-300-normal.07e0e0017a987f6c727e.woff",
+    "static/media/inter-latin-400-normal.woff": "/static/media/inter-latin-400-normal.2ea1079c0069eb040a52.woff",
+    "static/media/jetbrains-mono-latin-300-normal.woff": "/static/media/jetbrains-mono-latin-300-normal.85d038975a7069712e65.woff",
+    "static/media/jetbrains-mono-latin-500-normal.woff": "/static/media/jetbrains-mono-latin-500-normal.b6ddca2679c2b4a27c68.woff",
+    "static/media/jetbrains-mono-latin-700-normal.woff": "/static/media/jetbrains-mono-latin-700-normal.910bb30c8bd5964b3635.woff",
+    "static/media/jetbrains-mono-latin-600-normal.woff": "/static/media/jetbrains-mono-latin-600-normal.7e91dde00fbe12aae418.woff",
+    "static/media/jetbrains-mono-latin-400-normal.woff": "/static/media/jetbrains-mono-latin-400-normal.1fef352a4021940e309a.woff",
+    "static/media/inter-latin-600-normal.woff2": "/static/media/inter-latin-600-normal.69a8d1d484967aba2389.woff2",
+    "static/media/inter-latin-700-normal.woff2": "/static/media/inter-latin-700-normal.1104236696a5d2d1f236.woff2",
+    "static/media/inter-latin-500-normal.woff2": "/static/media/inter-latin-500-normal.b7c27c60f848f2083f45.woff2",
+    "static/media/inter-latin-300-normal.woff2": "/static/media/inter-latin-300-normal.eb229bb9406cc043d5a4.woff2",
+    "static/media/inter-latin-400-normal.woff2": "/static/media/inter-latin-400-normal.eca1e21531598d5db58f.woff2",
+    "static/media/jetbrains-mono-latin-300-normal.woff2": "/static/media/jetbrains-mono-latin-300-normal.a53bb6e9af4e38070454.woff2",
+    "static/media/jetbrains-mono-latin-700-normal.woff2": "/static/media/jetbrains-mono-latin-700-normal.ce1e40901d7a0d88d483.woff2",
+    "static/media/jetbrains-mono-latin-600-normal.woff2": "/static/media/jetbrains-mono-latin-600-normal.d68d56cf8ab33f8cc5d0.woff2",
+    "static/media/jetbrains-mono-latin-500-normal.woff2": "/static/media/jetbrains-mono-latin-500-normal.bb50084be2b43ba7b98c.woff2",
+    "static/media/jetbrains-mono-latin-400-normal.woff2": "/static/media/jetbrains-mono-latin-400-normal.d04352f240062b100fba.woff2",
+    "static/media/space-grotesk-latin-400-normal.woff": "/static/media/space-grotesk-latin-400-normal.9a79ff9235fdf702f806.woff",
+    "static/media/space-grotesk-latin-500-normal.woff": "/static/media/space-grotesk-latin-500-normal.b49ceea0c1268b379704.woff",
+    "static/media/space-grotesk-latin-600-normal.woff": "/static/media/space-grotesk-latin-600-normal.ebac80b130385b5e7faf.woff",
+    "static/media/space-grotesk-latin-700-normal.woff": "/static/media/space-grotesk-latin-700-normal.06b64ac55dcc99993664.woff",
+    "static/media/space-grotesk-latin-400-normal.woff2": "/static/media/space-grotesk-latin-400-normal.e4486ff01d91b31ea5ac.woff2",
+    "static/media/space-grotesk-latin-500-normal.woff2": "/static/media/space-grotesk-latin-500-normal.2641fa827a3c8935ce36.woff2",
+    "static/media/space-grotesk-latin-600-normal.woff2": "/static/media/space-grotesk-latin-600-normal.8ff7300c7c3cddae1fef.woff2",
+    "static/media/space-grotesk-latin-700-normal.woff2": "/static/media/space-grotesk-latin-700-normal.da60da10a1aa9aca283c.woff2",
+    "index.html": "/index.html"
+  },
+  "entrypoints": [
+    "static/css/main.6ed5cbfa.css",
+    "static/js/main.9dc5b734.js"
+  ]
+}
