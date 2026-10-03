@@ -1,0 +1,13 @@
+{
+  "appId": "com.lunavia.app.dev",
+  "appName": "LUNAVIA",
+  "webDir": "build",
+  "backgroundColor": "#050505",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#050505",
+    "allowsLinkPreview": false,
+    "preferredContentMode": "mobile",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}

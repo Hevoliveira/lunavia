@@ -23,16 +23,16 @@ const PHASES_PREVIEW = [
 
 export default function Landing() {
   return (
-    <main data-testid="landing-page" className="relative bg-[#050505] text-white">
+    <main data-testid="landing-page" className="relative bg-[#050505] text-white safe-px">
       {/* HERO */}
-      <section className="relative h-screen w-full overflow-hidden" data-testid="hero">
+      <section className="relative h-screen short:h-auto short:min-h-screen w-full overflow-hidden" data-testid="hero">
         <EarthMoonHero />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#050505]" />
 
         {/* corner markers */}
         <div className="absolute inset-8 border border-white/10 pointer-events-none" />
 
-        <div className="relative z-10 h-full max-w-[1600px] mx-auto px-6 md:px-12 flex flex-col justify-between pt-24 pb-16">
+        <div className="relative z-10 h-full max-w-[1600px] mx-auto px-6 md:px-12 flex flex-col justify-between pt-24 pb-16 short:pt-16 short:pb-6 short:gap-5">
           {/* Top bar */}
           <div className="flex items-start justify-between fade-in">
             <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-400 max-w-xs">
@@ -49,22 +49,22 @@ export default function Landing() {
 
           {/* Center — title */}
           <div className="max-w-3xl">
-            <div className="font-mono text-[10px] tracking-[0.4em] text-zinc-400 mb-6 scan-in">
+            <div className="font-mono text-[10px] tracking-[0.4em] text-zinc-400 mb-6 short:mb-2 scan-in">
               LUNAVIA · FASE 0
             </div>
             <h1
-              className="font-display font-black text-6xl sm:text-7xl md:text-8xl tracking-tight leading-[0.9]"
+              className="font-display font-black text-6xl sm:text-7xl md:text-8xl short:text-5xl tracking-tight leading-[0.9]"
               data-testid="hero-title"
             >
               THE ROAD<br />
               <span className="text-[#FF3B00]">TO THE MOON</span>
             </h1>
-            <p className="mt-8 text-zinc-300 text-lg max-w-xl leading-relaxed">
+            <p className="mt-8 short:mt-3 text-zinc-300 text-lg short:text-sm max-w-xl leading-relaxed">
               Um simulador realista da viagem entre a Terra e a Lua.
               Não é sobre voar para cima — é sobre entrar em órbita, partir no
               instante correto, atravessar o vazio e voltar para casa.
             </p>
-            <div className="mt-10 flex flex-wrap gap-4">
+            <div className="mt-10 short:mt-4 flex flex-wrap gap-4">
               <Link
                 to="/mission"
                 data-testid="hero-cta-mission"

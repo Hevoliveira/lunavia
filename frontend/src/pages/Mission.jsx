@@ -249,7 +249,7 @@ export default function Mission() {
 
   return (
     <main
-      className="relative w-full h-screen overflow-hidden bg-[#050505]"
+      className="relative w-full h-screen overflow-hidden bg-[#050505] game-surface"
       data-testid="mission-page"
     >
       {/* --- Scene layer --- */}
@@ -346,7 +346,7 @@ export default function Mission() {
       {state !== STATES.CONTROL && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
         <div
           data-testid="mission-hud-min"
-          className="absolute top-20 left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
+          className="absolute top-20 short:top-14 left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
         >
           <span className="font-mono text-[10px] tracking-[0.35em] text-zinc-500">
             {label.code}
@@ -484,7 +484,7 @@ export default function Mission() {
           <button
             onClick={() => setShowAbort(true)}
             data-testid="btn-abort"
-            className="absolute top-20 right-4 md:right-8 hud-panel px-3 py-2 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-30"
+            className="absolute top-20 short:top-14 right-4 md:right-8 safe-mr hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-30"
           >
             <RotateCcw size={12} /> ABORT
           </button>

@@ -819,3 +819,25 @@ called fatal angles "GO".
 - The corridor constants in `CORRIDOR` are guidance display values derived
   from the physics; the tests fail if they drift from what the physics does.
 - Earth/Moon textures still load from the three.js CDN (see §11).
+
+## 19. Native iPhone app (Capacitor)
+
+LUNAVIA ships as an installable iOS app built from the same React / Three.js
+game. The web version is unchanged in behaviour; no physics, guidance or
+mission-progression code was touched.
+
+- Project: `frontend/ios/App/App.xcodeproj` (Capacitor 8, Swift Package Manager,
+  iOS 15+, iPhone, landscape only, fullscreen).
+- Refresh the app after web changes: `cd frontend && yarn ios:sync`, then commit
+  `frontend/ios/App/App/public`.
+- Temporary bundle id `com.lunavia.app.dev`: replace it in Xcode and in
+  `frontend/capacitor.config.json` (details in `docs/IOS_APP.md`).
+- Essential assets (planet textures, fonts) are bundled; the mission runs offline.
+- Mobile layout uses Tailwind screens `short` (landscape phones) and `touch`
+  (coarse pointers), plus safe-area margins `safe-ml / safe-mr / safe-mb`.
+- Flight controls use `components/HoldButton.jsx` (multi-touch, pressed state,
+  release on cancel).
+- iOS audio is unlocked on the first tap (`hooks/useMissionAudio.js`).
+
+Developer notes: `docs/IOS_APP.md`. Non-programmer install guide:
+`INSTALL_ON_IPHONE.md`.

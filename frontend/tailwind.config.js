@@ -1,12 +1,20 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
     darkMode: ["class"],
+    // Touch screens get no sticky :hover styles after a tap.
+    future: { hoverOnlyWhenSupported: true },
     content: [
     "./src/**/*.{js,jsx,ts,tsx}",
     "./public/index.html"
   ],
   theme: {
     extend: {
+      screens: {
+        // Phone in landscape: short viewport. Desktop windows never match.
+        short: { raw: "(max-height: 520px)" },
+        // Touch-first devices: keyboard hints are hidden, touch controls stay.
+        touch: { raw: "(hover: none) and (pointer: coarse)" },
+      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',

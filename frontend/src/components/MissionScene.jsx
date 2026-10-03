@@ -11,11 +11,11 @@ import {
 import SpacecraftModel from "@/components/SpacecraftModel";
 
 // Public-domain planet textures hosted by three.js examples.
-const EARTH_MAP = "https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg";
-const EARTH_NORMAL = "https://threejs.org/examples/textures/planets/earth_normal_2048.jpg";
-const EARTH_SPEC = "https://threejs.org/examples/textures/planets/earth_specular_2048.jpg";
-const EARTH_CLOUDS = "https://threejs.org/examples/textures/planets/earth_clouds_1024.png";
-const MOON_MAP = "https://threejs.org/examples/textures/planets/moon_1024.jpg";
+const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
+const EARTH_NORMAL = process.env.PUBLIC_URL + "/textures/planets/earth_normal_2048.jpg";
+const EARTH_SPEC = process.env.PUBLIC_URL + "/textures/planets/earth_specular_2048.jpg";
+const EARTH_CLOUDS = process.env.PUBLIC_URL + "/textures/planets/earth_clouds_1024.png";
+const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
 
 const SCENE_SCALE = 20 / EARTH_MOON_DIST_KM;
 const EARTH_UNITS = EARTH_RADIUS_KM * SCENE_SCALE * 10;

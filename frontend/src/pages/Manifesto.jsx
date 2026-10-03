@@ -35,9 +35,9 @@ export default function Manifesto() {
   return (
     <main
       data-testid="manifesto-page"
-      className="min-h-screen bg-[#050505] text-white pt-32 pb-24 px-6 md:px-12"
+      className="min-h-screen bg-[#050505] text-white pt-32 short:pt-20 pb-24 px-6 md:px-12"
     >
-      <div className="max-w-[1200px] mx-auto">
+      <div className="max-w-[1200px] mx-auto safe-px">
         <div className="font-mono text-[10px] tracking-[0.4em] text-zinc-500">
           LUNAVIA · FASE 0 · VISÃO, REALISMO E ARQUITETURA
         </div>

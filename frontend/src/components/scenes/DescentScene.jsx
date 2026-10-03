@@ -4,8 +4,8 @@ import { useRef, Suspense, useMemo } from "react";
 import * as THREE from "three";
 import LanderModel from "@/components/LanderModel";
 
-const MOON_MAP = "https://threejs.org/examples/textures/planets/moon_1024.jpg";
-const EARTH_MAP = "https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg";
+const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
+const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
 
 function MoonSurface() {
   const [tex] = useTexture([MOON_MAP]);

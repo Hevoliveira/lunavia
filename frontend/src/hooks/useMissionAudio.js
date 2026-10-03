@@ -18,6 +18,7 @@ export default function useMissionAudio() {
   const rumbleRef = useRef(null); // { gain, source, filter }
   const enabledRef = useRef(false);
   const noiseBufferRef = useRef(null);
+  const speechPrimedRef = useRef(false);
 
   const ensureCtx = () => {
     if (!ctxRef.current) {
@@ -25,8 +26,9 @@ export default function useMissionAudio() {
       if (!AC) return null;
       ctxRef.current = new AC();
     }
-    if (ctxRef.current.state === "suspended") {
-      ctxRef.current.resume();
+    // "suspended" (autoplay policy) or "interrupted" (iOS call, Siri, app switch).
+    if (ctxRef.current.state !== "running" && ctxRef.current.state !== "closed") {
+      ctxRef.current.resume().catch(() => {});
     }
     return ctxRef.current;
   };
@@ -192,14 +194,54 @@ export default function useMissionAudio() {
     [squelch, speak]
   );
 
+  /*
+   * iOS / WebKit only lets audio start inside a user gesture, but the engine
+   * rumble and comms are fired later from timers (e.g. after the countdown).
+   * So the first tap or key press anywhere unlocks the AudioContext and primes
+   * speech synthesis; sounds still stay silent until init() enables them.
+   */
   useEffect(() => {
+    try {
+      // Play mission audio even when the iPhone's silent switch is on (iOS 17+).
+      if (navigator.audioSession) navigator.audioSession.type = "playback";
+    } catch (e) {}
+    const events = ["touchend", "click", "keydown"];
+    const unlock = () => {
+      const ctx = ensureCtx();
+      if (ctx) {
+        const src = ctx.createBufferSource();
+        src.buffer = ctx.createBuffer(1, 1, 22050);
+        src.connect(ctx.destination);
+        src.start(0);
+      }
+      if (window.speechSynthesis && !speechPrimedRef.current) {
+        speechPrimedRef.current = true;
+        const u = new SpeechSynthesisUtterance(" ");
+        u.volume = 0;
+        window.speechSynthesis.speak(u);
+      }
+      if (ctx && ctx.state === "running") events.forEach((ev) => window.removeEventListener(ev, unlock, true));
+    };
+    events.forEach((ev) => window.addEventListener(ev, unlock, true));
+    // Returning to the app after a call or app switch: resume the context.
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && ctxRef.current && ctxRef.current.state !== "running" && ctxRef.current.state !== "closed") {
+        ctxRef.current.resume().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
+      events.forEach((ev) => window.removeEventListener(ev, unlock, true));
+      document.removeEventListener("visibilitychange", onVisible);
       try {
         stopRumble();
         if (window.speechSynthesis) window.speechSynthesis.cancel();
         if (ctxRef.current) ctxRef.current.close();
       } catch (e) {}
+      ctxRef.current = null;
+      noiseBufferRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopRumble]);
 
   return {

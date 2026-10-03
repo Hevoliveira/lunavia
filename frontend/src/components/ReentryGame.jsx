@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Pause, Play, X, RotateCcw } from "lucide-react";
 import ReentryScene from "@/components/scenes/ReentryScene";
 import AbortModal from "@/components/AbortModal";
+import HoldButton from "@/components/HoldButton";
+
+const CTRL_BTN = "border border-white/40 hover:border-[#FF3B00] flex items-center justify-center text-white";
 import {
   createEntryState,
   advance,
@@ -63,7 +66,7 @@ function Readout({ label, value, unit, tone = "text-white", testId }) {
     <div className="flex flex-col gap-0.5" data-testid={testId}>
       <span className="font-mono text-[9px] tracking-[0.22em] text-zinc-500 uppercase">{label}</span>
       <div className="flex items-baseline gap-1.5">
-        <span className={`font-mono tabular text-lg font-medium ${tone}`}>{value}</span>
+        <span className={`font-mono tabular text-lg short:text-sm font-medium ${tone}`}>{value}</span>
         {unit && <span className="font-mono text-[10px] text-zinc-500">{unit}</span>}
       </div>
     </div>
@@ -88,11 +91,11 @@ function CorridorGauge({ fpa, cfg, label }) {
   const bandL = gx(TARGET_FPA + cfg.band);
   const bandR = gx(TARGET_FPA - cfg.band);
   return (
-    <div className="w-[360px] max-w-[80vw]" data-testid="reentry-corridor">
+    <div className="w-[360px] short:w-[230px] max-w-[80vw]" data-testid="reentry-corridor">
       <div className="flex justify-between font-mono text-[9px] tracking-widest text-zinc-500 mb-1">
-        <span>TOO SHALLOW · SKIP</span>
+        <span><span className="short:hidden">TOO SHALLOW · </span>SKIP</span>
         <span>{label}</span>
-        <span>TOO STEEP · OVERLOAD</span>
+        <span><span className="short:hidden">TOO STEEP · </span>OVERLOAD</span>
       </div>
       <div className="relative h-4 bg-white/5 border border-white/10">
         {cfg.corridorZones && (
@@ -122,7 +125,7 @@ function CorridorGauge({ fpa, cfg, label }) {
 
 function LiftDial({ bank, cue }) {
   return (
-    <svg viewBox="-50 -50 100 100" className="w-24 h-24" data-testid="reentry-lift-dial">
+    <svg viewBox="-50 -50 100 100" className="w-24 h-24 short:w-[4.5rem] short:h-[4.5rem] shrink-0" data-testid="reentry-lift-dial">
       <circle r="44" fill="none" stroke="rgba(255,255,255,0.15)" />
       <text y="-34" textAnchor="middle" className="fill-zinc-500" style={{ font: "8px monospace" }}>UP</text>
       <text y="41" textAnchor="middle" className="fill-zinc-600" style={{ font: "8px monospace" }}>DN</text>
@@ -433,19 +436,9 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
   audioRef.current = audio;
   useEffect(() => () => audioRef.current && audioRef.current.stopRumble && audioRef.current.stopRumble(), []);
 
-  const hold = (key, on) => {
+  const hold = (key) => (on) => {
     inputRef.current[key] = on;
   };
-  const holdProps = (key) => ({
-    onMouseDown: () => hold(key, true),
-    onMouseUp: () => hold(key, false),
-    onMouseLeave: () => hold(key, false),
-    onTouchStart: (e) => {
-      e.preventDefault();
-      hold(key, true);
-    },
-    onTouchEnd: () => hold(key, false),
-  });
 
   const u = ui;
   const prepDelta = u ? u.prepFpa - TARGET_FPA : 0;
@@ -484,7 +477,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
       <div hidden data-testid="reentry-telemetry" data-json={u ? JSON.stringify(u) : "{}"} />
 
       {/* Top banner */}
-      <div className="absolute top-20 left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30">
+      <div className="absolute top-20 short:top-14 left-1/2 -translate-x-1/2 short:left-4 short:translate-x-0 safe-ml hud-panel px-5 py-2 short:px-3 flex items-center gap-4 short:gap-3 whitespace-nowrap z-30">
         <span className="font-mono text-[10px] tracking-[0.35em] text-zinc-500 tabular">{clock}</span>
         <span className="w-px h-4 bg-white/15" />
         <span className="font-mono text-[11px] tracking-[0.3em] text-white" data-testid="reentry-phase">
@@ -500,20 +493,20 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
         )}
       </div>
 
-      <div className="absolute top-20 right-4 md:right-8 flex gap-2 z-30">
-        <button onClick={() => setPaused((p) => !p)} className="hud-panel px-3 py-2 flex items-center gap-2 text-zinc-400 hover:text-white font-mono text-[10px] tracking-[0.3em]" data-testid="reentry-pause">
+      <div className="absolute top-20 short:top-14 right-4 md:right-8 safe-mr flex gap-2 z-30">
+        <button onClick={() => setPaused((p) => !p)} className="hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-white font-mono text-[10px] tracking-[0.3em]" data-testid="reentry-pause">
           {paused ? <Play size={12} /> : <Pause size={12} />} {paused ? "RESUME" : "PAUSE"}
         </button>
-        <button onClick={() => setShowAbort(true)} className="hud-panel px-3 py-2 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] font-mono text-[10px] tracking-[0.3em]" data-testid="reentry-abort">
+        <button onClick={() => setShowAbort(true)} className="hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] font-mono text-[10px] tracking-[0.3em]" data-testid="reentry-abort">
           <X size={12} /> ABORT
         </button>
       </div>
 
       {/* LEFT: primary telemetry */}
       {u && phase !== "SPLASHED" && (
-        <div className="absolute bottom-6 left-4 md:left-8 hud-panel corners px-5 py-4 w-[300px] z-30" data-testid="reentry-hud-left">
-          <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3">CM-1 · ENTRY · {difficulty}</div>
-          <div className="grid grid-cols-2 gap-3">
+        <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-3 short:py-2 w-[300px] short:w-[210px] z-30" data-testid="reentry-hud-left">
+          <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:hidden">CM-1 · ENTRY · {difficulty}</div>
+          <div className="grid grid-cols-2 gap-3 short:gap-x-2 short:gap-y-1">
             <Readout label="ALTITUDE" value={(u.alt / 1000).toFixed(1)} unit="km" testId="reentry-alt" />
             <Readout label="VELOCITY" value={Math.round(u.vel).toLocaleString("en-US")} unit="m/s" testId="reentry-vel" />
             <Readout
@@ -526,7 +519,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
           </div>
           {inEntry && (
             <>
-              <div className="mt-3">
+              <div className="mt-3 short:mt-1.5">
                 <div className="font-mono text-[9px] tracking-widest text-zinc-500 mb-1 flex justify-between">
                   <span>G-FORCE</span>
                   <span className={gDanger ? "text-[#FF3B00]" : gWarn ? "text-amber-400" : "text-white"} data-testid="reentry-g">
@@ -547,7 +540,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
             </>
           )}
           {phase === "PREP" && (
-            <div className="mt-3 space-y-1 font-mono text-[9px] tracking-widest" data-testid="reentry-checklist">
+            <div className="mt-3 short:mt-1.5 space-y-1 short:space-y-0.5 font-mono text-[9px] short:text-[8px] tracking-widest" data-testid="reentry-checklist">
               <div className="text-emerald-400">✓ CM/SM SEPARATION</div>
               <div className={u.attitudeReady ? "text-emerald-400" : "text-amber-400"}>{u.attitudeReady ? "✓" : "…"} ENTRY ATTITUDE · HEAT SHIELD FORWARD</div>
               <div className={inBand ? "text-emerald-400" : "text-amber-400"}>
@@ -564,8 +557,8 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
 
       {/* RIGHT: lift vector + controls */}
       {u && (phase === "PREP" || phase === "ENTRY") && (
-        <div className="absolute bottom-6 right-4 md:right-8 hud-panel corners px-5 py-4 z-30 w-[230px]" data-testid="reentry-hud-right">
-          <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-2">LIFT VECTOR</div>
+        <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-5 py-4 short:px-3 short:py-2 z-30 w-[230px] short:w-[200px]" data-testid="reentry-hud-right">
+          <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-2 short:hidden">LIFT VECTOR</div>
           <div className="flex items-center gap-3">
             <LiftDial bank={u.bank} cue={cfg.bankCue && inEntry ? u.cue : null} />
             <div className="font-mono text-[10px] tracking-widest text-zinc-400 space-y-1">
@@ -574,30 +567,40 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
               </div>
               <div>{Math.abs(u.bank) < 60 ? "LIFT UP" : Math.abs(u.bank) > 120 ? "LIFT DOWN" : "LIFT SIDE"}</div>
               {cfg.bankCue && inEntry && u.cue !== null && <div className="text-emerald-400">CUE {Math.round(u.cue)}°</div>}
-              {cfg.liftAssist && inEntry && <div className={assist ? "text-emerald-400" : "text-zinc-600"}>ASSIST {assist ? "ON" : "OFF"} (G)</div>}
+              {cfg.liftAssist && inEntry && (
+                <button
+                  type="button"
+                  onClick={() => setAssist((a) => !a)}
+                  aria-pressed={assist}
+                  data-testid="reentry-assist"
+                  className={`touch-ctrl -mx-2 px-2 py-3 border ${assist ? "text-emerald-400 border-emerald-400/40" : "text-zinc-500 border-white/15"}`}
+                >
+                  ASSIST {assist ? "ON" : "OFF"}<span className="touch:hidden"> (G)</span>
+                </button>
+              )}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 mt-3 place-items-center">
-            <button className="btn-hud !px-2 !py-2" {...holdProps("left")} data-testid="reentry-roll-left" aria-label="Roll left">
-              <ArrowLeft size={14} />
-            </button>
+          <div className="grid grid-cols-3 gap-2 mt-3 short:mt-1.5 place-items-center">
+            <HoldButton className={CTRL_BTN + " w-14 h-14 short:w-12 short:h-12"} onHold={hold("left")} data-testid="reentry-roll-left" aria-label="Roll left">
+              <ArrowLeft size={18} />
+            </HoldButton>
             {phase === "PREP" ? (
               <div className="flex flex-col gap-1">
-                <button className="btn-hud !px-2 !py-1" {...holdProps("up")} data-testid="reentry-trim-shallow" aria-label="Trim shallower">
-                  <ArrowUp size={12} />
-                </button>
-                <button className="btn-hud !px-2 !py-1" {...holdProps("down")} data-testid="reentry-trim-steep" aria-label="Trim steeper">
-                  <ArrowDown size={12} />
-                </button>
+                <HoldButton className={CTRL_BTN + " w-14 h-11 short:h-10"} onHold={hold("up")} data-testid="reentry-trim-shallow" aria-label="Trim shallower">
+                  <ArrowUp size={16} />
+                </HoldButton>
+                <HoldButton className={CTRL_BTN + " w-14 h-11 short:h-10"} onHold={hold("down")} data-testid="reentry-trim-steep" aria-label="Trim steeper">
+                  <ArrowDown size={16} />
+                </HoldButton>
               </div>
             ) : (
               <span className="font-mono text-[9px] text-zinc-600">ROLL</span>
             )}
-            <button className="btn-hud !px-2 !py-2" {...holdProps("right")} data-testid="reentry-roll-right" aria-label="Roll right">
-              <ArrowRight size={14} />
-            </button>
+            <HoldButton className={CTRL_BTN + " w-14 h-14 short:w-12 short:h-12"} onHold={hold("right")} data-testid="reentry-roll-right" aria-label="Roll right">
+              <ArrowRight size={18} />
+            </HoldButton>
           </div>
-          <div className="font-mono text-[9px] tracking-widest text-zinc-600 mt-3 leading-relaxed">
+          <div className="font-mono text-[9px] tracking-widest text-zinc-600 mt-3 leading-relaxed touch:hidden">
             {phase === "PREP" ? (
               <>
                 W/S · ↑/↓ TRIM ENTRY ANGLE
@@ -612,12 +615,15 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
               </>
             )}
           </div>
+          <div className="hidden touch:block font-mono text-[9px] short:text-[8px] tracking-widest text-zinc-600 mt-2 short:mt-1 leading-relaxed">
+            {phase === "PREP" ? "↑ SHALLOWER · ↓ STEEPER · ←/→ LIFT VECTOR" : "←/→ ROLL · LIFT UP = SHALLOWER"}
+          </div>
         </div>
       )}
 
       {/* Bottom centre: corridor + status */}
       {u && (phase === "PREP" || phase === "ENTRY") && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2">
+        <div className="absolute bottom-6 short:bottom-2 safe-mb left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 short:gap-1 short:max-w-[240px] text-center">
           <CorridorGauge fpa={phase === "PREP" ? u.prepFpa : u.ei.fpa} cfg={cfg} label={phase === "PREP" ? "PLANNED EI ANGLE" : "FLOWN EI ANGLE"} />
           {phase === "PREP" && (
             <>

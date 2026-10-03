@@ -14,8 +14,8 @@ import { plasmaLevel } from "@/data/reentryGuidance";
  * Capsule diameter = 1 unit (3.9 m).
  */
 
-const EARTH_MAP = "https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg";
-const CLOUD_MAP = "https://threejs.org/examples/textures/planets/earth_clouds_1024.png";
+const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
+const CLOUD_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_clouds_1024.png";
 
 const EARTH_RS = 400; // scene radius of the Earth sphere (altitude scaled 1:1 in angle)
 const LOW_SCALE = 25; // metres per scene unit in the low-altitude world
