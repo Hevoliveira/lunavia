@@ -18,6 +18,19 @@
     --sar: env(safe-area-inset-right, 0px);
     --sab: env(safe-area-inset-bottom, 0px);
     --sal: env(safe-area-inset-left, 0px);
+    /* Top offset for in-flight HUD on phones: clears the compact navbar. */
+    --hud-top: 3.5rem;
+}
+
+/*
+ * Mission mode on landscape phones: during active flight the website
+ * navigation is hidden so the spacecraft, surface and HUD own the screen.
+ * Pause and abort stay in each phase's HUD; the full navbar returns in the
+ * control room, menus, results and mission complete.
+ */
+@media (max-height: 520px) {
+    html[data-flight="1"] [data-testid="global-nav"] { display: none; }
+    html[data-flight="1"] { --hud-top: 0.5rem; }
 }
 
 html, body, #root {

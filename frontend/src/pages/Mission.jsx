@@ -51,6 +51,19 @@ const STATE_LABELS = {
   complete: { code: "T+195:15:00", name: "SPLASHDOWN · MISSION COMPLETE" },
 };
 
+const FLIGHT_STATES = new Set([
+  STATES.ASCENT,
+  STATES.SEP_PROMPT,
+  STATES.SEP_DONE,
+  STATES.SPACE,
+  STATES.ORBIT,
+  STATES.MANUAL_DESCENT,
+  STATES.DESCENT,
+  STATES.SURFACE,
+  STATES.RETURN,
+  STATES.REENTRY,
+]);
+
 export default function Mission() {
   const [state, setState] = useState(STATES.CONTROL);
   const [progress, setProgress] = useState(0);
@@ -245,6 +258,15 @@ export default function Mission() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  // Active flight (not menus, results or the control room): lets phones hide
+  // the website navbar so the flight view and HUD get the full screen.
+  useEffect(() => {
+    document.documentElement.dataset.flight = FLIGHT_STATES.has(state) ? "1" : "";
+  }, [state]);
+  useEffect(() => () => {
+    delete document.documentElement.dataset.flight;
+  }, []);
+
   const label = STATE_LABELS[state] || { code: "", name: "" };
 
   return (
@@ -346,7 +368,7 @@ export default function Mission() {
       {state !== STATES.CONTROL && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
         <div
           data-testid="mission-hud-min"
-          className="absolute top-20 short:top-14 left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
+          className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
         >
           <span className="font-mono text-[10px] tracking-[0.35em] text-zinc-500">
             {label.code}
@@ -484,7 +506,7 @@ export default function Mission() {
           <button
             onClick={() => setShowAbort(true)}
             data-testid="btn-abort"
-            className="absolute top-20 short:top-14 right-4 md:right-8 safe-mr hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-30"
+            className="absolute top-20 short:top-[var(--hud-top)] right-4 md:right-8 safe-mr hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-30"
           >
             <RotateCcw size={12} /> ABORT
           </button>

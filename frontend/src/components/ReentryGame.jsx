@@ -477,7 +477,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
       <div hidden data-testid="reentry-telemetry" data-json={u ? JSON.stringify(u) : "{}"} />
 
       {/* Top banner */}
-      <div className="absolute top-20 short:top-14 left-1/2 -translate-x-1/2 short:left-4 short:translate-x-0 safe-ml hud-panel px-5 py-2 short:px-3 flex items-center gap-4 short:gap-3 whitespace-nowrap z-30">
+      <div className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 short:left-4 short:translate-x-0 safe-ml hud-panel px-5 py-2 short:px-3 flex items-center gap-4 short:gap-3 whitespace-nowrap z-30">
         <span className="font-mono text-[10px] tracking-[0.35em] text-zinc-500 tabular">{clock}</span>
         <span className="w-px h-4 bg-white/15" />
         <span className="font-mono text-[11px] tracking-[0.3em] text-white" data-testid="reentry-phase">
@@ -493,7 +493,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
         )}
       </div>
 
-      <div className="absolute top-20 short:top-14 right-4 md:right-8 safe-mr flex gap-2 z-30">
+      <div className="absolute top-20 short:top-[var(--hud-top)] right-4 md:right-8 safe-mr flex gap-2 z-30">
         <button onClick={() => setPaused((p) => !p)} className="hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-white font-mono text-[10px] tracking-[0.3em]" data-testid="reentry-pause">
           {paused ? <Play size={12} /> : <Pause size={12} />} {paused ? "RESUME" : "PAUSE"}
         </button>

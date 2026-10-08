@@ -841,3 +841,25 @@ mission-progression code was touched.
 
 Developer notes: `docs/IOS_APP.md`. Non-programmer install guide:
 `INSTALL_ON_IPHONE.md`.
+
+## 20. iPhone gameplay UX + Visual Fidelity III
+
+Driven by the first physical-iPhone test. Presentation and input only: lunar gravity,
+thrust, fuel use, landing scoring and hazards, entry physics, heating, G-load,
+parachutes, progression and difficulty are unchanged.
+
+- **Lunar descent on phones**: split controls on the lower edges (throttle left thumb,
+  tilt + RCS right thumb), slim telemetry, a measured gameplay visibility area, and an
+  adaptive camera that keeps the lander, predicted touchdown and LZ inside it
+  (`DescentGame.jsx`, `lib/cameraFraming.js`). Landing markers now use the same
+  physics-to-scene mapping as the lander (`WORLD_X`).
+- **Mission mode**: the website navbar is hidden during active flight on landscape phones
+  (`html[data-flight]`, `--hud-top`).
+- **LV-001 Fidelity III** (`RocketModel.jsx`), **launch complex** (`scenes/LaunchComplex.jsx`),
+  sky environment map, pad shadows, anisotropic filtering.
+- **Staging cinematography** (`scenes/AscentScene.jsx`): beats framed by solving for the
+  hardware that must be visible.
+- **Xcode**: `prefersHomeIndicatorAutoHidden` must not be overridden (Capacitor 8 declares
+  it `public`); the Home Indicator is hidden via `plugins.SystemBars.hidden`.
+
+Details, measurements and validation: `docs/IOS_APP.md`.

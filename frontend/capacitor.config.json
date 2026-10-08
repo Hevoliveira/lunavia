@@ -9,5 +9,11 @@
     "allowsLinkPreview": false,
     "preferredContentMode": "mobile",
     "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "hidden": true,
+      "style": "DARK"
+    }
   }
 }

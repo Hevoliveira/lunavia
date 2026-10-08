@@ -22,8 +22,9 @@ frontend/
   ios/App/App.xcodeproj      Xcode project (open this)
   ios/App/App/
     SceneDelegate.swift      + LunaviaViewController (fullscreen, landscape, no status
-                             bar, Home Indicator auto-hide, deferred edge swipes,
-                             screen kept awake, no web-view bounce)
+                             bar, deferred edge swipes, screen kept awake, no web-view
+                             bounce). The Home Indicator auto-hides through Capacitor's
+                             SystemBars plugin (capacitor.config.json → plugins).
     Info.plist               display name, landscape-only, status bar hidden,
                              arm64/metal, ITSAppUsesNonExemptEncryption=false
     Assets.xcassets          AppIcon (1024² RGB) and Splash (2732² RGB)
@@ -36,6 +37,17 @@ The built game in `ios/App/App/public` and the generated `capacitor.config.json`
 `config.xml` are **committed on purpose**: the project then opens and installs from Xcode
 with no Node.js on the Mac. The only native dependency is `capacitor-swift-pm`, which
 Xcode fetches over Swift Package Manager.
+
+### Swift compatibility note
+
+Do **not** override `prefersHomeIndicatorAutoHidden` in `LunaviaViewController`.
+Capacitor 8 already defines it on `CAPBridgeViewController` as `public` (not `open`), in
+an extension inside its SystemBars plugin, so an override from the app module fails with
+*"Overriding non-open property outside of its defining module"*. The Home Indicator is
+hidden with `"plugins": { "SystemBars": { "hidden": true } }` in `capacitor.config.json`
+instead. The remaining overrides (`prefersStatusBarHidden`, `supportedInterfaceOrientations`,
+`capacitorDidLoad`, `viewDidAppear`) are `open` in Capacitor, and
+`preferredScreenEdgesDeferringSystemGestures` is only defined by UIKit.
 
 ## Scripts (run in `frontend/`)
 
@@ -87,6 +99,27 @@ All changes are presentation / input only; desktop renders the same.
 - **No accidental gestures.** `user-scalable=no`, `touch-action` on the mission surface
   and controls, `overscroll-behavior: none`, no text selection or long-press callouts
   during play; natively, the web view does not bounce and edge swipes are deferred.
+- **Mission mode (phones).** During active flight (`html[data-flight="1"]`, set by
+  `Mission.jsx`) the website navbar is hidden on landscape phones and the HUD moves up
+  (`--hud-top`). Pause and abort stay in every phase's HUD; the navbar returns in the
+  control room, menus, results and mission complete. Mission toasts go bottom-left and
+  narrow on phones.
+- **Lunar descent HUD (phones).** `CompactDescentHud` in `DescentGame.jsx` replaces the
+  single FLIGHT CONTROLS panel: throttle (left thumb) under a slim telemetry column on the
+  lower-left edge; tilt and RCS (right thumb) under the LZ / projected-touchdown readout on
+  the lower-right edge; profile, camera and pause/abort in a slim top band. Elements that
+  obstruct the view are tagged `data-hud-block` and the game measures the **gameplay
+  visibility area** they leave open.
+- **Adaptive descent camera.** EXTERNAL and NAV frame the lander, the predicted touchdown
+  point and — when distance allows — the primary LZ inside that visibility area
+  (`lib/cameraFraming.js` solves the camera distance exactly; a view offset moves the image
+  centre into the area; motion is exponentially smoothed). When the LZ is too far to frame
+  without shrinking the lander, an edge chevron shows its direction and distance. COCKPIT
+  is unchanged. Desktop keeps its HUD; its panels are tagged too, so the camera avoids them.
+- **Landing markers drawn at the right place.** Zone and hazard markers used physics
+  metres directly while the lander uses metres × 0.5, so every marker except the primary LZ
+  was drawn twice as far from the LZ as the ground it is graded against. They now share the
+  lander's mapping (`WORLD_X`). Physics, hazards and scoring are unchanged.
 - **Bug fixes found on phones.** The control-room telemetry strip covered the LAUNCH
   button and swallowed taps; the PDI briefing's BEGIN PDI button and the difficulty
   screen's skip link were below the fold with no way to scroll.
@@ -114,51 +147,85 @@ audio plays with the silent switch on.
 | `public/_dbg/*.txt` debug dumps | nothing | SAFE TO REMOVE | Excluded from the iOS bundle by `yarn ios:sync`; still in the web `public/`. |
 | REQUIRED | — | — | **None.** The full mission runs offline. Speech uses on-device voices. |
 
+## Visual Fidelity III (launch vehicle, pad, staging)
+
+- **LV-001** (`RocketModel.jsx`), batched by material so draw calls stay flat: engine bells
+  with cooling-tube relief, manifold band and heat-tinted extension; stiffener bands;
+  turbine-exhaust manifolds; gimbal actuators; thrust ring and outriggers; quilted base heat
+  shield with flexible boots; booster raceway with clamp straps, umbilical plates, seam
+  relief with rivet rows, weathering streaks and aft soot; interstage separation joint,
+  vents and hatches; upper-stage turbopumps, gas generator, ducts and thrust-cone struts;
+  adapter separation-bolt ring; escape tower with tapered legs, ring frames and X-bracing.
+- **Material response.** A procedural sky environment map (PMREM, no downloaded HDR) gives
+  metals and paint real reflections; its strength fades from the pad to near-space.
+- **Launch complex** (`scenes/LaunchComplex.jsx`, about a dozen draw calls): mobile
+  launcher deck over a flame hole and trench, hold-down arms, tail service masts, deluge
+  ring, umbilical tower with braced bays, grated floors, handrails, elevator shaft and
+  hammerhead crane, five swing arms with sagging umbilical hoses, crew access arm and white
+  room, concrete hardstand, crawlerway, propellant spheres on braced legs with pipe runs,
+  water tower, lightning masts with catenary wires, flood lights, buildings and vehicles for
+  scale. The sun casts shadows on the pad; the shadow map stops updating once the pad is
+  out of view.
+- **Cinematography** (`AscentScene.jsx`): every beat names the hardware it must show and the
+  camera distance is solved so it fits inside the screen area the HUD leaves free — PAD,
+  CLIMB, MECO (engine section, engines off, composed left of the crew-action prompt),
+  IMPULSE (separation plane, active stage whole), STAGES and RECEDE (both stages whole on a
+  gentle diagonal with Earth's limb below), ACTIVE (burning upper stage). Stage 1 now falls
+  back more gently (it was exaggerated), and upper-stage ignition waits until the gap is
+  readable. No shake, no cuts.
+
+## Resolution and texture findings
+
+Measured at iPhone 16 Pro landscape on the tightest framing (MECO close-up):
+
+| Factor | Finding | Action |
+|---|---|---|
+| Texture resolution | Booster tank spans 296 × 115 device px; the 512 × 1024 skin already gives 3.5 texels/px vertically and 2.2 across | Kept 512 × 1024 (a 1024 × 2048 test added no visible detail and ~22 MB) |
+| Texture filtering | All rocket textures had anisotropy 1; cylinders always present grazing angles, so seams and bands smeared | Anisotropy 8 on rocket, pad and Earth textures |
+| Lighting / materials | No environment lighting: metals rendered flat and dull | Procedural sky environment map |
+| Geometry | Engines, tower and pad were simple primitives | Fidelity III geometry above |
+| Device pixel ratio | Cap 2 on a 3× display renders 1.34 MP instead of 3.0 MP (2.25× fragment work at 3×, plus 4× MSAA) | Cap kept at 2: raising it needs a measurement on a real iPhone |
+| Anti-aliasing | MSAA 4× active (`samples: 4`) | Unchanged |
+
 ## Performance
 
-Measured on the production build at iPhone 16 Pro landscape (852×393 CSS px, 3× screen),
-Chromium with SwiftShader (a CPU renderer, so frame rates are **not** representative of an
-iPhone GPU; the workload numbers are):
+Steady-state workload per frame, production builds, iPhone 16 Pro landscape (852 × 393 CSS
+px, render 1704 × 786). Measured in Chromium with SwiftShader, a CPU renderer: draw calls
+and triangles are exact, frame rates are **not** representative of an iPhone GPU.
 
-| Scene | Draw calls / frame | Render size | JS heap |
-|---|---|---|---|
-| Landing hero | 19 | 1704×875 | 11 MB |
-| Ascent / staging prompt | 22 | 1704×786 | 14 MB |
-| Stage separation | 34 | 1704×786 | 14 MB |
-| Cislunar / lunar orbit | 17 | 1704×786 | 16 MB |
-| Lunar descent (game) | 26 | 1704×786 | 17 MB |
-| Reentry prep / plasma | 20 | 1704×786 | 19–23 MB |
+| Scene | Draw calls before → after | Triangles before → after |
+|---|---|---|
+| Landing hero | 19 → 19 | 78k → 78k |
+| Launch pad / liftoff | 84 → 104 | 30k → 85k (includes the pad shadow pass) |
+| MECO (staging prompt) | 22 → 25 | 13k → 42k |
+| Stage separation | 34 → 33 | 24k → 33k |
+| Cislunar / lunar orbit | 18 → 17 | 27k → 19k |
+| Lunar descent (game) | 26 → 27 | 0.9k → 9k (distant Earth now in frame) |
+| Reentry | 20 → 20 | unchanged |
 
-- Device pixel ratio: every `<Canvas>` already caps at 2 (`dpr={[1, 2]}`), so a 3× iPhone
-  renders 2× — about 1.3 MP.
-- Textures: the largest are the 2048×1024 Earth colour / normal / specular maps
-  (≈ 11 MB of GPU memory each with mipmaps); clouds and Moon are 1024×512.
-- Particles: fixed counts (star fields 3,500–8,000 points in one draw call each; ascent
-  smoke 108 sprites); nothing accumulates over time.
-- Shaders compile once per scene mount (each scene has its own WebGL context).
+- JS heap stays at 10–27 MB across the mission.
+- The pad shadow pass and the new geometry roughly halve the CPU rasteriser's frame rate
+  on the pad shot (1.9 → 0.9 fps there; GPU cost on a phone is far lower). If device
+  testing shows frame drops on the pad, the first knobs are the shadow map size
+  (`PadShadows`, 1536²) and `dpr={[1, 1.5]}` for that scene.
+- Device pixel ratio: every `<Canvas>` caps at 2. Particles are fixed-count.
 
-Nothing in these numbers calls for a mobile-specific quality cut, so none was applied.
-Watch for thermal throttling on long sessions on older iPhones; the first knob would be
-`dpr={[1, 1.5]}` on phones.
-
-## Validation (this change)
+## Validation
 
 Done in Linux with Chromium emulating iPhones: touch only (multi-touch via the DevTools
-protocol, no keyboard), simulated safe areas, production build, **internet blocked**.
+protocol, no keyboard), simulated safe areas, production builds, **internet blocked**.
 
 | Check | Result |
 |---|---|
-| Web production build (`yarn build`) | passes |
+| Web production build (`yarn build`) | passes (only pre-existing warnings) |
 | Unit tests (`yarn test`) | 19 / 19 pass |
-| `npx cap sync ios` | passes; 3.7 MB web bundle, no source maps, no `_dbg` |
-| Xcode project integrity | `project.pbxproj` parses; all referenced files exist; one target `App`, bundle id `com.lunavia.app.dev`, iPhone only, iOS 15; Info.plist and storyboard are valid XML; Swift overrides checked against Capacitor's `CAPBridgeViewController` API |
-| Full mission by touch, iPhone 16 Pro (852×393, notch insets 59/59/21) | launch → staging → manual lunar landing (two simultaneous touches) → reentry → parachutes → splashdown → mission complete; no control in an unsafe area, no overlaps |
-| Same, iPhone 16 Pro Max (932×430) | complete, no layout issues |
-| Same, iPhone SE (667×375) | complete, no layout issues |
-| Desktop 1440×900 regression (keyboard) | full mission, skip-out / overheat / nominal reentry cases and failure paths pass; reentry figures identical to before (peak 174 W/cm², 7.23 g, splash 8.5 m/s) |
-| Offline assets | Earth and Moon textures and fonts load with the network blocked; the only failed request is the optional Unsplash backdrop |
+| `yarn ios:sync` / `cap sync ios` | passes; no source maps, no `_dbg`, development hooks compiled out |
+| Xcode project integrity | `project.pbxproj` parses; referenced files exist; Swift overrides checked against Capacitor's sources, including plugin extensions |
+| Lunar descent visibility (iPhone 16 Pro) | lander, predicted touchdown point and primary LZ on screen and uncovered by any HUD element in 164 / 164 samples from 400 m to touchdown; touch landing with two simultaneous touches |
+| Full mission by touch, iPhone 16 Pro / SE / Pro Max | launch → staging → manual lunar landing → reentry → parachutes → splashdown → mission complete; no control in an unsafe area, no overlaps, no clipping, all targets ≥ 44 pt |
+| Desktop 1440 × 900 regression (keyboard) | full mission and reentry failure / success cases pass; nominal entry at −6.51° → peak 176 W/cm², 7.39 g, splashdown 8.5 m/s (physics files untouched) |
 | Application console errors | 0 (only the blocked optional photo is logged) |
 
 **Not verified here:** there is no Mac, Xcode or iPhone in this environment, so the native
-build, code signing, installation, WKWebView rendering, real-GPU frame rate and thermals,
-and the audio unlock on a physical device have not been tested.
+build, signing, installation, WKWebView rendering, real-GPU frame rate and thermals, and
+audio on a physical device have not been tested.

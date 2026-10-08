@@ -1,8 +1,10 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Stars } from "@react-three/drei";
-import { useRef, useMemo, Suspense } from "react";
+import { useRef, useMemo, useEffect, Suspense } from "react";
 import * as THREE from "three";
-import RocketModel from "@/components/RocketModel";
+import RocketModel, { setRocketTextureAnisotropy } from "@/components/RocketModel";
+import LaunchComplex from "@/components/scenes/LaunchComplex";
+import { framePoints, centreViewOn } from "@/lib/cameraFraming";
 
 /**
  * AscentScene — cinematic launch, atmospheric climb and stage separation.
@@ -141,9 +143,14 @@ function makeEarthTexture() {
 
 // Curved Earth far below — the horizon bends as the vehicle climbs.
 // The fresnel limb shell fades in only once the camera leaves the pad.
-function EarthCurve({ progRef }) {
+function EarthCurve({ progRef, anisotropy = 1 }) {
   const shellRef = useRef();
   const earthTex = useMemo(() => makeEarthTexture(), []);
+  useEffect(() => {
+    earthTex.anisotropy = anisotropy;
+    earthTex.needsUpdate = true;
+  }, [earthTex, anisotropy]);
+  useEffect(() => () => earthTex.dispose(), [earthTex]);
   useFrame(() => {
     if (shellRef.current) {
       shellRef.current.uniforms.uFade.value = smooth(
@@ -189,123 +196,77 @@ function EarthCurve({ progRef }) {
   );
 }
 
-function LaunchComplex({ progRef }) {
-  const groundRef = useRef();
-  const rootRef = useRef();
+/*
+ * Image-based lighting from a procedural sky (no downloaded HDR): metals and
+ * paint get real reflections of sky, horizon and ground. Built once with
+ * PMREM; its strength fades from the pad to near-space.
+ */
+function SkyEnvironment({ progRef }) {
+  const { gl, scene } = useThree();
+  const envTex = useMemo(() => {
+    const envScene = new THREE.Scene();
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(10, 32, 16),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+        fragmentShader: `varying vec3 vP;
+          void main(){
+            vec3 d = normalize(vP);
+            vec3 zen = vec3(0.16,0.32,0.62), hor = vec3(0.78,0.84,0.9), gnd = vec3(0.22,0.2,0.17);
+            vec3 c = d.y > 0.0 ? mix(hor, zen, pow(d.y, 0.55)) : mix(hor * 0.7, gnd, pow(-d.y, 0.35));
+            float sun = pow(max(dot(d, normalize(vec3(10.0, 8.0, 8.0))), 0.0), 220.0);
+            gl_FragColor = vec4(c + vec3(6.0, 5.6, 5.0) * sun, 1.0);
+          }`,
+      })
+    );
+    envScene.add(sky);
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const rt = pmrem.fromScene(envScene, 0.02);
+    pmrem.dispose();
+    sky.geometry.dispose();
+    sky.material.dispose();
+    return rt;
+  }, [gl]);
+  useEffect(() => {
+    scene.environment = envTex.texture;
+    return () => {
+      scene.environment = null;
+      envTex.dispose();
+    };
+  }, [scene, envTex]);
   useFrame(() => {
-    if (rootRef.current) {
-      // Pad structures stay behind once the vehicle is high — cut them so they
-      // don't float over the planet limb
-      rootRef.current.visible = progRef.current < 0.3;
-    }
-    if (!groundRef.current) return;
-    // Flat pad terrain fades once the curved planet takes over
-    const p = progRef.current;
-    groundRef.current.material.opacity = 1 - smooth((p - 0.05) / 0.11);
+    scene.environmentIntensity = THREE.MathUtils.lerp(0.85, 0.22, smooth((progRef.current - 0.12) / 0.3));
   });
-  return (
-    <group ref={rootRef}>
-      {/* Flat terrain disc (near-field only) */}
-      <mesh ref={groundRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-        <circleGeometry args={[26, 40]} />
-        <meshStandardMaterial color="#24211b" roughness={1} transparent />
-      </mesh>
-      {/* Concrete apron */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-        <circleGeometry args={[6, 32]} />
-        <meshStandardMaterial color="#383631" roughness={0.95} />
-      </mesh>
-      {/* Pad mount */}
-      <mesh position={[0, 0.08, 0]}>
-        <cylinderGeometry args={[0.9, 1.1, 0.16, 8]} />
-        <meshStandardMaterial color="#2a2a2c" metalness={0.6} roughness={0.5} />
-      </mesh>
-      {/* Flame trench exits */}
-      {[1, -1].map((s) => (
-        <mesh key={s} position={[s * 1.05, 0.03, 0]}>
-          <boxGeometry args={[0.8, 0.06, 1.0]} />
-          <meshStandardMaterial color="#0c0c0d" roughness={1} />
-        </mesh>
-      ))}
+  return null;
+}
 
-      {/* Service tower — lattice column + umbilical arms + crane */}
-      <group position={[1.35, 0, 0]}>
-        {[0.25, -0.25].map((dz) =>
-          [0.25, -0.25].map((dx) => (
-            <mesh key={`${dx}${dz}`} position={[dx, 1.7, dz]}>
-              <boxGeometry args={[0.07, 3.4, 0.07]} />
-              <meshStandardMaterial color="#9aa0a6" metalness={0.6} roughness={0.4} />
-            </mesh>
-          ))
-        )}
-        {[0.55, 1.1, 1.65, 2.2, 2.75, 3.3].map((y) => (
-          <mesh key={y} position={[0, y, 0]}>
-            <boxGeometry args={[0.58, 0.05, 0.58]} />
-            <meshStandardMaterial color="#8a9096" metalness={0.6} roughness={0.4} />
-          </mesh>
-        ))}
-        {/* Umbilical arms reaching the vehicle */}
-        {[0.9, 1.7, 2.5].map((y) => (
-          <mesh key={y} position={[-0.55, y, 0]}>
-            <boxGeometry args={[1.0, 0.06, 0.08]} />
-            <meshStandardMaterial color="#7c8288" metalness={0.65} roughness={0.4} />
-          </mesh>
-        ))}
-        {/* Crane with LUNAVIA orange tip */}
-        <mesh position={[-0.5, 3.55, 0]}>
-          <boxGeometry args={[1.4, 0.06, 0.06]} />
-          <meshStandardMaterial color="#9aa0a6" metalness={0.6} roughness={0.4} />
-        </mesh>
-        <mesh position={[-1.15, 3.55, 0]}>
-          <boxGeometry args={[0.12, 0.09, 0.09]} />
-          <meshStandardMaterial color="#FF3B00" metalness={0.4} roughness={0.5} />
-        </mesh>
-      </group>
-
-      {/* Lightning masts */}
-      {[
-        [-2.5, -1.5],
-        [2.5, -2.0],
-        [-1.5, 2.5],
-      ].map(([x, z], i) => (
-        <group key={i} position={[x, 0, z]}>
-          <mesh position={[0, 2, 0]}>
-            <cylinderGeometry args={[0.025, 0.04, 4, 8]} />
-            <meshStandardMaterial color="#6a7076" metalness={0.7} roughness={0.4} />
-          </mesh>
-          <mesh position={[0, 4.05, 0]}>
-            <sphereGeometry args={[0.07, 8, 8]} />
-            <meshStandardMaterial color="#c8ccd0" metalness={0.8} roughness={0.3} />
-          </mesh>
-        </group>
-      ))}
-
-      {/* Water tower + propellant spheres */}
-      <group position={[-4.2, 0, -3.6]}>
-        {[0.35, -0.35].map((dz) =>
-          [0.35, -0.35].map((dx) => (
-            <mesh key={`${dx}${dz}`} position={[dx, 0.7, dz]}>
-              <boxGeometry args={[0.07, 1.4, 0.07]} />
-              <meshStandardMaterial color="#7c8288" metalness={0.6} roughness={0.45} />
-            </mesh>
-          ))
-        )}
-        <mesh position={[0, 1.75, 0]}>
-          <sphereGeometry args={[0.75, 20, 16]} />
-          <meshStandardMaterial color="#aeb4ba" metalness={0.55} roughness={0.45} />
-        </mesh>
-      </group>
-      {[
-        [3.6, -3.2, 0.55],
-        [4.5, -2.2, 0.45],
-      ].map(([x, z, r], i) => (
-        <mesh key={i} position={[x, r * 0.7, z]}>
-          <sphereGeometry args={[r, 20, 16]} />
-          <meshStandardMaterial color="#c3c8cd" metalness={0.6} roughness={0.4} />
-        </mesh>
-      ))}
-    </group>
-  );
+// Shadow casting for the vehicle on the pad; the shadow map stops updating
+// once the pad is out of view so it costs nothing in flight.
+function PadShadows({ progRef, lightRef }) {
+  const { gl } = useThree();
+  useEffect(() => {
+    const l = lightRef.current;
+    if (!l) return;
+    l.castShadow = true;
+    l.shadow.mapSize.set(1536, 1536);
+    const c = l.shadow.camera;
+    c.left = -3.2;
+    c.right = 3.2;
+    c.top = 5.2;
+    c.bottom = -2.2;
+    c.near = 1;
+    c.far = 30;
+    c.updateProjectionMatrix();
+    l.shadow.bias = -0.0004;
+    l.shadow.normalBias = 0.02;
+    l.target.position.set(0.6, 1.4, 0);
+    l.target.updateMatrixWorld();
+  }, [lightRef]);
+  useFrame(() => {
+    gl.shadowMap.autoUpdate = progRef.current < 0.3;
+  });
+  return null;
 }
 
 /* --- Pad smoke: one instanced draw call, billboarded in the shader ------- */
@@ -334,6 +295,7 @@ function makePuffTexture() {
 const SMOKE_COUNT = 108;
 
 function PadSmoke({ progRef }) {
+  const smokeRef = useRef();
   const { geo, mat } = useMemo(() => {
     const rand = mulberry(7);
     const spawn = new Float32Array(SMOKE_COUNT * 3);
@@ -430,9 +392,14 @@ function PadSmoke({ progRef }) {
     // Keep smoke evolving even when progress is frozen (MECO coast hold)
     smokeT.current = Math.max(progRef.current / ASCENT_RATE, smokeT.current + delta);
     mat.uniforms.uTime.value = smokeT.current;
+    // Pad smoke stays at the pad: fade it out with the pad structures so the
+    // downward-looking staging shots never show it hanging in space.
+    const fade = 1 - smooth((progRef.current - 0.26) / 0.06);
+    mat.uniforms.uOpacity.value = 0.8 * fade;
+    if (smokeRef.current) smokeRef.current.visible = fade > 0.01;
   });
 
-  return <instancedMesh args={[geo, mat, SMOKE_COUNT]} frustumCulled={false} renderOrder={5} />;
+  return <instancedMesh ref={smokeRef} args={[geo, mat, SMOKE_COUNT]} frustumCulled={false} renderOrder={5} />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -583,8 +550,13 @@ function CloudLayer({ progRef }) {
   );
 }
 
-function AscentRocket({ progRef, separated, thrustEff, sepRef, altRef }) {
+function AscentRocket({ progRef, separated, thrustEff, sepRef, altRef, rigRef }) {
   const groupRef = useRef();
+  useEffect(() => {
+    groupRef.current?.traverse((o) => {
+      if (o.isMesh && o.material && o.material.isMeshStandardMaterial) o.castShadow = true;
+    });
+  }, []);
   useFrame(() => {
     if (!groupRef.current) return;
     const p = progRef.current;
@@ -595,78 +567,146 @@ function AscentRocket({ progRef, separated, thrustEff, sepRef, altRef }) {
   });
   return (
     <group ref={groupRef}>
-      <RocketModel separated={separated} thrust={thrustEff} sepRef={sepRef} scale={0.6} />
+      <RocketModel separated={separated} thrust={thrustEff} sepRef={sepRef} scale={0.6} rigRef={rigRef} />
     </group>
   );
 }
 
-const _dp = new THREE.Vector3();
-const _dl = new THREE.Vector3();
+/*
+ * Cinematography. Every beat names the hardware it must show (points in the
+ * vehicle's own frame, read through the rocket rig so tumbling and recession
+ * are tracked exactly) and a viewing direction. The camera distance is solved
+ * so those points fit inside the screen area the HUD leaves free, and the
+ * image centre is moved into that area. Beats blend with exponential
+ * smoothing: no cuts, no shake.
+ *
+ *   PAD       low documentary angle, full stack + umbilical tower
+ *   CLIMB     tracking the stack and the near plume, slowly rising
+ *   MECO      engineering view of the engine section, engines off
+ *             (left third: the crew-action prompt owns the centre)
+ *   IMPULSE   the separation plane as the joint opens and retros fire
+ *   STAGES    both stages whole, gap opening, Earth below for scale
+ *   RECEDE    spent stage tumbling away while the upper stage lights
+ *   ACTIVE    the burning upper stage carries the frame
+ */
+const HUD_TOP = 0.14; // top band used by the mission HUD on every screen size
+const FULL = { x0: 0.03, x1: 0.97, y0: HUD_TOP, y1: 0.98 };
+const PROMPT_SIDE = { x0: 0.03, x1: 0.36, y0: HUD_TOP, y1: 0.98 };
+const dirOf = (x, y, z) => new THREE.Vector3(x, y, z).normalize();
+const DIRS = {
+  pad: dirOf(0.42, -0.2, 0.88),
+  climb0: dirOf(0.5, -0.12, 0.86),
+  climb1: dirOf(0.62, 0.05, 0.78),
+  meco: dirOf(0.62, -0.42, 0.66),
+  impulse: dirOf(0.8, -0.16, 0.58),
+  stages: dirOf(0.74, 0.36, 0.57),
+  recede: dirOf(0.66, 0.44, 0.61),
+  active: dirOf(0.62, 0.3, 0.72),
+};
+// Hardware stations in model units (RocketModel, before the 0.6 scale)
+const S1 = { bells: -0.38, aft: 0.05, lowTank: 1.4, top: 2.88 };
+const S2 = { bell: 2.12, low: 3.3, tip: 5.76, plume: 1.0 };
 
-function AscentCamera({ progRef, sepRef, separated }) {
-  const { camera } = useThree();
-  const pos = useRef(new THREE.Vector3(2.3, 0.6, 3.1));
-  const look = useRef(new THREE.Vector3(0, 1.7, 0));
-  const snap = useRef(true);
+const _v = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _rot = new THREE.Quaternion();
+const _goalPos = new THREE.Vector3();
+const _goalLook = new THREE.Vector3();
+const _sol = { center: new THREE.Vector3(), dist: 0 };
+
+function AscentCamera({ progRef, sepRef, separated, rigRef }) {
+  const { camera, size } = useThree();
+  const pos = useRef(null);
+  const look = useRef(new THREE.Vector3());
+  const rect = useRef({ ...FULL });
+  const rollRef = useRef(0);
+  const pool = useMemo(() => Array.from({ length: 8 }, () => ({ pos: new THREE.Vector3(), rad: 0 })), []);
 
   useFrame((state, delta) => {
+    const rig = rigRef.current;
+    if (!rig || !rig.root || !rig.stage1) return;
     const p = progRef.current;
-    const alt = altitudeFor(p) + 0.16;
     const t = state.clock.elapsedTime;
-
+    rig.root.updateWorldMatrix(true, true);
+    let n = 0;
+    const pt = (obj, y, rad) => {
+      const q = pool[n++];
+      q.pos.copy(obj.localToWorld(_v.set(0, y, 0)));
+      q.rad = rad;
+      return q;
+    };
+    const tower = (y) => {
+      const q = pool[n++];
+      q.pos.set(1.55, y, 0);
+      q.rad = 0.35;
+      return q;
+    };
+    let pts;
+    let roll = 0;
+    let goalRect = FULL;
+    const maxDist = 40;
     if (separated) {
       const s = sepRef.current;
-      // Stage 1 offset in world units (mirrors RocketModel: (0.85e, -3.1e) x 0.6 scale)
-      const e = 1 - Math.pow(1 - s, 3);
-      const s1y = alt + 0.89 - e * 1.86;
-      const s1x = e * 0.51;
-      const s2y = alt + 2.12;
-      if (s < 0.12) {
-        // Close engineering view on the separation plane as the joint opens
-        _dp.set(0.7, alt + 1.35, 2.5);
-        _dl.set(0.1, alt + 1.5, 0);
-      } else if (s < 0.62) {
-        // Two-stage composition: frame the midpoint, widen as the gap grows
-        const u = smooth((s - 0.12) / 0.5);
-        const my = (s1y + s2y) / 2;
-        const mx = s1x / 2;
-        _dp.set(mx + 1.2 + u * 0.8, my + 0.9, 3.4 + u * 2.6);
-        _dl.set(mx, my, 0);
+      if (s < 0.14) {
+        _dir.copy(DIRS.impulse);
+        pts = [pt(rig.stage1, S1.lowTank + 0.4, 0.3), pt(rig.stage1, S1.top, 0.3), pt(rig.root, S2.bell, 0.25), pt(rig.root, S2.tip, 0.18)];
+        roll = 0.12 * smooth(s / 0.14);
+      } else if (s < 0.45) {
+        _dir.copy(DIRS.impulse).lerp(DIRS.stages, smooth((s - 0.14) / 0.2)).normalize();
+        pts = [pt(rig.stage1, S1.bells, 0.32), pt(rig.stage1, S1.top, 0.32), pt(rig.root, S2.bell, 0.24), pt(rig.root, S2.tip, 0.18)];
+        roll = lerp(0.12, 0.4, smooth((s - 0.14) / 0.25));
+      } else if (s < 0.72) {
+        _dir.copy(DIRS.stages).lerp(DIRS.recede, smooth((s - 0.45) / 0.27)).normalize();
+        pts = [pt(rig.stage1, S1.bells, 0.32), pt(rig.stage1, S1.top, 0.32), pt(rig.root, S2.plume, 0.3), pt(rig.root, S2.tip, 0.18)];
+        roll = 0.4;
       } else {
-        // Favor the active upper stage; spent stage recedes below
-        const u = smooth((s - 0.62) / 0.38);
-        _dp.set(lerp(2.2, 2.6, u), s2y + lerp(1.0, 1.5, u), lerp(6.0, 5.2, u));
-        _dl.set(0, lerp((s1y + s2y) / 2, s2y - 0.2, u), 0);
+        _dir.copy(DIRS.recede).lerp(DIRS.active, smooth((s - 0.72) / 0.28)).normalize();
+        pts = [pt(rig.root, S2.plume, 0.35), pt(rig.root, S2.bell, 0.25), pt(rig.root, S2.tip, 0.18)];
+        roll = lerp(0.4, 0.22, smooth((s - 0.72) / 0.28));
       }
+    } else if (p >= 0.35) {
+      // MECO: slow arc round the engine section, prompt-safe composition
+      _dir.copy(DIRS.meco).applyQuaternion(_rot.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, Math.sin(t * 0.12) * 0.5));
+      pts = [pt(rig.stage1, S1.bells, 0.3), pt(rig.stage1, S1.aft, 0.33), pt(rig.stage1, S1.lowTank, 0.3)];
+      goalRect = PROMPT_SIDE;
     } else if (p < 0.03) {
-      // Documentary low pad shot: camera near the apron so the tower sets the scale
-      _dp.set(1.9 + Math.sin(t * 0.4) * 0.04, 0.32, 3.3 + Math.cos(t * 0.33) * 0.04);
-      _dl.set(0.2, 1.9, 0);
-    } else if (p < 0.35) {
-      // Track the climb, slowly dollying back
-      const u = smooth((p - 0.03) / 0.32);
-      _dp.set(lerp(2.2, 5.6, u), Math.max(0.45, alt * 0.8 + 0.5), lerp(3.4, 6.0, u));
-      _dl.set(0, alt + 1.3, 0);
+      _dir.copy(DIRS.pad);
+      pts = [pt(rig.root, -0.3, 0.3), pt(rig.root, S2.tip, 0.15), tower(4.75), tower(0.2)];
     } else {
-      // MECO: engineering view of the engine section and interstage, slow arc.
-      // The frame is offset so the vehicle sits left of the crew-action prompt.
-      // Camera below the engine plane looks up into the bells.
-      const a = 0.9 + t * 0.05;
-      _dp.set(Math.sin(a) * 2.7, alt - 0.75, Math.cos(a) * 2.7);
-      _dl.set(Math.cos(a) * 1.0, alt + 0.2, -Math.sin(a) * 1.0);
+      const u = smooth((p - 0.03) / 0.32);
+      _dir.copy(DIRS.climb0).lerp(DIRS.climb1, u).normalize();
+      pts = [pt(rig.root, S1.bells - 1.4 * (1 - u * 0.6), 0.3), pt(rig.root, S2.tip, 0.15)];
     }
 
-    if (snap.current) {
-      pos.current.copy(_dp);
-      look.current.copy(_dl);
-      snap.current = false;
+    // Blend the screen rectangle too (prompt appears / disappears)
+    const r = rect.current;
+    const kr = 1 - Math.exp(-delta * 3);
+    r.x0 += (goalRect.x0 - r.x0) * kr;
+    r.x1 += (goalRect.x1 - r.x1) * kr;
+    r.y0 += (goalRect.y0 - r.y0) * kr;
+    r.y1 += (goalRect.y1 - r.y1) * kr;
+
+    // Smoothed roll (documentary diagonal for the separation beats; level otherwise)
+    rollRef.current += (roll - rollRef.current) * (1 - Math.exp(-delta * 2.5));
+    framePoints(pts, _dir, camera.fov, size.width / size.height, r, 0.88, _sol, rollRef.current);
+    const dist = THREE.MathUtils.clamp(_sol.dist, 1.6, maxDist);
+    _goalPos.copy(_dir).multiplyScalar(dist).add(_sol.center);
+    _goalLook.copy(_sol.center);
+    // Keep the camera above the pad surface
+    _goalPos.y = Math.max(_goalPos.y, 0.25);
+
+    if (!pos.current) {
+      pos.current = _goalPos.clone();
+      look.current.copy(_goalLook);
     } else {
-      const k = Math.min(1, delta * (separated ? 2.2 : 1.6));
-      pos.current.lerp(_dp, k);
-      look.current.lerp(_dl, k);
+      const k = 1 - Math.exp(-delta * (separated ? 3.6 : 2.4));
+      pos.current.lerp(_goalPos, k);
+      look.current.lerp(_goalLook, k);
     }
     camera.position.copy(pos.current);
     camera.lookAt(look.current);
+    if (rollRef.current) camera.rotateZ(rollRef.current); // same sense as the framing basis
+    centreViewOn(camera, size.width, size.height, r);
   });
   return null;
 }
@@ -687,6 +727,16 @@ function Scene({ progress, separated, thrust }) {
   progRef.current = progress;
   const sepRef = useRef(0);
   const altRef = useRef(0.16);
+  const rigRef = useRef(null);
+  const sunRef = useRef();
+  const { gl } = useThree();
+  const anisotropy = useMemo(() => Math.min(8, gl.capabilities.getMaxAnisotropy()), [gl]);
+  useEffect(() => setRocketTextureAnisotropy(anisotropy), [anisotropy]);
+  const three = useThree();
+  useEffect(() => {
+    // Development-only handle for render measurements (stripped from production builds).
+    if (process.env.NODE_ENV !== "production") window.__lvAscent = { gl: three.gl, scene: three.scene, camera: three.camera, rigRef, sepRef };
+  }, [three]);
 
   const tIg = progress / ASCENT_RATE;
   const thrustEff = THREE.MathUtils.clamp((tIg - 0.18) / 0.4, 0, 1) * thrust;
@@ -697,11 +747,13 @@ function Scene({ progress, separated, thrust }) {
       {progress > 0.45 && (
         <Stars radius={100} depth={50} count={4000} factor={2.5} saturation={0} fade speed={0.2} />
       )}
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[10, 8, 8]} intensity={2.2} color="#fff2e2" />
+      <SkyEnvironment progRef={progRef} />
+      <ambientLight intensity={0.22} />
+      <directionalLight ref={sunRef} position={[10, 8, 8]} intensity={2.4} color="#fff2e2" />
+      <PadShadows progRef={progRef} lightRef={sunRef} />
       <RimLight progRef={progRef} />
-      <EarthCurve progRef={progRef} />
-      <LaunchComplex progRef={progRef} />
+      <EarthCurve progRef={progRef} anisotropy={anisotropy} />
+      <LaunchComplex progRef={progRef} anisotropy={anisotropy} />
       <PadSmoke progRef={progRef} />
       <DustRing progRef={progRef} />
       <IgnitionFlash progRef={progRef} />
@@ -713,8 +765,9 @@ function Scene({ progress, separated, thrust }) {
         thrustEff={thrustEff}
         sepRef={sepRef}
         altRef={altRef}
+        rigRef={rigRef}
       />
-      <AscentCamera progRef={progRef} sepRef={sepRef} separated={separated} />
+      <AscentCamera progRef={progRef} sepRef={sepRef} separated={separated} rigRef={rigRef} />
     </>
   );
 }
@@ -725,6 +778,7 @@ export default function AscentScene({ progress, separated = false, thrust = 1 })
       <Canvas
         camera={{ position: [2.3, 0.6, 3.1], fov: 55 }}
         dpr={[1, 2]}
+        shadows
         gl={{
           antialias: true,
           alpha: false,

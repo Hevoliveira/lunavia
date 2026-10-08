@@ -4,6 +4,8 @@ import { useRef, useState, useEffect, useMemo, Suspense } from "react";
 import * as THREE from "three";
 import LanderModel from "@/components/LanderModel";
 import HoldButton from "@/components/HoldButton";
+import useMediaQuery, { COMPACT_QUERY } from "@/hooks/useMediaQuery";
+import { solveDistance } from "@/lib/cameraFraming";
 import CockpitOverlay from "@/components/CockpitOverlay";
 import AbortModal from "@/components/AbortModal";
 import {
@@ -55,6 +57,11 @@ function MoonSurface() {
   );
 }
 
+// Physics metres → scene units. The lander, the LPD and every surface marker
+// must share this mapping, or the drawn zones and hazards disagree with the
+// ground the touchdown is actually graded against.
+const WORLD_X = 0.5;
+
 function LandingSiteMarkers({ physRef }) {
   // Progressive reveal: the guidance computer shows only the PROJECTED LANDING AREA
   // at high altitude. As the LM descends the terrain visual detail — including
@@ -96,9 +103,9 @@ function LandingSiteMarkers({ physRef }) {
             else altRefs.current[i] = el;
           }}
           rotation={[-Math.PI / 2, 0, 0]}
-          position={[z.x, 0.02, 0]}
+          position={[z.x * WORLD_X, 0.02, 0]}
         >
-          <ringGeometry args={[z.r - 0.4, z.r, 32]} />
+          <ringGeometry args={[z.r * WORLD_X - 0.3, z.r * WORLD_X, 40]} />
           <meshBasicMaterial
             color={z.primary ? "#FF3B00" : "#4a90e2"}
             transparent
@@ -113,18 +120,18 @@ function LandingSiteMarkers({ physRef }) {
             <mesh
               ref={(el) => el && hazardMeshes.push(el)}
               rotation={[-Math.PI / 2, 0, 0]}
-              position={[h.x, 0.02, 0]}
+              position={[h.x * WORLD_X, 0.02, 0]}
             >
-              <circleGeometry args={[h.r, 32]} />
+              <circleGeometry args={[h.r * WORLD_X, 32]} />
               <meshBasicMaterial color="#3a1a0a" transparent opacity={0} />
             </mesh>
             {h.kind === "crater" && (
               <mesh
                 ref={(el) => el && hazardMeshes.push(el)}
                 rotation={[-Math.PI / 2, 0, 0]}
-                position={[h.x, 0.03, 0]}
+                position={[h.x * WORLD_X, 0.03, 0]}
               >
-                <ringGeometry args={[h.r - 0.3, h.r, 32]} />
+                <ringGeometry args={[h.r * WORLD_X - 0.2, h.r * WORLD_X, 32]} />
                 <meshBasicMaterial color="#1a0a05" transparent opacity={0} />
               </mesh>
             )}
@@ -136,12 +143,12 @@ function LandingSiteMarkers({ physRef }) {
                     key={k}
                     ref={(el) => el && hazardMeshes.push(el)}
                     position={[
-                      h.x + Math.cos(a) * (h.r * 0.6),
-                      0.5,
-                      Math.sin(a) * (h.r * 0.6),
+                      (h.x + Math.cos(a) * (h.r * 0.6)) * WORLD_X,
+                      0.35,
+                      Math.sin(a) * (h.r * 0.6) * WORLD_X,
                     ]}
                   >
-                    <dodecahedronGeometry args={[0.8, 0]} />
+                    <dodecahedronGeometry args={[0.55, 0]} />
                     <meshStandardMaterial
                       color="#7a736a"
                       roughness={1}
@@ -176,7 +183,7 @@ function LPD({ physRef }) {
     const t = disc > 0 ? (p.vy + Math.sqrt(disc)) / g : 0; // vy negative usually
     const tPositive = t > 0 ? t : 0;
     const targetX = p.xPos + p.vx * tPositive;
-    ref.current.position.set(targetX * 0.5, 0.06, 0);
+    ref.current.position.set(targetX * WORLD_X, 0.06, 0);
     // Fade LPD in as we get below 800m
     if (materialRef.current) {
       materialRef.current.opacity = Math.max(0, Math.min(0.9, (800 - p.alt) / 400));
@@ -221,7 +228,7 @@ function Lander({ physRef }) {
   useFrame(() => {
     if (ref.current && physRef.current) {
       const p = physRef.current;
-      ref.current.position.set(p.xPos * 0.5, Math.max(0, p.alt * 0.05), 0);
+      ref.current.position.set(p.xPos * WORLD_X, Math.max(0, p.alt * 0.05), 0);
       ref.current.rotation.z = -p.tilt * (Math.PI / 180);
     }
   });
@@ -283,30 +290,142 @@ function Dust({ altitude, thrust }) {
 }
 
 /** External chase-cam that follows the lander. Reads from physRef directly for 60fps smoothness. */
-function ExternalCamera({ physRef, view }) {
-  const { camera } = useThree();
-  const desired = useRef(new THREE.Vector3());
+/* ------------------------------------------------------------------
+ * Descent camera. The HUD reports the screen rectangle it leaves
+ * unobstructed (clearRef, CSS px). EXTERNAL and NAV frame the lander, the
+ * projected touchdown point (LPD) and — when distance allows — the primary
+ * LZ inside that rectangle: the camera distance is solved exactly against
+ * the rectangle's angular size, and a view offset moves the image centre
+ * into it. Motion is exponentially smoothed so it never jumps.
+ * ------------------------------------------------------------------ */
+const EXT_DIR = new THREE.Vector3(-11, 8, 12).normalize(); // chase: behind-left, looking down
+const NAV_DIR = new THREE.Vector3(0, 1, 0.0001).normalize(); // top-down map
+const CAM_MIN = { EXTERNAL: 15, NAV: 30 };
+const CAM_MAX = { EXTERNAL: 92, NAV: 120 };
+const FRAME_MARGIN = 0.82;
+const _q = new THREE.Vector3();
+const _c = new THREE.Vector3();
+const _v = new THREE.Vector3();
+
+// Predicted touchdown x (physics metres), assuming no further thrust — same
+// estimate the LPD reticle and the PROJECTED TOUCHDOWN readout use.
+function predictTouchdownX(p) {
+  const y = Math.max(0, p.alt);
+  const disc = p.vy * p.vy + 2 * MOON_G * y;
+  const t = disc > 0 ? (p.vy + Math.sqrt(disc)) / MOON_G : 0;
+  return p.xPos + p.vx * (t > 0 ? t : 0);
+}
+
+function DescentCamera({ physRef, view, clearRef, lzIndicatorRef }) {
+  const { camera, size } = useThree();
+  const pos = useRef(null);
   const look = useRef(new THREE.Vector3());
+  const includeLz = useRef(true);
+  const pts = useMemo(
+    () => ({
+      lander: { pos: new THREE.Vector3(), rad: 2.6 },
+      lpd: { pos: new THREE.Vector3(), rad: 1.6 },
+      lz: { pos: new THREE.Vector3(0, 0, 0), rad: 3.2 },
+    }),
+    []
+  );
 
   useFrame((_, delta) => {
     if (!physRef.current) return;
     const p = physRef.current;
-    const x = p.xPos * 0.5;
-    const y = Math.max(0, p.alt * 0.05);
+    const W = size.width;
+    const H = size.height;
+    const c = clearRef.current;
+    const cr = c && c.x1 - c.x0 > 80 && c.y1 - c.y0 > 80 ? c : { x0: 0, y0: 0, x1: W, y1: H };
+    const lx = p.xPos * WORLD_X;
+    const ly = Math.max(0, p.alt * 0.05);
+    const k = 1 - Math.exp(-delta * 2.2);
+
     if (view === "COCKPIT") {
-      desired.current.set(x, y + 0.7, 0);
-      look.current.set(x + 6, Math.max(0, y - 8), 0);
-    } else if (view === "NAV") {
-      desired.current.set(0, 60, 0);
-      look.current.set(0, 0, 0);
-    } else {
-      // EXTERNAL chase — camera behind & slightly above lander, looking down
-      desired.current.set(x - 10, y + 5, 12);
-      look.current.set(x + 1, y - 3, 0);
+      camera.clearViewOffset();
+      _v.set(lx, ly + 0.7, 0);
+      if (!pos.current) pos.current = _v.clone();
+      pos.current.lerp(_v, Math.min(1, delta * 3));
+      look.current.lerp(_c.set(lx + 6, Math.max(0, ly - 8), 0), Math.min(1, delta * 3));
+      camera.position.copy(pos.current);
+      camera.lookAt(look.current);
+      if (lzIndicatorRef.current) lzIndicatorRef.current.style.display = "none";
+      window.__lvDescentView = null;
+      return;
     }
-    camera.position.lerp(desired.current, Math.min(1, delta * 3));
+
+    // Points of interest
+    pts.lander.pos.set(lx, ly + 1.2, 0);
+    pts.lpd.pos.set(predictTouchdownX(p) * WORLD_X, 0, 0);
+    const dir = view === "NAV" ? NAV_DIR : EXT_DIR;
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const tanV = tanHalf * ((cr.y1 - cr.y0) / H) * FRAME_MARGIN;
+    const tanH = tanHalf * ((cr.x1 - cr.x0) / H) * FRAME_MARGIN;
+    const dMin = CAM_MIN[view];
+    const dMax = CAM_MAX[view];
+    const frame = (list) => {
+      const box = new THREE.Box3();
+      list.forEach((q) => box.expandByPoint(q.pos));
+      const ctr = box.getCenter(new THREE.Vector3());
+      return { ctr, dist: solveDistance(list, ctr, dir, tanH, tanV) };
+    };
+    const core = [pts.lander, pts.lpd];
+    const withLz = frame([...core, pts.lz]);
+    // Hysteresis so the LZ does not flicker in and out of the framing.
+    if (includeLz.current && withLz.dist > dMax * 1.12) includeLz.current = false;
+    else if (!includeLz.current && withLz.dist < dMax) includeLz.current = true;
+    const sol = includeLz.current ? withLz : frame(core);
+    const dist = THREE.MathUtils.clamp(sol.dist, dMin, dMax);
+    _v.copy(dir).multiplyScalar(dist).add(sol.ctr);
+    if (!pos.current) {
+      pos.current = _v.clone();
+      look.current.copy(sol.ctr);
+    } else {
+      pos.current.lerp(_v, k);
+      look.current.lerp(sol.ctr, k);
+    }
+    camera.position.copy(pos.current);
     camera.lookAt(look.current);
-    camera.updateProjectionMatrix();
+    // Shift the principal point into the clear rectangle's centre.
+    const cx = (cr.x0 + cr.x1) / 2;
+    const cy = (cr.y0 + cr.y1) / 2;
+    camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
+    camera.updateMatrixWorld();
+
+    // Screen positions (CSS px) for the LZ edge indicator and validation tooling.
+    const project = (v3) => {
+      _q.copy(v3).project(camera);
+      return { x: (_q.x * 0.5 + 0.5) * W, y: (-_q.y * 0.5 + 0.5) * H, z: _q.z };
+    };
+    const sLz = project(pts.lz.pos);
+    window.__lvDescentView = {
+      lander: project(_c.set(lx, ly + 0.6, 0)),
+      lpd: { ...project(pts.lpd.pos), visible: p.alt > 3 && p.alt < 800 },
+      lz: sLz,
+      clear: { ...cr },
+      x: p.xPos, // physics metres from the primary LZ (validation tooling)
+    };
+    const el = lzIndicatorRef.current;
+    if (el) {
+      const inside = sLz.z < 1 && sLz.x > cr.x0 + 8 && sLz.x < cr.x1 - 8 && sLz.y > cr.y0 + 8 && sLz.y < cr.y1 - 8;
+      if (inside || p.alt <= 0.5) {
+        el.style.display = "none";
+      } else {
+        // Clamp the LZ direction to the clear rectangle's edge.
+        const dx = sLz.z < 1 ? sLz.x - cx : -(sLz.x - cx);
+        const dy = sLz.z < 1 ? sLz.y - cy : -(sLz.y - cy);
+        const sx = dx !== 0 ? (cr.x1 - cr.x0) / 2 - 34 : Infinity;
+        const sy = dy !== 0 ? (cr.y1 - cr.y0) / 2 - 18 : Infinity;
+        const s = Math.min(Math.abs(sx / (dx || 1e-6)), Math.abs(sy / (dy || 1e-6)));
+        // Keep the whole chip (~120 px wide) inside the visibility area.
+        const ex = THREE.MathUtils.clamp(cx + dx * s, cr.x0 + 66, cr.x1 - 66);
+        const ey = THREE.MathUtils.clamp(cy + dy * s, cr.y0 + 14, cr.y1 - 14);
+        el.style.display = "flex";
+        el.style.transform = `translate(${ex}px, ${ey}px) translate(-50%, -50%)`;
+        const arrow = el.firstChild;
+        if (arrow) arrow.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+      }
+    }
   });
   return null;
 }
@@ -344,6 +463,165 @@ function Bar({ value, warn = false, danger = false }) {
   );
 }
 
+/* ------------------------------------------------------------------
+ * Compact HUD for landscape phones. Controls sit in two narrow columns on
+ * the lower left and right edges (one per thumb); telemetry is condensed
+ * into those columns and a slim top band. Everything between the columns is
+ * the gameplay visibility area that the descent camera frames into.
+ * ------------------------------------------------------------------ */
+const PAD_BTN = "border border-white/40 bg-black/35 flex items-center justify-center text-white font-mono";
+
+function CompactRow({ label, value, unit, tone = "text-white", testId, big = false }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2" data-testid={testId}>
+      <span className="font-mono text-[8px] tracking-[0.2em] text-zinc-400">{label}</span>
+      <span className="flex items-baseline gap-1">
+        <span className={`font-mono tabular ${big ? "text-[17px]" : "text-[13px]"} font-medium ${tone}`}>{value}</span>
+        {unit && <span className="font-mono text-[8px] text-zinc-500">{unit}</span>}
+      </span>
+    </div>
+  );
+}
+
+const tone = (warn, danger, blink = true) => (danger ? `text-[#FF3B00] ${blink ? "blink" : ""}` : warn ? "text-amber-400" : "text-white");
+
+function CompactDescentHud({
+  cfg, alt, vy, vx, tilt, fuel, fuelPct, throttle, throttleCmd, setThrottleCmd, inputRef,
+  view, setView, paused, setPaused, setShowAbort, chip, guidance, distanceToLZ,
+  projectedZoneLabel, projectedHazard, contactLight, flags,
+}) {
+  const { warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt } = flags;
+  const chipTone = chip.level === DANGER ? "text-[#FF3B00]" : chip.level === CAUTION ? "text-amber-400" : "text-emerald-400";
+  const warnings = [
+    warnFuelLow && { id: "warn-fuel", text: "FUEL LOW", danger: dangerFuelCritical },
+    warnVy && { id: "warn-descent", text: dangerVy ? "DESCENT RATE CRITICAL" : "DESCENT RATE HIGH", danger: dangerVy },
+    warnVx && { id: "warn-lateral", text: dangerVx ? "LATERAL DRIFT EXCESSIVE" : "LATERAL DRIFT", danger: dangerVx },
+    dangerTilt && { id: "warn-tilt", text: "TILT EXCEEDS LIMIT", danger: true },
+    contactLight && { id: "warn-contact", text: "CONTACT LIGHT", danger: true },
+    projectedHazard && alt > 5 && { id: "warn-terrain", text: "TERRAIN AHEAD — DIVERT", danger: true },
+  ].filter(Boolean);
+  return (
+    <>
+      {/* Top band: profile, camera, pause / abort */}
+      <div
+        data-hud-block="top"
+        data-hud-reserve="26"
+        className="absolute top-2 left-3 right-3 safe-ml safe-mr z-40 flex items-start justify-between gap-2 pointer-events-none"
+      >
+        <div className="pointer-events-auto bg-black/45 backdrop-blur-sm border border-white/10 px-2.5 py-1 w-[176px]" data-testid="descent-profile">
+          <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500">LM-1 · {cfg.label}</div>
+          <div className={`font-mono text-[10px] tracking-widest ${chipTone}`}>{chip.text}</div>
+          <div className="font-mono text-[8px] tracking-widest h-3 truncate" data-testid="descent-guidance">
+            {guidance && <span className={guidance.level === DANGER ? "text-[#FF3B00]" : "text-amber-400"}>{guidance.text}</span>}
+          </div>
+        </div>
+        <div className="pointer-events-auto bg-black/45 backdrop-blur-sm border border-white/10 flex" data-testid="view-selector">
+          {["EXTERNAL", "COCKPIT", "NAV"].map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              data-testid={`view-${v.toLowerCase()}`}
+              className={`touch-ctrl h-11 px-2.5 font-mono text-[9px] tracking-[0.2em] ${view === v ? "bg-[#FF3B00] text-black" : "text-zinc-300"}`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+        <div className="pointer-events-auto flex gap-2">
+          <button
+            type="button"
+            onClick={() => setPaused((p) => !p)}
+            data-testid="descent-pause"
+            aria-label={paused ? "Resume" : "Pause"}
+            className="touch-ctrl w-11 h-11 bg-black/45 backdrop-blur-sm border border-white/15 flex items-center justify-center text-zinc-200"
+          >
+            {paused ? <Play size={14} /> : <Pause size={14} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAbort(true)}
+            data-testid="descent-abort"
+            className="touch-ctrl h-11 px-3 bg-black/45 backdrop-blur-sm border border-white/15 flex items-center gap-1.5 text-zinc-300 font-mono text-[9px] tracking-[0.25em]"
+          >
+            <X size={12} /> ABORT
+          </button>
+        </div>
+      </div>
+
+      {/* Warnings: one slim row inside the reserved strip under the top band */}
+      <div className="absolute top-[3.55rem] left-1/2 -translate-x-1/2 z-40 flex gap-1.5 whitespace-nowrap pointer-events-none">
+        {warnings.map((w) => (
+          <div
+            key={w.id}
+            data-testid={w.id}
+            className={`bg-black/55 border border-white/10 px-2 py-0.5 font-mono text-[9px] tracking-widest ${w.danger ? "text-[#FF3B00] blink" : "text-amber-400"}`}
+          >
+            ● {w.text}
+          </div>
+        ))}
+      </div>
+
+      {/* Left edge: telemetry above the throttle (left thumb) */}
+      <div data-hud-block="left" className="absolute bottom-2 left-3 safe-mb safe-ml z-30 w-[150px] flex flex-col gap-2">
+        <div className="bg-black/45 backdrop-blur-sm border border-white/10 px-2.5 py-1.5 space-y-0.5" data-testid="descent-hud-left">
+          <CompactRow label="ALT" value={alt.toFixed(0)} unit="m" big testId="gauge-altitude" />
+          <CompactRow label="V/S" value={vy.toFixed(1)} unit="m/s" tone={tone(warnVy, dangerVy)} testId="gauge-vspeed" />
+          <CompactRow label="H/S" value={vx.toFixed(1)} unit="m/s" tone={tone(warnVx, dangerVx)} testId="gauge-hspeed" />
+          <CompactRow label="TILT" value={tilt.toFixed(0) + "°"} tone={tone(warnTilt, dangerTilt)} testId="gauge-tilt" />
+          <div className="pt-1">
+            <div className="flex justify-between font-mono text-[8px] tracking-widest text-zinc-400 mb-0.5">
+              <span>FUEL</span>
+              <span className={tone(warnFuelLow, dangerFuelCritical, false)}>{fuelPct.toFixed(0)}%</span>
+            </div>
+            <Bar value={fuel / cfg.initialFuel} warn={warnFuelLow} danger={dangerFuelCritical} />
+          </div>
+        </div>
+        <HoldButton
+          onHold={(on) => { inputRef.current.throttle = on; setThrottleCmd(on); }}
+          data-testid="ctrl-throttle"
+          aria-label="Throttle"
+          className={`${PAD_BTN} relative h-16 w-full overflow-hidden flex-col gap-0.5`}
+        >
+          <span className="absolute inset-x-0 bottom-0 bg-[#FF3B00]/30 pointer-events-none" style={{ height: `${Math.round(throttle * 100)}%` }} />
+          <ArrowUp size={18} className="relative" />
+          <span className="relative text-[9px] tracking-[0.25em]" data-testid="throttle-cmd">
+            THROTTLE <span className={throttleCmd ? "text-[#FF3B00]" : "text-zinc-400"}>{(throttle * 100).toFixed(0)}%</span>
+          </span>
+        </HoldButton>
+      </div>
+
+      {/* Right edge: landing target readout above attitude + RCS (right thumb) */}
+      <div data-hud-block="right" className="absolute bottom-2 right-3 safe-mb safe-mr z-30 w-[150px] flex flex-col gap-2" data-testid="descent-hud-right">
+        <div className="bg-black/45 backdrop-blur-sm border border-white/10 px-2.5 py-1.5 space-y-0.5">
+          <div className="flex items-baseline justify-between font-mono text-[8px] tracking-[0.2em] text-zinc-400">
+            <span>TO LZ</span>
+            <span className="whitespace-nowrap"><span className="text-[13px] text-white tabular" data-testid="lz-distance">{distanceToLZ.toFixed(1)}</span> <span className="text-zinc-500">m</span></span>
+          </div>
+          <div className="font-mono text-[8px] tracking-[0.2em] text-zinc-400">PROJECTED TOUCHDOWN</div>
+          <div className={`font-mono text-[10px] tracking-widest truncate ${projectedHazard ? "text-[#FF3B00] blink" : "text-white"}`} data-testid="projected-lz">
+            {projectedZoneLabel}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <HoldButton onHold={(on) => (inputRef.current.left = on)} data-testid="ctrl-left" aria-label="Tilt left" className={`${PAD_BTN} h-[52px] flex-col text-[8px] tracking-[0.2em]`}>
+            <ArrowLeft size={18} />TILT
+          </HoldButton>
+          <HoldButton onHold={(on) => (inputRef.current.right = on)} data-testid="ctrl-right" aria-label="Tilt right" className={`${PAD_BTN} h-[52px] flex-col text-[8px] tracking-[0.2em]`}>
+            <ArrowRight size={18} />TILT
+          </HoldButton>
+          <HoldButton onHold={(on) => (inputRef.current.strafeLeft = on)} data-testid="ctrl-strafe-left" aria-label="RCS strafe left" className={`${PAD_BTN} h-[52px] text-[10px] text-zinc-200`}>
+            ◄ RCS
+          </HoldButton>
+          <HoldButton onHold={(on) => (inputRef.current.strafeRight = on)} data-testid="ctrl-strafe-right" aria-label="RCS strafe right" className={`${PAD_BTN} h-[52px] text-[10px] text-zinc-200`}>
+            RCS ►
+          </HoldButton>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ============================================================
  * Main DescentGame component
  * ============================================================ */
@@ -375,6 +653,11 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const [contactLight, setContactLight] = useState(false);
   const [projectedHazard, setProjectedHazard] = useState(false);
   const [projectedZoneLabel, setProjectedZoneLabel] = useState("PRIMARY LZ");
+  const compact = useMediaQuery(COMPACT_QUERY);
+  const gameRef = useRef(null);
+  const sabProbeRef = useRef(null);
+  const clearRef = useRef(null); // unobstructed screen rectangle (CSS px)
+  const lzIndicatorRef = useRef(null);
 
   const inputRef = useRef({
     throttle: false,
@@ -668,6 +951,36 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
     audio.setRumble(throttle);
   }, [throttle, audio]);
 
+  // Gameplay visibility area: everything not covered by the HUD columns and
+  // the top band. The camera keeps the lander, LPD and LZ inside it.
+  useEffect(() => {
+    const measure = () => {
+      const root = gameRef.current;
+      if (!root) return;
+      const R = root.getBoundingClientRect();
+      let x0 = 0;
+      let x1 = R.width;
+      let y0 = 0;
+      root.querySelectorAll("[data-hud-block]").forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) return;
+        const kind = el.dataset.hudBlock;
+        if (kind === "left") x0 = Math.max(x0, r.right - R.left);
+        else if (kind === "right") x1 = Math.min(x1, r.left - R.left);
+        else if (kind === "top") y0 = Math.max(y0, r.bottom - R.top + Number(el.dataset.hudReserve || 0));
+      });
+      const sab = sabProbeRef.current ? sabProbeRef.current.offsetHeight : 0;
+      clearRef.current = { x0: x0 + 6, x1: x1 - 6, y0: y0 + 4, y1: R.height - sab - 6 };
+    };
+    measure();
+    const id = setInterval(measure, 500);
+    window.addEventListener("resize", measure);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("resize", measure);
+    };
+  }, [compact, view]);
+
   // Derived values
   const fuelPct = (fuel / cfg.initialFuel) * 100;
   const distanceToLZ = Math.abs(xPos);
@@ -691,9 +1004,11 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
 
   return (
     <div
+      ref={gameRef}
       data-testid="descent-game"
       className="absolute inset-0 bg-[#050505]"
     >
+      <div ref={sabProbeRef} aria-hidden className="absolute left-0 bottom-0 w-px pointer-events-none" style={{ height: "var(--sab)" }} />
       {/* 3D scene */}
       <div className="absolute inset-0 canvas-host">
         <Canvas
@@ -714,7 +1029,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
             <DistantEarth />
             <Lander physRef={phys} />
             <Dust altitude={alt} thrust={throttle} />
-            <ExternalCamera physRef={phys} view={view} />
+            <DescentCamera physRef={phys} view={view} clearRef={clearRef} lzIndicatorRef={lzIndicatorRef} />
           </Suspense>
         </Canvas>
       </div>
@@ -726,8 +1041,29 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         hint="RETICLE ALIGNED WITH DESCENT VECTOR"
       />
 
+      {/* Off-screen primary LZ: chevron on the edge of the visibility area */}
+      <div
+        ref={lzIndicatorRef}
+        data-testid="lz-indicator"
+        className="absolute left-0 top-0 z-20 hidden items-center gap-1.5 pointer-events-none font-mono text-[9px] tracking-[0.2em] text-[#FF3B00]"
+      >
+        <span className="inline-block text-[13px] leading-none">➤</span>
+        <span className="bg-black/50 px-1.5 py-0.5 border border-[#FF3B00]/50">LZ {distanceToLZ.toFixed(0)} m</span>
+      </div>
+
+      {compact ? (
+        <CompactDescentHud
+          cfg={cfg} alt={alt} vy={vy} vx={vx} tilt={tilt} fuel={fuel} fuelPct={fuelPct}
+          throttle={throttle} throttleCmd={throttleCmd} setThrottleCmd={setThrottleCmd} inputRef={inputRef}
+          view={view} setView={setView} paused={paused} setPaused={setPaused} setShowAbort={setShowAbort}
+          chip={chip} guidance={guidance} distanceToLZ={distanceToLZ}
+          projectedZoneLabel={projectedZoneLabel} projectedHazard={projectedHazard} contactLight={contactLight}
+          flags={{ warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt }}
+        />
+      ) : (
+      <>
       {/* View mode selector */}
-      <div className="absolute top-20 short:top-14 left-1/2 -translate-x-1/2 hud-panel px-3 py-2 touch:py-1 flex items-center gap-1 z-40" data-testid="view-selector">
+      <div className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-3 py-2 touch:py-1 flex items-center gap-1 z-40" data-testid="view-selector" data-hud-block="top" data-hud-reserve="40">
         {["EXTERNAL", "COCKPIT", "NAV"].map((v) => (
           <button
             key={v}
@@ -746,7 +1082,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       <button
         onClick={() => setShowAbort(true)}
         data-testid="descent-abort"
-        className="absolute top-20 short:top-14 right-4 md:right-8 safe-mr hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
+        className="absolute top-20 short:top-[var(--hud-top)] right-4 md:right-8 safe-mr hud-panel px-3 py-2 touch:py-3 flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
       >
         <X size={12} /> ABORT
       </button>
@@ -756,7 +1092,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         onClick={() => setPaused((p) => !p)}
         data-testid="descent-pause"
         aria-label={paused ? "Resume" : "Pause"}
-        className="absolute top-20 short:top-14 right-32 md:right-36 safe-mr hud-panel px-3 py-2 touch:py-3 touch:min-w-[44px] touch:min-h-[44px] justify-center flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
+        className="absolute top-20 short:top-[var(--hud-top)] right-32 md:right-36 safe-mr hud-panel px-3 py-2 touch:py-3 touch:min-w-[44px] touch:min-h-[44px] justify-center flex items-center gap-2 text-zinc-400 hover:text-[#FF3B00] transition-colors duration-200 font-mono text-[10px] tracking-[0.3em] z-40"
       >
         {paused ? <Play size={12} /> : <Pause size={12} />}
         <span className="narrow:hidden">{paused ? "RESUME" : "PAUSE"}</span>
@@ -800,7 +1136,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       </div>
 
       {/* LEFT: primary instrument HUD */}
-      <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-4 short:py-2 w-[300px] short:w-[240px] narrow:w-[215px] z-30" data-testid="descent-hud-left">
+      <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-4 short:py-2 w-[300px] short:w-[240px] narrow:w-[215px] z-30" data-testid="descent-hud-left" data-hud-block="left">
         <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:hidden">
           LM-1 · GUIDANCE · {cfg.label}
         </div>
@@ -859,7 +1195,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       </div>
 
       {/* RIGHT: keys / touch controls */}
-      <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-5 py-4 short:px-3 short:py-2.5 z-30" data-testid="descent-hud-right">
+      <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-5 py-4 short:px-3 short:py-2.5 z-30" data-testid="descent-hud-right" data-hud-block="right">
         <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:mb-2">
           FLIGHT CONTROLS
         </div>
@@ -919,6 +1255,9 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           P · PAUSE · C · CYCLE VIEW
         </div>
       </div>
+
+      </>
+      )}
 
       {/* Paused overlay */}
       {paused && !ended && (

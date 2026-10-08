@@ -82,6 +82,18 @@ If the iPhone shows **"Untrusted Developer"** instead of opening the game:
 - All flight controls are on-screen buttons: **press and hold** them (you can hold two at once, e.g. throttle and a side thruster).
 - The game does **not** need an internet connection once installed.
 
+## Updating LUNAVIA to a new version
+
+When a new version is ready on GitHub, you replace the old project folder and install again. Your iPhone keeps the app; it is simply replaced.
+
+1. **Close Xcode** (menu **Xcode → Quit Xcode**).
+2. In **Finder**, drag the old LUNAVIA folder (for example `lunavia-claude-ios-app`) to the **Trash**, so you can't open the old one by mistake.
+3. Download the new version exactly as in **Part 2** (branch **claude/ios-app**, green **Code** button, **Download ZIP**, then double-click the ZIP).
+4. Open the new folder → **frontend → ios → App** → double-click **App.xcodeproj** (as in **Part 3**). Wait for the package messages at the top to finish.
+5. Check **Signing & Capabilities** again (**Part 5**): your **Team** must be selected. If you had changed the **Bundle Identifier** last time (for example to `com.yourname.lunavia`), type that **same** identifier again, so the iPhone treats it as the same app.
+6. Connect the iPhone, pick it at the top of Xcode, and press **▶** (**Part 7**).
+7. If Xcode says the build failed with an old error, use the menu **Product → Clean Build Folder**, then press **▶** again.
+
 ## Good to know
 
 - With a free Apple account, an app you install yourself **stops opening after 7 days**. To renew it: connect the iPhone, open the project in Xcode, and press **▶** again. Your iPhone keeps the app; it just gets a fresh 7 days.

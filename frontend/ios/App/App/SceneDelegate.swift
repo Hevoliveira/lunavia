@@ -24,11 +24,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 }
 
 /// LUNAVIA's game screen: the Capacitor web view, full screen in landscape,
-/// with no status bar, an auto-hidden Home Indicator, and screen-edge swipes
-/// deferred so a thumb on the flight controls doesn't trigger a system gesture.
+/// with no status bar and screen-edge swipes deferred so a thumb on the flight
+/// controls doesn't trigger a system gesture.
+///
+/// The Home Indicator is auto-hidden through Capacitor's built-in SystemBars
+/// plugin (`plugins.SystemBars.hidden` in capacitor.config.json). Capacitor 8
+/// declares `prefersHomeIndicatorAutoHidden` as `public` (not `open`) on
+/// CAPBridgeViewController, so it must not be overridden here: Xcode rejects
+/// that with "Overriding non-open property outside of its defining module".
 class LunaviaViewController: CAPBridgeViewController {
     override var prefersStatusBarHidden: Bool { true }
-    override var prefersHomeIndicatorAutoHidden: Bool { true }
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
 
@@ -50,6 +55,5 @@ class LunaviaViewController: CAPBridgeViewController {
         // keep the screen from dimming and locking mid-flight.
         UIApplication.shared.isIdleTimerDisabled = true
         setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
-        setNeedsUpdateOfHomeIndicatorAutoHidden()
     }
 }
