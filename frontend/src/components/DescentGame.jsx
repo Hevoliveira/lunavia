@@ -9,26 +9,22 @@ import { solveDistance } from "@/lib/cameraFraming";
 import CockpitOverlay from "@/components/CockpitOverlay";
 import AbortModal from "@/components/AbortModal";
 import {
-  MOON_G,
   DIFFICULTY,
   HAZARDS,
   SAFE_ZONES,
   evaluateGround,
-  gradeLanding,
 } from "@/data/landingPhysics";
 import {
   assessDescent,
   profileLabel,
   guidanceFor,
+  predictTouchdownX,
+  nominalDescent,
+  OK,
   CAUTION,
   DANGER,
 } from "@/data/descentProfile";
-
-// Phase 2 - throttle spool rates (1/s). Rising is quicker than falling so a
-// correction bites when asked for, while the engine keeps visible mass on the
-// way down. Previously a single symmetric 1.6 both ways.
-const THROTTLE_SPOOL_UP = 2.8;
-const THROTTLE_SPOOL_DOWN = 1.9;
+import { initialState, stepFrame, gradeTouchdown, CONTACT_ALT } from "@/data/landerSim";
 import {
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
   Pause, Play, X,
@@ -167,22 +163,15 @@ function LandingSiteMarkers({ physRef }) {
 
 /** Landing Point Designator — a small crosshair on the surface indicating
  * the extrapolated touchdown location from current vx and altitude. */
-function LPD({ physRef }) {
+function LPD({ physRef, cfg }) {
   const ref = useRef();
   const materialRef = useRef();
   useFrame(() => {
     if (!ref.current || !physRef.current) return;
     const p = physRef.current;
-    // Predicted touchdown time from current vy (assume no thrust from now on)
-    const g = 1.62;
-    // ay = -g if throttle=0. Solve y + vy*t + 0.5*ay*t^2 = 0 for t (t>0).
-    // ay is negative → -0.5g. So: -0.5g*t^2 + vy*t + y = 0 → 0.5g*t^2 - vy*t - y = 0
-    // t = (vy + sqrt(vy^2 + 2*g*y)) / g   (taking positive root, vy is negative)
-    const y = Math.max(0, p.alt);
-    const disc = p.vy * p.vy + 2 * g * y;
-    const t = disc > 0 ? (p.vy + Math.sqrt(disc)) / g : 0; // vy negative usually
-    const tPositive = t > 0 ? t : 0;
-    const targetX = p.xPos + p.vx * tPositive;
+    // Where the vehicle comes down if the drift is left alone and the descent
+    // follows the recommended rate schedule (descentProfile).
+    const targetX = predictTouchdownX(p, cfg);
     ref.current.position.set(targetX * WORLD_X, 0.06, 0);
     // Fade LPD in as we get below 800m
     if (materialRef.current) {
@@ -209,10 +198,10 @@ function LPD({ physRef }) {
   );
 }
 
-/** Projected path to the LPD (no further thrust): a faint dashed arc from the
- * lander to the touchdown point, so the trajectory stays readable when the
- * close chase camera cannot hold the LPD itself in frame. */
-function TouchdownPath({ physRef, view }) {
+/** Projected path to the LPD along the recommended descent: a faint dashed
+ * arc from the lander to the touchdown point, so the trajectory stays readable
+ * when the close chase camera cannot hold the LPD itself in frame. */
+function TouchdownPath({ physRef, view, cfg }) {
   const N = 40;
   const line = useMemo(() => {
     const g = new THREE.BufferGeometry();
@@ -231,14 +220,12 @@ function TouchdownPath({ physRef, view }) {
     if (!p) return;
     line.visible = view !== "COCKPIT" && p.alt > 3;
     if (!line.visible) return;
-    const y0 = Math.max(0, p.alt);
-    const disc = p.vy * p.vy + 2 * MOON_G * y0;
-    const T = disc > 0 ? Math.max(0, (p.vy + Math.sqrt(disc)) / MOON_G) : 0;
+    const path = nominalDescent(Math.max(0, p.alt - CONTACT_ALT), -p.vy, cfg, N - 1);
     const a = line.geometry.attributes.position.array;
     for (let i = 0; i < N; i++) {
-      const t = (T * i) / (N - 1);
+      const [t, h] = path[i];
       a[i * 3] = (p.xPos + p.vx * t) * WORLD_X;
-      a[i * 3 + 1] = Math.max(0, y0 + p.vy * t - 0.5 * MOON_G * t * t) * 0.05;
+      a[i * 3 + 1] = (h + (i < N - 1 ? CONTACT_ALT : 0)) * 0.05;
       a[i * 3 + 2] = 0;
     }
     line.geometry.attributes.position.needsUpdate = true;
@@ -361,15 +348,6 @@ const _c = new THREE.Vector3();
 const _v = new THREE.Vector3();
 const _box = new THREE.Box3();
 
-// Predicted touchdown x (physics metres), assuming no further thrust — same
-// estimate the LPD reticle and the PROJECTED TOUCHDOWN readout use.
-function predictTouchdownX(p) {
-  const y = Math.max(0, p.alt);
-  const disc = p.vy * p.vy + 2 * MOON_G * y;
-  const t = disc > 0 ? (p.vy + Math.sqrt(disc)) / MOON_G : 0;
-  return p.xPos + p.vx * (t > 0 ? t : 0);
-}
-
 // Place an edge chip on the clear rectangle's border, in the direction of the
 // screen point s (CSS px), its arrow rotated to point at it.
 function placeEdgeChip(el, s, cr, halfW) {
@@ -392,7 +370,7 @@ function placeEdgeChip(el, s, cr, halfW) {
 
 const insideRect = (s, cr, pad) => s.z < 1 && s.x > cr.x0 + pad && s.x < cr.x1 - pad && s.y > cr.y0 + pad && s.y < cr.y1 - pad;
 
-function DescentCamera({ physRef, view, clearRef, lzIndicatorRef, lpdIndicatorRef }) {
+function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndicatorRef }) {
   const { camera, size } = useThree();
   const pos = useRef(null);
   const look = useRef(new THREE.Vector3());
@@ -436,7 +414,7 @@ function DescentCamera({ physRef, view, clearRef, lzIndicatorRef, lpdIndicatorRe
 
     // Points of interest
     pts.lander.pos.set(lx, ly + LANDER_H / 2, 0);
-    pts.lpd.pos.set(predictTouchdownX(p) * WORLD_X, 0, 0);
+    pts.lpd.pos.set(predictTouchdownX(p, cfg) * WORLD_X, 0, 0);
     const nav = view === "NAV";
     const dir = nav ? NAV_DIR : EXT_DIR;
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
@@ -622,10 +600,60 @@ function BarRow({ label, value, text, warn = false, danger = false, active = fal
 
 const tone = (warn, danger, blink = true) => (danger ? `text-[#FF3B00] ${blink ? "blink" : ""}` : warn ? "text-amber-400" : "text-white");
 
+/* ------------------------------------------------------------------
+ * Guidance readouts, all from assessDescent (descentProfile):
+ *  TGT V/S  recommended descent-rate band at this altitude
+ *  BRAKE    countdown to the latest prudent braking burn while coasting;
+ *           spare height over a full-thrust stop once braking
+ *  RESERVE  seconds of hover the tank holds beyond the least fuel that can
+ *           still land from here
+ * ------------------------------------------------------------------ */
+const fmtRate = (v) => (v < 9.95 ? v.toFixed(1) : v.toFixed(0));
+
+function guidanceReadouts(profile, vy) {
+  const rate = Math.max(0, -vy);
+  const env = profile.envelope;
+  const tgt = {
+    text: `−${fmtRate(env.lo)}…−${fmtRate(env.hi)}`,
+    cls: rate > env.hi ? (profile.vyState === DANGER ? "text-[#FF3B00]" : "text-amber-400") : rate >= env.lo ? "text-emerald-400" : "text-zinc-300",
+  };
+  let brake;
+  if (profile.brakeTime <= 12) {
+    const now = profile.brakeTime < 0.05;
+    brake = {
+      text: now ? "NOW" : `IN ${Math.ceil(profile.brakeTime)} s`,
+      cls: now ? "text-[#FF3B00] blink" : profile.brakeTime < 3 ? "text-amber-400" : "text-white",
+    };
+  } else {
+    const m = profile.margin;
+    brake = {
+      text: `${m >= 0 ? "+" : "−"}${Math.abs(m) >= 10 ? Math.round(Math.abs(m)) : Math.abs(m).toFixed(1)} m`,
+      cls: profile.vyState === DANGER && m < 0 ? "text-[#FF3B00] blink" : m < 0 ? "text-amber-400" : "text-white",
+    };
+  }
+  const r = profile.reserve;
+  const reserve = {
+    text: r < 0 ? "BINGO" : `${Math.round(r)} s`,
+    cls: r < 3 ? "text-[#FF3B00] blink" : r < 10 ? "text-amber-400" : "text-white",
+  };
+  return { tgt, brake, reserve };
+}
+
+function GuideRow({ label, value, testId }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2" data-testid={testId}>
+      <span className="font-mono text-[8px] tracking-[0.2em] text-zinc-400">{label}</span>
+      <span className={`font-mono tabular text-[11px] ${value.cls}`}>{value.text}</span>
+    </div>
+  );
+}
+
+const guidanceTone = (g) => (g.level === DANGER ? "text-[#FF3B00]" : g.level === OK ? "text-zinc-300" : "text-amber-400");
+
 function CompactDescentHud({
   cfg, alt, vy, vx, tilt, fuel, fuelPct, throttle, throttleCmd, setThrottleCmd, inputRef,
   view, setView, paused, setPaused, setShowAbort, chip, guidance, distanceToLZ,
-  projectedZoneLabel, projectedHazard, contactLight, flags,
+  projectedZoneLabel, projectedHazard, contactLight, flags, readouts,
 }) {
   const { warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt } = flags;
   const chipTone = chip.level === DANGER ? "text-[#FF3B00]" : chip.level === CAUTION ? "text-amber-400" : "text-emerald-400";
@@ -649,7 +677,7 @@ function CompactDescentHud({
           <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500">LM-1 · {cfg.label}</div>
           <div className={`font-mono text-[10px] tracking-widest ${chipTone}`}>{chip.text}</div>
           <div className="font-mono text-[8px] tracking-widest h-3 truncate" data-testid="descent-guidance">
-            {guidance && <span className={guidance.level === DANGER ? "text-[#FF3B00]" : "text-amber-400"}>{guidance.text}</span>}
+            {guidance && <span className={guidanceTone(guidance)}>{guidance.text}</span>}
           </div>
         </div>
         <div className="pointer-events-auto bg-black/45 backdrop-blur-sm border border-white/10 flex" data-testid="view-selector">
@@ -707,9 +735,12 @@ function CompactDescentHud({
       >
         <CompactRow label="ALT" value={alt.toFixed(0)} unit="m" big testId="gauge-altitude" />
         <CompactRow label="V/S" value={vy.toFixed(1)} unit="m/s" tone={tone(warnVy, dangerVy)} testId="gauge-vspeed" />
+        <GuideRow label="TGT V/S" value={readouts.tgt} testId="guide-target" />
+        <GuideRow label="BRAKE" value={readouts.brake} testId="guide-brake" />
         <CompactRow label="H/S" value={vx.toFixed(1)} unit="m/s" tone={tone(warnVx, dangerVx)} testId="gauge-hspeed" />
         <CompactRow label="TILT" value={tilt.toFixed(0) + "°"} tone={tone(warnTilt, dangerTilt)} testId="gauge-tilt" />
         <BarRow label="FUEL" value={fuel / cfg.initialFuel} text={`${fuelPct.toFixed(0)}%`} warn={warnFuelLow} danger={dangerFuelCritical} testId="gauge-fuel" />
+        <GuideRow label="RESERVE" value={readouts.reserve} testId="guide-reserve" />
         <BarRow label="THR" value={throttle} text={`${(throttle * 100).toFixed(0)}%`} active={throttleCmd} testId="gauge-throttle" />
         <div className="pt-0.5 border-t border-white/10 font-mono text-[8px] tracking-[0.15em] text-zinc-400">
           <div className="flex items-baseline justify-between">
@@ -809,18 +840,9 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const commsFiredRef = useRef({});
 
   // Physics refs — the source of truth. State is only for HUD display.
-  const phys = useRef({
-    alt: cfg.initialAlt,
-    vy: cfg.initialVy,
-    vx: cfg.initialVx,
-    xPos: -cfg.initialAlt * 0.3,
-    tilt: 0,
-    throttle: 0,
-    fuel: cfg.initialFuel,
-  });
+  const phys = useRef(initialState(cfg));
   const pausedRef = useRef(false);
   const endedRef = useRef(false);
-  const fuelDepletedInFlightRef = useRef(false);
   // Combine user pause + any modal into a single physics pause.
   // showAbort suspends physics so the LM cannot fall while the confirm dialog is open.
   useEffect(() => { pausedRef.current = paused || showAbort; }, [paused, showAbort]);
@@ -896,10 +918,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       if (!lastTsRef.current) lastTsRef.current = ts;
       const rawDt = (ts - lastTsRef.current) / 1000;
       lastTsRef.current = ts;
-      // Cap at 0.25s to avoid huge jumps on tab-defocus, but do multiple sub-steps.
+      // stepFrame caps a frame at 0.25 s (tab defocus) and sub-steps it.
       const totalDt = Math.min(0.25, rawDt);
-      const subSteps = Math.max(1, Math.ceil(totalDt / 0.033));
-      const dt = totalDt / subSteps;
 
       if (endedRef.current || pausedRef.current) {
         rafRef.current = requestAnimationFrame(tick);
@@ -909,46 +929,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       const inp = inputRef.current;
       const p = phys.current;
 
-      // Multi-step integration to preserve determinism under variable frame rate.
-      for (let s = 0; s < subSteps; s++) {
-      // Throttle ramp — slower for realistic feel (0.6s to full = 1.6/s rate)
-      const throttleTarget = inp.throttle && p.fuel > 0 ? 1 : 0;
-      const spool = throttleTarget > p.throttle ? THROTTLE_SPOOL_UP : THROTTLE_SPOOL_DOWN;
-      p.throttle += (throttleTarget - p.throttle) * Math.min(1, dt * spool);
-
-      // Tilt input
-      let dTilt = 0;
-      if (inp.left) dTilt -= cfg.tiltRate * dt;
-      if (inp.right) dTilt += cfg.tiltRate * dt;
-      if (!inp.left && !inp.right && cfg.tiltAssist) {
-        dTilt -= Math.sign(p.tilt) * Math.min(Math.abs(p.tilt), 15 * dt);
-      }
-      p.tilt = Math.max(-45, Math.min(45, p.tilt + dTilt));
-
-      // RCS strafe
-      if (inp.strafeLeft) p.vx -= 3 * dt;
-      if (inp.strafeRight) p.vx += 3 * dt;
-
-      // Fuel consumption + record depletion moment
-      const usage = p.throttle * cfg.fuelRate * dt;
-      const fuelBefore = p.fuel;
-      p.fuel = Math.max(0, p.fuel - usage);
-      if (fuelBefore > 0 && p.fuel <= 0 && p.alt > 5) {
-        fuelDepletedInFlightRef.current = true;
-      }
-      const effThrottle = p.fuel > 0 ? p.throttle : 0;
-
-      // Integrate (semi-implicit Euler)
-      const thrustAcc = effThrottle * cfg.maxThrust;
-      const rad = p.tilt * (Math.PI / 180);
-      const ax = thrustAcc * Math.sin(rad);
-      const ay = thrustAcc * Math.cos(rad) - MOON_G;
-      p.vy += ay * dt;
-      p.vx += ax * dt;
-      p.alt += p.vy * dt;
-      p.xPos += p.vx * dt;
-      if (p.alt <= 0.5) break; // stop sub-stepping once we hit the contact threshold
-      }
+      // Sub-stepped integration (landerSim), shared with the balance tests.
+      stepFrame(p, inp, cfg, rawDt);
 
       // Throttle state sync to ~15 Hz to avoid 7 setStates per frame
       stateSyncAccum += totalDt;
@@ -984,7 +966,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         }
         if (p.fuel / cfg.initialFuel < 0.2 && !commsFiredRef.current.lowFuel) {
           commsFiredRef.current.lowFuel = true;
-          audio.comms("Fuel low. 60 seconds remaining.");
+          const { reserve } = assessDescent({ ...p, cfg });
+          audio.comms(reserve > 0 ? `Fuel low. ${Math.round(reserve)} seconds of hover reserve.` : "Fuel low. Below landing minimum.");
         }
       }
       lastAudioAltRef.current = p.alt;
@@ -994,11 +977,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
 
       // Projected touchdown assessment (drives TERRAIN AHEAD warning + LPD label)
       if (shouldSync) {
-        const gAcc = MOON_G;
-        const disc = p.vy * p.vy + 2 * gAcc * Math.max(0, p.alt);
-        const tFall = disc > 0 ? (p.vy + Math.sqrt(disc)) / gAcc : 0;
-        const projX = p.xPos + p.vx * (tFall > 0 ? tFall : 0);
-        const g = evaluateGround(projX);
+        const g = evaluateGround(predictTouchdownX(p, cfg));
         setProjectedHazard(!!g.hazard);
         setProjectedZoneLabel(
           g.hazard ? g.hazard.label :
@@ -1010,28 +989,10 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       // Touchdown — trigger at CONTACT_ALT (0.5 m) so the LM can never hover
       // indefinitely just above the surface. endedRef.current locks all further
       // physics + controls so the outcome cannot be undone.
-      const CONTACT_ALT = 0.5;
       if (!endedRef.current && p.alt <= CONTACT_ALT) {
-        const finalVy = p.vy;
-        const finalVx = p.vx;
         const finalTilt = p.tilt;
         const finalFuel = p.fuel;
-        const finalX = p.xPos;
-        const g = evaluateGround(finalX);
-        const result = gradeLanding({
-          vy: finalVy,
-          vx: finalVx,
-          tilt: finalTilt,
-          fuel: finalFuel,
-          initialFuel: cfg.initialFuel,
-          xPos: finalX,
-          safeZone: g.safeZone,
-          hazard: g.hazard,
-          safeVy: cfg.safeVy,
-          safeVx: cfg.safeVx,
-          safeTilt: cfg.safeTilt,
-          fuelDepletedInFlight: fuelDepletedInFlightRef.current,
-        });
+        const result = gradeTouchdown(p, cfg);
         p.alt = 0; p.vy = 0; p.vx = 0; p.throttle = 0;
         inputRef.current.throttle = false;
         inputRef.current.left = false;
@@ -1127,6 +1088,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const profile = assessDescent({ alt, vy, vx, tilt, throttle, fuel, cfg });
   const guidance = guidanceFor(profile, projectedHazard);
   const chip = profileLabel(profile, projectedHazard);
+  const readouts = guidanceReadouts(profile, vy);
 
   const warnFuelLow = profile.fuelState >= CAUTION;
   const dangerFuelCritical = profile.fuelState >= DANGER;
@@ -1162,12 +1124,12 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
             <directionalLight position={[-10, 6, -20]} intensity={0.2} color="#3a5a8a" />
             <MoonSurface />
             <LandingSiteMarkers physRef={phys} />
-            <LPD physRef={phys} />
-            <TouchdownPath physRef={phys} view={view} />
+            <LPD physRef={phys} cfg={cfg} />
+            <TouchdownPath physRef={phys} view={view} cfg={cfg} />
             <DistantEarth />
             <Lander physRef={phys} />
             <Dust altitude={alt} thrust={throttle} />
-            <DescentCamera physRef={phys} view={view} clearRef={clearRef} lzIndicatorRef={lzIndicatorRef} lpdIndicatorRef={lpdIndicatorRef} />
+            <DescentCamera physRef={phys} cfg={cfg} view={view} clearRef={clearRef} lzIndicatorRef={lzIndicatorRef} lpdIndicatorRef={lpdIndicatorRef} />
           </Suspense>
         </Canvas>
       </div>
@@ -1206,6 +1168,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           chip={chip} guidance={guidance} distanceToLZ={distanceToLZ}
           projectedZoneLabel={projectedZoneLabel} projectedHazard={projectedHazard} contactLight={contactLight}
           flags={{ warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt }}
+          readouts={readouts}
         />
       ) : (
       <>
@@ -1293,6 +1256,14 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           <Gauge label="H·SPEED" value={vx.toFixed(1)} unit="m/s" testId="gauge-hspeed" />
           <Gauge label="TILT" value={tilt.toFixed(0) + "°"} warn={warnTilt} danger={dangerTilt} testId="gauge-tilt" />
         </div>
+        <div className="mt-3 short:mt-1.5 grid grid-cols-3 gap-2 border-t border-white/10 pt-2 short:pt-1">
+          {[["TGT V/S", readouts.tgt, "guide-target"], ["BRAKE", readouts.brake, "guide-brake"], ["RESERVE", readouts.reserve, "guide-reserve"]].map(([label, v, id]) => (
+            <div key={id} data-testid={id}>
+              <div className="font-mono text-[9px] tracking-[0.22em] text-zinc-500">{label}</div>
+              <div className={`font-mono tabular text-sm short:text-xs ${v.cls}`}>{v.text}</div>
+            </div>
+          ))}
+        </div>
         <div className="mt-3 short:mt-2">
           <div className="font-mono text-[9px] tracking-widest text-zinc-500 mb-1 flex justify-between">
             <span>FUEL</span>
@@ -1326,7 +1297,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
               </div>
               <div className="mt-1 font-mono text-[9px] tracking-widest h-3" data-testid="descent-guidance">
                 {guidance && (
-                  <span className={guidance.level === DANGER ? "text-[#FF3B00]" : "text-amber-400"}>{guidance.text}</span>
+                  <span className={guidanceTone(guidance)}>{guidance.text}</span>
                 )}
               </div>
               <div className="mt-3 short:mt-1.5 font-mono text-[9px] tracking-widest text-zinc-500 flex justify-between">

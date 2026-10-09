@@ -1,5 +1,21 @@
 export const MOON_G = 1.62; // m/s^2
 
+// Fine control (all difficulties): a tilt or RCS press starts at a fine rate
+// and reaches its full rate after fineRamp s, so a tap trims precisely on a
+// touchscreen and a held press keeps full authority. See landerSim.
+const FINE = { tiltFine: 8, rcsFine: 1, fineRamp: 0.35 };
+
+/*
+ * COMMANDER rebalance (see docs/COMMANDER_BALANCE.md and landerSim.test.js).
+ * Before: initialFuel 105, safeVy 1.5, safeVx 1.0, tiltRate 38, no fine
+ * control. 105 units is 93 % of what the ideal single braking burn needs from
+ * the starting state, so no input sequence could land. Fuel now gives 1.44x
+ * that minimum (ASTRONAUT 2.27x, CADET 7.4x); touchdown limits match the
+ * Apollo LM's (3 m/s vertical, 1.2 m/s lateral) more closely while staying
+ * the tightest of the three; the tilt rate is no longer the twitchiest of the
+ * three. Altitude, descent rate, drift, thrust, fuel flow and gravity are
+ * unchanged.
+ */
 export const DIFFICULTY = {
   CADET: {
     key: "CADET",
@@ -16,6 +32,7 @@ export const DIFFICULTY = {
     safeVy: 4.5,
     safeVx: 4,
     safeTilt: 22,
+    ...FINE,
   },
   ASTRONAUT: {
     key: "ASTRONAUT",
@@ -32,6 +49,7 @@ export const DIFFICULTY = {
     safeVy: 2.5,
     safeVx: 2,
     safeTilt: 12,
+    ...FINE,
   },
   COMMANDER: {
     key: "COMMANDER",
@@ -40,14 +58,15 @@ export const DIFFICULTY = {
     initialAlt: 750,
     initialVy: -14,
     initialVx: 6,
-    initialFuel: 105,
+    initialFuel: 160,
     fuelRate: 7.5,
     maxThrust: 4.2,
-    tiltRate: 38,
+    tiltRate: 30,
     tiltAssist: false,
-    safeVy: 1.5,
-    safeVx: 1,
+    safeVy: 2.0,
+    safeVx: 1.2,
     safeTilt: 8,
+    ...FINE,
   },
 };
 
