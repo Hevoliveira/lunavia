@@ -144,8 +144,10 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     // Adaptive resolution: if the device cannot hold ~45 fps (heaviest shots
     // are the smoke-filled liftoff), step the pixel ratio down once per 2 s,
     // never back up (no oscillation). __lvFixedDpr pins it for captures.
-    const pf = S.perf || (S.perf = { acc: 0, n: 0, dpr: gl.getPixelRatio() });
-    if (S.t > 1.5 && rawDelta < 0.5) {
+    const pf = S.perf || (S.perf = { acc: 0, n: 0, wall: 0, dpr: gl.getPixelRatio() });
+    pf.wall += Math.min(rawDelta, 1);
+    // Skip the shader-compile warm-up and app-switch pauses (> 1 s)
+    if (pf.wall > 1.5 && rawDelta < 1) {
       pf.acc += rawDelta;
       pf.n++;
       if (pf.acc > 2) {
