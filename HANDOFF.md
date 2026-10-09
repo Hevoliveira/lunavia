@@ -863,3 +863,20 @@ parachutes, progression and difficulty are unchanged.
   it `public`); the Home Indicator is hidden via `plugins.SystemBars.hidden`.
 
 Details, measurements and validation: `docs/IOS_APP.md`.
+
+## 21. iOS build identity and stale-install hardening
+
+Triggered by a physical-iPhone report showing the pre-§20 descent UI after a fresh ZIP
+download. The committed bundle (`ios/App/App/public`, `main.7013b6f6.js`) did contain the
+§20 UI, so the repository was not stale.
+
+- **Build label**: the home screen shows `LUNAVIA iOS · BUILD <commit> · <UTC time>`,
+  compiled into the bundle by `craco.config.js`. The same data is in
+  `public/build-info.json`.
+- **Native phone layout**: inside the app, `html[data-native="1"]` forces the
+  `short`/`narrow` Tailwind variants, `useCompact()` and the flight navbar hiding,
+  independent of the reported viewport height.
+- **Install guide**: deleting the old app, deleting the old folders, opening from Finder and
+  Clean Build Folder are now mandatory update steps. No script is needed on the Mac.
+
+Details: `docs/IOS_APP.md` → *Build identity and stale installs*.

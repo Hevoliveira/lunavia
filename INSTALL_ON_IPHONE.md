@@ -82,17 +82,29 @@ If the iPhone shows **"Untrusted Developer"** instead of opening the game:
 - All flight controls are on-screen buttons: **press and hold** them (you can hold two at once, e.g. throttle and a side thruster).
 - The game does **not** need an internet connection once installed.
 
+## Check which version is on your iPhone
+
+Open LUNAVIA. On the first screen, at the **top left**, under *LAT 28.5°N · LON −80.6°W*, there is a line like:
+
+> **LUNAVIA iOS · BUILD 1a2b3c4 · 2026-10-09 03:10 UTC**
+
+- **BUILD** is the version of the game inside the app, and the date is when it was built. Compare them with the latest version named on GitHub (the description of the iPhone pull request lists the expected **BUILD** code).
+- If this line is **missing**, the iPhone is still running an old copy. Do the update below again, without skipping the steps marked **Important**.
+- Tap the line to show more details (screen size and **PHONE LAYOUT ON**). Send a photo of it if something still looks wrong.
+
 ## Updating LUNAVIA to a new version
 
-When a new version is ready on GitHub, you replace the old project folder and install again. Your iPhone keeps the app; it is simply replaced.
+You do **not** need to run any script or install anything extra: the downloaded folder already contains the finished game. You only replace the folder and install again with Xcode.
 
 1. **Close Xcode** (menu **Xcode → Quit Xcode**).
-2. In **Finder**, drag the old LUNAVIA folder (for example `lunavia-claude-ios-app`) to the **Trash**, so you can't open the old one by mistake.
-3. Download the new version exactly as in **Part 2** (branch **claude/ios-app**, green **Code** button, **Download ZIP**, then double-click the ZIP).
-4. Open the new folder → **frontend → ios → App** → double-click **App.xcodeproj** (as in **Part 3**). Wait for the package messages at the top to finish.
-5. Check **Signing & Capabilities** again (**Part 5**): your **Team** must be selected. If you had changed the **Bundle Identifier** last time (for example to `com.yourname.lunavia`), type that **same** identifier again, so the iPhone treats it as the same app.
-6. Connect the iPhone, pick it at the top of Xcode, and press **▶** (**Part 7**).
-7. If Xcode says the build failed with an old error, use the menu **Product → Clean Build Folder**, then press **▶** again.
+2. **Important — delete the old app from the iPhone.** On the iPhone, touch and hold the **LUNAVIA** icon, tap **Remove App**, then **Delete App**, then **Delete**. *(This removes every old file. Your 7-day signing is renewed by the new install anyway.)*
+3. **Important — throw away the old folder.** In **Finder**, open **Downloads** and drag **every** old LUNAVIA folder (`lunavia-claude-ios-app`, `lunavia-claude-ios-app 2`, …) and old LUNAVIA ZIP files to the **Trash**. Then right-click the Trash and choose **Empty Trash**. This way you cannot open an old copy by mistake.
+4. Download the new version exactly as in **Part 2** (branch **claude/ios-app**, green **Code** button, **Download ZIP**, then double-click the ZIP).
+5. **Important — open the new project from Finder, not from Xcode's list of recent projects.** Open the new folder → **frontend → ios → App** → double-click **App.xcodeproj**. Wait for the package messages at the top of Xcode to finish.
+6. Check **Signing & Capabilities** again (**Part 5**): your **Team** must be selected. If you had changed the **Bundle Identifier** last time (for example to `com.yourname.lunavia`), type that **same** identifier again.
+7. **Important — clean the old build.** In the menu bar choose **Product → Clean Build Folder** (or press **Shift ⇧ + Command ⌘ + K**). Wait a few seconds until the top of Xcode says *Clean Finished*.
+8. Connect the iPhone, pick it at the top of Xcode, and press **▶** (**Part 7**). If the iPhone says **Untrusted Developer** again, repeat **Part 8**.
+9. Open LUNAVIA and check the **BUILD** line (see *Check which version is on your iPhone* above).
 
 ## Good to know
 

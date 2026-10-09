@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowUpRight, ChevronRight } from "lucide-react";
 import EarthMoonHero from "@/components/EarthMoonHero";
+import BuildBadge from "@/components/BuildBadge";
 
 const MANIFESTO_LINES = [
   "TERRA",
@@ -40,6 +41,7 @@ export default function Landing() {
               <div className="text-zinc-600 mt-1">
                 LAT 28.5°N · LON −80.6°W · WINDOW OPEN
               </div>
+              <BuildBadge className="!text-zinc-400" />
             </div>
             <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-400 text-right">
               <div>SYSTEMS · NOMINAL</div>
@@ -252,6 +254,7 @@ export default function Landing() {
             <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mt-1">
               THE ROAD TO THE MOON · FASE 0
             </div>
+            <BuildBadge />
           </div>
           <div className="font-mono text-[10px] tracking-widest text-zinc-600 max-w-md">
             "A viagem é o jogo."

@@ -18,6 +18,11 @@ import "@fontsource/space-grotesk/latin-600.css";
 import "@fontsource/space-grotesk/latin-700.css";
 import "@/index.css";
 import App from "@/App";
+import { IS_NATIVE } from "@/lib/buildInfo";
+
+// Native iPhone app: the phone layout (Tailwind `short`/`narrow`, compact HUD)
+// is forced on, independent of the height the web view reports.
+if (IS_NATIVE) document.documentElement.dataset.native = "1";
 
 const queryClient = new QueryClient({
   defaultOptions: {

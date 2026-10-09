@@ -53,8 +53,51 @@ instead. The remaining overrides (`prefersStatusBarHidden`, `supportedInterfaceO
 
 | Command | What it does |
 |---|---|
-| `yarn ios:sync` | Production build without source maps, drop `build/_dbg`, copy into the iOS project (`cap sync ios`). Run after any change to the web game, then commit `ios/App/App/public`. |
+| `yarn ios:sync` | Production build without source maps (stamped with the build identity), drop `build/_dbg`, copy into the iOS project (`cap sync ios`). Run after committing any change to the web game, then commit `ios/App/App/public`. The Mac needs neither: the committed bundle is complete. |
 | `yarn ios:open` | Open the project in Xcode (macOS only). |
+
+## Build identity and stale installs
+
+Every production build carries the commit and time it was built from:
+
+- `craco.config.js` reads `git rev-parse --short=7 HEAD` (plus `+` if `src/`, `public/` or the
+  build config had uncommitted changes) and the UTC time, inlines them as
+  `REACT_APP_BUILD_COMMIT` / `REACT_APP_BUILD_TIME`, and writes `build/build-info.json`.
+  `yarn ios:sync` copies both into `ios/App/App/public`.
+- The home screen shows `LUNAVIA iOS · BUILD <commit> · <time>` (`components/BuildBadge.jsx`,
+  `lib/buildInfo.js`; `WEB` instead of `iOS` in a browser). Tapping it adds the bundle
+  fingerprint (`main.<hash>.js`), the viewport, whether the phone layout is on, and
+  NATIVE/BROWSER. Because the value is compiled into the JS bundle, it describes the bundle
+  actually running on the phone, not the branch it was downloaded from.
+- Release order, so the label names a real commit: commit the source first, then run
+  `yarn ios:sync` on the clean tree and commit `ios/App/App/public` on top. The label then
+  shows the source commit, and `public/build-info.json` in the download states the same.
+
+The phone layout no longer depends on the web view's reported height inside the app.
+`lib/buildInfo.js` detects the Capacitor bridge (`window.Capacitor.isNativePlatform()`), and
+`src/index.js` sets `html[data-native="1"]`. Then:
+
+- the Tailwind `short`/`narrow` variants (now plugin variants in `tailwind.config.js`)
+  match on that attribute as well as on `(max-height: 520px)`;
+- `useCompact()` returns true, which drives the compact descent HUD and toasts;
+- `index.css` hides the navbar during flight.
+
+The app is iPhone-only and landscape-only, so this is the layout it gets anyway. Both
+variant forms carry one `html` of specificity, so they still beat `sm`/`md`/`lg` as the
+screen did, and lose to `hover:`/`focus:`.
+
+When an iPhone shows an older UI than the repository holds, the repository bundle is not
+the cause if `ios/App/App/public/static/js/main.*.js` contains the new UI. The causes left
+are on the Mac or the phone:
+
+- an old project folder opened from Xcode's recent-projects list;
+- an incremental build reusing DerivedData, since the same ZIP folder name gives the same
+  DerivedData path;
+- the old app still installed.
+
+`INSTALL_ON_IPHONE.md` → *Updating* makes deleting the old app, deleting the old folders,
+opening from Finder and **Product → Clean Build Folder** mandatory, and the BUILD label
+confirms the result.
 
 ## Identity — what to replace
 

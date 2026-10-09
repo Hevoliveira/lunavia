@@ -1,3 +1,5 @@
+const plugin = require("tailwindcss/plugin");
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
     darkMode: ["class"],
@@ -10,10 +12,6 @@ module.exports = {
   theme: {
     extend: {
       screens: {
-        // Phone in landscape: short viewport. Desktop windows never match.
-        short: { raw: "(max-height: 520px)" },
-        // Small landscape phones (iPhone SE / mini width): tighter HUD widths.
-        narrow: { raw: "(max-height: 520px) and (max-width: 720px)" },
         // Touch-first devices: keyboard hints are hidden, touch controls stay.
         touch: { raw: "(hover: none) and (pointer: coarse)" },
       },
@@ -88,5 +86,21 @@ module.exports = {
       }
     }
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // Phone layout variants. Each matches a short (landscape phone) viewport,
+    // and always inside the native iPhone app (html[data-native="1"], set in
+    // src/index.js), so the app never falls back to the desktop layout.
+    // Both forms carry one extra element of specificity (`html`), so they
+    // beat sm/md/lg screens as `short` always did, while hover/focus still win.
+    plugin(({ addVariant }) => {
+      // Phone in landscape: short viewport. Desktop windows never match.
+      addVariant("short", ["@media (max-height: 520px) { html & }", 'html:where([data-native="1"]) &']);
+      // Small landscape phones (iPhone SE / mini width): tighter HUD widths.
+      addVariant("narrow", [
+        "@media (max-height: 520px) and (max-width: 720px) { html & }",
+        '@media (max-width: 720px) { html:where([data-native="1"]) & }',
+      ]);
+    }),
+  ],
 };

@@ -32,6 +32,8 @@
     html[data-flight="1"] [data-testid="global-nav"] { display: none; }
     html[data-flight="1"] { --hud-top: 0.5rem; }
 }
+html[data-native="1"][data-flight="1"] [data-testid="global-nav"] { display: none; }
+html[data-native="1"][data-flight="1"] { --hud-top: 0.5rem; }
 
 html, body, #root {
     background: var(--bg-void);

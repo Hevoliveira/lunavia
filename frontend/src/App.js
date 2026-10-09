@@ -5,12 +5,12 @@ import Mission from "@/pages/Mission";
 import Manifesto from "@/pages/Manifesto";
 import Navbar from "@/components/Navbar";
 import { Toaster } from "sonner";
-import useMediaQuery, { COMPACT_QUERY } from "@/hooks/useMediaQuery";
+import { useCompact } from "@/hooks/useMediaQuery";
 
 function App() {
   // Landscape phones: mission toasts go bottom-left and narrow, clear of the
   // vehicle, the mission clock and abort.
-  const compact = useMediaQuery(COMPACT_QUERY);
+  const compact = useCompact();
   return (
     <div className="App grain" data-testid="lunavia-app">
       <BrowserRouter>

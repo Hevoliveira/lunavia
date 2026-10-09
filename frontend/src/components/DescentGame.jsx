@@ -4,7 +4,7 @@ import { useRef, useState, useEffect, useMemo, Suspense } from "react";
 import * as THREE from "three";
 import LanderModel from "@/components/LanderModel";
 import HoldButton from "@/components/HoldButton";
-import useMediaQuery, { COMPACT_QUERY } from "@/hooks/useMediaQuery";
+import { useCompact } from "@/hooks/useMediaQuery";
 import { solveDistance } from "@/lib/cameraFraming";
 import CockpitOverlay from "@/components/CockpitOverlay";
 import AbortModal from "@/components/AbortModal";
@@ -653,7 +653,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const [contactLight, setContactLight] = useState(false);
   const [projectedHazard, setProjectedHazard] = useState(false);
   const [projectedZoneLabel, setProjectedZoneLabel] = useState("PRIMARY LZ");
-  const compact = useMediaQuery(COMPACT_QUERY);
+  const compact = useCompact();
   const gameRef = useRef(null);
   const sabProbeRef = useRef(null);
   const clearRef = useRef(null); // unobstructed screen rectangle (CSS px)

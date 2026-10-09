@@ -6,6 +6,39 @@ require("dotenv").config();
 // Craco sets NODE_ENV=development for start, NODE_ENV=production for build
 const isDevServer = process.env.NODE_ENV !== "production";
 
+// Build identity: the source commit and time this bundle was built from.
+// Inlined into the app (src/lib/buildInfo.js shows it on the home screen) and
+// written to build/build-info.json, which `yarn ios:sync` copies into the iOS
+// app. "+" after the commit means the source had uncommitted changes.
+const { execSync } = require("child_process");
+function git(args) {
+  try {
+    return execSync(`git ${args}`, { cwd: __dirname, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  } catch {
+    return "";
+  }
+}
+const BUILD_INFO = {
+  commit:
+    (git("rev-parse --short=7 HEAD") || "unknown") +
+    (git("status --porcelain -- src public package.json yarn.lock craco.config.js tailwind.config.js") ? "+" : ""),
+  time: new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC",
+};
+process.env.REACT_APP_BUILD_COMMIT = BUILD_INFO.commit;
+process.env.REACT_APP_BUILD_TIME = BUILD_INFO.time;
+
+class BuildInfoPlugin {
+  apply(compiler) {
+    const { Compilation, sources } = compiler.webpack;
+    compiler.hooks.thisCompilation.tap("BuildInfoPlugin", (compilation) => {
+      compilation.hooks.processAssets.tap(
+        { name: "BuildInfoPlugin", stage: Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL },
+        () => compilation.emitAsset("build-info.json", new sources.RawSource(JSON.stringify(BUILD_INFO, null, 2) + "\n")),
+      );
+    });
+  }
+}
+
 // Environment variable overrides
 const config = {
   enableHealthCheck: process.env.ENABLE_HEALTH_CHECK === "true",
@@ -97,6 +130,8 @@ let webpackConfig = {
             '**/public/**',
         ],
       };
+
+      if (!isDevServer) webpackConfig.plugins.push(new BuildInfoPlugin());
 
       // Add health check plugin to webpack if enabled
       if (config.enableHealthCheck && healthPluginInstance) {
