@@ -1,6 +1,6 @@
 import {
   SHOTS, EVENTS, DURATION, LIFTOFF_T, MILESTONES, metAt, formatMet, trajectoryAt, padHeight,
-  stage1Thrust, upperThrust, sepProgress, eventTime, shotAt, airDensity,
+  stage1Thrust, upperThrust, sepProgress, eventTime, shotAt, airDensity, sunAt, rollAt, stage1Visible,
 } from "./launchTimeline";
 
 describe("launch timeline", () => {
@@ -39,20 +39,29 @@ describe("launch timeline", () => {
       expect(m).toBeGreaterThanOrEqual(prev);
       prev = m;
     }
-    expect(formatMet(metAt(eventTime("orbit")))).toBe("T+00:11:30");
-    expect(formatMet(metAt(eventTime("tli")))).toBe("T+02:44:00");
+    expect(formatMet(metAt(eventTime("orbit")))).toBe("T+00:10:00");
+    // TLI on the second orbit, close to Apollo's T+2:44 and Artemis-class timing
+    expect(metAt(eventTime("tli"))).toBeGreaterThan(2.6 * 3600);
+    expect(metAt(eventTime("tli"))).toBeLessThan(3 * 3600);
     expect(formatMet(-10)).toBe("T-00:00:10");
   });
 
-  test("ascent, orbit insertion and TLI stay distinct", () => {
+  test("ascent, orbit insertion, TLI and lunar transfer stay distinct", () => {
     const meco = trajectoryAt(eventTime("meco"));
     const orbit = trajectoryAt(eventTime("orbit") + 2);
-    const tliEnd = trajectoryAt(DURATION);
+    const tliEnd = trajectoryAt(eventTime("lunarTransfer") - 0.3);
+    const away = trajectoryAt(DURATION);
     expect(meco.altKm).toBeGreaterThan(55);
     expect(meco.speedKmps).toBeLessThan(3); // far from orbital speed at staging
     expect(orbit.altKm).toBeCloseTo(185, 0);
     expect(orbit.speedKmps).toBeCloseTo(7.8, 1); // circular LEO
     expect(tliEnd.speedKmps).toBeGreaterThan(10.4); // above LEO, escape-class after TLI
+    expect(away.altKm).toBeGreaterThan(10000); // Earth recedes into a globe
+    // The whole parking orbit is flown at 185 km, at orbital speed
+    for (let t = eventTime("orbit") + 0.5; t < eventTime("tli"); t += 0.5) {
+      expect(trajectoryAt(t).altKm).toBeCloseTo(185, 0);
+      expect(trajectoryAt(t).speedKmps).toBeCloseTo(7.8, 1);
+    }
     // Altitude never decreases through the flight regime
     let prev = 0;
     for (let t = 32; t <= DURATION; t += 0.25) {
@@ -83,8 +92,47 @@ describe("launch timeline", () => {
   test("shot lookup and atmosphere", () => {
     expect(shotAt(0).id).toBe("wide");
     expect(shotAt(eventTime("separation")).id).toBe("sepJoint");
-    expect(shotAt(DURATION - 0.01).id).toBe("tli");
+    expect(shotAt(eventTime("tli")).id).toBe("tli");
+    expect(shotAt(DURATION - 0.01).id).toBe("departure");
     expect(airDensity(0)).toBe(1);
     expect(airDensity(65)).toBeLessThan(0.001);
+  });
+
+  test("Earth orbit is a sequence of distinct compositions, not one shot", () => {
+    const orbitShots = SHOTS.filter((s) => s.start >= eventTime("orbit") && s.end <= eventTime("tli") + 0.5);
+    expect(orbitShots.map((s) => s.id)).toEqual(["orbitWide", "orbitClose", "orbitLimb", "orbitSunset", "tliPrep"]);
+    // Within each shot the ground moves (orbital motion), at a readable rate
+    orbitShots.forEach((s) => {
+      const a = trajectoryAt(s.start + 0.2).downrangeKm;
+      const b = trajectoryAt(s.end - 0.2).downrangeKm;
+      const rate = (b - a) / (s.end - s.start - 0.4);
+      expect(rate).toBeGreaterThan(15);
+      expect(rate).toBeLessThan(200);
+    });
+  });
+
+  test("orbital day, sunset, night pass and a sunrise TLI", () => {
+    const at = (id, u) => {
+      const s = SHOTS.find((x) => x.id === id);
+      return sunAt(s.start + (s.end - s.start) * u);
+    };
+    expect(at("orbitWide", 0.5).lit).toBe(1);
+    expect(at("orbitWide", 0.5).elev).toBeGreaterThan(0.3); // Sun high over the day side
+    expect(at("orbitSunset", 0.1).lit).toBe(1);
+    expect(at("orbitSunset", 0.9).red).toBeGreaterThan(0.5); // reddened, low over the limb
+    expect(at("orbitSunset", 0.5).elev).toBeLessThan(0); // the ground below is already in night
+    expect(at("tliPrep", 0.3).lit).toBe(0); // in Earth's shadow
+    expect(sunAt(eventTime("tli")).lit).toBeGreaterThan(0.5); // the burn starts at sunrise
+    // Roll to burn attitude during the night pass, complete before ignition
+    expect(rollAt(eventTime("tliPrep") - 1)).toBe(0);
+    expect(rollAt(eventTime("tli"))).toBeCloseTo(Math.PI, 5);
+  });
+
+  test("the spent stage stays in the picture through the separation shots", () => {
+    ["stages", "stage1Cam", "usIgnition"].forEach((id) => {
+      const s = SHOTS.find((x) => x.id === id);
+      expect(stage1Visible(s.end - 0.1)).toBe(true);
+    });
+    expect(stage1Visible(eventTime("orbit"))).toBe(false);
   });
 });

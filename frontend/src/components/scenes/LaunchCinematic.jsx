@@ -42,6 +42,7 @@ const _q = new THREE.Quaternion();
 const _qz = new THREE.Quaternion();
 const _ax = new THREE.Vector3(0, 0, 1);
 const _sol = { center: new THREE.Vector3(), dist: 0 };
+const _cam = { a: new THREE.Vector3(), b: new THREE.Vector3() };
 const dirOf = (x, y, z) => new THREE.Vector3(x, y, z).normalize();
 
 /* ------------------------------------------------------------------ */
@@ -78,7 +79,25 @@ function buildEnvMaps(gl) {
     c += limb * h * 0.8;
     float sun = pow(max(dot(d, normalize(vec3(10.0, 8.0, 8.0))), 0.0), 400.0);
     gl_FragColor = vec4(c + vec3(9.0) * sun, 1.0);`);
-  return { day, orbit };
+  // Orbital sunset: night below, a warm limb towards the low Sun (behind,
+  // to the south of the vehicle at that point of the orbit).
+  const dusk = make(`
+    vec3 s = normalize(vec3(-0.85, 0.02, 0.53));
+    float toward = pow(max(dot(normalize(vec3(d.x, 0.0, d.z)), normalize(vec3(s.x, 0.0, s.z))), 0.0), 2.0);
+    float band = smoothstep(-0.3, 0.0, d.y) * (1.0 - smoothstep(0.0, 0.12, d.y));
+    vec3 limb = mix(vec3(1.0, 0.42, 0.12), vec3(0.35, 0.55, 1.0), smoothstep(-0.05, 0.08, d.y));
+    vec3 c = d.y < -0.05 ? vec3(0.025, 0.03, 0.05) : vec3(0.0);
+    c += limb * band * (0.15 + 1.2 * toward);
+    float sun = pow(max(dot(d, s), 0.0), 300.0);
+    gl_FragColor = vec4(c + vec3(7.0, 3.6, 1.6) * sun, 1.0);`);
+  // Night pass: dark planet with a faint glow of cities, the limb brightening
+  // ahead where the Sun will rise.
+  const night = make(`
+    float band = smoothstep(-0.28, 0.0, d.y) * (1.0 - smoothstep(0.0, 0.1, d.y));
+    vec3 c = d.y < -0.05 ? vec3(0.03, 0.026, 0.024) : vec3(0.004, 0.005, 0.01);
+    c += vec3(0.25, 0.32, 0.55) * band * (0.1 + 0.6 * pow(max(d.x, 0.0), 3.0));
+    gl_FragColor = vec4(c, 1.0);`);
+  return { day, orbit, dusk, night };
 }
 
 /* ------------------------------------------------------------------ */
@@ -102,13 +121,30 @@ const FLIGHT_SHOTS = {
   stages: { d0: dirOf(-0.05, 0.38, 0.92), d1: dirOf(-0.25, 0.5, 0.83), pts: "both", roll: 0.2, rect: OVER },
   usIgnition: { d0: dirOf(-0.35, 0.28, 0.9), d1: dirOf(-0.55, 0.32, 0.77), pts: "upper", roll: 0.12, rect: FRAME },
   limb: { d0: dirOf(0.1, 0.34, 0.94), d1: dirOf(0.28, 0.3, 0.91), pts: "upperWide", roll: -0.06, rect: FRAME, extra: 1.5 },
-  orbit: { d0: dirOf(0.15, 0.32, 0.94), d1: dirOf(-0.25, 0.36, 0.9), pts: "upperWide", roll: 0.05, rect: FRAME, extra: 1.7 },
-  tli: { d0: dirOf(-0.5, 0.3, 0.81), d1: dirOf(-0.7, 0.26, 0.66), pts: "upperBurn", roll: 0.04, rect: FRAME, extra: 1.2, recede: true },
+  // Earth orbit, five compositions (A-E). Directions are camera offsets in
+  // the vehicle frame: +X along the orbit, +Y local up, +Z south.
+  // A: wide, the spacecraft small over the sunlit planet.
+  orbitWide: { d0: dirOf(-0.42, 0.62, -0.66), d1: dirOf(-0.22, 0.66, -0.72), pts: "upperWide", roll: 0.08, rect: FRAME, extra: 3.4 },
+  // B: engineering close-up of the upper stage and spacecraft, Earth sliding past.
+  orbitClose: { d0: dirOf(0.32, 0.5, 0.8), d1: dirOf(0.52, 0.44, 0.73), pts: "detail", roll: -0.1, rect: FRAME, extra: 1.0 },
+  // C: along the atmospheric limb ahead of the vehicle.
+  orbitLimb: { d0: dirOf(-0.88, 0.4, 0.25), d1: dirOf(-0.84, 0.46, 0.28), pts: "upperWide", roll: 0.02, rect: FRAME, extra: 1.5 },
+  // D: orbital sunset - the vehicle in the last warm light over the night side.
+  orbitSunset: { d0: dirOf(0.42, 0.24, -0.88), d1: dirOf(0.62, 0.2, -0.76), pts: "upperWide", roll: -0.04, rect: FRAME, extra: 1.25 },
+  // E: night pass, roll to burn attitude on RCS.
+  tliPrep: { d0: dirOf(-0.35, 0.5, -0.79), d1: dirOf(-0.25, 0.42, -0.87), pts: "upperWide", roll: 0.06, rect: FRAME, extra: 1.15 },
+  // TLI burn at orbital sunrise.
+  tli: { d0: dirOf(-0.58, 0.3, -0.76), d1: dirOf(-0.74, 0.26, -0.62), pts: "upperBurn", roll: 0.04, rect: FRAME, extra: 1.2 },
+  // Lunar transfer: looking back past the spacecraft at the receding Earth.
+  departure: { d0: dirOf(0.3, 0.9, -0.3), d1: dirOf(0.1, 0.98, -0.16), pts: "upperWide", roll: 0.0, rect: FRAME, extra: 2.4 },
 };
+
+// The onboard camera on the spent stage, looking up its axis at the upper stage.
+const STAGE1_CAM = { at: [0.85, S1.top - 0.35, 0], fov: 50 };
 
 /* ------------------------------------------------------------------ */
 
-function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRef, pools, hooks, envMaps }) {
+function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRef, fillRefs, pools, hooks, envMaps }) {
   const { gl, scene, camera, size } = useThree();
   const setDpr = useThree((state) => state.setDpr);
   const env = useMemo(() => createEnvironment(), []);
@@ -120,6 +156,7 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     gl.shadowMap.autoUpdate = true;
     return () => {
       scene.environment = null;
+      gl.toneMappingExposure = 1;
     };
   }, [gl, scene]);
 
@@ -192,13 +229,15 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     const g = rocketGroupRef.current;
     let baseY = BASE_Y;
     if (g) {
+      // Z-Y-X: roll about the vehicle axis first, then pitch over downrange.
+      g.rotation.order = "ZYX";
       if (regime === "pad") {
         baseY = BASE_Y + TL.padHeight(t);
         g.position.set(TL.padDownrange(t), baseY, 0);
         g.rotation.set(TL.twang(t), 0, -TL.padPitch(t));
       } else {
         g.position.set(0, 0, 0);
-        g.rotation.set(0, 0, -traj.pitch);
+        g.rotation.set(0, traj.roll || 0, -traj.pitch);
       }
     }
     padProg.current = regime === "pad" ? 0 : 1; // LaunchComplex hides itself in flight
@@ -208,10 +247,20 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     const theta = traj.downrangeKm / 6371;
     _qz.setFromAxisAngle(_ax, theta); // env → vehicle frame (local horizon at the vehicle)
     const sunV = _v.copy(SUN_ENV).applyQuaternion(_qz);
+    // In orbit the vehicle passes from day through sunset into Earth's
+    // shadow and back out at sunrise: dim and redden its sunlight to match.
+    const sun = regime === "pad" ? null : TL.sunAt(t);
     if (sunRef.current) {
       sunRef.current.position.copy(sunV).multiplyScalar(30);
-      sunRef.current.intensity = regime === "pad" ? 2.4 : 3.0;
+      sunRef.current.intensity = (regime === "pad" ? 2.4 : 3.0) * (sun ? sun.lit : 1);
+      const red = sun ? sun.red : 0;
+      sunRef.current.color.setRGB(1, 0.949 - 0.42 * red, 0.886 - 0.66 * red);
     }
+    // Sky fill fades to a faint earthshine in Earth's shadow, enough to keep
+    // the vehicle's shape readable on a phone
+    const fill = sun ? 0.35 + 0.65 * sun.lit : 1;
+    if (fillRefs.amb.current) fillRefs.amb.current.intensity = 0.2 * fill;
+    if (fillRefs.hemi.current) fillRefs.hemi.current.intensity = 0.25 * fill;
     if (padLightRef.current) {
       const flick = 0.85 + 0.15 * Math.sin(t * 37) * Math.sin(t * 23);
       const near = regime === "pad" ? 1 - smooth((TL.padHeight(t) - 4) / 12) : 0;
@@ -219,11 +268,24 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
       padLightRef.current.position.set(0, Math.min(baseY, 3) - 0.1, 0.25);
     }
     if (envMaps) {
-      const space = t >= 43;
-      scene.environment = space ? envMaps.orbit.texture : envMaps.day.texture;
-      scene.environmentIntensity = space ? 0.55 : THREE.MathUtils.lerp(0.85, 0.32, smooth((traj.altKm - 9) / 45));
+      let map = envMaps.day;
+      let k = THREE.MathUtils.lerp(0.85, 0.32, smooth((traj.altKm - 9) / 45));
+      if (t >= 43) {
+        if (sun.lit < 0.5) [map, k] = [envMaps.night, 0.4];
+        else if (sun.red > 0.35) [map, k] = [envMaps.dusk, 0.5];
+        else [map, k] = [envMaps.orbit, 0.55];
+      }
+      scene.environment = map.texture;
+      scene.environmentIntensity = k;
     }
     gl.shadowMap.autoUpdate = regime === "pad" && t < 27;
+    // Camera exposure: the close cameras flare as the engines come up to
+    // thrust (and the onboard camera when the upper stage lights above it).
+    let expo = 1;
+    if (shot.id === "engines") expo = 1 + 0.5 * thrust;
+    else if (shot.id === "trench") expo = 1 + 0.25 * thrust * (1 - smooth((TL.padHeight(t) - 1) / 4));
+    else if (shot.id === "stage1Cam") expo = 1 + 0.45 * TL.upperThrust(t);
+    gl.toneMappingExposure = expo;
 
     // --- Particles ---
     if (S.lastShot && S.lastShot.regime !== regime) {
@@ -271,6 +333,26 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
       }
       camera.clearViewOffset();
       S.roll = 0;
+    } else if (shot.id === "stage1Cam") {
+      // Onboard camera on the spent stage, looking up its axis: the upper
+      // stage pulls away and lights its engine straight into the lens.
+      const rig = rigRef.current;
+      if (rig && rig.root && rig.stage1) {
+        rig.root.updateWorldMatrix(true, true);
+        const st1 = rig.stage1;
+        // On a boom just outside the skin, aimed at the receding engine bell
+        const [ax, ay, az] = STAGE1_CAM.at;
+        const base = st1.localToWorld(_cam.a.set(0, ay, 0));
+        camera.position.copy(st1.localToWorld(_cam.b.set(ax, ay, az)));
+        camera.up.copy(_cam.b).sub(base).normalize();
+        camera.lookAt(rig.root.localToWorld(_cam.a.set(0, S2.bell + 0.25, 0)));
+        if (camera.fov !== STAGE1_CAM.fov) {
+          camera.fov = STAGE1_CAM.fov;
+          camera.updateProjectionMatrix();
+        }
+        camera.clearViewOffset();
+        S.roll = 0;
+      }
     } else {
       const f = FLIGHT_SHOTS[shot.id];
       const rig = rigRef.current;
@@ -298,6 +380,9 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
           case "upper":
             pts = [pt(rig.root, S2.bell - 1.0, 0.35), pt(rig.root, S2.bell, 0.25), pt(rig.root, S2.tip, 0.18), pt(rig.stage1, S1.top, 0.3)];
             break;
+          case "detail":
+            pts = [pt(rig.root, S2.bell + 0.2, 0.3), pt(rig.root, S2.low + 0.9, 0.28), pt(rig.root, S2.tip - 0.9, 0.2)];
+            break;
           case "upperWide":
           case "upperBurn":
             pts = [pt(rig.root, S2.bell - (c.upper > 0.1 ? 1.2 : 0.1), 0.3), pt(rig.root, S2.tip, 0.2)];
@@ -314,8 +399,7 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
         const roll = f.roll * (0.6 + 0.4 * u);
         S.roll = cut || dt === 0 ? roll : S.roll + (roll - S.roll) * (1 - Math.exp(-dt * 2.5));
         framePoints(pts, dir, camera.fov, size.width / size.height, f.rect, 0.86, _sol, S.roll);
-        let dist = _sol.dist * (f.extra || 1);
-        if (f.recede) dist *= 1 + Math.max(0, t - TL.eventTime("tli") - 1) * 0.07;
+        const dist = _sol.dist * (f.extra || 1);
         const goal = _w.copy(dir).multiplyScalar(dist).add(_sol.center);
         if (cut || dt === 0) {
           S.camPos.copy(goal);
@@ -473,12 +557,30 @@ function emitParticles(t, dt, pools, S, rigRef, rocketGroupRef) {
         const tan = 0.8 + r() * 0.17;
         sm.emit(t, [-3.6 - r() * 0.6, 0.3, (r() - 0.5) * 0.8], [-2.6 - r() * 3.2, 0.6 + r() * 1.3, (r() - 0.5) * 3.4], 14 + r() * 9, 0.8, 5.0 + r() * 3.5, tan, tan * 0.96, tan * 0.9, 0.7, 0.32, 0.3);
       }
+      // Steam: the deluge water flashing off the flame pit, rising and spreading
+      if (thrust > 0.4 && h < 1.5) {
+        for (let i = rate(S, "pitSteam", 9 * thrust, dt); i > 0; i--) {
+          const a = r() * Math.PI * 2;
+          const w = 0.97 + r() * 0.03;
+          sm.emit(t, [0.3 + Math.cos(a) * 0.7, 0.35, Math.sin(a) * 0.7], [Math.cos(a) * 0.5, 0.7 + r() * 0.7, Math.sin(a) * 0.5], 9 + r() * 5, 1.2, 3.6 + r() * 1.6, w, w, w, 0.42, 0.5, 0.25);
+        }
+      }
       // Billows pouring out from under the deck on every side
-      for (let i = rate(S, "deckBillow", 12 * trench, dt); i > 0; i--) {
+      for (let i = rate(S, "deckBillow", 18 * trench, dt); i > 0; i--) {
         // Out of the open west and north sides of the deck, away from the tower
         const a = Math.PI * (0.7 + r() * 0.85);
         const tan = 0.84 + r() * 0.14;
-        sm.emit(t, [0.4 + Math.cos(a) * 1.5, 0.3, Math.sin(a) * 1.3], [Math.cos(a) * (0.9 + r() * 1.1), 0.1 + r() * 0.35, Math.sin(a) * (0.8 + r() * 1.0)], 10 + r() * 6, 0.6, 2.8 + r() * 2.0, tan, tan * 0.97, tan * 0.93, 0.56, 0.42, 0.08);
+        sm.emit(t, [0.4 + Math.cos(a) * 1.5, 0.3, Math.sin(a) * 1.3], [Math.cos(a) * (0.9 + r() * 1.1), 0.1 + r() * 0.35, Math.sin(a) * (0.8 + r() * 1.0)], 10 + r() * 6, 0.6, 2.8 + r() * 2.0, tan, tan * 0.97, tan * 0.93, 0.6, 0.42, 0.08);
+      }
+    }
+    // Ground surge at release: the full exhaust hits the deck and a wall of
+    // smoke and steam rolls outward across the pad, slowing as it spreads
+    if (t > TL.LIFTOFF_T + 0.2 && t < TL.LIFTOFF_T + 3.2) {
+      for (let i = rate(S, "surge", 26, dt); i > 0; i--) {
+        const a = Math.PI * (0.55 + r() * 1.25);
+        const sp = 2.2 + r() * 2.2;
+        const w = 0.86 + r() * 0.12;
+        sm.emit(t, [0.4 + Math.cos(a) * 1.4, 0.25, Math.sin(a) * 1.4], [Math.cos(a) * sp, 0.25 + r() * 0.5, Math.sin(a) * sp], 11 + r() * 7, 1.0, 4.0 + r() * 2.8, w, w * 0.97, w * 0.93, 0.58, 0.9, 0.12);
       }
     }
     // Dust and vapour knocked flat across the pad at release
@@ -524,6 +626,24 @@ function emitParticles(t, dt, pools, S, rigRef, rocketGroupRef) {
           const g = 0.92 + r() * 0.06;
           sm.emit(t, pos, [-ax[0] * stream * 1.4 + (r() - 0.5), -ax[1] * stream * 1.4 + (r() - 0.5), (r() - 0.5)], 2.0 + r(), 0.9 + expand, 3.5 + expand * 5, g, g, g, 0.42 * k, 0.15, 0);
         }
+      }
+    }
+    // RCS firings that start and stop the roll to burn attitude: short white
+    // puffs from the thruster quads at the forward end of the upper stage
+    const rcsOn = (t > 85.6 && t < 86.4) || (t > 87.9 && t < 88.7);
+    if (rcsOn && rigRef.current && rigRef.current.root) {
+      const root = rigRef.current.root;
+      root.updateWorldMatrix(true, false);
+      const sign = t < 87 ? 1 : -1;
+      for (let i = rate(S, "rcs", 55, dt); i > 0; i--) {
+        const q = Math.floor(r() * 4);
+        const a = (q * Math.PI) / 2 + Math.PI / 4;
+        const w = root.localToWorld(new THREE.Vector3(Math.cos(a) * 0.42, S2.low + 0.35, Math.sin(a) * 0.42));
+        const c = root.localToWorld(new THREE.Vector3(0, S2.low + 0.35, 0));
+        const out = w.clone().sub(c).normalize();
+        // tangential jet, opposite to the roll it drives
+        const tan = new THREE.Vector3(-out.z, 0, out.x).multiplyScalar(sign);
+        sm.emit(t, [w.x, w.y, w.z], [out.x * 0.4 + tan.x * 1.4, out.y * 0.4 + tan.y * 1.4, out.z * 0.4 + tan.z * 1.4], 0.35 + r() * 0.3, 0.02, 0.13 + r() * 0.08, 0.95, 0.96, 1.0, 0.32, 1.6, 0);
       }
     }
     // Separation: motor smoke and a brief ring of released vapour at the joint
@@ -606,16 +726,14 @@ function Scene({ hooks }) {
   const padProg = useRef(0);
   const sunRef = useRef();
   const padLightRef = useRef();
+  const fillRefs = { amb: useRef(), hemi: useRef() };
   const anisotropy = useMemo(() => Math.min(8, gl.capabilities.getMaxAnisotropy()), [gl]);
   useEffect(() => setRocketTextureAnisotropy(anisotropy), [anisotropy]);
   const envMaps = useMemo(() => buildEnvMaps(gl), [gl]);
-  useEffect(() => () => {
-    envMaps.day.dispose();
-    envMaps.orbit.dispose();
-  }, [envMaps]);
+  useEffect(() => () => Object.values(envMaps).forEach((m) => m.dispose()), [envMaps]);
   const pools = useMemo(
     () => ({
-      smoke: new ParticlePool({ count: 1000, kind: "smoke", accel: [0, 0.16, 0], seed: 11 }),
+      smoke: new ParticlePool({ count: 1300, kind: "smoke", accel: [0, 0.16, 0], seed: 11 }),
       fire: new ParticlePool({ count: 400, kind: "fire", accel: [0, 1.0, 0], seed: 23 }),
     }),
     []
@@ -632,10 +750,10 @@ function Scene({ hooks }) {
 
   return (
     <>
-      <ambientLight intensity={0.2} />
+      <ambientLight ref={fillRefs.amb} intensity={0.2} />
       <directionalLight ref={sunRef} position={[10, 8, 8]} intensity={2.4} color="#fff2e2" />
       <PadShadowSetup lightRef={sunRef} />
-      <hemisphereLight args={["#bcd3f0", "#5a5040", 0.25]} />
+      <hemisphereLight ref={fillRefs.hemi} args={["#bcd3f0", "#5a5040", 0.25]} />
       <pointLight ref={padLightRef} color="#ffae66" intensity={0} distance={16} decay={1.6} />
       <LaunchComplex progRef={padProg} anisotropy={anisotropy} />
       <PadVisible padProg={padProg}>
@@ -653,6 +771,7 @@ function Scene({ hooks }) {
         padProg={padProg}
         sunRef={sunRef}
         padLightRef={padLightRef}
+        fillRefs={fillRefs}
         pools={pools}
         hooks={hooks}
         envMaps={envMaps}
@@ -674,6 +793,15 @@ function PadVisible({ padProg, children }) {
 
 function useAudioDirector(audio) {
   const roar = useRef({ level: 0, muffle: 0, last: 0 });
+  // Space-to-ground calls carry Quindar tones, as Apollo's did: an intro
+  // tone before the voice and an outro tone after it.
+  const quindar = (text, delay = 0) => {
+    setTimeout(() => {
+      audio.beep(2525, 0.25, 0.05);
+      audio.comms(text, 320);
+      setTimeout(() => audio.beep(2475, 0.25, 0.05), 320 + 450 + text.length * 62);
+    }, delay);
+  };
   return {
     event(e) {
       if (!audio) return;
@@ -685,6 +813,8 @@ function useAudioDirector(audio) {
           audio.hiss?.(1.4, 0.18);
           break;
         case "engineStart":
+          // A low whump as the first engine lights, then the roar builds
+          audio.thud?.(0.5);
           audio.roarStart?.();
           audio.comms("Main engine start.", 0);
           break;
@@ -705,25 +835,39 @@ function useAudioDirector(audio) {
           audio.comms("Main engine cutoff.", 900);
           break;
         case "separation":
+          // Pyrotechnic bolts, then the separation motors, felt through the structure
+          audio.boom(0.22);
+          audio.clank?.(0.35);
           audio.thud?.(0.45);
+          audio.hiss?.(0.9, 0.08);
           audio.comms("Staging. Separation confirmed.", 700);
           break;
         case "usIgnition":
+          audio.thud?.(0.3);
           audio.roarStart?.({ onboard: true });
           audio.comms("Upper stage ignition. Good burn.", 600);
           break;
         case "orbit":
           audio.roarStop?.(1.2);
-          audio.comms("Cutoff. Orbit insertion confirmed. Parking orbit, one eighty-five kilometers.", 900);
+          quindar("Cutoff. Orbit insertion confirmed. Parking orbit, one eighty-five kilometers.", 900);
           audio.padStart?.();
           break;
+        case "sunset":
+          quindar("LV-001, Houston. Loss of daylight in one minute. Systems look good.", 600);
+          break;
+        case "tliPrep":
+          // RCS thrusters starting the roll, heard as thumps through the hull
+          [0, 260, 2600, 2860].forEach((d) => setTimeout(() => audio.thud?.(0.16), 400 + d));
+          quindar("LV-001, Houston. You are go for T. L. I.", 1400);
+          break;
         case "tli":
+          audio.thud?.(0.3);
           audio.roarStart?.({ onboard: true });
-          audio.comms("Go for T. L. I. Translunar injection burn underway.", 300);
+          quindar("Translunar injection burn underway. Thrust is good.", 300);
           break;
         case "lunarTransfer":
           audio.roarStop?.(1.5);
-          audio.comms("Cutoff. LV-001, you are on your way to the Moon.", 600);
+          quindar("Cutoff. LV-001, you are on your way to the Moon.", 600);
           break;
         default:
       }
@@ -756,6 +900,7 @@ function useAudioDirector(audio) {
         level = TL.upperThrust(t) * 0.32;
         muffle = 0.95;
       }
+      if (shot.id === "stage1Cam") level = 0; // the camera on the spent stage hears nothing
       audio.roarSet(level, muffle);
     },
   };

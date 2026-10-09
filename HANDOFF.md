@@ -94,7 +94,9 @@ support is required for smooth playback.
 │       ├── data/
 │       │   ├── missionPhases.js        ← client-side canonical phase timings + trajectory math
 │       │   ├── landingPhysics.js       ← lunar-descent physics constants, difficulty, scoring
-│       │   └── descentProfile.js       ← reference descent altitude/velocity gates
+│       │   ├── landerSim.js            ← lunar-descent integrator (game + tests share it)
+│       │   ├── landerPilots.js         ← simulated pilots for balance tests (not bundled)
+│       │   └── descentProfile.js       ← descent guidance: target band, braking cue, reserve
 │       ├── hooks/
 │       │   ├── useMissionAudio.js      ← WebAudio comms/TTS
 │       │   └── use-toast.js
@@ -212,7 +214,8 @@ Serve `frontend/build/` from any static host, and point
 | Descent 3D scene          | `frontend/src/components/scenes/DescentScene.jsx`       |
 | Lunar lander model        | `frontend/src/components/LanderModel.jsx`               |
 | Landing physics constants | `frontend/src/data/landingPhysics.js`                   |
-| Descent reference profile | `frontend/src/data/descentProfile.js`                   |
+| Lunar-descent integrator  | `frontend/src/data/landerSim.js` (+ `landerSim.test.js`) |
+| Descent guidance          | `frontend/src/data/descentProfile.js`                   |
 | Mission phase catalog     | `frontend/src/data/missionPhases.js`                    |
 | Reentry cinematic         | `frontend/src/components/scenes/ReentryScene.jsx`       |
 | Landing hero (Earth+Moon) | `frontend/src/components/EarthMoonHero.jsx`             |
@@ -907,12 +910,14 @@ replaces `AscentScene.jsx` and the `SEP_PROMPT` gate. It is driven by
 `data/launchTimeline.js` (shots, events, mission clock, trajectory and engine schedules,
 unit-tested in `launchTimeline.test.js`).
 
-- **Sequence (~79 s)**: T-15 count with venting and HBOI sparklers → staggered five-engine
-  start (6.5 s before release, stack "twang") → hold-down release and a slow, heavy rise →
-  tower clear → atmospheric ascent through cirrus with max-Q → MECO (plume tails off,
-  nozzles cool) → separation motors → spent stage tumbles away → vacuum engine ignition
-  → leaving the atmosphere → upper-stage cutoff in a 185 km parking orbit → TLI restart →
-  LUNAR TRANSFER, then the cruise (from mission time 12000 s, after the burn).
+- **Sequence (~102 s since §24)**: T-15 count with venting and HBOI sparklers → staggered
+  five-engine start (6.5 s before release, stack "twang") → hold-down release and a slow,
+  heavy rise → tower clear → atmospheric ascent through cirrus with max-Q → MECO (plume
+  tails off, nozzles cool) → separation motors → spent stage tumbles away, seen from its
+  own onboard camera as the vacuum engine lights → leaving the atmosphere → upper-stage
+  cutoff in a 185 km parking orbit → five orbit compositions through orbital sunset and a
+  night pass → TLI restart at sunrise → LUNAR TRANSFER with the Earth receding, then the
+  cruise (from mission time 12000 s, after the burn).
 - **Rendering**: two layers. The environment is true scale: one full-screen shader
   ray-traces the planet and its atmosphere (single scattering, exact horizon at any
   altitude, thin limb in orbit), plus true-altitude clouds. The vehicle, pad and
@@ -929,3 +934,39 @@ unit-tested in `launchTimeline.test.js`).
   mission completion and the descent touch controls.
 
 Details, measurements and validation: `docs/IOS_APP.md` → *Cinematic Earth departure*.
+
+## 24. COMMANDER rebalance + Cinematic Flight IV
+
+**COMMANDER.** A physical-iPhone test found COMMANDER almost impossible. It was: its
+105-unit tank held 93 % of what even an ideal single braking burn needs from the start
+state, so no input could land. The integrator moved to `data/landerSim.js` (the game and
+the tests share it, and a test proves it reproduces the old inline code). Simulated pilots
+with human handicaps (`data/landerPilots.js`, tests only) measured every factor.
+
+- **Changes**: COMMANDER fuel 105 → 160 (1.44× the ideal burn; ASTRONAUT 2.27×), touchdown
+  limits 1.5 / 1.0 → 2.0 / 1.2 m/s, tilt rate 38 → 30°/s, plus fine control on all modes
+  (a tap trims ~1° or ~0.15 m/s, a held press keeps full authority).
+- **Unchanged**: altitude, descent rate, drift, thrust, gravity, hazards and scoring.
+- **Guidance** (`descentProfile.js`, all modes): TGT V/S band, BRAKE countdown or stop
+  margin, RESERVE (hover seconds beyond the minimum landing fuel), and a touchdown
+  prediction along the recommended descent.
+- `landerSim.test.js` (25 tests) covers the diagnosis, the hierarchy and every
+  success / failure scenario. Full analysis: `docs/COMMANDER_BALANCE.md`.
+
+**Cinematic Flight IV** (`LaunchCinematic.jsx`, `launch/environment.js`, `launchTimeline.js`):
+
+- Ignition: camera exposure surge, pit steam, a ground surge of smoke at release and
+  heavier deck billows.
+- Separation: an onboard camera on the spent stage watches the upper stage pull away and
+  light.
+- Earth orbit, five compositions: wide over the Atlantic, close engineering shot over West
+  Africa, the atmospheric limb, orbital sunset (warm light on the vehicle over the night
+  side), and a night pass with an RCS roll to burn attitude.
+- The Sun is fixed in the Earth frame, so day, sunset, Earth's shadow and sunrise follow
+  the vehicle's position.
+- Earth shader: sub-texture cloud and land detail from orbit, a tighter rippled glint,
+  thinner orbital haze, night-side city lights and a tighter Sun glare.
+- TLI at sunrise on the second orbit, then the Earth recedes to a globe (19 000 km).
+- Audio: sub-bass rumble, pyro and clank at staging, RCS thumps, and Quindar tones on
+  space-to-ground calls.
+

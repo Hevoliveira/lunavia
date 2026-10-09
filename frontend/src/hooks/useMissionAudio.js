@@ -203,6 +203,7 @@ export default function useMissionAudio() {
     try {
       r.src.stop(now + fade + 0.05);
       r.crack.stop(now + fade + 0.05);
+      r.subs.forEach((o) => o.stop(now + fade + 0.05));
     } catch (e) {}
     roarRef.current = null;
   }, []);
@@ -231,12 +232,24 @@ export default function useMissionAudio() {
     cg.gain.value = 0;
     const master = ctx.createGain();
     master.gain.value = 1;
+    // Sub-bass: the chest-deep rumble felt more than heard, slowly beating.
+    const sub = ctx.createGain();
+    sub.gain.value = 0;
+    const subs = [31, 43.5].map((f) => {
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.value = f;
+      o.connect(sub);
+      o.start();
+      return o;
+    });
     src.connect(lp).connect(low).connect(master);
     crack.connect(hp).connect(cg).connect(master);
+    sub.connect(master);
     master.connect(ctx.destination);
     src.start();
     crack.start();
-    roarRef.current = { src, crack, lp, low, cg, master };
+    roarRef.current = { src, crack, lp, low, cg, sub, subs, master };
   }, [roarStop]);
 
   const roarSet = useCallback((level, muffle = 0) => {
@@ -248,6 +261,7 @@ export default function useMissionAudio() {
     r.lp.frequency.setTargetAtTime(140 * Math.pow(2400 / 140, 1 - m), now, 0.15);
     r.low.gain.setTargetAtTime(Math.max(0, level) * 0.6, now, 0.15);
     r.cg.gain.setTargetAtTime(Math.max(0, level) * (1 - m) * (1 - m) * 0.32, now, 0.15);
+    r.sub.gain.setTargetAtTime(Math.max(0, level) * (1 - 0.5 * m) * 0.22, now, 0.25);
   }, []);
 
   const clank = useCallback((vol = 0.5) => {

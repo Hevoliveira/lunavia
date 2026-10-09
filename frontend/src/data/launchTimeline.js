@@ -17,7 +17,7 @@
 
 export const UNIT_M = 30; // metres per pad-scale scene unit
 export const LIFTOFF_T = 15; // countdown starts at T-15
-export const DURATION = 79;
+export const DURATION = 102;
 
 // Camera shots, in order. Hard cuts between shots, smooth motion within.
 export const SHOTS = [
@@ -30,11 +30,17 @@ export const SHOTS = [
   { id: "highAlt", start: 32, end: 43, regime: "flight", name: "ATMOSPHERIC ASCENT" },
   { id: "meco", start: 43, end: 46.5, regime: "flight", name: "MAIN ENGINE CUTOFF" },
   { id: "sepJoint", start: 46.5, end: 49.5, regime: "flight", name: "SEPARATION PLANE" },
-  { id: "stages", start: 49.5, end: 53.8, regime: "flight", name: "STAGE SEPARATION" },
-  { id: "usIgnition", start: 53.8, end: 58.5, regime: "flight", name: "UPPER STAGE" },
-  { id: "limb", start: 58.5, end: 64.5, regime: "flight", name: "LEAVING THE ATMOSPHERE" },
-  { id: "orbit", start: 64.5, end: 70.5, regime: "flight", name: "EARTH ORBIT" },
-  { id: "tli", start: 70.5, end: DURATION, regime: "flight", name: "TRANSLUNAR INJECTION" },
+  { id: "stages", start: 49.5, end: 53, regime: "flight", name: "STAGE SEPARATION" },
+  { id: "stage1Cam", start: 53, end: 57, regime: "flight", name: "ONBOARD · STAGE 1 CAMERA" },
+  { id: "usIgnition", start: 57, end: 61, regime: "flight", name: "UPPER STAGE" },
+  { id: "limb", start: 61, end: 65, regime: "flight", name: "LEAVING THE ATMOSPHERE" },
+  { id: "orbitWide", start: 65, end: 70.5, regime: "flight", name: "EARTH ORBIT" },
+  { id: "orbitClose", start: 70.5, end: 75.5, regime: "flight", name: "PARKING ORBIT · 185 KM" },
+  { id: "orbitLimb", start: 75.5, end: 80, regime: "flight", name: "ATMOSPHERIC LIMB" },
+  { id: "orbitSunset", start: 80, end: 85, regime: "flight", name: "ORBITAL SUNSET" },
+  { id: "tliPrep", start: 85, end: 89, regime: "flight", name: "TLI PREPARATION" },
+  { id: "tli", start: 89, end: 95.5, regime: "flight", name: "TRANSLUNAR INJECTION" },
+  { id: "departure", start: 95.5, end: DURATION, regime: "flight", name: "LUNAR TRANSFER" },
 ];
 
 // Mission events. Captions describe what happens; none of them waits for input.
@@ -49,9 +55,11 @@ export const EVENTS = [
   { t: 44, id: "meco", caption: "MAIN ENGINE CUTOFF", sub: "STAGE 1 BURNOUT · 65 KM" },
   { t: 47, id: "separation", caption: "STAGE SEPARATION", sub: "SEPARATION MOTORS FIRING" },
   { t: 54.5, id: "usIgnition", caption: "UPPER STAGE IGNITION", sub: "VACUUM ENGINE · THRUST NOMINAL" },
-  { t: 64.5, id: "orbit", caption: "EARTH ORBIT", sub: "UPPER STAGE CUTOFF · 185 KM PARKING ORBIT" },
-  { t: 71.5, id: "tli", caption: "TRANSLUNAR INJECTION", sub: "UPPER STAGE RESTART · Δv 3.1 KM/S" },
-  { t: 78.3, id: "lunarTransfer", caption: "LUNAR TRANSFER", sub: "TLI CUTOFF · SPACECRAFT SEPARATES FOR THE 3-DAY COAST" },
+  { t: 65, id: "orbit", caption: "EARTH ORBIT", sub: "UPPER STAGE CUTOFF · 185 KM PARKING ORBIT" },
+  { t: 80.2, id: "sunset" },
+  { t: 85.2, id: "tliPrep", caption: "TLI PREPARATION", sub: "SECOND ORBIT · MANEUVER TO BURN ATTITUDE" },
+  { t: 89.8, id: "tli", caption: "TRANSLUNAR INJECTION", sub: "UPPER STAGE RESTART · Δv 3.1 KM/S" },
+  { t: 95.8, id: "lunarTransfer", caption: "LUNAR TRANSFER", sub: "TLI CUTOFF · LEAVING EARTH ORBIT · 3-DAY COAST" },
 ];
 
 export const eventTime = (id) => EVENTS.find((e) => e.id === id).t;
@@ -107,17 +115,59 @@ function monotone(keys) {
 }
 
 // Flight regime keys (cinematic seconds → value)
-const ALT_KM = monotone([[32, 9], [35, 14], [43, 58], [47, 68], [54.5, 84], [58.5, 112], [64.5, 185], [70.5, 185], [74, 190], [79, 245]]);
-const PITCH_DEG = monotone([[32, 24], [43, 58], [47, 62], [54.5, 66], [64.5, 88], [70.5, 90], [79, 92]]);
-const DOWNRANGE_KM = monotone([[32, 1.5], [43, 55], [47, 75], [54.5, 130], [64.5, 700], [70.5, 1400], [79, 2600]]);
-const SPEED_KMPS = monotone([[32, 0.35], [35, 0.45], [43, 2.1], [44, 2.3], [54.5, 2.4], [64.5, 7.8], [70.5, 7.8], [79, 10.6]]);
+const ALT_ASCENT = monotone([
+  [32, 9], [35, 14], [43, 58], [47, 68], [54.5, 84], [57, 95], [61, 125], [65, 185],
+  [89.5, 185], [92, 192], [95.5, 260],
+]);
+// After TLI cutoff the cut jumps ~6 min ahead: the spacecraft is already
+// 2 500 km out and the Earth recedes to a globe as the shot runs.
+const DEPARTURE = 95.5;
+const ALT_KM = (t) => (t < DEPARTURE ? ALT_ASCENT(t) : 2500 * Math.exp(0.32 * (t - DEPARTURE)));
+const PITCH_DEG = monotone([[32, 24], [43, 58], [47, 62], [54.5, 66], [65, 88], [85, 90], [102, 92]]);
+const SPEED_KMPS = monotone([
+  [32, 0.35], [35, 0.45], [43, 2.1], [44, 2.3], [54.5, 2.4], [65, 7.8], [89.8, 7.8],
+  [95.5, 10.8], [97, 10.1], [98.5, 8.9], [100, 7.2], [102, 5.6],
+]);
+
+/*
+ * Ascent: one continuous downrange curve. In orbit every shot is a separate
+ * moment of the parking orbit (the cuts jump ahead along it, as the mission
+ * clock does), and within a shot the ground moves at 3-4x real speed so the
+ * orbital motion reads without blurring. Positions are the angle travelled
+ * round the orbit from the launch site (deg): insertion over the Atlantic,
+ * the West African coast and the Sahel in daylight, orbital sunset over the
+ * Indian Ocean, and TLI at sunrise over the Pacific on the second orbit.
+ */
+const DOWNRANGE_ASCENT = monotone([[32, 1.5], [43, 55], [47, 75], [54.5, 130], [61, 330], [65, 800]]);
+const ORBIT_ARC = [
+  // shot start, angle at start (deg), angular rate (deg/s), MET at start (s), MET rate
+  { t: 65, a: 7.2, rate: 0.2, met: 600, metRate: 15 },
+  { t: 70.5, a: 57, rate: 0.25, met: 1330, metRate: 15 },
+  { t: 75.5, a: 72, rate: 0.2, met: 1550, metRate: 15 },
+  { t: 80, a: 150, rate: 1.35, met: 2700, metRate: 20 },
+  { t: 85, a: 661.4, rate: 1.25, met: 10100, metRate: 15 },
+  { t: 89, a: 666.4, rate: 0.9, met: 10260, metRate: 55 },
+  { t: 95.5, a: 680, rate: 0.6, met: 11000, metRate: 150 },
+];
+function orbitSeg(t) {
+  let seg = ORBIT_ARC[0];
+  for (const s of ORBIT_ARC) if (t >= s.t) seg = s;
+  return seg;
+}
+export function downrangeAt(t) {
+  if (t < 65) return DOWNRANGE_ASCENT(t);
+  const s = orbitSeg(t);
+  return ((s.a + s.rate * (t - s.t)) * Math.PI / 180) * 6371;
+}
 
 // Mission elapsed time shown on screen. Real time through the countdown and
 // the first seconds of flight; broadcast-style jumps at the cuts after that.
-const MET_FLIGHT = monotone([[32, 58], [34, 72], [43, 148], [44, 150], [47, 152], [54.5, 158], [64.5, 690], [70.5, 9780], [71.5, 9840], [78.3, 10200], [79, 10240]]);
+const MET_ASCENT = monotone([[32, 58], [34, 72], [43, 148], [44, 150], [47, 152], [54.5, 158], [61, 300], [65, 600]]);
 export function metAt(t) {
   if (t < 32) return t - LIFTOFF_T;
-  return MET_FLIGHT(t);
+  if (t < 65) return MET_ASCENT(t);
+  const s = orbitSeg(t);
+  return s.met + s.metRate * (t - s.t);
 }
 
 export function formatMet(s) {
@@ -172,10 +222,17 @@ export function trajectoryAt(t) {
   return {
     regime: "flight",
     altKm: ALT_KM(t),
-    downrangeKm: DOWNRANGE_KM(t),
+    downrangeKm: downrangeAt(t),
     pitch: (PITCH_DEG(t) * Math.PI) / 180,
+    roll: rollAt(t),
     speedKmps: SPEED_KMPS(t),
   };
+}
+
+// Roll about the vehicle axis (rad): the attitude manoeuvre to the TLI burn
+// attitude, flown on RCS during the night pass before the burn.
+export function rollAt(t) {
+  return Math.PI * smooth((t - 85.6) / 3);
 }
 
 // Relative air density (exponential atmosphere, 8 km scale height).
@@ -187,9 +244,9 @@ const ENGINE_START = 8.5;
 const MECO = 44;
 const SEP = 47;
 const US_IGNITION = 54.5;
-const SECO = 64.5;
-const TLI = 71.5;
-const TLI_CUTOFF = 78.3;
+const SECO = 65;
+const TLI = 89.8;
+const TLI_CUTOFF = 95.5;
 
 // Per-engine stage 1 thrust (centre engine first, outboard pairs 0.25 s apart).
 export function stage1EngineThrust(t, out = [0, 0, 0, 0, 0]) {
@@ -233,7 +290,28 @@ export function sepProgress(t) {
 
 // The spent stage is seen receding through the upper-stage ignition shot,
 // then is out of the picture.
-export const stage1Visible = (t) => t < 58.5;
+export const stage1Visible = (t) => t < 61;
+
+/*
+ * Sunlight on the vehicle. The Sun is fixed in the Earth frame (SUN_DIR, the
+ * same direction the pad scene is lit from), so as the vehicle travels round
+ * the orbit the local Sun elevation changes, and the vehicle - higher than
+ * the ground - keeps the Sun until it sinks below the limb (horizon dip).
+ * Returns { elev, dip (rad), lit 0..1, red 0..1 (sunset reddening) }.
+ */
+export const SUN_DIR = (() => {
+  const l = Math.hypot(10, 8, 8);
+  return [10 / l, 8 / l, 8 / l];
+})();
+export function sunAt(t) {
+  const tr = trajectoryAt(t);
+  const th = tr.downrangeKm / 6371;
+  const up = [Math.sin(th), Math.cos(th), 0];
+  const elev = Math.asin(up[0] * SUN_DIR[0] + up[1] * SUN_DIR[1]);
+  const dip = Math.acos(6371 / (6371 + Math.max(0, tr.altKm)));
+  const above = (elev + dip) * (180 / Math.PI); // Sun height above the limb, deg
+  return { elev, dip, lit: smooth((above + 0.4) / 0.8), red: 1 - smooth((above - 0.3) / 4) };
+}
 
 /* Validation helper: the order of required mission milestones. */
-export const MILESTONES = ["engineStart", "liftoff", "towerClear", "maxQ", "meco", "separation", "usIgnition", "orbit", "tli", "lunarTransfer"];
+export const MILESTONES = ["engineStart", "liftoff", "towerClear", "maxQ", "meco", "separation", "usIgnition", "orbit", "tliPrep", "tli", "lunarTransfer"];

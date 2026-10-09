@@ -57,6 +57,7 @@ const SKY_FRAG = `
   uniform float uKm;
   uniform float uSunI;
   uniform float uHaze;     // extra low-altitude haze (Mie) multiplier
+  uniform float uDetail;   // 0..1: procedural cloud / land detail below texture resolution
   uniform mat3 uToEcef;
   uniform sampler2D uDay;
   uniform sampler2D uSpec;
@@ -80,6 +81,27 @@ const SKY_FRAG = `
   }
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+  // Sine-free hash and value noise on the unit sphere (stable at large
+  // arguments on mobile GPUs).
+  float h3(vec3 p) {
+    p = fract(p * 0.1031);
+    p += dot(p, p.zyx + 31.32);
+    return fract((p.x + p.y) * p.z);
+  }
+  float vnoise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(h3(i), h3(i + vec3(1.0, 0.0, 0.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 0.0)), h3(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+      mix(mix(h3(i + vec3(0.0, 0.0, 1.0)), h3(i + vec3(1.0, 0.0, 1.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 1.0)), h3(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
+      f.z);
+  }
+  // Fade a noise octave out where it would alias (feature smaller than ~2 px).
+  float octave(vec3 e, float k, float px) {
+    return mix(0.5, vnoise(e * k), 1.0 - smoothstep(0.35, 0.7, px * k));
+  }
 
   vec3 stars(vec3 d) {
     vec2 sp = vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0)));
@@ -126,8 +148,12 @@ const SKY_FRAG = `
         float sR = exp(-hk / HR) * HR * k;
         float sM = exp(-hk / HM) * HM * k * uHaze;
         vec3 att = exp(-(BR * (odR + sR) + BM * 1.1 * (odM + sM)));
-        sumR += dR * att;
-        sumM += dM * att;
+        // The planet's own shadow: no sunlight once the Sun is below this
+        // point's geometric horizon (keeps the night side dark from orbit)
+        float hz = sqrt(max(0.0, 1.0 - (uR * uR) / (r * r)));
+        float sh = smoothstep(-hz - 0.015, -hz + 0.015, cs);
+        sumR += dR * att * sh;
+        sumM += dM * att * sh;
       }
       float c = dot(rd, uSun);
       float pR = 0.0597 * (1.0 + c * c);
@@ -137,7 +163,12 @@ const SKY_FRAG = `
       trans = exp(-(BR * odR + BM * 1.1 * odM));
     }
 
+    // From orbit the single-scattering veil over the ground reads far too
+    // pale (multiple scattering and the eye's adaptation are not modelled):
+    // thin it and let the surface carry the image, as in orbital photography.
+    float orb = smoothstep(30.0, 150.0, uCamH * uKm);
     if (hitP) {
+      col *= mix(1.0, 0.55, orb);
       vec3 p = ro + rd * tp.x;
       vec3 n = normalize(p);
       vec3 e = uToEcef * n;
@@ -153,15 +184,46 @@ const SKY_FRAG = `
       float ocean = textureGrad(uSpec, uv, dx, dy).r;
       vec4 cl = textureGrad(uClouds, uv, dx * 2.0, dy * 2.0);
       float cloud = clamp(cl.r * cl.a * 1.15, 0.0, 1.0);
-      float ndl = max(dot(n, uSun), 0.0);
+      // Detail below the textures' resolution, seen from orbit: break the
+      // blurred cloud map into crisp formations (~15 km and ~4 km features)
+      // and add relief to the land. px: size of a pixel on the sphere.
+      float px = length(fwidth(e));
+      float n1 = 0.5, n2 = 0.5;
+      float land = 1.0 - ocean;
+      float cloudLit = 1.0;
+      if (uDetail > 0.0) {
+        n1 = octave(e, 420.0, px);
+        n2 = octave(e, 1500.0, px);
+        float n3 = octave(e, 90.0, px);
+        float dn = (n3 - 0.5) * 0.5 + (n1 - 0.5) * 0.35 + (n2 - 0.5) * 0.15;
+        cloud = mix(cloud, smoothstep(0.3, 0.7, cloud + dn * 0.9), uDetail);
+        cloudLit = mix(1.0, 0.82 + 0.3 * n1, uDetail);
+        day *= mix(1.0, 0.82 + 0.36 * n2, land * uDetail);
+      }
+      float sdl = dot(n, uSun);
+      float ndl = max(sdl, 0.0);
       vec3 surf = day * ndl * 1.25;
       vec3 hv = normalize(uSun - rd);
-      surf += ocean * vec3(1.0, 0.92, 0.8) * pow(max(dot(n, hv), 0.0), 140.0) * 6.0 * ndl;
-      surf = mix(surf, vec3(0.95) * (ndl * 1.1 + 0.03), cloud);
+      // Sun glint: a tight, rippled highlight from orbit
+      float glint = pow(max(dot(n, hv), 0.0), mix(140.0, 2400.0, orb)) * mix(6.0, 2.4, orb);
+      surf += ocean * vec3(1.0, 0.92, 0.8) * glint * mix(1.0, 0.2 + 1.6 * n2, uDetail) * ndl;
+      // Clouds keep a little skylight on the day side only; the night side is dark
+      surf = mix(surf, vec3(0.95) * cloudLit * (ndl * 1.1 + 0.03 * smoothstep(-0.02, 0.12, sdl)), cloud);
       // Sunlight reaching the ground is reddened by the same atmosphere
       float k = 1.0 / max(ndl + 0.12, 0.03);
       vec3 sunT = exp(-(BR * HR + BM * 1.1 * HM * uHaze) * k);
-      col += surf * sunT * trans * uSunI * 0.085;
+      col += surf * sunT * trans * uSunI * 0.085 * mix(1.0, 1.3, orb);
+      // City lights on the night side: land only, not deserts or ice, dimmed
+      // under cloud; clustered by a regional density field.
+      float night = 1.0 - smoothstep(-0.14, 0.02, sdl);
+      if (night > 0.0 && land > 0.0) {
+        float lum = dot(day, vec3(0.3, 0.59, 0.11));
+        float pop = smoothstep(0.52, 0.8, octave(e, 160.0, px) * 0.65 + octave(e, 45.0, px) * 0.35);
+        float town = smoothstep(0.62, 0.92, octave(e, 2600.0, px));
+        float lights = land * pop * mix(0.22, town, 1.0 - smoothstep(0.2, 0.6, px * 2600.0));
+        lights *= (1.0 - smoothstep(0.06, 0.16, lum)) * (1.0 - cloud * 0.85);
+        col += vec3(1.0, 0.72, 0.4) * lights * night * trans * 0.55;
+      }
     } else {
       // Single scattering over-yellows long, low horizontal paths; real skies
       // are whitened there by multiple scattering. Pull the low-altitude
@@ -173,7 +235,8 @@ const SKY_FRAG = `
       col = mix(col, lum * vec3(0.9, 0.96, 1.08), 0.75 * near * lowAlt);
       float sd = dot(rd, uSun);
       col += trans * vec3(1.0, 0.94, 0.84) * smoothstep(0.99985, 0.99995, sd) * 60.0;
-      col += trans * vec3(1.0, 0.9, 0.75) * pow(max(sd, 0.0), 900.0) * 1.5;
+      // Lens glare round the Sun: a tight core and a faint wide halo
+      col += trans * vec3(1.0, 0.9, 0.75) * (pow(max(sd, 0.0), 4000.0) * 1.6 + pow(max(sd, 0.0), 160.0) * 0.06);
       float dark = 1.0 - smoothstep(0.004, 0.06, dot(col, vec3(0.3, 0.5, 0.2)));
       col += stars(rd) * dark;
     }
@@ -325,6 +388,7 @@ export function createEnvironment() {
       uKm: { value: KM_PER_UNIT },
       uSunI: { value: 22 },
       uHaze: { value: 1 },
+      uDetail: { value: 0 },
       uToEcef: { value: siteToEcef() },
       uDay: { value: day },
       uSpec: { value: spec },
@@ -369,8 +433,11 @@ export function createEnvironment() {
       u.uCamR.value = R + altKm / KM_PER_UNIT;
       u.uCamH.value = altKm / KM_PER_UNIT;
       u.uSun.value.copy(sun);
-      // Thick boundary-layer haze at the pad, thinning out with altitude
-      u.uHaze.value = 0.55;
+      // Boundary-layer haze: thick at the pad; from orbit it would wash the
+      // surface out into a white veil, so it thins with camera altitude.
+      u.uHaze.value = 0.55 * (1 - 0.6 * THREE.MathUtils.smoothstep(altKm, 30, 150));
+      // Sub-texture detail only matters once the ground is far below
+      u.uDetail.value = THREE.MathUtils.smoothstep(altKm, 40, 120);
       // Clouds fade when the camera is far above them (seen through the planet shader)
       cloudMesh.material.uniforms.uOpacity.value = 0.85 * (1 - THREE.MathUtils.smoothstep(altKm, 14, 34));
       cloudMesh.visible = altKm < 35;

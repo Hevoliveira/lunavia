@@ -241,23 +241,43 @@ not the mission states.
 |---|---|---|
 | 0–4 | Wide: LC-39 complex | T-15, cryogenic venting |
 | 4–7.5 | Low angle: vehicle height against the tower | |
-| 7.5–14.2 | Engine section, from the flame pit | HBOI sparklers; **MAIN ENGINE START** (T-6.5, staggered); full thrust; stack "twang" |
-| 14.2–19 | Flame trench, low wide | **LIFTOFF** (hold-down release); steam, trench exhaust, dust |
+| 7.5–14.2 | Engine section, from the flame pit | HBOI sparklers; **MAIN ENGINE START** (T-6.5, staggered); the camera exposure surges as the engines reach full thrust; steam boils off the pit; stack "twang" |
+| 14.2–19 | Flame trench, low wide | **LIFTOFF** (hold-down release); a ground surge of smoke rolls out across the pad; trench exhaust, steam, dust |
 | 19–25 | Tower-mounted, looking up | slow rise; **TOWER CLEARED** |
 | 25–32 | Long-lens tracking | full vehicle and smoke column leaving the complex |
 | 32–43 | Atmospheric ascent | cirrus passes below; sky darkens; **MAX-Q** |
 | 43–46.5 | Engine section | **MAIN ENGINE CUTOFF**: plume tails off, nozzles cool |
-| 46.5–49.5 | Separation plane | **STAGE SEPARATION**: separation motors, vapour ring |
-| 49.5–53.8 | Both stages | gap opens, spent stage tumbles |
-| 53.8–58.5 | Upper stage | **UPPER STAGE IGNITION**: vacuum plume; spent stage recedes |
-| 58.5–64.5 | Wide: vehicle against the limb | leaving the atmosphere |
-| 64.5–70.5 | Over the Earth | **EARTH ORBIT** (cutoff, 185 km parking orbit) |
-| 70.5–79 | Behind the burning stage | **TRANSLUNAR INJECTION**, then **LUNAR TRANSFER** (cutoff, spacecraft separates) |
+| 46.5–49.5 | Separation plane | **STAGE SEPARATION**: pyro, separation motors, vapour ring |
+| 49.5–53 | Both stages | gap opens, spent stage tumbles |
+| 53–57 | Onboard camera on the spent stage | the upper stage pulls away and its engine lights into the lens (**UPPER STAGE IGNITION**); silent |
+| 57–61 | Upper stage, external | vacuum plume; spent stage recedes |
+| 61–65 | Wide: vehicle against the limb | leaving the atmosphere |
+| 65–70.5 | A · wide over the Atlantic | **EARTH ORBIT** (cutoff, 185 km parking orbit) |
+| 70.5–75.5 | B · engineering close-up | upper stage and spacecraft over the West African coast, Earth sliding past |
+| 75.5–80 | C · along the atmospheric limb | the thin blue limb ahead of the vehicle |
+| 80–85 | D · orbital sunset | warm, low sunlight on the vehicle over the night side |
+| 85–89 | E · night pass | **TLI PREPARATION**: RCS roll to burn attitude in Earth's shadow |
+| 89–95.5 | Behind the burning stage | **TRANSLUNAR INJECTION** at orbital sunrise |
+| 95.5–102 | Looking back past the spacecraft | **LUNAR TRANSFER**: the Earth recedes to a half-lit globe |
 
 **Pacing and clock.** The countdown and the first 17 s of flight run in real time.
 Documentary cuts then compress the flight, and the mission clock jumps with them:
-T+00:02:30 at MECO, T+00:11:30 at orbit insertion, T+02:44:00 at TLI. Ascent, orbit
-insertion and TLI stay distinct; the tests check altitude and speed at each.
+T+00:02:30 at MECO, T+00:10:00 at orbit insertion, about T+02:52 at TLI (second orbit).
+In orbit each shot is a separate moment of the parking orbit; within a shot the ground
+moves at 3–4× real speed, so the orbital motion reads without blurring. The whole
+sequence is about 102 s; **SKIP CINEMATIC** is available throughout. Ascent, orbit
+insertion, TLI and lunar transfer stay distinct; the tests check altitude, speed, the
+orbit compositions and the day / sunset / night / sunrise geometry.
+
+**Sunlight in orbit.** The Sun is fixed in the Earth frame (the same direction that
+lights the pad). As the vehicle travels round the orbit:
+
+- the local Sun elevation changes;
+- the vehicle keeps the Sun until it sinks below the limb (horizon dip at 185 km is
+  13.7°), so it is still sunlit over a dark Earth at orbital sunset;
+- its light reddens near the limb, it goes dark in Earth's shadow, and it comes back
+  at sunrise;
+- the environment lighting switches between day, dusk and night maps to match.
 
 **Scale strategy.** Two layers are composited every frame:
 
@@ -266,7 +286,10 @@ insertion and TLI stay distinct; the tests check altitude and speed at each.
   scattering, Rayleigh plus Mie, the Earth texture, ocean glint and a cloud map. The
   horizon is therefore exact at every altitude, flat from the pad and a thin limb from
   orbit. It also draws the Sun and the stars, which appear as the sky darkens.
-  Cumulus and cirrus sit at their true altitudes near the site.
+  Cumulus and cirrus sit at their true altitudes near the site. From orbit the shader
+  adds procedural cloud and land detail below the textures' resolution (fading out
+  where it would alias), a tight rippled sun glint, thinner haze, and city lights on
+  the night side.
 - **Vehicle layer, pad scale** (1 unit = 30 m). It holds LV-001, the complex and all
   particles. In flight the vehicle stays at the origin and the environment camera rides
   the trajectory (altitude, downrange, local horizon).
@@ -286,6 +309,9 @@ against the Earth.
   light lights the deck, tower and smoke from the flames.
 - Separation: retro motors and a vapour ring. The upper-stage vacuum plume is clearly
   visible, with a soft halo.
+- Ignition and liftoff: the close cameras' exposure surges with thrust; steam boils off
+  the flame pit; a ground surge of smoke rolls out at release; heavier deck billows.
+- Orbit: RCS puffs during the roll to burn attitude.
 - No shock heating is drawn during powered ascent.
 
 **Audio** (`hooks/useMissionAudio.js`, synthesized):
@@ -294,10 +320,13 @@ against the Earth.
   layer whose brightness follows the camera distance.
 - Liftoff: hold-down clank.
 - Ascent: aerodynamic roar peaking at max-Q, muffled as the air thins.
-- Space: silence at MECO, a structure-borne thud at separation, a muffled onboard rumble
-  while a stage burns (no external sound in vacuum), and a soft drone through orbit and
-  cruise that fades at the Moon.
-- Comms calls mark each event.
+- Launch: a sub-bass layer under the roar (felt more than heard).
+- Space: silence at MECO, then pyro, a clank and a structure-borne thud at separation.
+  The camera on the spent stage hears nothing. A muffled onboard rumble plays while a
+  stage burns (no external sound in vacuum), and RCS thumps during the roll. A soft drone
+  plays through orbit and cruise and fades at the Moon.
+- Comms calls mark each event. Space-to-ground calls carry Quindar tones, as Apollo's
+  did.
 
 ## Resolution and texture findings
 
