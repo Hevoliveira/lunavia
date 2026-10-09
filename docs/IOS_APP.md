@@ -366,32 +366,42 @@ and triangles are exact, frame rates are **not** representative of an iPhone GPU
 
 ### Launch cinematic workload
 
-Production build, 852 × 393 CSS px (render 1704 × 786), SwiftShader. Draw calls and
-triangles are for the vehicle layer, including the pad shadow pass; the environment layer
-adds 2 (sky/planet quad and clouds). Overdraw is the summed screen area of live particle
-sprites divided by the screen area.
+Production builds, 852 × 393 CSS px (render 1704 × 786), SwiftShader. Previous build
+`f1e1909` against Flight IV (`ad684ae`), measured head to head on the same machine.
 
-| Shot | Draw calls | Triangles | Live particles (smoke / fire) | Peak overdraw (smoke / fire) | CPU-raster fps, old ascent → new |
+- **Draw calls and triangles** are for the vehicle layer, including the pad shadow pass.
+  The environment layer adds 2 (the sky/planet quad and the clouds).
+- **Overdraw** is the summed screen area of the live particle sprites divided by the
+  screen area.
+- **CPU-raster fps is relative only.** It says nothing about an iPhone GPU.
+
+| Shot | Draw calls | Triangles | Live particles (smoke / fire) | Peak overdraw (smoke / fire), before → after | CPU-raster fps, before → after |
 |---|---|---|---|---|---|
-| Wide complex | 43 | 38k | 8 / 0 | 0.1 / 0 | 1.2 → 1.0 |
-| Engine pit, full thrust | 36 | 31k | 270 / 154 | 3.7 / 0.8 | — → 0.75 |
-| Liftoff (trench) | 51 | 38k | 490 / 140 | 9.5 / 1.1 | 1.2 → 0.5 |
-| Tower clearance | 50 | 38k | 616 / 133 | 4.2 / 0.1 | — → 1.0 |
-| Long-lens ascent | 39 | 25k | 422 / 108 | 7.3 / 0.3 | — → 1.5 |
-| Atmospheric ascent | 37 | 25k | 113 / 36 | 1.2 / 0.4 | — → 2.5 |
-| MECO / separation | 29–32 | 23–25k | ≤ 86 / ≤ 37 | ≤ 1.7 | 2.2 → 1.5–1.75 |
-| Orbit / TLI | 14–18 | 9.5k | 0 | 0 | 1.43 → 2.25 |
+| Engine pit, full thrust | 36 | 31.8k | 271 / 152 | 3.2 / 0.8 → 3.1 / 0.5 | 0.83 → 0.67–0.83 |
+| Liftoff (trench, T+3) | 51 | 38.8k | 572 / 146 | 8.9 / 0.6 → **12.6** / 0.8 | 1.0 → 0.83 |
+| Tower clearance | 50 | 38.8k | ≤ 830 / 136 | 0.6 → 1.9 at T+6 (4.8 just after the cut, T+4.5) | 1.0 → 0.83–1.17 |
+| Long-lens ascent | 41 | 33.7k | 606 / 109 | 0.3 → 0.3 | 2.67 → 2.17 |
+| Atmospheric ascent | 37 | 25.7k | 113 / 34 | 1.0 → 1.0 | 2.0 → 1.83 |
+| MECO / separation | 29–31 | 23–25.5k | ≤ 11 fire | ≤ 0.3 | 1.67 → 1.5 |
+| Stage-1 onboard camera (new) | 20 | 18.7k | 0 | 0 | — → 2.17 |
+| Upper stage burning | 25 | 19.8k | 0 | 0 | 2.0 → 1.83 |
+| Earth orbit A–D | 14 | 10.1k | 0 | 0 | 2.67 → 1.83–2.17 |
+| TLI preparation / TLI | 14–18 | 10.2k | ≤ 30 RCS puffs | ≈ 0 | 2.5–2.67 → 2.0–2.17 |
+| Lunar transfer (new) | 14 | 10.1k | 0 | 0 | — → 3.0 |
 
-- Particle pools are fixed (1000 smoke, 400 fire), one draw call each, and integrated on
-  the GPU. Only newly emitted particles are uploaded.
-- Each sprite's on-screen size is capped at 27 % of its distance (thinned instead), and
-  sprites at the lens dissolve. This took the liftoff shots from 30–50 layers of overdraw
-  to under 10.
-- The pad shadow map renders only while the pad is in view.
-- **Adaptive resolution**: if a device cannot hold about 45 fps, the cinematic lowers its
-  pixel ratio by 0.25 every 2 s, down to 1.25, and never raises it again.
-- The CPU rasteriser's frame rate is no guide to an iPhone GPU. Relative to the old
-  ascent, the liftoff is about 2.4× the cost there, and the space shots are cheaper.
+- **Smoke pool:** 1000 → 1300 sprites (fire 400), still one draw call each and integrated
+  on the GPU.
+- **Liftoff overdraw** rises 8.9 → 12.6 layers for the ground surge, pit steam and heavier
+  billows. A first version reached 18.8 and was trimmed. The per-sprite screen-size cap
+  and the near fade are unchanged.
+- **Orbit shots** cost more on the CPU rasteriser (about 25–45 %) because of the planet
+  shader's sub-texture noise: 3 value-noise octaves on the day side, and 3 more for city
+  lights on the night side only. Both are skipped where they are not needed. They remain
+  the cheapest shots of the sequence.
+- **The adaptive resolution is unchanged:** below about 45 fps the pixel ratio steps
+  down 0.25 every 2 s, to 1.25, and never back up.
+- **Texture memory is unchanged:** no new textures. The night lights, cloud detail and
+  glint ripple are procedural.
 
 ## Validation
 
@@ -401,15 +411,17 @@ protocol, no keyboard), simulated safe areas, production builds, **internet bloc
 | Check | Result |
 |---|---|
 | Web production build (`yarn build`) | passes (only pre-existing warnings) |
-| Unit tests (`yarn test`) | 26 / 26 pass (19 reentry physics + 7 launch timeline) |
-| `yarn ios:sync` / `cap sync ios` | passes; no source maps, no `_dbg`, development hooks compiled out |
+| Unit tests (`yarn test`) | 54 / 54 pass (19 reentry physics + 10 launch timeline + 25 lunar descent) |
+| `yarn ios:sync` / `cap sync ios` | passes; no source maps, no `_dbg`, development hooks compiled out; final bundle `main.0e4bf03f.js` stamped `ad684ae` |
 | Xcode project integrity | `project.pbxproj` parses; referenced files exist; Swift overrides checked against Capacitor's sources, including plugin extensions |
 | Lunar descent framing, ASTRONAUT from 550 m (16 Pro / Pro Max / SE) | Lander height as a share of the visibility area's height, before → after: 4.3 / 4.9 / 3.6 % → 12.6 / 12.7 / 12.5 % at 500 m; 6.7 / 6.9 / 5.4 % → 12.6 / 12.7 / 12.4 % at 200 m; 10.6 / 10.8 / 8.5 % → 16.4 / 16.7 / 13.8 % at 100 m; 16.3 / 16.6 / 14.4 % → 16.6 / 16.6 / 15.4 % at 30 m; 17.1 / 17.3 / 16.7 % → 16.7 / 16.7 / 16.8 % at touchdown. Lander, LZ and on-screen touchdown point were never under a HUD element, with one exception: at 500 m the touchdown point lies ~150 m ahead and 500 m below, outside the frame, and is marked by the TOUCHDOWN chip while its ring sits behind the control cluster. All three runs landed (grades A / S / A). |
 | Desktop 1440 × 900 descent | Desktop HUD unchanged; the lander is 90–120 px (12.6–16.8 %); landed. |
-| Automatic Earth departure (bundles `379a642` and final `f1e1909`), 852 × 393, 932 × 430, 667 × 375 | One tap on LAUNCH, then **0 input events** until lunar orbit (counted by capturing listeners). All 10 captioned events fire in order (engine start → lunar transfer), then cislunar cruise and the INITIATE DESCENT prompt |
-| Skip cinematic, desktop 1440 × 900 | SKIP goes straight to the cruise and lunar orbit; descent keyboard throttle works; abort returns to the control room |
+| Automatic Earth departure, Flight IV (bundle `e9c666c` at 852 × 393, 932 × 430, 667 × 375; repeated at 852 × 393 on the final `ad684ae`) | One tap on LAUNCH, then **0 input events** until lunar orbit (counted by capturing listeners). All 11 captioned events fire in order (engine start → TLI preparation → lunar transfer), then cislunar cruise and the INITIATE DESCENT prompt |
+| COMMANDER by touch (in-page pilot reading only the HUD), see `COMMANDER_BALANCE.md` | 852 × 393: landed 1st attempt twice (a development build, then `2a7d5ee`, whose descent code is final); 932 × 430 (`e9c666c`): 1st attempt; 667 × 375: 2nd attempt (the 1st touched down at 2.14 m/s after a 3 s harness stall); ASTRONAUT and CADET at 852 × 393: 1st attempt; desktop keyboard: 2nd attempt. No guidance line after contact from `2a7d5ee` on |
+| Skip cinematic, desktop 1440 × 900 (final bundle `2a7d5ee`) | SKIP goes straight to the cruise and lunar orbit; descent keyboard throttle works (V/S +6.4 m/s in 2.5 s); abort returns to the control room |
 | Descent after the automatic departure | throttle 99 % while RCS is held (two simultaneous touches); abort → control room |
-| Full mission by touch, bundle `379a642` (final `f1e1909` differs only in the adaptive-resolution trigger), iPhone 16 Pro | automatic departure → cruise → lunar orbit → manual landing by touch (first attempt, two simultaneous touches) → reentry → parachutes → splashdown → mission complete → relaunch; no control in an unsafe area, no overlaps, no clipping, all targets ≥ 44 pt. SE and Pro Max full missions: previous pass (descent and reentry code unchanged since) |
+| Full mission by touch, Flight IV bundle `e9c666c`, iPhone 16 Pro | automatic departure (102 s) → cruise → lunar orbit → CADET landing by touch (1st attempt, 2 simultaneous touches) → reentry → drogue / mains → splashdown → mission complete → relaunch; 22 screens, no unsafe / clipped / overlapping controls, all targets ≥ 44 pt; only the blocked optional photo errors |
+| Full mission by touch, bundle `379a642` (previous milestone; final `f1e1909` differs only in the adaptive-resolution trigger), iPhone 16 Pro | automatic departure → cruise → lunar orbit → manual landing by touch (first attempt, two simultaneous touches) → reentry → parachutes → splashdown → mission complete → relaunch; no control in an unsafe area, no overlaps, no clipping, all targets ≥ 44 pt. SE and Pro Max full missions: previous pass (descent and reentry code unchanged since) |
 | Desktop 1440 × 900 regression (keyboard) | full mission and reentry failure / success cases pass; nominal entry at −6.51° → peak 176 W/cm², 7.39 g, splashdown 8.5 m/s (physics files untouched) |
 | Application console errors | 0 (only the blocked optional photo is logged) |
 

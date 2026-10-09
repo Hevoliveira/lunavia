@@ -198,13 +198,30 @@ vertical speed just over the limit.
   accidental TILT touch is now ≈2.5° instead of 7.6°.
 - **Tap length does not decide outcomes.** Reaction time does, and that is
   skill.
-- **Browser check:**
-  - Setup: a touch-only COMMANDER flight in Chromium at 852×393 (iPhone 16
-    Pro landscape, native layout emulated). The pilot read only the HUD.
-  - Result: it landed on the first attempt, grade B, at 1.50 m/s vertical,
-    0.09 m/s horizontal, on the primary LZ.
-  - Layout: no HUD overlap, and the lander, LZ and touchdown chips stayed
-    visible.
+- **Browser touch flights** (Chromium, native layout emulated, software
+  renderer). The in-page pilot reads only the HUD: ALT, V/S, H/S, TILT, THR
+  and the TGT V/S band.
+
+  | Viewport | Mode | Result |
+  |---|---|---|
+  | 852×393 (iPhone 16 Pro) | COMMANDER | landed, 1st attempt, twice (B 71, then C 61 on bundle `2a7d5ee`, whose descent code is final); 1.50 / 0.09 m/s and 1.47 / 0.76 m/s; 12–14 % fuel |
+  | 932×430 (16 Pro Max) | COMMANDER | landed, 1st attempt (C 69) |
+  | 667×375 (SE) | COMMANDER | landed, 2nd attempt (C 57, 1.79 m/s, 11 % fuel) ² |
+  | 852×393 | ASTRONAUT | landed, 1st attempt (B 70) |
+  | 852×393 | CADET | landed, 1st attempt (C 64) |
+  | 1440×900 desktop, keyboard | COMMANDER | landed, 2nd attempt (C 60, 1.84 m/s, tanks dry below 5 m) ³ |
+
+  ² The first attempt touched down at 2.14 m/s against the 2.0 m/s limit.
+  At 19 m the harness stalled for 3 s while another browser test ran on the
+  same machine, and it could not press the throttle during that time.
+
+  ³ The desktop HUD shows the throttle without a test id, so this pilot
+  flew without anticipating the engine. It over-controlled, used all its fuel
+  both times, and the first attempt touched down at 2.28 m/s.
+
+  Up to 2 simultaneous touches were used. Lander, LZ and touchdown chips
+  stayed visible and uncovered, and the lander held 12–15 % of the visible
+  area's height from 700 m to touchdown.
 
 ## Tests
 
