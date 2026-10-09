@@ -110,6 +110,7 @@ const FLIGHT_SHOTS = {
 
 function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRef, pools, hooks, envMaps }) {
   const { gl, scene, camera, size } = useThree();
+  const setDpr = useThree((state) => state.setDpr);
   const env = useMemo(() => createEnvironment(), []);
   useEffect(() => () => env.dispose(), [env]);
   const st = useRef({ t: 0, lastShot: null, camPos: new THREE.Vector3(), look: new THREE.Vector3(), rnd: 1, fired: new Set(), acc: {}, roll: 0, done: false });
@@ -139,6 +140,23 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
       S.t = seek;
       S.lastShot = null;
       S.seeked = true;
+    }
+    // Adaptive resolution: if the device cannot hold ~45 fps (heaviest shots
+    // are the smoke-filled liftoff), step the pixel ratio down once per 2 s,
+    // never back up (no oscillation). __lvFixedDpr pins it for captures.
+    const pf = S.perf || (S.perf = { acc: 0, n: 0, dpr: gl.getPixelRatio() });
+    if (S.t > 1.5 && rawDelta < 0.5) {
+      pf.acc += rawDelta;
+      pf.n++;
+      if (pf.acc > 2) {
+        const ft = pf.acc / pf.n;
+        if (!(typeof window !== "undefined" && window.__lvFixedDpr) && ft > 1 / 45 && pf.dpr > 1.25) {
+          pf.dpr = Math.max(1.25, pf.dpr - 0.25);
+          setDpr(pf.dpr);
+        }
+        pf.acc = 0;
+        pf.n = 0;
+      }
     }
     // Validation tooling: __lvLaunchPause freezes the clock for still captures.
     const dt = typeof window !== "undefined" && window.__lvLaunchPause ? 0 : Math.min(rawDelta, 0.1);
@@ -348,6 +366,7 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
       w.met = TL.metAt(t);
       w.altKm = traj.altKm;
       w.fired = [...S.fired];
+      w.dpr = gl.getPixelRatio();
       w.calls = gl.info.render.calls;
       w.triangles = gl.info.render.triangles;
       if (!S.pc || Math.abs(t - S.pc) > 0.5) {
