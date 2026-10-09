@@ -335,6 +335,35 @@ and triangles are exact, frame rates are **not** representative of an iPhone GPU
   (`PadShadows`, 1536²) and `dpr={[1, 1.5]}` for that scene.
 - Device pixel ratio: every `<Canvas>` caps at 2. Particles are fixed-count.
 
+### Launch cinematic workload
+
+Production build, 852 × 393 CSS px (render 1704 × 786), SwiftShader. Draw calls and
+triangles are for the vehicle layer, including the pad shadow pass; the environment layer
+adds 2 (sky/planet quad and clouds). Overdraw is the summed screen area of live particle
+sprites divided by the screen area.
+
+| Shot | Draw calls | Triangles | Live particles (smoke / fire) | Peak overdraw (smoke / fire) | CPU-raster fps, old ascent → new |
+|---|---|---|---|---|---|
+| Wide complex | 43 | 38k | 8 / 0 | 0.1 / 0 | 1.2 → 1.0 |
+| Engine pit, full thrust | 36 | 31k | 270 / 154 | 3.7 / 0.8 | — → 0.75 |
+| Liftoff (trench) | 51 | 38k | 490 / 140 | 9.5 / 1.1 | 1.2 → 0.5 |
+| Tower clearance | 50 | 38k | 616 / 133 | 4.2 / 0.1 | — → 1.0 |
+| Long-lens ascent | 39 | 25k | 422 / 108 | 7.3 / 0.3 | — → 1.5 |
+| Atmospheric ascent | 37 | 25k | 113 / 36 | 1.2 / 0.4 | — → 2.5 |
+| MECO / separation | 29–32 | 23–25k | ≤ 86 / ≤ 37 | ≤ 1.7 | 2.2 → 1.5–1.75 |
+| Orbit / TLI | 14–18 | 9.5k | 0 | 0 | 1.43 → 2.25 |
+
+- Particle pools are fixed (1000 smoke, 400 fire), one draw call each, and integrated on
+  the GPU. Only newly emitted particles are uploaded.
+- Each sprite's on-screen size is capped at 27 % of its distance (thinned instead), and
+  sprites at the lens dissolve. This took the liftoff shots from 30–50 layers of overdraw
+  to under 10.
+- The pad shadow map renders only while the pad is in view.
+- **Adaptive resolution**: if a device cannot hold about 45 fps, the cinematic lowers its
+  pixel ratio by 0.25 every 2 s, down to 1.25, and never raises it again.
+- The CPU rasteriser's frame rate is no guide to an iPhone GPU. Relative to the old
+  ascent, the liftoff is about 2.4× the cost there, and the space shots are cheaper.
+
 ## Validation
 
 Done in Linux with Chromium emulating iPhones: touch only (multi-touch via the DevTools
@@ -343,12 +372,15 @@ protocol, no keyboard), simulated safe areas, production builds, **internet bloc
 | Check | Result |
 |---|---|
 | Web production build (`yarn build`) | passes (only pre-existing warnings) |
-| Unit tests (`yarn test`) | 19 / 19 pass |
+| Unit tests (`yarn test`) | 26 / 26 pass (19 reentry physics + 7 launch timeline) |
 | `yarn ios:sync` / `cap sync ios` | passes; no source maps, no `_dbg`, development hooks compiled out |
 | Xcode project integrity | `project.pbxproj` parses; referenced files exist; Swift overrides checked against Capacitor's sources, including plugin extensions |
 | Lunar descent framing, ASTRONAUT from 550 m (16 Pro / Pro Max / SE) | Lander height as a share of the visibility area's height, before → after: 4.3 / 4.9 / 3.6 % → 12.6 / 12.7 / 12.5 % at 500 m; 6.7 / 6.9 / 5.4 % → 12.6 / 12.7 / 12.4 % at 200 m; 10.6 / 10.8 / 8.5 % → 16.4 / 16.7 / 13.8 % at 100 m; 16.3 / 16.6 / 14.4 % → 16.6 / 16.6 / 15.4 % at 30 m; 17.1 / 17.3 / 16.7 % → 16.7 / 16.7 / 16.8 % at touchdown. Lander, LZ and on-screen touchdown point were never under a HUD element, with one exception: at 500 m the touchdown point lies ~150 m ahead and 500 m below, outside the frame, and is marked by the TOUCHDOWN chip while its ring sits behind the control cluster. All three runs landed (grades A / S / A). |
 | Desktop 1440 × 900 descent | Desktop HUD unchanged; the lander is 90–120 px (12.6–16.8 %); landed. |
-| Full mission by touch, iPhone 16 Pro / SE / Pro Max | launch → staging → manual lunar landing → reentry → parachutes → splashdown → mission complete; no control in an unsafe area, no overlaps, no clipping, all targets ≥ 44 pt |
+| Automatic Earth departure (bundle `379a642`), 852 × 393, 932 × 430, 667 × 375 | One tap on LAUNCH, then **0 input events** until lunar orbit (counted by capturing listeners). All 11 events fire in order (engine start → lunar transfer), then cislunar cruise and the INITIATE DESCENT prompt |
+| Skip cinematic, desktop 1440 × 900 | SKIP goes straight to the cruise and lunar orbit; descent keyboard throttle works; abort returns to the control room |
+| Descent after the automatic departure | throttle 99 % while RCS is held (two simultaneous touches); abort → control room |
+| Full mission by touch, bundle `379a642`, iPhone 16 Pro | automatic departure → cruise → lunar orbit → manual landing by touch (first attempt, two simultaneous touches) → reentry → parachutes → splashdown → mission complete → relaunch; no control in an unsafe area, no overlaps, no clipping, all targets ≥ 44 pt. SE and Pro Max full missions: previous pass (descent and reentry code unchanged since) |
 | Desktop 1440 × 900 regression (keyboard) | full mission and reentry failure / success cases pass; nominal entry at −6.51° → peak 176 W/cm², 7.39 g, splashdown 8.5 m/s (physics files untouched) |
 | Application console errors | 0 (only the blocked optional photo is logged) |
 
