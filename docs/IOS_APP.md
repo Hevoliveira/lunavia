@@ -147,18 +147,37 @@ All changes are presentation / input only; desktop renders the same.
   (`--hud-top`). Pause and abort stay in every phase's HUD; the navbar returns in the
   control room, menus, results and mission complete. Mission toasts go bottom-left and
   narrow on phones.
-- **Lunar descent HUD (phones).** `CompactDescentHud` in `DescentGame.jsx` replaces the
-  single FLIGHT CONTROLS panel: throttle (left thumb) under a slim telemetry column on the
-  lower-left edge; tilt and RCS (right thumb) under the LZ / projected-touchdown readout on
-  the lower-right edge; profile, camera and pause/abort in a slim top band. Elements that
-  obstruct the view are tagged `data-hud-block` and the game measures the **gameplay
-  visibility area** they leave open.
-- **Adaptive descent camera.** EXTERNAL and NAV frame the lander, the predicted touchdown
-  point and — when distance allows — the primary LZ inside that visibility area
-  (`lib/cameraFraming.js` solves the camera distance exactly; a view offset moves the image
-  centre into the area; motion is exponentially smoothed). When the LZ is too far to frame
-  without shrinking the lander, an edge chevron shows its direction and distance. COCKPIT
-  is unchanged. Desktop keeps its HUD; its panels are tagged too, so the camera avoids them.
+- **Lunar descent HUD (phones).** `CompactDescentHud` in `DescentGame.jsx`:
+  - **Telemetry**: one slim panel on the lower left (132 px): ALT, V/S, H/S, TILT, FUEL
+    and THR bars, distance to the LZ and the projected touchdown zone.
+  - **Controls**: one cluster in the lower-right corner, within reach of the right thumb.
+    Two 50 × 46 pt pairs (TILT ← →, RCS ◄ ►) sit beside a tall 58 pt throttle at the
+    screen edge that shows its spool level. The buttons have thin translucent backgrounds
+    and no surrounding panel. They are `HoldButton`s, so any combination can be held at
+    once.
+  - **Top band**: profile, camera and pause/abort.
+
+  Elements that obstruct the view are tagged `data-hud-block`. The game measures the
+  **gameplay visibility area** they leave open, between the telemetry and the control
+  cluster.
+- **Descent camera (EXTERNAL).** A pilot's chase view that sizes the lander first
+  (`DescentCamera` in `DescentGame.jsx`):
+  - The lander fills roughly 12–18 % of the visibility area's height (`LANDER_FRAC_*`).
+    The zoom is clamped against the lander's own depth, so leaning the view never shrinks
+    or blows up the lander.
+  - Within that budget the camera keeps a nearby primary LZ in frame. It then leans
+    towards the projected touchdown point (LPD) as far as the budget allows, using a
+    bisection on the lander → LPD segment.
+  - A distant LZ never pulls the camera back. The LZ comes into frame progressively as
+    the lander approaches.
+  - When the LZ or the LPD lies outside the visibility area, an edge chip points to it:
+    `LZ <m>` in orange, `TOUCHDOWN` in yellow. The chips never stack.
+  - A faint dashed arc (`TouchdownPath`) draws the no-thrust trajectory from the lander's
+    footpads to the LPD.
+  - Motion is exponentially smoothed. NAV keeps the top-down map that frames lander, LPD
+    and LZ together, and COCKPIT is unchanged.
+  - The lander model now sits on its footpads at altitude 0 (`LANDER_FOOT`, visual only).
+  - Desktop keeps its HUD. Its panels are tagged too, so the camera avoids them.
 - **Landing markers drawn at the right place.** Zone and hazard markers used physics
   metres directly while the lander uses metres × 0.5, so every marker except the primary LZ
   was drawn twice as far from the LZ as the ground it is graded against. They now share the

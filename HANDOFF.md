@@ -880,3 +880,22 @@ download. The committed bundle (`ios/App/App/public`, `main.7013b6f6.js`) did co
   Clean Build Folder are now mandatory update steps. No script is needed on the Mac.
 
 Details: `docs/IOS_APP.md` → *Build identity and stale installs*.
+
+## 22. iPhone lunar landing UX refinement
+
+Driven by the first physical-iPhone test of §20. Presentation and input only. Lunar
+gravity, thrust, fuel, RCS, tilt, landing limits, hazards, scoring and mission flow are
+unchanged.
+
+- **Camera** (`DescentCamera`, EXTERNAL):
+  - The lander is sized first, at roughly 12–18 % of the visibility area's height.
+  - A nearby LZ is kept in frame; then the view leans towards the projected touchdown
+    point within that zoom budget.
+  - Off-frame LZ and touchdown point get edge chips.
+  - A dashed no-thrust arc shows the trajectory to the touchdown point.
+- **Controls** (`CompactDescentHud`, phones): tilt, RCS and throttle are now one cluster
+  in the lower-right corner, replacing the left/right split. Telemetry is one compact
+  panel on the lower left.
+- **Lander** sits on its footpads at altitude 0 (visual offset only).
+
+Details and measurements: `docs/IOS_APP.md`.

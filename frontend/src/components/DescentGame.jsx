@@ -209,6 +209,45 @@ function LPD({ physRef }) {
   );
 }
 
+/** Projected path to the LPD (no further thrust): a faint dashed arc from the
+ * lander to the touchdown point, so the trajectory stays readable when the
+ * close chase camera cannot hold the LPD itself in frame. */
+function TouchdownPath({ physRef, view }) {
+  const N = 40;
+  const line = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+    const m = new THREE.LineDashedMaterial({ color: "#FFDD00", dashSize: 0.5, gapSize: 0.4, transparent: true, opacity: 0, depthWrite: false });
+    const l = new THREE.Line(g, m);
+    l.frustumCulled = false;
+    return l;
+  }, []);
+  useEffect(() => () => {
+    line.geometry.dispose();
+    line.material.dispose();
+  }, [line]);
+  useFrame(() => {
+    const p = physRef.current;
+    if (!p) return;
+    line.visible = view !== "COCKPIT" && p.alt > 3;
+    if (!line.visible) return;
+    const y0 = Math.max(0, p.alt);
+    const disc = p.vy * p.vy + 2 * MOON_G * y0;
+    const T = disc > 0 ? Math.max(0, (p.vy + Math.sqrt(disc)) / MOON_G) : 0;
+    const a = line.geometry.attributes.position.array;
+    for (let i = 0; i < N; i++) {
+      const t = (T * i) / (N - 1);
+      a[i * 3] = (p.xPos + p.vx * t) * WORLD_X;
+      a[i * 3 + 1] = Math.max(0, y0 + p.vy * t - 0.5 * MOON_G * t * t) * 0.05;
+      a[i * 3 + 2] = 0;
+    }
+    line.geometry.attributes.position.needsUpdate = true;
+    line.computeLineDistances();
+    line.material.opacity = Math.max(0, Math.min(0.5, (800 - p.alt) / 400));
+  });
+  return <primitive object={line} />;
+}
+
 function DistantEarth() {
   const [tex] = useTexture([EARTH_MAP]);
   const ref = useRef();
@@ -223,12 +262,16 @@ function DistantEarth() {
   );
 }
 
+// LanderModel origin to footpad bottom (scale 1.2). The model is raised by
+// this much so the pads, not the descent stage, meet the surface at alt 0.
+const LANDER_FOOT = 0.44;
+
 function Lander({ physRef }) {
   const ref = useRef();
   useFrame(() => {
     if (ref.current && physRef.current) {
       const p = physRef.current;
-      ref.current.position.set(p.xPos * WORLD_X, Math.max(0, p.alt * 0.05), 0);
+      ref.current.position.set(p.xPos * WORLD_X, Math.max(0, p.alt * 0.05) + LANDER_FOOT, 0);
       ref.current.rotation.z = -p.tilt * (Math.PI / 180);
     }
   });
@@ -289,23 +332,34 @@ function Dust({ altitude, thrust }) {
   );
 }
 
-/** External chase-cam that follows the lander. Reads from physRef directly for 60fps smoothness. */
 /* ------------------------------------------------------------------
  * Descent camera. The HUD reports the screen rectangle it leaves
- * unobstructed (clearRef, CSS px). EXTERNAL and NAV frame the lander, the
- * projected touchdown point (LPD) and — when distance allows — the primary
- * LZ inside that rectangle: the camera distance is solved exactly against
- * the rectangle's angular size, and a view offset moves the image centre
+ * unobstructed (clearRef, CSS px) and a view offset moves the image centre
  * into it. Motion is exponentially smoothed so it never jumps.
+ *
+ * EXTERNAL is a pilot's chase view: the lander is sized first, at roughly
+ * 12–18 % of the clear area's height, measured at the lander's own depth.
+ * Within that zoom budget the camera leans towards
+ * the projected touchdown point (LPD), so the immediate trajectory stays in
+ * view, and brings the primary LZ in once it fits. A distant LZ never pulls
+ * the camera back; the edge indicator points to it instead.
+ * NAV is the top-down map and frames the lander, LPD and LZ together.
  * ------------------------------------------------------------------ */
 const EXT_DIR = new THREE.Vector3(-11, 8, 12).normalize(); // chase: behind-left, looking down
 const NAV_DIR = new THREE.Vector3(0, 1, 0.0001).normalize(); // top-down map
-const CAM_MIN = { EXTERNAL: 15, NAV: 30 };
-const CAM_MAX = { EXTERNAL: 92, NAV: 120 };
+const NAV_MIN = 30;
+const NAV_MAX = 120;
 const FRAME_MARGIN = 0.82;
+// Lander height in scene units (LanderModel at scale 1.2: footpads to antenna).
+const LANDER_H = 1.75;
+// Share of the clear area's height the lander occupies: closest / furthest
+// (nominal, for a vertical view; the oblique chase view reads ~8 % smaller).
+const LANDER_FRAC_NEAR = 0.185;
+const LANDER_FRAC_FAR = 0.14;
 const _q = new THREE.Vector3();
 const _c = new THREE.Vector3();
 const _v = new THREE.Vector3();
+const _box = new THREE.Box3();
 
 // Predicted touchdown x (physics metres), assuming no further thrust — same
 // estimate the LPD reticle and the PROJECTED TOUCHDOWN readout use.
@@ -316,16 +370,41 @@ function predictTouchdownX(p) {
   return p.xPos + p.vx * (t > 0 ? t : 0);
 }
 
-function DescentCamera({ physRef, view, clearRef, lzIndicatorRef }) {
+// Place an edge chip on the clear rectangle's border, in the direction of the
+// screen point s (CSS px), its arrow rotated to point at it.
+function placeEdgeChip(el, s, cr, halfW) {
+  const cx = (cr.x0 + cr.x1) / 2;
+  const cy = (cr.y0 + cr.y1) / 2;
+  const dx = s.z < 1 ? s.x - cx : -(s.x - cx);
+  const dy = s.z < 1 ? s.y - cy : -(s.y - cy);
+  const sx = dx !== 0 ? (cr.x1 - cr.x0) / 2 - 34 : Infinity;
+  const sy = dy !== 0 ? (cr.y1 - cr.y0) / 2 - 18 : Infinity;
+  const k = Math.min(Math.abs(sx / (dx || 1e-6)), Math.abs(sy / (dy || 1e-6)));
+  // Keep the whole chip inside the visibility area.
+  const ex = THREE.MathUtils.clamp(cx + dx * k, cr.x0 + halfW, cr.x1 - halfW);
+  const ey = THREE.MathUtils.clamp(cy + dy * k, cr.y0 + 14, cr.y1 - 14);
+  el.style.display = "flex";
+  el.style.transform = `translate(${ex}px, ${ey}px) translate(-50%, -50%)`;
+  const arrow = el.firstChild;
+  if (arrow) arrow.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+  return { x: ex, y: ey };
+}
+
+const insideRect = (s, cr, pad) => s.z < 1 && s.x > cr.x0 + pad && s.x < cr.x1 - pad && s.y > cr.y0 + pad && s.y < cr.y1 - pad;
+
+function DescentCamera({ physRef, view, clearRef, lzIndicatorRef, lpdIndicatorRef }) {
   const { camera, size } = useThree();
   const pos = useRef(null);
   const look = useRef(new THREE.Vector3());
   const includeLz = useRef(true);
+  const keepLz = useRef(true);
   const pts = useMemo(
     () => ({
-      lander: { pos: new THREE.Vector3(), rad: 2.6 },
+      lander: { pos: new THREE.Vector3(), rad: 1.4 },
       lpd: { pos: new THREE.Vector3(), rad: 1.6 },
+      lean: { pos: new THREE.Vector3(), rad: 1.6 },
       lz: { pos: new THREE.Vector3(0, 0, 0), rad: 3.2 },
+      sol: { ctr: new THREE.Vector3(), dist: 0 },
     }),
     []
   );
@@ -343,39 +422,81 @@ function DescentCamera({ physRef, view, clearRef, lzIndicatorRef }) {
 
     if (view === "COCKPIT") {
       camera.clearViewOffset();
-      _v.set(lx, ly + 0.7, 0);
+      _v.set(lx, ly + LANDER_FOOT + 0.7, 0);
       if (!pos.current) pos.current = _v.clone();
       pos.current.lerp(_v, Math.min(1, delta * 3));
       look.current.lerp(_c.set(lx + 6, Math.max(0, ly - 8), 0), Math.min(1, delta * 3));
       camera.position.copy(pos.current);
       camera.lookAt(look.current);
       if (lzIndicatorRef.current) lzIndicatorRef.current.style.display = "none";
+      if (lpdIndicatorRef.current) lpdIndicatorRef.current.style.display = "none";
       window.__lvDescentView = null;
       return;
     }
 
     // Points of interest
-    pts.lander.pos.set(lx, ly + 1.2, 0);
+    pts.lander.pos.set(lx, ly + LANDER_H / 2, 0);
     pts.lpd.pos.set(predictTouchdownX(p) * WORLD_X, 0, 0);
-    const dir = view === "NAV" ? NAV_DIR : EXT_DIR;
+    const nav = view === "NAV";
+    const dir = nav ? NAV_DIR : EXT_DIR;
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const tanV = tanHalf * ((cr.y1 - cr.y0) / H) * FRAME_MARGIN;
+    const tanClearV = tanHalf * ((cr.y1 - cr.y0) / H);
+    const tanV = tanClearV * FRAME_MARGIN;
     const tanH = tanHalf * ((cr.x1 - cr.x0) / H) * FRAME_MARGIN;
-    const dMin = CAM_MIN[view];
-    const dMax = CAM_MAX[view];
+    const sol = pts.sol;
+    // Camera distance (and centre, in sol) that frames `list` in the clear area.
     const frame = (list) => {
-      const box = new THREE.Box3();
-      list.forEach((q) => box.expandByPoint(q.pos));
-      const ctr = box.getCenter(new THREE.Vector3());
-      return { ctr, dist: solveDistance(list, ctr, dir, tanH, tanV) };
+      _box.makeEmpty();
+      list.forEach((q) => _box.expandByPoint(q.pos));
+      _box.getCenter(sol.ctr);
+      sol.dist = solveDistance(list, sol.ctr, dir, tanH, tanV);
+      return sol.dist;
     };
-    const core = [pts.lander, pts.lpd];
-    const withLz = frame([...core, pts.lz]);
-    // Hysteresis so the LZ does not flicker in and out of the framing.
-    if (includeLz.current && withLz.dist > dMax * 1.12) includeLz.current = false;
-    else if (!includeLz.current && withLz.dist < dMax) includeLz.current = true;
-    const sol = includeLz.current ? withLz : frame(core);
-    const dist = THREE.MathUtils.clamp(sol.dist, dMin, dMax);
+    let dist;
+    if (nav) {
+      const withLz = frame([pts.lander, pts.lpd, pts.lz]);
+      // Hysteresis so the LZ does not flicker in and out of the framing.
+      if (includeLz.current && withLz > NAV_MAX * 1.12) includeLz.current = false;
+      else if (!includeLz.current && withLz < NAV_MAX) includeLz.current = true;
+      if (!includeLz.current) frame([pts.lander, pts.lpd]);
+      dist = THREE.MathUtils.clamp(sol.dist, NAV_MIN, NAV_MAX);
+    } else {
+      // Distances from the camera to the lander that give it the near / far
+      // screen share. The camera sits at ctr + dir * dist, so the lander's own
+      // depth is dist - off, with off its offset from the framing centre.
+      const dNear = LANDER_H / (2 * LANDER_FRAC_NEAR * tanClearV);
+      const dFar = LANDER_H / (2 * LANDER_FRAC_FAR * tanClearV);
+      const off = () => _q.copy(pts.lander.pos).sub(sol.ctr).dot(dir);
+      const budget = () => dFar + off(); // furthest camera distance for sol.ctr
+      // Priorities: the lander, then a nearby primary LZ, then as much of the
+      // way to the touchdown point as the budget allows. Hysteresis keeps the
+      // LZ from flickering in and out of the framing.
+      const ratio = (list) => frame(list) / budget();
+      const all = ratio([pts.lander, pts.lpd, pts.lz]);
+      if (includeLz.current && all > 1.08) includeLz.current = false;
+      else if (!includeLz.current && all < 0.95) includeLz.current = true;
+      if (!includeLz.current) {
+        const near = ratio([pts.lander, pts.lz]);
+        if (keepLz.current && near > 1.08) keepLz.current = false;
+        else if (!keepLz.current && near < 0.95) keepLz.current = true;
+        const base = keepLz.current ? [pts.lander, pts.lz] : [pts.lander];
+        if (frame([...base, pts.lpd]) > budget()) {
+          // Lean towards the LPD as far as the zoom budget allows (bisection
+          // on the fraction of the way from the lander to the LPD).
+          let lo = 0;
+          let hi = 1;
+          for (let i = 0; i < 10; i++) {
+            const t = (lo + hi) / 2;
+            pts.lean.pos.lerpVectors(pts.lander.pos, pts.lpd.pos, t);
+            if (frame([...base, pts.lean]) > budget()) hi = t;
+            else lo = t;
+          }
+          pts.lean.pos.lerpVectors(pts.lander.pos, pts.lpd.pos, lo);
+          frame([...base, pts.lean]);
+        }
+      }
+      dist = THREE.MathUtils.clamp(sol.dist, dNear + off(), budget());
+    }
     _v.copy(dir).multiplyScalar(dist).add(sol.ctr);
     if (!pos.current) {
       pos.current = _v.clone();
@@ -392,38 +513,40 @@ function DescentCamera({ physRef, view, clearRef, lzIndicatorRef }) {
     camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
     camera.updateMatrixWorld();
 
-    // Screen positions (CSS px) for the LZ edge indicator and validation tooling.
+    // Screen positions (CSS px) for the edge indicators and validation tooling.
     const project = (v3) => {
       _q.copy(v3).project(camera);
       return { x: (_q.x * 0.5 + 0.5) * W, y: (-_q.y * 0.5 + 0.5) * H, z: _q.z };
     };
     const sLz = project(pts.lz.pos);
+    const sLpd = project(pts.lpd.pos);
+    const lpdShown = p.alt > 3 && p.alt < 800;
     window.__lvDescentView = {
-      lander: project(_c.set(lx, ly + 0.6, 0)),
-      lpd: { ...project(pts.lpd.pos), visible: p.alt > 3 && p.alt < 800 },
+      lander: project(pts.lander.pos),
+      lpd: { ...sLpd, visible: lpdShown },
       lz: sLz,
+      landerBox: { y0: project(_c.set(lx, ly + LANDER_H, 0)).y, y1: project(_c.set(lx, ly, 0)).y },
+      camDist: +pos.current.distanceTo(look.current).toFixed(2),
       clear: { ...cr },
       x: p.xPos, // physics metres from the primary LZ (validation tooling)
     };
+    // Off-frame primary LZ and projected touchdown: chips on the clear area's edge.
+    let lzChip = null;
     const el = lzIndicatorRef.current;
     if (el) {
-      const inside = sLz.z < 1 && sLz.x > cr.x0 + 8 && sLz.x < cr.x1 - 8 && sLz.y > cr.y0 + 8 && sLz.y < cr.y1 - 8;
-      if (inside || p.alt <= 0.5) {
-        el.style.display = "none";
-      } else {
-        // Clamp the LZ direction to the clear rectangle's edge.
-        const dx = sLz.z < 1 ? sLz.x - cx : -(sLz.x - cx);
-        const dy = sLz.z < 1 ? sLz.y - cy : -(sLz.y - cy);
-        const sx = dx !== 0 ? (cr.x1 - cr.x0) / 2 - 34 : Infinity;
-        const sy = dy !== 0 ? (cr.y1 - cr.y0) / 2 - 18 : Infinity;
-        const s = Math.min(Math.abs(sx / (dx || 1e-6)), Math.abs(sy / (dy || 1e-6)));
-        // Keep the whole chip (~120 px wide) inside the visibility area.
-        const ex = THREE.MathUtils.clamp(cx + dx * s, cr.x0 + 66, cr.x1 - 66);
-        const ey = THREE.MathUtils.clamp(cy + dy * s, cr.y0 + 14, cr.y1 - 14);
-        el.style.display = "flex";
-        el.style.transform = `translate(${ex}px, ${ey}px) translate(-50%, -50%)`;
-        const arrow = el.firstChild;
-        if (arrow) arrow.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+      if (insideRect(sLz, cr, 8) || p.alt <= 0.5) el.style.display = "none";
+      else lzChip = placeEdgeChip(el, sLz, cr, 66);
+    }
+    const tel = lpdIndicatorRef.current;
+    if (tel) {
+      if (!lpdShown || insideRect(sLpd, cr, 8)) tel.style.display = "none";
+      else {
+        const at = placeEdgeChip(tel, sLpd, cr, 48);
+        // Never stack on the LZ chip: step clear of it vertically.
+        if (lzChip && Math.abs(at.y - lzChip.y) < 22 && Math.abs(at.x - lzChip.x) < 120) {
+          const y = at.y + (at.y <= lzChip.y ? -24 : 24);
+          tel.style.transform = `translate(${at.x}px, ${y}px) translate(-50%, -50%)`;
+        }
       }
     }
   });
@@ -464,12 +587,13 @@ function Bar({ value, warn = false, danger = false }) {
 }
 
 /* ------------------------------------------------------------------
- * Compact HUD for landscape phones. Controls sit in two narrow columns on
- * the lower left and right edges (one per thumb); telemetry is condensed
- * into those columns and a slim top band. Everything between the columns is
- * the gameplay visibility area that the descent camera frames into.
+ * Compact HUD for landscape phones. Telemetry is one slim panel on the lower
+ * left; all flight controls (tilt, RCS, throttle) form one cluster in the
+ * lower-right corner, within reach of the right thumb and multi-touch capable.
+ * Everything between them, under the slim top band, is the protected gameplay
+ * area that the descent camera frames into.
  * ------------------------------------------------------------------ */
-const PAD_BTN = "border border-white/40 bg-black/35 flex items-center justify-center text-white font-mono";
+const PAD_BTN = "border border-white/30 bg-black/30 flex items-center justify-center text-white font-mono";
 
 function CompactRow({ label, value, unit, tone = "text-white", testId, big = false }) {
   return (
@@ -479,6 +603,19 @@ function CompactRow({ label, value, unit, tone = "text-white", testId, big = fal
         <span className={`font-mono tabular ${big ? "text-[17px]" : "text-[13px]"} font-medium ${tone}`}>{value}</span>
         {unit && <span className="font-mono text-[8px] text-zinc-500">{unit}</span>}
       </span>
+    </div>
+  );
+}
+
+function BarRow({ label, value, text, warn = false, danger = false, active = false, testId }) {
+  const color = danger ? "bg-[#FF3B00]" : warn ? "bg-amber-400" : active ? "bg-[#FF3B00]" : "bg-white";
+  return (
+    <div className="flex items-center gap-1.5" data-testid={testId}>
+      <span className="font-mono text-[8px] tracking-[0.15em] text-zinc-400 w-7">{label}</span>
+      <span className="flex-1 h-1 bg-white/10 relative overflow-hidden">
+        <span className={`absolute inset-y-0 left-0 ${color}`} style={{ width: `${Math.max(0, Math.min(100, value * 100))}%` }} />
+      </span>
+      <span className={`font-mono tabular text-[11px] w-8 text-right ${tone(warn, danger, false)}`}>{text}</span>
     </div>
   );
 }
@@ -562,61 +699,60 @@ function CompactDescentHud({
         ))}
       </div>
 
-      {/* Left edge: telemetry above the throttle (left thumb) */}
-      <div data-hud-block="left" className="absolute bottom-2 left-3 safe-mb safe-ml z-30 w-[150px] flex flex-col gap-2">
-        <div className="bg-black/45 backdrop-blur-sm border border-white/10 px-2.5 py-1.5 space-y-0.5" data-testid="descent-hud-left">
-          <CompactRow label="ALT" value={alt.toFixed(0)} unit="m" big testId="gauge-altitude" />
-          <CompactRow label="V/S" value={vy.toFixed(1)} unit="m/s" tone={tone(warnVy, dangerVy)} testId="gauge-vspeed" />
-          <CompactRow label="H/S" value={vx.toFixed(1)} unit="m/s" tone={tone(warnVx, dangerVx)} testId="gauge-hspeed" />
-          <CompactRow label="TILT" value={tilt.toFixed(0) + "°"} tone={tone(warnTilt, dangerTilt)} testId="gauge-tilt" />
-          <div className="pt-1">
-            <div className="flex justify-between font-mono text-[8px] tracking-widest text-zinc-400 mb-0.5">
-              <span>FUEL</span>
-              <span className={tone(warnFuelLow, dangerFuelCritical, false)}>{fuelPct.toFixed(0)}%</span>
-            </div>
-            <Bar value={fuel / cfg.initialFuel} warn={warnFuelLow} danger={dangerFuelCritical} />
+      {/* Lower left: telemetry */}
+      <div
+        data-hud-block="left"
+        data-testid="descent-hud-left"
+        className="absolute bottom-2 left-3 safe-mb safe-ml z-30 w-[132px] bg-black/40 backdrop-blur-sm border border-white/10 px-2 py-1.5 space-y-px"
+      >
+        <CompactRow label="ALT" value={alt.toFixed(0)} unit="m" big testId="gauge-altitude" />
+        <CompactRow label="V/S" value={vy.toFixed(1)} unit="m/s" tone={tone(warnVy, dangerVy)} testId="gauge-vspeed" />
+        <CompactRow label="H/S" value={vx.toFixed(1)} unit="m/s" tone={tone(warnVx, dangerVx)} testId="gauge-hspeed" />
+        <CompactRow label="TILT" value={tilt.toFixed(0) + "°"} tone={tone(warnTilt, dangerTilt)} testId="gauge-tilt" />
+        <BarRow label="FUEL" value={fuel / cfg.initialFuel} text={`${fuelPct.toFixed(0)}%`} warn={warnFuelLow} danger={dangerFuelCritical} testId="gauge-fuel" />
+        <BarRow label="THR" value={throttle} text={`${(throttle * 100).toFixed(0)}%`} active={throttleCmd} testId="gauge-throttle" />
+        <div className="pt-0.5 border-t border-white/10 font-mono text-[8px] tracking-[0.15em] text-zinc-400">
+          <div className="flex items-baseline justify-between">
+            <span>TO LZ</span>
+            <span className="whitespace-nowrap"><span className="text-[12px] text-white tabular" data-testid="lz-distance">{distanceToLZ.toFixed(0)}</span> <span className="text-zinc-500">m</span></span>
           </div>
+          <div className={`text-[8px] tracking-[0.12em] truncate ${projectedHazard ? "text-[#FF3B00] blink" : "text-zinc-200"}`} data-testid="projected-lz" title="Projected touchdown">
+            ▾ {projectedZoneLabel}
+          </div>
+        </div>
+      </div>
+
+      {/* Lower right: one flight-control cluster (tilt + RCS pairs, throttle at the edge) */}
+      <div
+        data-hud-block="right"
+        data-testid="descent-controls"
+        className="absolute bottom-2 right-3 safe-mb safe-mr z-30 flex gap-1.5"
+      >
+        <div className="grid grid-cols-2 gap-1.5">
+          <HoldButton onHold={(on) => (inputRef.current.left = on)} data-testid="ctrl-left" aria-label="Tilt left" className={`${PAD_BTN} w-[50px] h-[46px] flex-col text-[7px] tracking-[0.2em] text-zinc-300`}>
+            <ArrowLeft size={16} className="text-white" />TILT
+          </HoldButton>
+          <HoldButton onHold={(on) => (inputRef.current.right = on)} data-testid="ctrl-right" aria-label="Tilt right" className={`${PAD_BTN} w-[50px] h-[46px] flex-col text-[7px] tracking-[0.2em] text-zinc-300`}>
+            <ArrowRight size={16} className="text-white" />TILT
+          </HoldButton>
+          <HoldButton onHold={(on) => (inputRef.current.strafeLeft = on)} data-testid="ctrl-strafe-left" aria-label="RCS strafe left" className={`${PAD_BTN} w-[50px] h-[46px] text-[9px] text-zinc-200`}>
+            ◄ RCS
+          </HoldButton>
+          <HoldButton onHold={(on) => (inputRef.current.strafeRight = on)} data-testid="ctrl-strafe-right" aria-label="RCS strafe right" className={`${PAD_BTN} w-[50px] h-[46px] text-[9px] text-zinc-200`}>
+            RCS ►
+          </HoldButton>
         </div>
         <HoldButton
           onHold={(on) => { inputRef.current.throttle = on; setThrottleCmd(on); }}
           data-testid="ctrl-throttle"
           aria-label="Throttle"
-          className={`${PAD_BTN} relative h-16 w-full overflow-hidden flex-col gap-0.5`}
+          className={`${PAD_BTN} relative w-[58px] overflow-hidden flex-col gap-1`}
         >
-          <span className="absolute inset-x-0 bottom-0 bg-[#FF3B00]/30 pointer-events-none" style={{ height: `${Math.round(throttle * 100)}%` }} />
+          <span className="absolute inset-x-0 bottom-0 bg-[#FF3B00]/35 pointer-events-none" style={{ height: `${Math.round(throttle * 100)}%` }} />
           <ArrowUp size={18} className="relative" />
-          <span className="relative text-[9px] tracking-[0.25em]" data-testid="throttle-cmd">
-            THROTTLE <span className={throttleCmd ? "text-[#FF3B00]" : "text-zinc-400"}>{(throttle * 100).toFixed(0)}%</span>
-          </span>
+          <span className="relative text-[8px] tracking-[0.2em]">THR</span>
+          <span className={`relative text-[10px] tabular ${throttleCmd ? "text-white font-semibold" : "text-zinc-300"}`} data-testid="throttle-cmd">{(throttle * 100).toFixed(0)}%</span>
         </HoldButton>
-      </div>
-
-      {/* Right edge: landing target readout above attitude + RCS (right thumb) */}
-      <div data-hud-block="right" className="absolute bottom-2 right-3 safe-mb safe-mr z-30 w-[150px] flex flex-col gap-2" data-testid="descent-hud-right">
-        <div className="bg-black/45 backdrop-blur-sm border border-white/10 px-2.5 py-1.5 space-y-0.5">
-          <div className="flex items-baseline justify-between font-mono text-[8px] tracking-[0.2em] text-zinc-400">
-            <span>TO LZ</span>
-            <span className="whitespace-nowrap"><span className="text-[13px] text-white tabular" data-testid="lz-distance">{distanceToLZ.toFixed(1)}</span> <span className="text-zinc-500">m</span></span>
-          </div>
-          <div className="font-mono text-[8px] tracking-[0.2em] text-zinc-400">PROJECTED TOUCHDOWN</div>
-          <div className={`font-mono text-[10px] tracking-widest truncate ${projectedHazard ? "text-[#FF3B00] blink" : "text-white"}`} data-testid="projected-lz">
-            {projectedZoneLabel}
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          <HoldButton onHold={(on) => (inputRef.current.left = on)} data-testid="ctrl-left" aria-label="Tilt left" className={`${PAD_BTN} h-[52px] flex-col text-[8px] tracking-[0.2em]`}>
-            <ArrowLeft size={18} />TILT
-          </HoldButton>
-          <HoldButton onHold={(on) => (inputRef.current.right = on)} data-testid="ctrl-right" aria-label="Tilt right" className={`${PAD_BTN} h-[52px] flex-col text-[8px] tracking-[0.2em]`}>
-            <ArrowRight size={18} />TILT
-          </HoldButton>
-          <HoldButton onHold={(on) => (inputRef.current.strafeLeft = on)} data-testid="ctrl-strafe-left" aria-label="RCS strafe left" className={`${PAD_BTN} h-[52px] text-[10px] text-zinc-200`}>
-            ◄ RCS
-          </HoldButton>
-          <HoldButton onHold={(on) => (inputRef.current.strafeRight = on)} data-testid="ctrl-strafe-right" aria-label="RCS strafe right" className={`${PAD_BTN} h-[52px] text-[10px] text-zinc-200`}>
-            RCS ►
-          </HoldButton>
-        </div>
       </div>
     </>
   );
@@ -658,6 +794,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const sabProbeRef = useRef(null);
   const clearRef = useRef(null); // unobstructed screen rectangle (CSS px)
   const lzIndicatorRef = useRef(null);
+  const lpdIndicatorRef = useRef(null);
 
   const inputRef = useRef({
     throttle: false,
@@ -1026,10 +1163,11 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
             <MoonSurface />
             <LandingSiteMarkers physRef={phys} />
             <LPD physRef={phys} />
+            <TouchdownPath physRef={phys} view={view} />
             <DistantEarth />
             <Lander physRef={phys} />
             <Dust altitude={alt} thrust={throttle} />
-            <DescentCamera physRef={phys} view={view} clearRef={clearRef} lzIndicatorRef={lzIndicatorRef} />
+            <DescentCamera physRef={phys} view={view} clearRef={clearRef} lzIndicatorRef={lzIndicatorRef} lpdIndicatorRef={lpdIndicatorRef} />
           </Suspense>
         </Canvas>
       </div>
@@ -1049,6 +1187,15 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       >
         <span className="inline-block text-[13px] leading-none">➤</span>
         <span className="bg-black/50 px-1.5 py-0.5 border border-[#FF3B00]/50">LZ {distanceToLZ.toFixed(0)} m</span>
+      </div>
+      {/* Projected touchdown outside the visibility area: same treatment, in the LPD's yellow */}
+      <div
+        ref={lpdIndicatorRef}
+        data-testid="lpd-indicator"
+        className="absolute left-0 top-0 z-20 hidden items-center gap-1.5 pointer-events-none font-mono text-[9px] tracking-[0.2em] text-[#FFDD00]"
+      >
+        <span className="inline-block text-[13px] leading-none">➤</span>
+        <span className="bg-black/50 px-1.5 py-0.5 border border-[#FFDD00]/40">TOUCHDOWN</span>
       </div>
 
       {compact ? (
