@@ -283,7 +283,8 @@ protocol, no keyboard), simulated safe areas, production builds, **internet bloc
 | Unit tests (`yarn test`) | 19 / 19 pass |
 | `yarn ios:sync` / `cap sync ios` | passes; no source maps, no `_dbg`, development hooks compiled out |
 | Xcode project integrity | `project.pbxproj` parses; referenced files exist; Swift overrides checked against Capacitor's sources, including plugin extensions |
-| Lunar descent visibility (iPhone 16 Pro) | lander, predicted touchdown point and primary LZ on screen and uncovered by any HUD element in 164 / 164 samples from 400 m to touchdown; touch landing with two simultaneous touches |
+| Lunar descent framing, ASTRONAUT from 550 m (16 Pro / Pro Max / SE) | Lander height as a share of the visibility area's height, before → after: 4.3 / 4.9 / 3.6 % → 12.6 / 12.7 / 12.5 % at 500 m; 6.7 / 6.9 / 5.4 % → 12.6 / 12.7 / 12.4 % at 200 m; 10.6 / 10.8 / 8.5 % → 16.4 / 16.7 / 13.8 % at 100 m; 16.3 / 16.6 / 14.4 % → 16.6 / 16.6 / 15.4 % at 30 m; 17.1 / 17.3 / 16.7 % → 16.7 / 16.7 / 16.8 % at touchdown. Lander, LZ and on-screen touchdown point were never under a HUD element, with one exception: at 500 m the touchdown point lies ~150 m ahead and 500 m below, outside the frame, and is marked by the TOUCHDOWN chip while its ring sits behind the control cluster. All three runs landed (grades A / S / A). |
+| Desktop 1440 × 900 descent | Desktop HUD unchanged; the lander is 90–120 px (12.6–16.8 %); landed. |
 | Full mission by touch, iPhone 16 Pro / SE / Pro Max | launch → staging → manual lunar landing → reentry → parachutes → splashdown → mission complete; no control in an unsafe area, no overlaps, no clipping, all targets ≥ 44 pt |
 | Desktop 1440 × 900 regression (keyboard) | full mission and reentry failure / success cases pass; nominal entry at −6.51° → peak 176 W/cm², 7.39 g, splashdown 8.5 m/s (physics files untouched) |
 | Application console errors | 0 (only the blocked optional photo is logged) |
