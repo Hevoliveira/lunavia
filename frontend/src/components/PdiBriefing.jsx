@@ -94,8 +94,8 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
 
             <div className="hidden touch:block space-y-2 font-mono text-[10px] tracking-widest text-white" data-testid="pdi-touch-controls">
               <div>↑ · HOLD · MAIN ENGINE THROTTLE</div>
-              <div>← → · HOLD · ATTITUDE / TILT</div>
-              <div>◄ RCS · RCS ► · HOLD · LATERAL TRANSLATION</div>
+              <div>← → · TAP TO TRIM · HOLD · ATTITUDE / TILT</div>
+              <div>◄ RCS · RCS ► · TAP TO TRIM · HOLD · LATERAL TRANSLATION</div>
               <div>EXTERNAL · COCKPIT · NAV · CAMERA</div>
               <div>PAUSE · TOP RIGHT</div>
             </div>
