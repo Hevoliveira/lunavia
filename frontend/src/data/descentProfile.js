@@ -141,8 +141,9 @@ export function assessDescent({ alt, vy, vx, tilt, throttle, fuel, cfg }) {
   // Best deceleration the vehicle can still produce, and the deceleration it
   // needs to average to arrive at the surface at the safe touchdown rate.
   const bestDecel = Math.max(0.01, cfg.maxThrust - MOON_G);
+  // On the surface nothing more is needed unless it is still coming down too fast.
   const needDecel =
-    h > 0.05 ? (rate * rate - cfg.safeVy * cfg.safeVy) / (2 * h) : Infinity;
+    h > 0.05 ? (rate * rate - cfg.safeVy * cfg.safeVy) / (2 * h) : rate > cfg.safeVy ? Infinity : 0;
 
   // demand = 0 -> nothing required, 1 -> needs every bit of thrust it has.
   // This is the term that makes -10 m/s at 400 m nominal and -10 m/s at 15 m

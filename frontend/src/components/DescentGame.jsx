@@ -1086,7 +1086,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   // fixed velocity thresholds, so the warning strip, the gauge colours, the
   // profile chip and the guidance line can never contradict each other.
   const profile = assessDescent({ alt, vy, vx, tilt, throttle, fuel, cfg });
-  const guidance = guidanceFor(profile, projectedHazard);
+  // After contact there is nothing left to fly: no corrective guidance.
+  const guidance = ended ? null : guidanceFor(profile, projectedHazard);
   const chip = profileLabel(profile, projectedHazard);
   const readouts = guidanceReadouts(profile, vy);
 
