@@ -559,14 +559,14 @@ function emitParticles(t, dt, pools, S, rigRef, rocketGroupRef) {
       }
       // Steam: the deluge water flashing off the flame pit, rising and spreading
       if (thrust > 0.4 && h < 1.5) {
-        for (let i = rate(S, "pitSteam", 9 * thrust, dt); i > 0; i--) {
+        for (let i = rate(S, "pitSteam", 4 * thrust, dt); i > 0; i--) {
           const a = r() * Math.PI * 2;
           const w = 0.97 + r() * 0.03;
-          sm.emit(t, [0.3 + Math.cos(a) * 0.7, 0.35, Math.sin(a) * 0.7], [Math.cos(a) * 0.5, 0.7 + r() * 0.7, Math.sin(a) * 0.5], 9 + r() * 5, 1.2, 3.6 + r() * 1.6, w, w, w, 0.42, 0.5, 0.25);
+          sm.emit(t, [0.3 + Math.cos(a) * 0.7, 0.35, Math.sin(a) * 0.7], [Math.cos(a) * 0.5, 0.7 + r() * 0.7, Math.sin(a) * 0.5], 7 + r() * 4, 1.0, 3.0 + r() * 1.4, w, w, w, 0.45, 0.5, 0.25);
         }
       }
       // Billows pouring out from under the deck on every side
-      for (let i = rate(S, "deckBillow", 18 * trench, dt); i > 0; i--) {
+      for (let i = rate(S, "deckBillow", 14 * trench, dt); i > 0; i--) {
         // Out of the open west and north sides of the deck, away from the tower
         const a = Math.PI * (0.7 + r() * 0.85);
         const tan = 0.84 + r() * 0.14;
@@ -576,11 +576,11 @@ function emitParticles(t, dt, pools, S, rigRef, rocketGroupRef) {
     // Ground surge at release: the full exhaust hits the deck and a wall of
     // smoke and steam rolls outward across the pad, slowing as it spreads
     if (t > TL.LIFTOFF_T + 0.2 && t < TL.LIFTOFF_T + 3.2) {
-      for (let i = rate(S, "surge", 26, dt); i > 0; i--) {
+      for (let i = rate(S, "surge", 13, dt); i > 0; i--) {
         const a = Math.PI * (0.55 + r() * 1.25);
         const sp = 2.2 + r() * 2.2;
         const w = 0.86 + r() * 0.12;
-        sm.emit(t, [0.4 + Math.cos(a) * 1.4, 0.25, Math.sin(a) * 1.4], [Math.cos(a) * sp, 0.25 + r() * 0.5, Math.sin(a) * sp], 11 + r() * 7, 1.0, 4.0 + r() * 2.8, w, w * 0.97, w * 0.93, 0.58, 0.9, 0.12);
+        sm.emit(t, [0.4 + Math.cos(a) * 1.4, 0.25, Math.sin(a) * 1.4], [Math.cos(a) * sp, 0.25 + r() * 0.5, Math.sin(a) * sp], 11 + r() * 7, 0.9, 3.2 + r() * 2.0, w, w * 0.97, w * 0.93, 0.64, 0.9, 0.12);
       }
     }
     // Dust and vapour knocked flat across the pad at release
