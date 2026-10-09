@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
 import { ArrowUpRight, RotateCcw } from "lucide-react";
 import ControlRoomView from "@/components/scenes/ControlRoomView";
-import AscentScene from "@/components/scenes/AscentScene";
+import LaunchCinematic from "@/components/scenes/LaunchCinematic";
 import MissionScene from "@/components/MissionScene";
 import DescentScene from "@/components/scenes/DescentScene";
 import ReentryScene from "@/components/scenes/ReentryScene";
@@ -15,11 +14,15 @@ import MissionResult from "@/components/MissionResult";
 import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
 
+/*
+ * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
+ * count → liftoff → ascent → MECO → staging → upper stage → parking orbit →
+ * TLI) without any input, then the cislunar cruise runs to lunar orbit. The
+ * first required input after LAUNCH is at the Moon (INITIATE DESCENT).
+ */
 const STATES = {
   CONTROL: "control",
-  ASCENT: "ascent",
-  SEP_PROMPT: "sep_prompt",
-  SEP_DONE: "sep_done",
+  LAUNCH: "launch",
   SPACE: "space",
   ORBIT: "orbit",
   DIFFICULTY: "difficulty",
@@ -35,9 +38,7 @@ const STATES = {
 
 const STATE_LABELS = {
   control: { code: "T-00:00:10", name: "MISSION CONTROL" },
-  ascent: { code: "T+00:00:00", name: "ASCENT" },
-  sep_prompt: { code: "T+00:02:30", name: "STAGE SEPARATION" },
-  sep_done: { code: "T+00:02:32", name: "STAGE 1 DISCARDED" },
+  launch: { code: "T-00:00:15", name: "LAUNCH" },
   space: { code: "T+03:00:00", name: "CISLUNAR CRUISE" },
   orbit: { code: "T+80:00:00", name: "LUNAR ORBIT" },
   difficulty: { code: "T+82:00:00", name: "DESCENT · SETUP" },
@@ -51,10 +52,11 @@ const STATE_LABELS = {
   complete: { code: "T+195:15:00", name: "SPLASHDOWN · MISSION COMPLETE" },
 };
 
+// Cruise picks up after the TLI burn shown in the launch cinematic.
+const CRUISE_START = 12000;
+
 const FLIGHT_STATES = new Set([
-  STATES.ASCENT,
-  STATES.SEP_PROMPT,
-  STATES.SEP_DONE,
+  STATES.LAUNCH,
   STATES.SPACE,
   STATES.ORBIT,
   STATES.MANUAL_DESCENT,
@@ -68,7 +70,7 @@ export default function Mission() {
   const [state, setState] = useState(STATES.CONTROL);
   const [progress, setProgress] = useState(0);
   const [descentAlt, setDescentAlt] = useState(8);
-  const [spaceTime, setSpaceTime] = useState(9840);
+  const [spaceTime, setSpaceTime] = useState(CRUISE_START);
   const [orbitTime, setOrbitTime] = useState(288000);
   const [returnTime, setReturnTime] = useState(504000);
   const [difficulty, setDifficulty] = useState("ASTRONAUT");
@@ -96,25 +98,7 @@ export default function Mission() {
       lastTsRef.current = ts;
       const s = stateRef.current;
 
-      if (s === STATES.ASCENT) {
-        setProgress((p) => {
-          const next = p + dt * 0.09;
-          if (next >= 0.35) {
-            setState(STATES.SEP_PROMPT);
-            return 0.35;
-          }
-          return next;
-        });
-      } else if (s === STATES.SEP_DONE) {
-        setProgress((p) => {
-          const next = p + dt * 0.22;
-          if (next >= 1) {
-            setState(STATES.SPACE);
-            return 1;
-          }
-          return next;
-        });
-      } else if (s === STATES.SPACE) {
+      if (s === STATES.SPACE) {
         setSpaceTime((t) => {
           const next = t + dt * 30000;
           if (next >= 270000) {
@@ -164,25 +148,21 @@ export default function Mission() {
 
   const handleLaunch = () => {
     audio.init();
-    // Countdown blips (10s in ControlRoomView but the beep happens per countdown tick handled here)
-    // We fire "ignition" comms and rumble on state change to ASCENT below.
-    setState(STATES.ASCENT);
-    setTimeout(() => audio.startRumble(0.9), 100);
-    audio.comms("Ignition sequence start. Liftoff. We have a liftoff.", 200);
-    toast.message("LIFTOFF", {
-      description: "Todas as âncoras liberadas. Empuxo nominal.",
-      duration: 3000,
-    });
+    setState(STATES.LAUNCH);
   };
 
-  const handleSeparate = () => {
-    setState(STATES.SEP_DONE);
-    audio.boom(0.5);
-    audio.comms("Stage separation confirmed. Second stage ignition.", 300);
-    toast.message("STAGE 1 SEP", {
-      description: "Estágio 1 descartado. Ignição do segundo estágio.",
-      duration: 3000,
-    });
+  // End of the Earth departure (or SKIP): straight into the cislunar cruise.
+  // Skipping only shortens the film; the mission states are the same.
+  const handleLaunchComplete = () => {
+    setSpaceTime(CRUISE_START);
+    setState(STATES.SPACE);
+  };
+
+  const handleSkipLaunch = () => {
+    audio.roarStop(0.3);
+    audio.ambienceStop(0.5);
+    audio.padStart();
+    handleLaunchComplete();
   };
 
   const handleDescend = () => {
@@ -234,10 +214,13 @@ export default function Mission() {
 
   const resetMission = () => {
     audio.stopRumble();
+    audio.roarStop(0.3);
+    audio.ambienceStop(0.5);
+    audio.padStop(1);
     setState(STATES.CONTROL);
     setProgress(0);
     setDescentAlt(8);
-    setSpaceTime(9840);
+    setSpaceTime(CRUISE_START);
     setOrbitTime(288000);
     setReturnTime(504000);
     setDescentResult(null);
@@ -246,13 +229,14 @@ export default function Mission() {
 
   const overLandingZone = Math.sin(orbitAngleRef.current) > 0.7;
 
-  // Fire STAGE 1 rumble during ascent, stop after separation
+  // Engine sound belongs to the launch cinematic; the space music fades out
+  // as the crew reaches lunar orbit and takes control.
   useEffect(() => {
-    if (state === STATES.SEP_DONE) {
-      audio.setRumble(0.7);
-    } else if (state === STATES.SPACE || state === STATES.ORBIT) {
+    if (state === STATES.SPACE || state === STATES.ORBIT) {
       audio.stopRumble();
-    } else if (state === STATES.COMPLETE) {
+    }
+    if (state === STATES.ORBIT) audio.padStop(5);
+    if (state === STATES.COMPLETE) {
       audio.stopRumble();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,14 +261,8 @@ export default function Mission() {
       {/* --- Scene layer --- */}
       {state === STATES.CONTROL && <ControlRoomView onLaunch={handleLaunch} />}
 
-      {state === STATES.ASCENT && (
-        <AscentScene progress={progress} separated={false} thrust={1} />
-      )}
-      {state === STATES.SEP_PROMPT && (
-        <AscentScene progress={0.35} separated={false} thrust={0.15} />
-      )}
-      {state === STATES.SEP_DONE && (
-        <AscentScene progress={0.35 + progress * 0.4} separated={true} thrust={1} />
+      {state === STATES.LAUNCH && (
+        <LaunchCinematic audio={audio} onComplete={handleLaunchComplete} onSkip={handleSkipLaunch} />
       )}
 
       {state === STATES.SPACE && (
@@ -365,7 +343,7 @@ export default function Mission() {
       {state === STATES.COMPLETE && <ReentryScene final />}
 
       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
-      {state !== STATES.CONTROL && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
+      {state !== STATES.CONTROL && state !== STATES.LAUNCH && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
         <div
           data-testid="mission-hud-min"
           className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
@@ -380,35 +358,7 @@ export default function Mission() {
         </div>
       )}
 
-      {/* --- Prompts / interaction gates --- */}
-      {state === STATES.SEP_PROMPT && (
-        <div
-          data-testid="prompt-separate"
-          className="absolute inset-0 pointer-events-none flex items-end justify-center pb-32"
-        >
-          <div className="pointer-events-auto text-center scan-in">
-            <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink mb-3">
-              ● MISSION EVENT · CREW ACTION REQUIRED
-            </div>
-            <div className="font-display font-black text-white text-4xl md:text-5xl mb-2">
-              STAGE SEPARATION
-            </div>
-            <div className="font-mono text-[11px] tracking-widest text-zinc-400 mb-6">
-              STAGE 1 EXHAUSTED · PRESS TO JETTISON
-            </div>
-            <button
-              onClick={handleSeparate}
-              data-testid="btn-separate"
-              className="inline-flex items-center gap-3 px-8 py-3 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00] transition-colors duration-200 font-mono tracking-[0.3em] text-sm"
-            >
-              <span className="w-2 h-2 rounded-full bg-[#FF3B00] blink" />
-              SEPARATE
-              <span className="w-2 h-2 rounded-full bg-[#FF3B00] blink" />
-            </button>
-          </div>
-        </div>
-      )}
-
+      {/* --- Interaction gate: lunar arrival is the first required input after LAUNCH --- */}
       {state === STATES.ORBIT && (
         <div
           data-testid="prompt-descend"

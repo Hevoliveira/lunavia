@@ -6,21 +6,18 @@ import { useEffect, useState } from "react";
  * elements: countdown clock, telemetry, and a giant LAUNCH button.
  */
 export default function ControlRoomView({ onLaunch }) {
-  const [countdown, setCountdown] = useState(null); // null = not started, else seconds
+  // Starting the mission is the only input before the Moon: the terminal
+  // count, ignition, ascent, staging, orbit and TLI then run automatically
+  // in the launch cinematic.
   const [launching, setLaunching] = useState(false);
 
   useEffect(() => {
-    if (countdown === null) return;
-    if (countdown <= 0) {
-      setLaunching(true);
-      const t = setTimeout(() => onLaunch(), 1200);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    if (!launching) return undefined;
+    const t = setTimeout(() => onLaunch(), 1100);
     return () => clearTimeout(t);
-  }, [countdown, onLaunch]);
+  }, [launching, onLaunch]);
 
-  const startCountdown = () => setCountdown(10);
+  const startCountdown = () => setLaunching(true);
 
   return (
     <div
@@ -59,7 +56,7 @@ export default function ControlRoomView({ onLaunch }) {
 
       {/* Center: giant countdown or CTA */}
       <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
-        {countdown === null && !launching && (
+        {!launching && (
           <>
             <div className="font-mono text-[11px] tracking-[0.4em] text-zinc-400 mb-4 short:mb-2 short:mt-10 scan-in">
               LV-001 · READY FOR LAUNCH
@@ -81,35 +78,17 @@ export default function ControlRoomView({ onLaunch }) {
               <span className="inline-block w-3 h-3 rounded-full bg-[#FF3B00] blink" />
             </button>
             <div className="mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500">
-              PRESS TO BEGIN T-00:00:10 COUNTDOWN
+              PRESS TO BEGIN · TERMINAL COUNT, LAUNCH AND EARTH DEPARTURE ARE AUTOMATIC
             </div>
           </>
         )}
 
-        {countdown !== null && !launching && (
-          <div className="text-center">
-            <div className="font-mono text-[11px] tracking-[0.4em] text-[#FF3B00] mb-4 blink">
-              ● HOLDING · T-{String(countdown).padStart(2, "0")} SECONDS
-            </div>
-            <div
-              className="font-display font-black text-white tabular"
-              style={{ fontSize: "clamp(6rem, min(22vw, 38vh), 22rem)", lineHeight: 1 }}
-              data-testid="control-countdown"
-            >
-              {String(countdown).padStart(2, "0")}
-            </div>
-            <div className="mt-6 font-mono text-[11px] tracking-[0.4em] text-zinc-400">
-              MAIN ENGINE START · IGNITION SEQUENCE
-            </div>
-          </div>
-        )}
-
         {launching && (
-          <div className="text-center scan-in">
+          <div className="text-center scan-in" data-testid="control-go">
             <div className="font-mono text-[11px] tracking-[0.4em] text-[#FF3B00] blink mb-4">
-              ● IGNITION · LIFTOFF
+              ● ALL STATIONS GO · TERMINAL COUNT
             </div>
-            <div className="font-display font-black text-white text-8xl md:text-9xl">
+            <div className="font-display font-black text-white text-8xl md:text-9xl short:text-7xl">
               GO
             </div>
           </div>

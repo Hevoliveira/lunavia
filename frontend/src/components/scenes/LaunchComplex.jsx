@@ -20,6 +20,7 @@ const TOWER_X = 1.55;
 const TOWER_HALF = 0.25;
 const TOWER_TOP = 4.7;
 const BAY = 0.32;
+const HOLE_R = 0.36; // flame hole in the hardstand under the engines
 
 function rng(seed) {
   let s = seed;
@@ -193,8 +194,21 @@ function buildComplex() {
   deck.push(box(HOLE * 2, 0.14, 1.2 - HOLE, 0, D0 + 0.07, HOLE + (1.2 - HOLE) / 2));
   deck.push(box(HOLE * 2, 0.14, 1.2 - HOLE, 0, D0 + 0.07, -(HOLE + (1.2 - HOLE) / 2)));
   // Flame hole walls and the trench below
-  trench.push(box(HOLE * 2, 0.6, HOLE * 2, 0, -0.29, 0));
-  trench.push(box(0.9, 0.02, 3.6, 0, 0.012, -1.8));
+  // Flame pit under the hole: four walls and a floor facing inward, open at the top
+  const PIT_D = 0.8;
+  const wall = (ry, x, z) => {
+    const g = new THREE.PlaneGeometry(HOLE * 2, PIT_D);
+    g.rotateY(ry);
+    g.translate(x, DECK_TOP - PIT_D / 2, z);
+    return g;
+  };
+  trench.push(wall(0, 0, -HOLE), wall(Math.PI, 0, HOLE), wall(Math.PI / 2, -HOLE, 0), wall(-Math.PI / 2, HOLE, 0));
+  const floor = new THREE.PlaneGeometry(HOLE * 2, HOLE * 2);
+  floor.rotateX(-Math.PI / 2);
+  floor.translate(0, DECK_TOP - PIT_D, 0);
+  trench.push(floor);
+  // Flame trench runs west (−X) from the pit, across the camera side of the pad
+  trench.push(box(3.6, 0.02, 0.9, -2.2, 0.012, 0));
   // Pedestals and girder edge
   [[-1.2, -1.1], [-1.2, 1.1], [2.0, -1.1], [2.0, 1.1], [0.4, -1.1], [0.4, 1.1]].forEach(([x, z]) =>
     steelDark.push(box(0.22, D0, 0.22, x, D0 / 2, z))
@@ -432,11 +446,12 @@ export default function LaunchComplex({ progRef, anisotropy = 1 }) {
   return (
     <group ref={rootRef}>
       {/* Surrounding terrain (fades as the curved planet takes over) and hardstand */}
+      {/* Both open over the flame hole, so the engine bells hang into the pit */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0, 0]} material={mat.ground} receiveShadow>
-        <circleGeometry args={[26, 48]} />
+        <ringGeometry args={[HOLE_R, 26, 48, 1]} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.3, 0.004, 0]} material={mat.concrete} receiveShadow>
-        <circleGeometry args={[6.2, 8]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, 0]} material={mat.concrete} receiveShadow>
+        <ringGeometry args={[HOLE_R, 6.2, 8, 1]} />
       </mesh>
       {caster(geo.deck, mat.deck)}
       {caster(geo.steel, mat.steel)}

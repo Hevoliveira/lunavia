@@ -12,6 +12,10 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
  * approved Visual Fidelity Pass; this pass deepens the hardware itself.
  * Apollo-era hardware is engineering inspiration only — LUNAVIA white,
  * orange bands and black intertank remain the vehicle's own identity.
+ *
+ * Engines and staging are driven per frame through `ctrlRef.current`
+ * (no React re-render): { engines: [5 thrust 0..1], glow, sep, upper,
+ * showStage1, expand } — see LaunchCinematic / data/launchTimeline.
  */
 
 /* ------------------------- procedural textures ------------------------- */
@@ -349,6 +353,7 @@ function plumeMaterial({ color, core, opacity, falloff, noise }) {
       uFalloff: { value: falloff },
       uNoise: { value: noise },
       uGain: { value: 1 },
+      uDiamond: { value: 0 },
     },
     vertexShader: `
       varying vec2 vUv; varying vec3 vN; varying vec3 vView;
@@ -359,21 +364,44 @@ function plumeMaterial({ color, core, opacity, falloff, noise }) {
       }`,
     fragmentShader: `
       uniform float uTime; uniform float uOpacity; uniform vec3 uColor; uniform vec3 uCore;
-      uniform float uFalloff; uniform float uNoise; uniform float uGain;
+      uniform float uFalloff; uniform float uNoise; uniform float uGain; uniform float uDiamond;
       varying vec2 vUv; varying vec3 vN; varying vec3 vView;
       float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
       float n(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
         return mix(mix(h(i),h(i+vec2(1,0)),u.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),u.x),u.y); }
       void main() {
         float along = vUv.y;                      // 1 at the nozzle exit
-        float facing = pow(abs(dot(vN, vView)), 1.2);
+        // A plume is a volume: keep it bright when seen end-on, not only side-on
+        float facing = 0.38 + 0.62 * pow(abs(dot(vN, vView)), 1.2);
         float streak = 1.0 - uNoise + uNoise * n(vec2(vUv.x * 22.0, along * 7.0 - uTime * 11.0));
-        float a = pow(along, uFalloff) * facing * streak * uOpacity * uGain;
+        // Shock diamonds: bright bands along a collimated sea-level core
+        float diamonds = 1.0 + uDiamond * smoothstep(0.15, 0.9, along) * (pow(0.5 + 0.5 * cos((1.0 - along) * 40.0), 6.0) * 1.6 - 0.35);
+        float a = pow(along, uFalloff) * facing * streak * diamonds * uOpacity * uGain;
         vec3 col = mix(uColor, uCore, pow(along, 3.0));
         gl_FragColor = vec4(col * a, a);
       }`,
   });
 }
+
+// Soft radial halo for the bright exhaust core (a cheap bloom stand-in).
+let HALO_TEX = null;
+function haloTexture() {
+  if (HALO_TEX) return HALO_TEX;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, "rgba(255,244,220,1)");
+  g.addColorStop(0.18, "rgba(255,196,120,0.55)");
+  g.addColorStop(0.5, "rgba(255,140,60,0.14)");
+  g.addColorStop(1, "rgba(255,120,40,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  HALO_TEX = new THREE.CanvasTexture(c);
+  return HALO_TEX;
+}
+
+const DEFAULT_CTRL = { engines: [0, 0, 0, 0, 0], glow: 0, sep: 0, upper: 0, showStage1: true, expand: 0 };
 
 /* ---- batching: static parts sharing a material are merged into one draw call ---- */
 
@@ -640,7 +668,7 @@ export function setRocketTextureAnisotropy(n) {
   });
 }
 
-export default function RocketModel({ separated = false, thrust = 1, sepRef = null, scale = 1, rigRef = null }) {
+export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }) {
   const S = shared();
   const rootRef = useRef();
   const stage1Ref = useRef();
@@ -649,7 +677,11 @@ export default function RocketModel({ separated = false, thrust = 1, sepRef = nu
   const retroRef = useRef();
   const light1Ref = useRef();
   const light2Ref = useRef();
-  const localSep = useRef(0);
+  const coreRefs = useRef([]);
+  const midRef = useRef();
+  const outerRef = useRef();
+  const haloRef = useRef();
+  const halo2Ref = useRef();
 
   const bellMat = useMemo(
     () =>
@@ -691,43 +723,46 @@ export default function RocketModel({ separated = false, thrust = 1, sepRef = nu
 
   const plumeMats = useMemo(
     () => ({
-      core: plumeMaterial({ color: "#ff8a3a", core: "#fff6e0", opacity: 1.0, falloff: 1.4, noise: 0.25 }),
-      mid: plumeMaterial({ color: "#ff6a1c", core: "#ffd7a0", opacity: 0.55, falloff: 1.1, noise: 0.35 }),
-      outer: plumeMaterial({ color: "#ff4a10", core: "#ffb070", opacity: 0.22, falloff: 0.9, noise: 0.45 }),
-      vacCore: plumeMaterial({ color: "#aac4ff", core: "#f4f8ff", opacity: 0.8, falloff: 2.2, noise: 0.2 }),
-      vacExpand: plumeMaterial({ color: "#7d97d8", core: "#dfe8ff", opacity: 0.2, falloff: 1.3, noise: 0.5 }),
+      core: plumeMaterial({ color: "#ffb15a", core: "#fffaf0", opacity: 1.15, falloff: 0.9, noise: 0.25 }),
+      mid: plumeMaterial({ color: "#ff8a30", core: "#ffe2b0", opacity: 0.6, falloff: 0.8, noise: 0.35 }),
+      outer: plumeMaterial({ color: "#ff6018", core: "#ffc080", opacity: 0.26, falloff: 0.75, noise: 0.45 }),
+      vacCore: plumeMaterial({ color: "#b8ccff", core: "#ffffff", opacity: 1.2, falloff: 1.8, noise: 0.2 }),
+      vacExpand: plumeMaterial({ color: "#8aa2e0", core: "#e8eeff", opacity: 0.32, falloff: 1.2, noise: 0.5 }),
       vacHaze: plumeMaterial({ color: "#5d74b8", core: "#b8c8f0", opacity: 0.07, falloff: 0.8, noise: 0.3 }),
       retro: plumeMaterial({ color: "#d7d2c8", core: "#ffffff", opacity: 0.55, falloff: 1.5, noise: 0.4 }),
     }),
     []
   );
 
-  useFrame((state, delta) => {
+  const haloMats = useMemo(
+    () => ({
+      s1: new THREE.SpriteMaterial({ map: haloTexture(), color: "#ffd2a0", blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }),
+      s2: new THREE.SpriteMaterial({ map: haloTexture(), color: "#b9ccff", blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }),
+    }),
+    []
+  );
+
+  useFrame((state) => {
     const t = state.clock.elapsedTime;
+    const c = (ctrlRef && ctrlRef.current) || DEFAULT_CTRL;
     // Hand the stage objects to camera framing (stable refs, published per frame)
     if (rigRef && rootRef.current && stage1Ref.current) {
       if (!rigRef.current) rigRef.current = {};
       rigRef.current.root = rootRef.current;
       rigRef.current.stage1 = stage1Ref.current;
     }
-    if (separated) {
-      // Development-only: hold the separation at a given progress for stills
-      // (compiled out of production builds).
-      const hold = process.env.NODE_ENV !== "production" ? window.__lvSepHold : undefined;
-      if (hold != null) {
-        if (sepRef) sepRef.current = hold;
-        else localSep.current = hold;
-      } else if (sepRef) sepRef.current = Math.min(1, sepRef.current + delta / 3.6);
-      else localSep.current = Math.min(1, localSep.current + delta / 3.6);
-    }
-    const s = sepRef ? sepRef.current : localSep.current;
-    const e = 1 - (1 - s) * (1 - s);
+    const s = c.sep;
+    const separated = s > 0;
+    const e = 1 - (1 - Math.min(1, s)) * (1 - Math.min(1, s));
 
     // Stage 1 keeps the shared trajectory and falls back slowly relative to
     // the still-accelerating upper stage, picking up a gentle tumble from the
-    // separation impulse. It never just drops vertically.
+    // separation impulse. It never just drops vertically. Past s = 1 the
+    // upper stage is under thrust and the gap opens quickly.
     if (stage1Ref.current) {
-      stage1Ref.current.position.set(e * 0.55, -e * 2.3, 0);
+      const far = Math.max(0, s - 1);
+      stage1Ref.current.visible = c.showStage1 !== false;
+      stage1Ref.current.position.set(e * 0.55 + far * 0.5, -e * 2.3 - far * far * 3.2 - far * 1.4, 0);
       stage1Ref.current.rotation.z = s * 0.42;
       stage1Ref.current.rotation.x = s * 0.16;
     }
@@ -735,14 +770,37 @@ export default function RocketModel({ separated = false, thrust = 1, sepRef = nu
     Object.values(plumeMats).forEach((m) => (m.uniforms.uTime.value = t));
     const flick = 1 + Math.sin(t * 47) * 0.05 + Math.sin(t * 29) * 0.04;
 
-    const s1On = thrust > 0.25 && !separated;
-    if (plume1Ref.current) {
-      plume1Ref.current.visible = s1On;
-      if (s1On) plume1Ref.current.scale.set(1, (0.55 + 0.45 * thrust) * flick, 1);
+    // Stage 1: each engine's core follows its own thrust (staggered start,
+    // shutdown transient); the merged mid/outer plume follows the average.
+    const eng = c.engines;
+    const thrust = (eng[0] + eng[1] + eng[2] + eng[3] + eng[4]) / 5;
+    const s1On = thrust > 0.01 && !separated;
+    const ex = c.expand || 0; // 0 at sea level → 1 in near-vacuum
+    if (plume1Ref.current) plume1Ref.current.visible = s1On;
+    if (s1On) {
+      coreRefs.current.forEach((m, i) => {
+        if (!m) return;
+        const k = eng[i];
+        m.visible = k > 0.02;
+        m.scale.set(0.6 + 0.4 * k + ex * 0.8, (0.35 + 0.65 * k) * flick * (1 - ex * 0.35), 0.6 + 0.4 * k + ex * 0.8);
+      });
+      if (midRef.current) midRef.current.scale.set(1 + ex * 1.6, (0.4 + 0.6 * thrust) * flick * (1 + ex * 0.3), 1 + ex * 1.6);
+      if (outerRef.current) outerRef.current.scale.set(1 + ex * 3.2, (0.4 + 0.6 * thrust) * (1 + ex * 0.8), 1 + ex * 3.2);
+      plumeMats.core.uniforms.uGain.value = Math.min(1, thrust * 1.4);
+      plumeMats.core.uniforms.uDiamond.value = 1 - ex;
+      plumeMats.mid.uniforms.uGain.value = thrust * (1 - ex * 0.45);
+      plumeMats.outer.uniforms.uGain.value = thrust * (1 - ex * 0.65);
     }
-    bellMat.emissiveIntensity = s1On ? 0.55 : 0;
-    bellInner1.emissiveIntensity = s1On ? 1.4 : 0;
+    const glow = c.glow ?? thrust;
+    bellMat.emissiveIntensity = 0.55 * glow;
+    bellInner1.emissiveIntensity = 1.4 * glow;
     if (light1Ref.current) light1Ref.current.intensity = s1On ? 4.5 * thrust : 0;
+    if (haloRef.current) {
+      haloRef.current.visible = s1On;
+      haloMats.s1.opacity = Math.min(1, thrust * 1.2) * (0.9 - ex * 0.55) * flick;
+      const hs = 2.0 + ex * 0.6;
+      haloRef.current.scale.set(hs, hs * 0.9, 1);
+    }
 
     // Retro motors on the interstage fire briefly at the separation impulse
     const retro = separated ? clamp01(1 - Math.abs(s - 0.07) / 0.07) : 0;
@@ -751,8 +809,8 @@ export default function RocketModel({ separated = false, thrust = 1, sepRef = nu
       plumeMats.retro.uniforms.uGain.value = retro;
     }
 
-    // Upper-stage ignition once the separation gap is clearly open
-    const ig = separated ? clamp01((s - 0.42) / 0.22) : 0;
+    // Upper-stage vacuum engine (ignition, cutoff and TLI restart come from the timeline)
+    const ig = c.upper;
     if (plume2Ref.current) {
       plume2Ref.current.visible = ig > 0.02;
       if (ig > 0.02) plume2Ref.current.scale.set(1, Math.max(0.05, ig) * (1 + Math.sin(t * 31) * 0.02), 1);
@@ -760,9 +818,13 @@ export default function RocketModel({ separated = false, thrust = 1, sepRef = nu
     plumeMats.vacCore.uniforms.uGain.value = ig;
     plumeMats.vacExpand.uniforms.uGain.value = ig;
     plumeMats.vacHaze.uniforms.uGain.value = ig;
-    bell2Mat.emissiveIntensity = ig * 0.12;
+    bell2Mat.emissiveIntensity = Math.max(ig * 0.12, bell2Mat.emissiveIntensity * 0.995);
     bellInner2.emissiveIntensity = ig * 1.2;
     if (light2Ref.current) light2Ref.current.intensity = ig * 2.2;
+    if (halo2Ref.current) {
+      halo2Ref.current.visible = ig > 0.02;
+      haloMats.s2.opacity = ig * 0.85;
+    }
   });
 
   return (
@@ -821,22 +883,23 @@ export default function RocketModel({ separated = false, thrust = 1, sepRef = nu
         {/* Sea-level plume — individual engine cores inside a merged outer plume */}
         <group ref={plume1Ref} position={[0, -0.06, 0]}>
           {[[0, 0], ...OUTBOARD].map(([x, z], i) => (
-            <mesh key={i} position={[x, -0.38, z]} material={plumeMats.core}>
-              <cylinderGeometry args={[0.1, 0.07, 0.76, 12, 1, true]} />
-            </mesh>
+            <group key={i} position={[x, 0, z]} ref={(el) => (coreRefs.current[i] = el)}>
+              <mesh position={[0, -0.62, 0]} material={plumeMats.core}>
+                <cylinderGeometry args={[0.095, 0.065, 1.24, 12, 1, true]} />
+              </mesh>
+            </group>
           ))}
-          <mesh position={[0, -0.8, 0]} material={plumeMats.mid}>
-            <cylinderGeometry args={[0.36, 0.3, 1.6, 24, 1, true]} />
-          </mesh>
-          <mesh position={[0, -1.2, 0]} material={plumeMats.outer}>
-            <cylinderGeometry args={[0.44, 0.62, 2.4, 24, 1, true]} />
-          </mesh>
-          {[-0.28, -0.5, -0.72].map((y) => (
-            <mesh key={y} position={[0, y, 0]}>
-              <sphereGeometry args={[0.04, 10, 10]} />
-              <meshBasicMaterial color="#fff0d0" transparent opacity={0.7} blending={THREE.AdditiveBlending} depthWrite={false} />
+          <group ref={midRef}>
+            <mesh position={[0, -1.25, 0]} material={plumeMats.mid}>
+              <cylinderGeometry args={[0.34, 0.3, 2.5, 24, 1, true]} />
             </mesh>
-          ))}
+          </group>
+          <group ref={outerRef}>
+            <mesh position={[0, -1.9, 0]} material={plumeMats.outer}>
+              <cylinderGeometry args={[0.42, 0.7, 3.8, 24, 1, true]} />
+            </mesh>
+          </group>
+          <sprite ref={haloRef} material={haloMats.s1} position={[0, -0.42, 0]} />
           <pointLight ref={light1Ref} color="#FF8A45" intensity={4.5} distance={9} position={[0, -0.6, 0]} />
         </group>
       </group>
@@ -865,6 +928,7 @@ export default function RocketModel({ separated = false, thrust = 1, sepRef = nu
           <cylinderGeometry args={[0.22, 1.5, 3.0, 20, 1, true]} />
         </mesh>
         <pointLight ref={light2Ref} color="#9fbaff" intensity={0} distance={5} position={[0, -0.5, 0]} />
+        <sprite ref={halo2Ref} material={haloMats.s2} position={[0, -0.3, 0]} scale={[1.1, 1.1, 1]} />
       </group>
 
       {/* Stage 2 body */}

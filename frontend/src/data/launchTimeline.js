@@ -1,0 +1,239 @@
+/*
+ * LV-001 Earth departure: the automatic launch cinematic as data.
+ *
+ * Everything runs on one cinematic clock `t` (seconds since the sequence
+ * starts at T-15). The countdown and the first seconds of flight run in real
+ * time; documentary cuts then compress the flight, and the mission clock
+ * (MET) jumps across them, as a broadcast would. No step needs player input.
+ *
+ * Two scales are used for rendering (see LaunchCinematic):
+ *  - PAD regime: true scale around the pad, 1 scene unit = 30 m. The vehicle
+ *    (104 m) rises out of the complex at pad scale.
+ *  - FLIGHT regime: the vehicle stays at its own scale near the origin while
+ *    sky, clouds and planet are drawn in an environment layer that follows
+ *    this trajectory at true scale, so the vehicle is never oversized
+ *    against the Earth.
+ */
+
+export const UNIT_M = 30; // metres per pad-scale scene unit
+export const LIFTOFF_T = 15; // countdown starts at T-15
+export const DURATION = 79;
+
+// Camera shots, in order. Hard cuts between shots, smooth motion within.
+export const SHOTS = [
+  { id: "wide", start: 0, end: 4, regime: "pad", name: "LAUNCH COMPLEX 39" },
+  { id: "lowAngle", start: 4, end: 7.5, regime: "pad", name: "LV-001 ON THE PAD" },
+  { id: "engines", start: 7.5, end: 14.2, regime: "pad", name: "ENGINE SECTION" },
+  { id: "trench", start: 14.2, end: 19, regime: "pad", name: "FLAME TRENCH" },
+  { id: "tower", start: 19, end: 25, regime: "pad", name: "TOWER CLEARANCE" },
+  { id: "wideAscent", start: 25, end: 32, regime: "pad", name: "ASCENT" },
+  { id: "highAlt", start: 32, end: 43, regime: "flight", name: "ATMOSPHERIC ASCENT" },
+  { id: "meco", start: 43, end: 46.5, regime: "flight", name: "MAIN ENGINE CUTOFF" },
+  { id: "sepJoint", start: 46.5, end: 49.5, regime: "flight", name: "SEPARATION PLANE" },
+  { id: "stages", start: 49.5, end: 53.8, regime: "flight", name: "STAGE SEPARATION" },
+  { id: "usIgnition", start: 53.8, end: 58.5, regime: "flight", name: "UPPER STAGE" },
+  { id: "limb", start: 58.5, end: 64.5, regime: "flight", name: "LEAVING THE ATMOSPHERE" },
+  { id: "orbit", start: 64.5, end: 70.5, regime: "flight", name: "EARTH ORBIT" },
+  { id: "tli", start: 70.5, end: DURATION, regime: "flight", name: "TRANSLUNAR INJECTION" },
+];
+
+// Mission events. Captions describe what happens; none of them waits for input.
+export const EVENTS = [
+  { t: 1.0, id: "venting" },
+  { t: 7.4, id: "sparklers" },
+  { t: 8.5, id: "engineStart", caption: "MAIN ENGINE START", sub: "FIVE-ENGINE CLUSTER · STAGGERED START" },
+  { t: 11.6, id: "fullThrust" },
+  { t: LIFTOFF_T, id: "liftoff", caption: "LIFTOFF", sub: "HOLD-DOWN ARMS RELEASED" },
+  { t: 22.6, id: "towerClear", caption: "TOWER CLEARED", sub: "ROLL AND PITCH PROGRAM" },
+  { t: 34, id: "maxQ", caption: "MAX-Q", sub: "MAXIMUM AERODYNAMIC PRESSURE" },
+  { t: 44, id: "meco", caption: "MAIN ENGINE CUTOFF", sub: "STAGE 1 BURNOUT · 65 KM" },
+  { t: 47, id: "separation", caption: "STAGE SEPARATION", sub: "SEPARATION MOTORS FIRING" },
+  { t: 54.5, id: "usIgnition", caption: "UPPER STAGE IGNITION", sub: "VACUUM ENGINE · THRUST NOMINAL" },
+  { t: 64.5, id: "orbit", caption: "EARTH ORBIT", sub: "UPPER STAGE CUTOFF · 185 KM PARKING ORBIT" },
+  { t: 71.5, id: "tli", caption: "TRANSLUNAR INJECTION", sub: "UPPER STAGE RESTART · Δv 3.1 KM/S" },
+  { t: 78.3, id: "lunarTransfer", caption: "LUNAR TRANSFER", sub: "TLI CUTOFF · SPACECRAFT SEPARATES FOR THE 3-DAY COAST" },
+];
+
+export const eventTime = (id) => EVENTS.find((e) => e.id === id).t;
+
+export const clamp01 = (x) => Math.min(1, Math.max(0, x));
+export const smooth = (x) => {
+  const c = clamp01(x);
+  return c * c * (3 - 2 * c);
+};
+
+export function shotAt(t) {
+  for (let i = SHOTS.length - 1; i >= 0; i--) if (t >= SHOTS[i].start) return SHOTS[i];
+  return SHOTS[0];
+}
+
+/* Monotone cubic (Fritsch–Carlson) through [t, v] keys: smooth, no overshoot. */
+function monotone(keys) {
+  const n = keys.length;
+  const xs = keys.map((k) => k[0]);
+  const ys = keys.map((k) => k[1]);
+  const d = [];
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  const m = new Array(n);
+  m[0] = d[0];
+  m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) {
+      m[i] = 0;
+      m[i + 1] = 0;
+      continue;
+    }
+    const a = m[i] / d[i];
+    const b = m[i + 1] / d[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const k = 3 / Math.sqrt(s);
+      m[i] = k * a * d[i];
+      m[i + 1] = k * b * d[i];
+    }
+  }
+  return (x) => {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n - 1]) return ys[n - 1];
+    let i = 0;
+    while (x > xs[i + 1]) i++;
+    const h = xs[i + 1] - xs[i];
+    const u = (x - xs[i]) / h;
+    const u2 = u * u;
+    const u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * ys[i] + (u3 - 2 * u2 + u) * h * m[i] + (-2 * u3 + 3 * u2) * ys[i + 1] + (u3 - u2) * h * m[i + 1];
+  };
+}
+
+// Flight regime keys (cinematic seconds → value)
+const ALT_KM = monotone([[32, 9], [35, 14], [43, 58], [47, 68], [54.5, 84], [58.5, 112], [64.5, 185], [70.5, 185], [74, 190], [79, 245]]);
+const PITCH_DEG = monotone([[32, 24], [43, 58], [47, 62], [54.5, 66], [64.5, 88], [70.5, 90], [79, 92]]);
+const DOWNRANGE_KM = monotone([[32, 1.5], [43, 55], [47, 75], [54.5, 130], [64.5, 700], [70.5, 1400], [79, 2600]]);
+const SPEED_KMPS = monotone([[32, 0.35], [35, 0.45], [43, 2.1], [44, 2.3], [54.5, 2.4], [64.5, 7.8], [70.5, 7.8], [79, 10.6]]);
+
+// Mission elapsed time shown on screen. Real time through the countdown and
+// the first seconds of flight; broadcast-style jumps at the cuts after that.
+const MET_FLIGHT = monotone([[32, 58], [34, 72], [43, 148], [44, 150], [47, 152], [54.5, 158], [64.5, 690], [70.5, 9780], [71.5, 9840], [78.3, 10200], [79, 10240]]);
+export function metAt(t) {
+  if (t < 32) return t - LIFTOFF_T;
+  return MET_FLIGHT(t);
+}
+
+export function formatMet(s) {
+  const sign = s < 0 ? "T-" : "T+";
+  const a = Math.abs(Math.round(s));
+  const h = Math.floor(a / 3600);
+  const m = Math.floor((a % 3600) / 60);
+  const sec = a % 60;
+  return `${sign}${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+/* Pad regime: height of the vehicle above its hold-down position, in scene
+ * units. Thrust-to-weight ~1.4 at liftoff: a slow, heavy rise that clears the
+ * tower ~7.6 s after release, then accelerates as propellant burns off. */
+export function padHeight(t) {
+  const tau = Math.max(0, t - LIFTOFF_T);
+  return 0.072 * tau * tau + 0.0002 * tau ** 4;
+}
+
+// Pitch (radians from vertical) in the pad regime: vertical until T+10 s.
+export function padPitch(t) {
+  const tau = t - LIFTOFF_T;
+  return (8 * Math.PI) / 180 * smooth((tau - 10) / 7);
+}
+
+// Sideways drift (downrange, +X) from the pitch program in the pad regime.
+export function padDownrange(t) {
+  const tau = t - LIFTOFF_T;
+  if (tau <= 10) return 0;
+  return (padHeight(t) - padHeight(LIFTOFF_T + 10)) * Math.tan(padPitch(t)) * 0.5;
+}
+
+/* Small elastic lean of the stack at engine start (the "twang"): the off-axis
+ * thrust build-up bends the vehicle against the hold-downs; it returns upright
+ * at release. Radians about the downrange axis. */
+export function twang(t) {
+  const a = smooth((t - 8.6) / 2.4) * (1 - smooth((t - 12.2) / 2.6));
+  return -0.0055 * a;
+}
+
+export function trajectoryAt(t) {
+  if (t < 32) {
+    const h = padHeight(t);
+    return {
+      regime: "pad",
+      altKm: (h * UNIT_M) / 1000,
+      downrangeKm: (padDownrange(t) * UNIT_M) / 1000,
+      pitch: padPitch(t),
+      speedKmps: t > LIFTOFF_T ? ((0.144 * (t - LIFTOFF_T) + 0.0008 * (t - LIFTOFF_T) ** 3) * UNIT_M) / 1000 : 0,
+    };
+  }
+  return {
+    regime: "flight",
+    altKm: ALT_KM(t),
+    downrangeKm: DOWNRANGE_KM(t),
+    pitch: (PITCH_DEG(t) * Math.PI) / 180,
+    speedKmps: SPEED_KMPS(t),
+  };
+}
+
+// Relative air density (exponential atmosphere, 8 km scale height).
+export const airDensity = (altKm) => Math.exp(-Math.max(0, altKm) / 8);
+
+/* Engine schedules ------------------------------------------------------ */
+
+const ENGINE_START = 8.5;
+const MECO = 44;
+const SEP = 47;
+const US_IGNITION = 54.5;
+const SECO = 64.5;
+const TLI = 71.5;
+const TLI_CUTOFF = 78.3;
+
+// Per-engine stage 1 thrust (centre engine first, outboard pairs 0.25 s apart).
+export function stage1EngineThrust(t, out = [0, 0, 0, 0, 0]) {
+  for (let i = 0; i < 5; i++) {
+    const start = ENGINE_START + (i === 0 ? 0 : 0.25 * Math.ceil(i / 2) + 0.05 * i);
+    const up = clamp01((t - start) / 1.6);
+    // Shutdown transient: thrust tails off in ~0.6 s
+    const down = t < MECO ? 1 : Math.max(0, 1 - (t - MECO) / 0.6) ** 2;
+    out[i] = up * up * (3 - 2 * up) * down;
+  }
+  return out;
+}
+
+export function stage1Thrust(t) {
+  const e = stage1EngineThrust(t);
+  return (e[0] + e[1] + e[2] + e[3] + e[4]) / 5;
+}
+
+// Residual glow of the stage 1 nozzles after shutdown (cooling over ~5 s).
+export function stage1Glow(t) {
+  if (t < MECO) return stage1Thrust(t);
+  return Math.exp(-(t - MECO) / 1.8);
+}
+
+export function upperThrust(t) {
+  const burn = (t0, t1) => clamp01((t - t0) / 0.7) * (t < t1 ? 1 : Math.max(0, 1 - (t - t1) / 0.5));
+  if (t < SECO + 1) return burn(US_IGNITION, SECO);
+  return burn(TLI, TLI_CUTOFF);
+}
+
+/* Separation progress handed to RocketModel (0 = mated). The joint opens and
+ * the separation motors fire in the first second; the gap then grows slowly
+ * until the upper stage lights, and quickly once it is under thrust. */
+export function sepProgress(t) {
+  if (t < SEP) return 0;
+  if (t < SEP + 1) return 0.14 * (t - SEP);
+  if (t < US_IGNITION) return 0.14 + (0.42 - 0.14) * ((t - SEP - 1) / (US_IGNITION - SEP - 1));
+  if (t < 58.5) return 0.42 + 0.58 * ((t - US_IGNITION) / (58.5 - US_IGNITION));
+  return 1 + (t - 58.5) * 0.28;
+}
+
+// The spent stage is seen receding through the upper-stage ignition shot,
+// then is out of the picture.
+export const stage1Visible = (t) => t < 58.5;
+
+/* Validation helper: the order of required mission milestones. */
+export const MILESTONES = ["engineStart", "liftoff", "towerClear", "maxQ", "meco", "separation", "usIgnition", "orbit", "tli", "lunarTransfer"];

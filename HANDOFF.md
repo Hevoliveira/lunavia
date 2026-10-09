@@ -84,7 +84,9 @@ support is required for smooth playback.
 │       │   ├── CockpitOverlay.jsx
 │       │   ├── Navbar.jsx
 │       │   ├── scenes/
-│       │   │   ├── AscentScene.jsx       ← launch/ascent/staging (Visual Fidelity Pass)
+│       │   │   ├── LaunchCinematic.jsx   ← automatic Earth departure: pad → orbit → TLI (§23)
+│       │   │   ├── launch/               ← environment layer (sky/planet shader, clouds) + GPU particles
+│       │   │   ├── LaunchComplex.jsx     ← LC-39 pad, tower, flame pit and trench
 │       │   │   ├── DescentScene.jsx      ← descent 3D world (used by DescentGame)
 │       │   │   ├── ReentryScene.jsx      ← reentry cinematic
 │       │   │   └── ControlRoomView.jsx   ← pre-launch mission control room
@@ -202,7 +204,7 @@ Serve `frontend/build/` from any static host, and point
 | Landing / marketing site  | `frontend/src/pages/Landing.jsx`                        |
 | Manifesto page            | `frontend/src/pages/Manifesto.jsx`                      |
 | Control room (pre-launch) | `frontend/src/components/scenes/ControlRoomView.jsx`    |
-| Launch + ascent cinematic | `frontend/src/components/scenes/AscentScene.jsx`        |
+| Launch cinematic (auto)   | `frontend/src/components/scenes/LaunchCinematic.jsx` + `data/launchTimeline.js` |
 | LV-001 rocket             | `frontend/src/components/RocketModel.jsx`               |
 | Cislunar cinematic        | `frontend/src/components/MissionScene.jsx`              |
 | CSM spacecraft model      | `frontend/src/components/SpacecraftModel.jsx`           |
@@ -233,12 +235,9 @@ Serve `frontend/build/` from any static host, and point
 
 | # | State                | Type              | User interaction                                          |
 | - | -------------------- | ----------------- | --------------------------------------------------------- |
-| 1 | `CONTROL_ROOM`       | **INTERACTIVE**   | Click `LAUNCH SEQUENCE` (`data-testid="control-launch-btn"`). |
-| 2 | `COUNTDOWN`          | SCRIPTED          | 10 s countdown.                                            |
-| 3 | `ASCENT`             | SCRIPTED cinematic| Launch pad ignition, staged smoke, atmospheric climb.      |
-| 4 | `SEP_PROMPT`         | **INTERACTIVE**   | Click `INITIATE STAGE SEPARATION` (`btn-separate`).        |
-| 5 | `SEP_DONE`           | SCRIPTED cinematic| MECO → coast → separation impulse → drift + tumble → delayed S2 ignition. |
-| 6 | `SPACE` (cislunar)   | SCRIPTED cinematic| Earth recedes, deep-space cruise, Moon grows on approach.  |
+| 1 | `CONTROL_ROOM`       | **INTERACTIVE**   | Click `LAUNCH SEQUENCE` (`data-testid="control-launch-btn"`) — the only input before the Moon. |
+| 2 | `LAUNCH`             | AUTOMATIC cinematic | T-15 count → engine start → liftoff → tower clear → max-Q → MECO → staging → upper-stage ignition → parking orbit → TLI (`LaunchCinematic.jsx`, §23). Optional `SKIP CINEMATIC`. |
+| 6 | `SPACE` (cislunar)   | SCRIPTED cinematic| Starts after TLI (mission time 12000 s): Earth recedes, deep-space cruise, Moon grows on approach. |
 | 7 | `ORBIT` (lunar)      | SCRIPTED cinematic| Slow orbital drift; enables `INITIATE DESCENT` (`btn-descend`) when overhead LZ. |
 | 8 | `DIFFICULTY`         | **INTERACTIVE**   | Pick CADET / ASTRONAUT / COMMANDER.                        |
 | 9 | `BRIEFING`           | **INTERACTIVE**   | `PdiBriefing` — controls & limits card, click `BEGIN PDI`. |
@@ -509,10 +508,11 @@ than the three.js texture CDN reachability described above.
 2. Open `http://localhost:3000`.
 3. Landing hero should render 3D Earth + Moon + trajectory arc.
 4. Navigate to `/mission`. Control room appears.
-5. Click **LAUNCH SEQUENCE** → countdown → ascent cinematic.
-6. Click **INITIATE STAGE SEPARATION** when prompted.
-7. Watch stage 1 drift and tumble; stage 2 vacuum plume ignites after a
-   short delay.
+5. Click **LAUNCH SEQUENCE** → the Earth departure plays on its own
+   (~80 s): countdown, ignition, liftoff, ascent, MECO, staging, upper
+   stage, Earth orbit, TLI. No further input until lunar orbit.
+6. Optionally press **SKIP CINEMATIC** — it goes straight to the cruise.
+7. (Staging is automatic: no button.)
 8. Cislunar cruise: Earth visible and lit early on, Moon grows during
    approach.
 9. Lunar orbit: **INITIATE DESCENT** becomes enabled ("GO FOR PDI").
@@ -899,3 +899,33 @@ unchanged.
 - **Lander** sits on its footpads at altitude 0 (visual offset only).
 
 Details and measurements: `docs/IOS_APP.md`.
+
+## 23. Cinematic Earth departure (automatic)
+
+The outbound flight from LAUNCH to lunar orbit needs no input. `LaunchCinematic.jsx`
+replaces `AscentScene.jsx` and the `SEP_PROMPT` gate. It is driven by
+`data/launchTimeline.js` (shots, events, mission clock, trajectory and engine schedules,
+unit-tested in `launchTimeline.test.js`).
+
+- **Sequence (~79 s)**: T-15 count with venting and HBOI sparklers → staggered five-engine
+  start (6.5 s before release, stack "twang") → hold-down release and a slow, heavy rise →
+  tower clear → atmospheric ascent through cirrus with max-Q → MECO (plume tails off,
+  nozzles cool) → separation motors → spent stage tumbles away → vacuum engine ignition
+  → leaving the atmosphere → upper-stage cutoff in a 185 km parking orbit → TLI restart →
+  LUNAR TRANSFER, then the cruise (from mission time 12000 s, after the burn).
+- **Rendering**: two layers. The environment is true scale: one full-screen shader
+  ray-traces the planet and its atmosphere (single scattering, exact horizon at any
+  altitude, thin limb in orbit), plus true-altitude clouds. The vehicle, pad and
+  particles are drawn at pad scale over a cleared depth buffer, so the vehicle is never
+  oversized against the Earth.
+- **Effects**: GPU particle pools for smoke, steam, dust and the trail, plus fire, sparks
+  and the turbulent plume. They are world-anchored, so smoke stays at the pad; each pool
+  is one draw call. The flame pit and a west-facing trench carry the exhaust. The plume
+  has shock-diamond cores at sea level and expands with altitude.
+- **Audio**: synthesized roar with crackle, hold-down clank, structure-borne staging
+  thud, venting hiss, pad ambience, deliberate silence at MECO, and a restrained drone in
+  space (the vacuum carries no external sound).
+- **Unchanged**: descent physics, scoring, fuel, hazards, difficulty, reentry, splashdown,
+  mission completion and the descent touch controls.
+
+Details, measurements and validation: `docs/IOS_APP.md` → *Cinematic Earth departure*.

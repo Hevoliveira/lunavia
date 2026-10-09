@@ -228,13 +228,76 @@ audio plays with the silent switch on.
   water tower, lightning masts with catenary wires, flood lights, buildings and vehicles for
   scale. The sun casts shadows on the pad; the shadow map stops updating once the pad is
   out of view.
-- **Cinematography** (`AscentScene.jsx`): every beat names the hardware it must show and the
-  camera distance is solved so it fits inside the screen area the HUD leaves free — PAD,
-  CLIMB, MECO (engine section, engines off, composed left of the crew-action prompt),
-  IMPULSE (separation plane, active stage whole), STAGES and RECEDE (both stages whole on a
-  gentle diagonal with Earth's limb below), ACTIVE (burning upper stage). Stage 1 now falls
-  back more gently (it was exaggerated), and upper-stage ignition waits until the gap is
-  readable. No shake, no cuts.
+- **Cinematography** is now part of the automatic Earth departure (next section).
+
+## Cinematic Earth departure
+
+The outbound flight is automatic. After LAUNCH in the control room, nothing needs input
+until lunar orbit: `INITIATE DESCENT`, difficulty and `BEGIN PDI` come next, as before.
+A discreet **SKIP CINEMATIC** jumps to the cislunar cruise; it changes only the film,
+not the mission states.
+
+| t (s) | Shot | Event / caption |
+|---|---|---|
+| 0–4 | Wide: LC-39 complex | T-15, cryogenic venting |
+| 4–7.5 | Low angle: vehicle height against the tower | |
+| 7.5–14.2 | Engine section, from the flame pit | HBOI sparklers; **MAIN ENGINE START** (T-6.5, staggered); full thrust; stack "twang" |
+| 14.2–19 | Flame trench, low wide | **LIFTOFF** (hold-down release); steam, trench exhaust, dust |
+| 19–25 | Tower-mounted, looking up | slow rise; **TOWER CLEARED** |
+| 25–32 | Long-lens tracking | full vehicle and smoke column leaving the complex |
+| 32–43 | Atmospheric ascent | cirrus passes below; sky darkens; **MAX-Q** |
+| 43–46.5 | Engine section | **MAIN ENGINE CUTOFF**: plume tails off, nozzles cool |
+| 46.5–49.5 | Separation plane | **STAGE SEPARATION**: separation motors, vapour ring |
+| 49.5–53.8 | Both stages | gap opens, spent stage tumbles |
+| 53.8–58.5 | Upper stage | **UPPER STAGE IGNITION**: vacuum plume; spent stage recedes |
+| 58.5–64.5 | Wide: vehicle against the limb | leaving the atmosphere |
+| 64.5–70.5 | Over the Earth | **EARTH ORBIT** (cutoff, 185 km parking orbit) |
+| 70.5–79 | Behind the burning stage | **TRANSLUNAR INJECTION**, then **LUNAR TRANSFER** (cutoff, spacecraft separates) |
+
+**Pacing and clock.** The countdown and the first 17 s of flight run in real time.
+Documentary cuts then compress the flight, and the mission clock jumps with them:
+T+00:02:30 at MECO, T+00:11:30 at orbit insertion, T+02:44:00 at TLI. Ascent, orbit
+insertion and TLI stay distinct; the tests check altitude and speed at each.
+
+**Scale strategy.** Two layers are composited every frame:
+
+- **Environment, true scale** (`scenes/launch/environment.js`). A full-screen shader
+  ray-traces the planet (R = 2000 units = 6371 km) and its atmosphere: single
+  scattering, Rayleigh plus Mie, the Earth texture, ocean glint and a cloud map. The
+  horizon is therefore exact at every altitude, flat from the pad and a thin limb from
+  orbit. It also draws the Sun and the stars, which appear as the sky darkens.
+  Cumulus and cirrus sit at their true altitudes near the site.
+- **Vehicle layer, pad scale** (1 unit = 30 m). It holds LV-001, the complex and all
+  particles. In flight the vehicle stays at the origin and the environment camera rides
+  the trajectory (altitude, downrange, local horizon).
+
+The depth buffer is cleared between the layers, so the vehicle is never oversized
+against the Earth.
+
+**Effects.**
+
+- `scenes/launch/particles.js`: GPU pools, one draw call each, integrated in the vertex
+  shader and world-anchored. Ground smoke and steam therefore stay at the pad, and only
+  new particles are uploaded each frame.
+- Engines: per-engine staggered start with individual cores, shock diamonds at sea
+  level, and a plume that widens and fades with altitude. A turbulent particle envelope
+  replaces simple cones.
+- Pad: a pit open under the engines and a west-facing flame trench. A flickering point
+  light lights the deck, tower and smoke from the flames.
+- Separation: retro motors and a vapour ring. The upper-stage vacuum plume is clearly
+  visible, with a soft halo.
+- No shock heating is drawn during powered ascent.
+
+**Audio** (`hooks/useMissionAudio.js`, synthesized):
+
+- Pad: ambience and venting hiss, the countdown, then a roar with an impulsive crackle
+  layer whose brightness follows the camera distance.
+- Liftoff: hold-down clank.
+- Ascent: aerodynamic roar peaking at max-Q, muffled as the air thins.
+- Space: silence at MECO, a structure-borne thud at separation, a muffled onboard rumble
+  while a stage burns (no external sound in vacuum), and a soft drone through orbit and
+  cruise that fades at the Moon.
+- Comms calls mark each event.
 
 ## Resolution and texture findings
 
