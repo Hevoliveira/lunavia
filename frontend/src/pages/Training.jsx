@@ -39,8 +39,8 @@ const DISCIPLINES = {
 };
 
 const GUIDANCE_NOTE = {
-  full: "Full instructor: explains each event and what to do.",
-  key: "Key calls only: objective, limits and danger warnings.",
+  full: "Full instructor: explains events and actions.",
+  key: "Key calls: objective, limits, danger warnings.",
   minimal: "Objective only. No coaching.",
 };
 
@@ -208,8 +208,8 @@ export default function Training() {
               {/* Header */}
               <div className="flex items-end justify-between gap-4 flex-wrap">
                 <div>
-                  <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] scan-in">● LUNAVIA · MISSION SIMULATOR</div>
-                  <h1 className="font-display font-black text-white text-4xl md:text-5xl short:text-2xl tracking-tight mt-2 short:mt-1">
+                  <div className={`font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] scan-in ${discipline ? "short:hidden" : ""}`}>● LUNAVIA · MISSION SIMULATOR</div>
+                  <h1 className={`font-display font-black text-white text-4xl md:text-5xl short:text-2xl tracking-tight mt-2 ${discipline ? "short:mt-0 short:text-xl" : "short:mt-1"}`}>
                     FLIGHT TRAINING CENTER
                   </h1>
                 </div>
@@ -254,7 +254,7 @@ export default function Training() {
                   </div>
                 </>
               ) : (
-                <div className="grid md:grid-cols-[1.1fr_1fr] short:grid-cols-[1.05fr_1fr] gap-6 short:gap-3 mt-6 short:mt-2.5">
+                <div className="grid md:grid-cols-[1.1fr_1fr] short:grid-cols-[1.05fr_1fr] gap-6 short:gap-3 mt-6 short:mt-1.5">
                   {/* Scenario list */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -316,7 +316,7 @@ export default function Training() {
                       PRACTISES · {scenario.teaches.join(" · ")}
                     </div>
 
-                    <div className="mt-4 short:mt-2">
+                    <div className="mt-4 short:mt-1.5">
                       <div className="font-mono text-[9px] tracking-[0.3em] text-zinc-500 mb-1.5 short:mb-1">DIFFICULTY</div>
                       <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Difficulty">
                         {DIFFICULTY_KEYS.map((k) => {
@@ -354,7 +354,7 @@ export default function Training() {
                       })()}
                     </div>
 
-                    <button type="button" onClick={start} className="btn-hud btn-hud-primary mt-4 short:mt-2.5 justify-center min-h-[44px]" data-testid="training-start">
+                    <button type="button" onClick={start} className="btn-hud btn-hud-primary mt-4 short:mt-2 justify-center min-h-[44px]" data-testid="training-start">
                       <Play size={14} /> START TRAINING
                     </button>
                   </div>
