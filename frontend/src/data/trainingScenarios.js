@@ -13,27 +13,20 @@
  * trainingScenarios.test.js re-derives it.
  */
 import { DIFFICULTY, PRIMARY_LZ } from "./landingPhysics";
+import { initialState, stepLander } from "./landerSim";
 import { NOMINAL_FPA, OUTCOME } from "./reentryPhysics";
 
 export const DIFFICULTY_KEYS = ["CADET", "ASTRONAUT", "COMMANDER"];
 
 /*
- * Mid-descent starts take the state a reference descent actually has at that
- * altitude: the guided pilot of landerPilots.js (reaction lag, tap length,
+ * PRECISION starts mid-descent in the state a reference descent actually has
+ * at 120 m: the guided pilot of landerPilots.js (reaction lag, tap length,
  * HUD refresh) flying the full descent from the difficulty's own start.
  * Descent rate is that pilot's; fuel is rounded DOWN from what it has left,
  * so a training start is never more generous than the mission at that point;
- * the engine is running (throttle 1) where that pilot was mid-burn over the
- * last second, and off where it was still coasting to its braking burn.
+ * the engine is running (throttle 1) because that pilot was mid-burn there.
  */
 export const REFERENCE_STATE = {
-  // altitude 220 m
-  drift: {
-    CADET: { vy: -24.5, fuelFrac: 1.0, throttle: 0 },
-    ASTRONAUT: { vy: -28.0, fuelFrac: 0.9, throttle: 1 },
-    COMMANDER: { vy: -25.8, fuelFrac: 0.75, throttle: 1 },
-  },
-  // altitude 120 m
   precision: {
     CADET: { vy: -23.5, fuelFrac: 0.95, throttle: 1 },
     ASTRONAUT: { vy: -21.8, fuelFrac: 0.8, throttle: 1 },
@@ -41,38 +34,40 @@ export const REFERENCE_STATE = {
   },
 };
 
+/*
+ * BRAKING starts from the mission's own start state after the LM has coasted
+ * engine-off for COAST_S seconds: same integrator, same full tank, nothing
+ * changed but the braking burn is now about 5 s away (CADET 279 m at
+ * −20 m/s, ASTRONAUT 389 m at −24 m/s, COMMANDER 529 m at −30 m/s).
+ */
+export const COAST_S = 10;
+export function coastedStart(cfg, seconds = COAST_S) {
+  const p = initialState(cfg);
+  const dt = 1 / 120;
+  for (let t = 0; t < seconds - 1e-9; t += dt) stepLander(p, {}, cfg, dt);
+  return { alt: p.alt, vy: p.vy, vx: p.vx, xPos: p.xPos, fuel: p.fuel, throttle: 0 };
+}
+
+// "Near the centre" for the precision objective: the EXCELLENT accuracy band.
+export const PRECISION_RADIUS = 3;
+
 export const LANDING_SCENARIOS = [
   {
-    id: "guided",
-    title: "GUIDED DESCENT",
+    id: "standard",
+    title: "STANDARD LANDING",
     tag: "FUNDAMENTALS",
-    summary: "The full powered descent from the difficulty's start state.",
-    objective: "Land safely: vertical speed, drift and tilt inside the limits, on safe ground.",
-    teaches: ["Throttle against the TGT V/S band", "Braking countdown", "Hover reserve"],
+    summary: "The full powered descent from the difficulty's mission start state.",
+    objective: `Land safely inside the primary landing zone (within ${PRIMARY_LZ.r} m of its centre).`,
+    teaches: ["Throttle against the TGT V/S band", "Braking countdown", "Steering to the LZ"],
     init: () => null,
-  },
-  {
-    id: "drift",
-    title: "HORIZONTAL VELOCITY CORRECTION",
-    tag: "LATERAL CONTROL",
-    summary: "220 m, already braking, with a 10 m/s eastward drift that would carry the LM over a crater.",
-    objective: "Null the drift and land safely.",
-    teaches: ["RCS translation", "Reading H/S", "Holding the descent while correcting"],
-    altitude: 220,
-    init: (key) => {
-      const cfg = DIFFICULTY[key];
-      const r = REFERENCE_STATE.drift[key];
-      return { alt: 220, vy: r.vy, vx: 10, xPos: -10, fuel: cfg.initialFuel * r.fuelFrac, throttle: r.throttle };
-    },
   },
   {
     id: "precision",
     title: "PRECISION LANDING",
     tag: "ACCURACY",
-    summary: "120 m, 35 m past the primary LZ on the far side of a crater.",
-    objective: `Land safely inside the primary LZ (within ${PRIMARY_LZ.r} m of its centre).`,
-    teaches: ["Translating back over hazards", "Arriving with no drift", "Touchdown accuracy"],
-    altitude: 120,
+    summary: "120 m and already braking, 35 m past the primary LZ on the far side of a crater.",
+    objective: `Land safely within ${PRECISION_RADIUS} m of the LZ centre.`,
+    teaches: ["RCS translation back over hazards", "Arriving with no drift", "Touchdown accuracy"],
     init: (key) => {
       const cfg = DIFFICULTY[key];
       const r = REFERENCE_STATE.precision[key];
@@ -80,11 +75,20 @@ export const LANDING_SCENARIOS = [
     },
   },
   {
+    id: "braking",
+    title: "BRAKING PRACTICE",
+    tag: "THROTTLE MANAGEMENT",
+    summary: `The mission start after ${COAST_S} s of coasting engine-off: falling fast, full tank, braking burn due in about 5 s.`,
+    objective: "Brake in time and land safely, keeping a fuel reserve.",
+    teaches: ["Braking altitude", "Vertical-speed target band", "Fuel reserve"],
+    init: (key) => coastedStart(DIFFICULTY[key]),
+  },
+  {
     id: "commander",
     title: "COMMANDER CHALLENGE",
     tag: "QUALIFICATION",
     summary: "The full COMMANDER descent: 750 m, −14 m/s, tight fuel and touchdown limits.",
-    objective: "Land safely on COMMANDER limits with minimal guidance.",
+    objective: `Land safely inside the primary landing zone on COMMANDER limits, with minimal guidance.`,
     teaches: ["Everything, with no coaching"],
     lock: "COMMANDER",
     init: () => null,
@@ -94,7 +98,9 @@ export const LANDING_SCENARIOS = [
 /** Did a graded touchdown meet the scenario's objective? (result = gradeLanding output) */
 export function landingObjectiveMet(scenarioId, result) {
   if (!result || result.crashed) return false;
-  if (scenarioId === "precision") return result.breakdown.accuracy.distance < PRIMARY_LZ.r;
+  const d = result.breakdown.accuracy.distance;
+  if (scenarioId === "precision") return d < PRECISION_RADIUS;
+  if (scenarioId === "standard" || scenarioId === "commander") return d < PRIMARY_LZ.r;
   return true;
 }
 

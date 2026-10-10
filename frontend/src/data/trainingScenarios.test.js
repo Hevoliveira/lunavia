@@ -1,15 +1,15 @@
-import { DIFFICULTY, PRIMARY_LZ, gradeLanding } from "./landingPhysics";
+import { DIFFICULTY, PRIMARY_LZ, MOON_G, gradeLanding } from "./landingPhysics";
 import { simulate, initialState } from "./landerSim";
-import { fly, humanPilot, guidedStrategy, profileStrategy } from "./landerPilots";
+import { fly, humanPilot, guidedStrategy, profileStrategy, precisionStrategy } from "./landerPilots";
 import { createEntryState, step, recommendBank, rollToward, OUTCOME, SIM_DT, NOMINAL_FPA } from "./reentryPhysics";
-import { timeScaleFor, ENTRY_DIFFICULTY } from "./reentryGuidance";
-import { DANGER, OK } from "./descentProfile";
+import { timeScaleFor, ENTRY_DIFFICULTY, TRIM_SENSITIVITY, TRIM_RATE, PREP_SECONDS } from "./reentryGuidance";
+import { DANGER, CAUTION, OK, brakeIn } from "./descentProfile";
 import {
-  LANDING_SCENARIOS, REENTRY_SCENARIOS, REFERENCE_STATE, SHALLOW_FPA, STEEP_FPA,
+  LANDING_SCENARIOS, REENTRY_SCENARIOS, REFERENCE_STATE, SHALLOW_FPA, STEEP_FPA, COAST_S,
   landingObjectiveMet, findScenario, difficultyFor,
 } from "./trainingScenarios";
 import { landingCoach, createReentryCoach } from "./trainingCoach";
-import { landingDebrief, reentryDebrief, liftAgrees } from "./trainingDebrief";
+import { landingDebrief, reentryDebrief, liftAgrees, corridorStatus } from "./trainingDebrief";
 
 const KEYS = ["CADET", "ASTRONAUT", "COMMANDER"];
 // A clean COMMANDER touchdown on the primary LZ, varied per test.
@@ -112,7 +112,7 @@ describe("reentry training starts are chosen by the physics", () => {
   });
 });
 
-describe("lunar training starts are taken from a real descent", () => {
+describe("lunar training starts are taken from the mission's own flight", () => {
   const passAt = (cfg, alt) => {
     const r = simulate(cfg, humanPilot(cfg, guidedStrategy(), { lag: 0.3, seed: 1 }), { trace: true });
     const i = r.trace.findIndex((x) => x.alt <= alt);
@@ -121,18 +121,36 @@ describe("lunar training starts are taken from a real descent", () => {
     return { ...r.trace[i], duty: win.reduce((a, x) => a + x.thr, 0) / win.length };
   };
 
-  test("reference states match the guided pilot's descent, and never give more fuel", () => {
+  test("precision: the reference descent's state at 120 m, never more fuel", () => {
     for (const k of KEYS) {
       const cfg = DIFFICULTY[k];
-      for (const [id, alt] of [["drift", 220], ["precision", 120]]) {
-        const ref = passAt(cfg, alt);
-        const tbl = REFERENCE_STATE[id][k];
-        expect(Math.abs(ref.vy - tbl.vy)).toBeLessThan(1.0);
-        expect(tbl.fuelFrac).toBeLessThanOrEqual(ref.fuel / cfg.initialFuel + 1e-9);
-        expect(ref.fuel / cfg.initialFuel - tbl.fuelFrac).toBeLessThan(0.05);
-        expect(tbl.throttle).toBe(ref.duty >= 0.5 ? 1 : 0);
-      }
+      const ref = passAt(cfg, 120);
+      const tbl = REFERENCE_STATE.precision[k];
+      expect(Math.abs(ref.vy - tbl.vy)).toBeLessThan(1.0);
+      expect(tbl.fuelFrac).toBeLessThanOrEqual(ref.fuel / cfg.initialFuel + 1e-9);
+      expect(ref.fuel / cfg.initialFuel - tbl.fuelFrac).toBeLessThan(0.05);
+      expect(tbl.throttle).toBe(ref.duty >= 0.5 ? 1 : 0);
     }
+  });
+
+  test("braking: the mission start coasted engine-off, same tank, braking burn ~5 s away", () => {
+    for (const k of KEYS) {
+      const cfg = DIFFICULTY[k];
+      const s = findScenario("landing", "braking").init(k);
+      expect(s.fuel).toBe(cfg.initialFuel);
+      expect(s.throttle).toBe(0);
+      // free fall from the mission start: v = v0 - g t
+      expect(s.vy).toBeCloseTo(cfg.initialVy - MOON_G * COAST_S, 6);
+      const b = brakeIn(s.alt, -s.vy, cfg);
+      expect(b).toBeGreaterThan(4);
+      expect(b).toBeLessThan(6);
+    }
+  });
+
+  test("standard and COMMANDER challenge start exactly where the mission does", () => {
+    expect(findScenario("landing", "standard").init("ASTRONAUT")).toBeNull();
+    expect(findScenario("landing", "commander").init("CADET")).toBeNull();
+    expect(difficultyFor(findScenario("landing", "commander"), "CADET")).toBe("COMMANDER");
   });
 
   test("scenario starts only set the flight state: limits, thrust and fuel flow are the mission's", () => {
@@ -152,102 +170,173 @@ describe("lunar training starts are taken from a real descent", () => {
   const SEEDS = [1, 2, 3, 4, 5, 6];
   const campaign = (cfg, strategy, init) => {
     const runs = [];
-    for (const lag of LAGS) for (const seed of SEEDS) runs.push(fly(cfg, strategy, { init, lag, seed }));
+    for (const lag of LAGS) for (const seed of SEEDS) runs.push(fly(cfg, strategy, init ? { init, lag, seed } : { lag, seed }));
     return runs;
   };
+  const rate = (runs, ok = (r) => r.landed) => runs.filter(ok).length / runs.length;
+  // COMMANDER keeps the mission's tight fuel and limits: simulated pilots land
+  // 78-96 % of its starts, as they do the COMMANDER mission itself.
+  const need = (k) => (k === "COMMANDER" ? 0.75 : 0.9);
+  const inLz = (r) => r.landed && Math.abs(r.x - PRIMARY_LZ.x) < PRIMARY_LZ.r;
 
-  test.each(KEYS)("%s: drift and precision scenarios are landable by simulated pilots", (k) => {
+  test.each(KEYS)("%s: every scenario is physically achievable by simulated pilots", (k) => {
     const cfg = DIFFICULTY[k];
-    for (const id of ["drift", "precision"]) {
-      const init = findScenario("landing", id).init(k);
+    for (const sc of LANDING_SCENARIOS) {
+      if (sc.lock && sc.lock !== k) continue;
+      const init = sc.init(k);
       const guided = campaign(cfg, guidedStrategy(), init);
       const profile = campaign(cfg, profileStrategy(), init);
-      const rate = (runs) => runs.filter((r) => r.landed).length / runs.length;
-      // COMMANDER keeps the mission's tight fuel and limits: simulated pilots
-      // land 78-94 % of these starts, as they do the COMMANDER mission.
-      const need = k === "COMMANDER" ? 0.75 : 0.9;
-      expect(rate(guided)).toBeGreaterThanOrEqual(need);
-      expect(rate(profile)).toBeGreaterThanOrEqual(need);
-      if (id === "precision") {
-        const inLz = guided.filter((r) => r.landed && Math.abs(r.x - PRIMARY_LZ.x) < PRIMARY_LZ.r).length / guided.length;
-        expect(inLz).toBeGreaterThanOrEqual(need);
-      }
+      expect(rate(guided)).toBeGreaterThanOrEqual(need(k));
+      expect(rate(profile)).toBeGreaterThanOrEqual(need(k));
+      // the objective itself, not just a safe landing: precision is flown by a
+      // pilot aiming for the centre (precisionStrategy), the rest by the guided one
+      const objective = (r) => landingObjectiveMet(sc.id, { crashed: !r.landed, breakdown: { accuracy: { distance: Math.abs(r.x - PRIMARY_LZ.x) } } });
+      const flown = sc.id === "precision" ? campaign(cfg, precisionStrategy(), init) : guided;
+      expect(rate(flown, objective)).toBeGreaterThanOrEqual(need(k));
     }
   });
 
-  test("the drift scenario is a real problem: left alone, the drift crashes the LM", () => {
+  test("braking is a real problem: with no braking the LM crashes at every difficulty", () => {
     for (const k of KEYS) {
-      const cfg = DIFFICULTY[k];
-      const init = findScenario("landing", "drift").init(k);
-      const g = guidedStrategy();
-      const noRcs = (seen, mem, c, t) => ({ ...g(seen, mem, c, t), strafeLeft: false, strafeRight: false, left: false, right: false });
-      const r = fly(cfg, noRcs, { init, lag: 0.3, seed: 1 });
+      const r = fly(DIFFICULTY[k], () => ({}), { init: findScenario("landing", "braking").init(k), lag: 0.3, seed: 1 });
       expect(r.landed).toBe(false);
+      expect(r.reasons).toContain("VERTICAL SPEED EXCEEDED SAFE LIMIT");
     }
+  });
+
+  test("COMMANDER keeps the rebalanced configuration (not the old impossible tank)", () => {
+    expect(DIFFICULTY.COMMANDER.initialFuel).toBe(160);
+    expect(DIFFICULTY.COMMANDER.safeVy).toBe(2.0);
+    expect(DIFFICULTY.COMMANDER.safeVx).toBe(1.2);
+    expect(DIFFICULTY.COMMANDER.tiltRate).toBe(30);
+  });
+});
+
+describe("COMMANDER reentry challenge is survivable with skilled input", () => {
+  const cfg = ENTRY_DIFFICULTY.COMMANDER;
+
+  test("the worst-case dispersion can be trimmed out inside the prep window", () => {
+    const worst = cfg.initialError; // newPrep: |error| <= initialError
+    const dvNeeded = worst / TRIM_SENSITIVITY;
+    expect(dvNeeded).toBeLessThanOrEqual(cfg.rcsBudget);
+    expect(dvNeeded / TRIM_RATE).toBeLessThan(PREP_SECONDS);
+  });
+
+  test("trimmed into the corridor, a managed entry splashes down; untrimmed extremes are lost", () => {
+    expect(crew(NOMINAL_FPA, 0).outcome).toBe(OUTCOME.SPLASHDOWN);
+    // trimmed to within 0.4° of the target, either side: survivable
+    expect(crew(NOMINAL_FPA - 0.4, 0).outcome).toBe(OUTCOME.SPLASHDOWN);
+    expect(crew(NOMINAL_FPA + 0.4, 0).outcome).toBe(OUTCOME.SPLASHDOWN);
+    // no trim at all: the narrow margin is real, both ways
+    expect(crew(NOMINAL_FPA + cfg.initialError, 0).outcome).toBe(OUTCOME.SKIP_OUT);
+    expect([OUTCOME.THERMAL, OUTCOME.STRUCTURAL]).toContain(crew(NOMINAL_FPA - cfg.initialError, 0).outcome);
   });
 });
 
 describe("objectives are never easier than the mission", () => {
-
   test("a crash never meets an objective", () => {
     const crash = gradeLanding({ ...base, vy: -3, xPos: 0 });
     expect(crash.crashed).toBe(true);
     for (const sc of LANDING_SCENARIOS) expect(landingObjectiveMet(sc.id, crash)).toBe(false);
   });
 
-  test("precision needs the primary LZ; the other scenarios need a safe landing", () => {
-    const near = gradeLanding({ ...base, xPos: 2 });
+  test("standard needs the LZ, precision its centre, braking a safe landing", () => {
+    const centre = gradeLanding({ ...base, xPos: 2 });
+    const inLz = gradeLanding({ ...base, xPos: 4.5 });
     const off = gradeLanding({ ...base, xPos: 12, safeZone: null });
-    expect(landingObjectiveMet("precision", near)).toBe(true);
-    expect(landingObjectiveMet("precision", off)).toBe(false);
-    expect(landingObjectiveMet("guided", off)).toBe(true);
+    expect(landingObjectiveMet("precision", centre)).toBe(true);
+    expect(landingObjectiveMet("precision", inLz)).toBe(false);
+    expect(landingObjectiveMet("standard", inLz)).toBe(true);
+    expect(landingObjectiveMet("standard", off)).toBe(false);
+    expect(landingObjectiveMet("commander", off)).toBe(false);
+    expect(landingObjectiveMet("braking", off)).toBe(true);
   });
 });
 
 describe("instructor and debrief", () => {
   const cfg = DIFFICULTY.CADET;
-  const okProfile = { vyState: OK, vxState: OK, tiltState: OK, fuelState: OK, brakeTime: Infinity };
-  const d = (over) => ({ t: 20, alt: 300, vy: -10, vx: 0, tilt: 0, cfg, profile: okProfile, projectedHazard: false, distanceToLZ: 30, ended: false, ...over });
+  const okProfile = { vyState: OK, vxState: OK, tiltState: OK, fuelState: OK, brakeTime: Infinity, reserve: 60, envelope: { lo: 5, mid: 10, hi: 20 } };
+  const d = (over) => ({ t: 20, alt: 300, vy: -10, vx: 0, tilt: 0, cfg, profile: okProfile, projectedHazard: false, projectedZone: "UNMAPPED TERRAIN", distanceToLZ: 60, outcome: null, ...over });
 
-  test("guidance shrinks with difficulty", () => {
-    const danger = d({ profile: { ...okProfile, vyState: DANGER } });
-    expect(landingCoach(danger, "guided", "CADET").tone).toBe("warn");
-    expect(landingCoach(danger, "guided", "ASTRONAUT")).toBeNull();
-    expect(landingCoach(danger, "commander", "COMMANDER")).toBeNull();
+  test("lunar callouts follow the telemetry, and shrink with difficulty", () => {
+    const fast = d({ vy: -30, profile: { ...okProfile, vyState: DANGER } });
+    expect(landingCoach(fast, "standard", "CADET").title).toBe("DESCENT RATE HIGH — BEGIN BRAKING");
+    expect(landingCoach(fast, "standard", "CADET").text).toMatch(/-30\.0 m\/s/);
+    expect(landingCoach(fast, "standard", "ASTRONAUT").title).toBe("DESCENT RATE HIGH — BEGIN BRAKING");
+    expect(landingCoach(fast, "commander", "COMMANDER")).toBeNull();
+    expect(landingCoach(d({ vx: 3, profile: { ...okProfile, vxState: CAUTION } }), "standard", "CADET").title).toBe("HORIZONTAL VELOCITY EXCESSIVE");
+    expect(landingCoach(d({ profile: { ...okProfile, fuelState: CAUTION, reserve: 7 } }), "braking", "CADET").title).toBe("FUEL RESERVE LOW");
+    expect(landingCoach(d({ alt: 90, projectedZone: "PRIMARY LZ", distanceToLZ: 10 }), "standard", "CADET").title).toBe("LANDING ZONE AHEAD");
+    expect(landingCoach(d({ profile: { ...okProfile, brakeTime: 4.2 } }), "braking", "CADET").title).toBe("BRAKING ALTITUDE");
+    expect(landingCoach(d({ outcome: "landed" }), "commander", "COMMANDER").title).toBe("SAFE TOUCHDOWN");
     expect(landingCoach(d({ t: 1 }), "commander", "COMMANDER").title).toBe("COMMANDER CHALLENGE");
-    expect(landingCoach(d({ ended: true }), "guided", "CADET")).toBeNull();
   });
 
-  test("reentry coach: intro first, then danger calls for CADET only", () => {
-    const u = { phase: "ENTRY", realT: 0, vel: 10500, pred: "SHALLOW", climbing: false, g: 1, q: 10, shield: 0, blackout: false, inBand: true };
-    const cadet = createReentryCoach("shallow", "CADET");
-    expect(cadet(u).title).toBe("SKIP RISK");
-    expect(cadet({ ...u, realT: 10 }).title).toBe("ATMOSPHERIC SKIP");
+  test("reentry callouts: corridor, lift vector, heating, G, recovery, parachutes", () => {
+    const u = { phase: "ENTRY", realT: 0, vel: 10500, pred: "NOMINAL", climbing: false, g: 1, q: 10, shield: 0, overheat: 0, blackout: false, inBand: true, drogue: { alt: null }, main: { alt: null } };
+    const c = createReentryCoach("shallow", "CADET");
+    expect(c(u).title).toBe("SHALLOW EDGE OF CORRIDOR");
+    expect(c({ ...u, realT: 10, pred: "SHALLOW" }).title).toBe("ADJUST LIFT VECTOR");
+    expect(c({ ...u, realT: 11, pred: "NOMINAL" }).title).toBe("TRAJECTORY RECOVERED");
+    expect(c({ ...u, realT: 20, q: 175 }).title).toBe("HEATING APPROACHING LIMIT");
+    expect(c({ ...u, realT: 21, g: 6.5 }).title).toBe("G-LOAD INCREASING");
+    expect(c({ ...u, realT: 40, vel: 150, drogue: { alt: 7000, v: 200 } }).title).toBe("PARACHUTE CONDITIONS MET");
+    const prep = createReentryCoach("nominal", "ASTRONAUT");
+    prep({ phase: "PREP", realT: 0 });
+    expect(prep({ phase: "PREP", realT: 8, inBand: false, prepFpa: -5.6 }).title).toBe("ENTRY CORRIDOR TOO SHALLOW");
+    expect(prep({ phase: "PREP", realT: 9, inBand: false, prepFpa: -7.4 }).title).toBe("ENTRY CORRIDOR TOO STEEP");
     const cmd = createReentryCoach("commander", "COMMANDER");
     expect(cmd(u)).not.toBeNull();
-    expect(cmd({ ...u, realT: 10 })).toBeNull();
+    expect(cmd({ ...u, realT: 10, pred: "SHALLOW" })).toBeNull();
   });
 
-  test("landing debrief reports the graded touchdown and a fitting recommendation", () => {
+  test("landing debrief: every field from the graded touchdown, a main reason, 1-2 tips", () => {
     const r = gradeLanding({ ...base, vy: -3.1, xPos: 4 });
-    const db = landingDebrief(r, "guided", DIFFICULTY.COMMANDER);
+    const db = landingDebrief(r, "standard", DIFFICULTY.COMMANDER);
     expect(db.success).toBe(false);
-    expect(db.rows.find((x) => x.label === "TOUCHDOWN V/S").value).toBe("3.1 m/s");
-    expect(db.recommendation).toMatch(/3\.1 m\/s/);
+    const row = (l) => db.rows.find((x) => x.label === l).value;
+    expect(row("VERTICAL TOUCHDOWN")).toBe("3.1 m/s");
+    expect(row("HORIZONTAL TOUCHDOWN")).toBe("0.2 m/s");
+    expect(row("FINAL ATTITUDE")).toBe("1° tilt");
+    expect(row("DISTANCE FROM LZ CENTRE")).toMatch(/^4\.0 m/);
+    expect(db.reason).toMatch(/3\.1 m\/s exceeded the 2 m\/s limit/);
+    expect(db.recommendations.length).toBeGreaterThanOrEqual(1);
+    expect(db.recommendations.length).toBeLessThanOrEqual(2);
     const dry = gradeLanding({ ...base, xPos: 0, fuel: 0, fuelDepletedInFlight: true });
-    expect(landingDebrief(dry, "guided", DIFFICULTY.COMMANDER).recommendation).toMatch(/Fuel ran out/);
+    expect(landingDebrief(dry, "standard", DIFFICULTY.COMMANDER).recommendations[0]).toMatch(/BRAKE cue/);
+    const off = landingDebrief(gradeLanding({ ...base, xPos: 4.5 }), "precision", DIFFICULTY.COMMANDER);
+    expect(off.title).toBe("LANDED · OBJECTIVE NOT MET");
+    expect(off.reason).toMatch(/objective: under 3 m/);
   });
 
-  test("reentry debrief carries the flown values and the failure reason", () => {
+  test("reentry debrief carries the flown values, corridor and parachute status, and the failure reason", () => {
     const s = crew(SHALLOW_FPA, 0, { policy: "hold" });
     const db = reentryDebrief({
       outcome: s.outcome, eiFpa: s.ei.fpa, peakG: s.peak.g, peakHeatRate: s.peak.heatRate,
       heatLoad: s.heatLoad, overheat: s.overheat, shieldPct: 10, bankAgreement: 0.2, rollDeg: 0, splashV: null,
+      drogue: s.drogue, main: s.main,
     });
+    const row = (l) => db.rows.find((x) => x.label === l).value;
     expect(db.success).toBe(false);
-    expect(db.reasons[0]).toMatch(/SKIP/);
-    expect(db.rows[0].value).toBe(`${SHALLOW_FPA.toFixed(2)}°`);
-    expect(db.recommendation).toMatch(/DOWN/);
+    expect(db.reason).toMatch(/Atmospheric skip/);
+    expect(row("INITIAL ENTRY ANGLE")).toBe(`${SHALLOW_FPA.toFixed(2)}°`);
+    expect(row("ENTRY CORRIDOR")).toBe("INSIDE · SHALLOW EDGE");
+    expect(corridorStatus(-5.3).text).toBe("SHALLOW OF CORRIDOR");
+    expect(corridorStatus(-7.4).text).toBe("STEEP OF CORRIDOR");
+    expect(corridorStatus(STEEP_FPA).text).toBe("INSIDE · STEEP EDGE");
+    expect(row("PARACHUTES")).toBe("NOT DEPLOYED");
+    expect(row("SPLASHDOWN VELOCITY")).toBe("—");
+    expect(db.recommendations[0]).toMatch(/DOWN/);
+
+    const ok = crew(NOMINAL_FPA, 0);
+    const good = reentryDebrief({
+      outcome: ok.outcome, eiFpa: ok.ei.fpa, peakG: ok.peak.g, peakHeatRate: ok.peak.heatRate, heatLoad: ok.heatLoad,
+      overheat: ok.overheat, shieldPct: 40, bankAgreement: 0.8, rollDeg: 500, splashV: ok.splashV, drogue: ok.drogue, main: ok.main,
+    });
+    expect(good.success).toBe(true);
+    expect(good.rows.find((x) => x.label === "ENTRY CORRIDOR").value).toBe("INSIDE CORRIDOR");
+    expect(good.rows.find((x) => x.label === "PARACHUTES").value).toMatch(/^DROGUE \d+\.\d km · MAIN \d+\.\d km$/);
+    expect(good.rows.find((x) => x.label === "SPLASHDOWN VELOCITY").value).toBe(`${ok.splashV.toFixed(1)} m/s`);
   });
 
   test("bank agreement compares vertical lift, either roll direction", () => {
