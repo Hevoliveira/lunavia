@@ -406,6 +406,12 @@ Production builds, 852 × 393 CSS px (render 1704 × 786), SwiftShader. Previous
 | TLI preparation / TLI | 14–18 | 10.2k | ≤ 30 RCS puffs | ≈ 0 | 2.5–2.67 → 2.0–2.17 |
 | Lunar transfer (new) | 14 | 10.1k | 0 | 0 | — → 3.0 |
 
+**Orbit finale polish** (bundle `ad684ae` → this change, same seek times, run side by side):
+draw calls 14–18 and triangles 10.1–10.2k are unchanged in every finale shot. The limb
+twilight band, airglow and starburst live in the existing environment shader, and the
+three glint sprites are hidden whenever they are unlit. The ullage jets peak at 28
+particles (overdraw 0.01). CPU-raster fps 0.5–1.0 before and 0.5–1.0 after.
+
 - **Smoke pool:** 1000 → 1300 sprites (fire 400), still one draw call each and integrated
   on the GPU.
 - **Liftoff overdraw** rises 8.9 → 12.6 layers for the ground surge, pit steam and heavier
@@ -428,15 +434,18 @@ protocol, no keyboard), simulated safe areas, production builds, **internet bloc
 | Check | Result |
 |---|---|
 | Web production build (`yarn build`) | passes (only pre-existing warnings) |
-| Unit tests (`yarn test`) | 54 / 54 pass (19 reentry physics + 10 launch timeline + 25 lunar descent) |
+| Unit tests (`yarn test`) | 56 / 56 pass (19 reentry physics + 12 launch timeline + 25 lunar descent) |
 | `yarn ios:sync` / `cap sync ios` | passes; no source maps, no `_dbg`, development hooks compiled out; final bundle `main.0e4bf03f.js` stamped `ad684ae` |
 | Xcode project integrity | `project.pbxproj` parses; referenced files exist; Swift overrides checked against Capacitor's sources, including plugin extensions |
 | Lunar descent framing, ASTRONAUT from 550 m (16 Pro / Pro Max / SE) | Lander height as a share of the visibility area's height, before → after: 4.3 / 4.9 / 3.6 % → 12.6 / 12.7 / 12.5 % at 500 m; 6.7 / 6.9 / 5.4 % → 12.6 / 12.7 / 12.4 % at 200 m; 10.6 / 10.8 / 8.5 % → 16.4 / 16.7 / 13.8 % at 100 m; 16.3 / 16.6 / 14.4 % → 16.6 / 16.6 / 15.4 % at 30 m; 17.1 / 17.3 / 16.7 % → 16.7 / 16.7 / 16.8 % at touchdown. Lander, LZ and on-screen touchdown point were never under a HUD element, with one exception: at 500 m the touchdown point lies ~150 m ahead and 500 m below, outside the frame, and is marked by the TOUCHDOWN chip while its ring sits behind the control cluster. All three runs landed (grades A / S / A). |
 | Desktop 1440 × 900 descent | Desktop HUD unchanged; the lander is 90–120 px (12.6–16.8 %); landed. |
+| Larger lander, orbit-finale polish (ASTRONAUT from 550 m, before `ad684ae` → after) | Lander height, px (share of the visibility area): 16 Pro 33.7 → 41.6 (12.1 → 14.9 %) at 500 m, 33.2 → 41.3 at 100 m, 46.6 → 52.2 (16.7 → 18.7 %) at touchdown; Pro Max 38.5 → 47.1 at 500 m, 52.9 → 59.4 at touchdown; SE 34.0 → 42.5 at 500 m, 47.2 → 53.1 at touchdown; desktop 88.8 → 112.1 at 500 m, 120.1 → 136.6 at touchdown. Lander and LZ never under a HUD element. As before, the touchdown point at 500 m can sit just outside the frame, where the TOUCHDOWN chip marks it; it is in frame and clear from 200 m down. All eight runs landed (A / A / S / A after). |
+| Automatic Earth departure, orbit-finale polish (852 × 393 touch; 1440 × 900 desktop) | One tap on LAUNCH, then **0 input events** until lunar orbit. All 12 captioned events fire in order (engine start → … → final Earth pass → TLI preparation → TLI → lunar transfer), then the cislunar cruise and the INITIATE DESCENT prompt |
 | Automatic Earth departure, Flight IV (bundle `e9c666c` at 852 × 393, 932 × 430, 667 × 375; repeated at 852 × 393 on the final `ad684ae`) | One tap on LAUNCH, then **0 input events** until lunar orbit (counted by capturing listeners). All 11 captioned events fire in order (engine start → TLI preparation → lunar transfer), then cislunar cruise and the INITIATE DESCENT prompt |
 | COMMANDER by touch (in-page pilot reading only the HUD), see `COMMANDER_BALANCE.md` | 852 × 393: landed 1st attempt twice (a development build, then `2a7d5ee`, whose descent code is final); 932 × 430 (`e9c666c`): 1st attempt; 667 × 375: 2nd attempt (the 1st touched down at 2.14 m/s after a 3 s harness stall); ASTRONAUT and CADET at 852 × 393: 1st attempt; desktop keyboard: 2nd attempt. No guidance line after contact from `2a7d5ee` on |
 | Skip cinematic, desktop 1440 × 900 (final bundle `2a7d5ee`) | SKIP goes straight to the cruise and lunar orbit; descent keyboard throttle works (V/S +6.4 m/s in 2.5 s); abort returns to the control room |
 | Descent after the automatic departure | throttle 99 % while RCS is held (two simultaneous touches); abort → control room |
+| Full mission by touch, orbit-finale polish, iPhone 16 Pro | automatic departure (108 s) → cruise → lunar orbit → CADET landing by touch (1st attempt, 2 simultaneous touches) → reentry → drogue / mains → splashdown → mission complete → relaunch; COMMANDER by touch: landed 1st attempt (C). Desktop: SKIP → cruise → descent keyboard throttle → abort → control room |
 | Full mission by touch, Flight IV bundle `e9c666c`, iPhone 16 Pro | automatic departure (102 s) → cruise → lunar orbit → CADET landing by touch (1st attempt, 2 simultaneous touches) → reentry → drogue / mains → splashdown → mission complete → relaunch; 22 screens, no unsafe / clipped / overlapping controls, all targets ≥ 44 pt; only the blocked optional photo errors |
 | Full mission by touch, bundle `379a642` (previous milestone; final `f1e1909` differs only in the adaptive-resolution trigger), iPhone 16 Pro | automatic departure → cruise → lunar orbit → manual landing by touch (first attempt, two simultaneous touches) → reentry → parachutes → splashdown → mission complete → relaunch; no control in an unsafe area, no overlaps, no clipping, all targets ≥ 44 pt. SE and Pro Max full missions: previous pass (descent and reentry code unchanged since) |
 | Desktop 1440 × 900 regression (keyboard) | full mission and reentry failure / success cases pass; nominal entry at −6.51° → peak 176 W/cm², 7.39 g, splashdown 8.5 m/s (physics files untouched) |
