@@ -325,7 +325,8 @@ function Dust({ altitude, thrust }) {
  * into it. Motion is exponentially smoothed so it never jumps.
  *
  * EXTERNAL is a pilot's chase view: the lander is sized first, at roughly
- * 12–18 % of the clear area's height, measured at the lander's own depth.
+ * 15–22 % of the clear area's height, measured at the lander's own depth
+ * (raised from 12–18 % after the first iPhone tests, for readability).
  * Within that zoom budget the camera leans towards
  * the projected touchdown point (LPD), so the immediate trajectory stays in
  * view, and brings the primary LZ in once it fits. A distant LZ never pulls
@@ -341,8 +342,8 @@ const FRAME_MARGIN = 0.82;
 const LANDER_H = 1.75;
 // Share of the clear area's height the lander occupies: closest / furthest
 // (nominal, for a vertical view; the oblique chase view reads ~8 % smaller).
-const LANDER_FRAC_NEAR = 0.185;
-const LANDER_FRAC_FAR = 0.14;
+const LANDER_FRAC_NEAR = 0.225;
+const LANDER_FRAC_FAR = 0.175;
 const _q = new THREE.Vector3();
 const _c = new THREE.Vector3();
 const _v = new THREE.Vector3();
