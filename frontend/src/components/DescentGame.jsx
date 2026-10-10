@@ -38,8 +38,18 @@ const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.j
  * 3D scene layer
  * ============================================================ */
 
+/*
+ * drei's useTexture caches a texture for the whole session and every Canvas
+ * that uses it registers a "dispose" listener on it, which keeps that renderer,
+ * its canvas and the HUD around it alive after the Canvas unmounts (one per
+ * descent retry). Disposing on unmount releases them; the next Canvas simply
+ * re-uploads the cached image.
+ */
+const useReleaseOnUnmount = (tex) => useEffect(() => () => tex.dispose(), [tex]);
+
 function MoonSurface() {
   const [tex] = useTexture([MOON_MAP]);
+  useReleaseOnUnmount(tex);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
       <planeGeometry args={[300, 300, 1, 1]} />
@@ -238,6 +248,7 @@ function TouchdownPath({ physRef, view, cfg }) {
 
 function DistantEarth() {
   const [tex] = useTexture([EARTH_MAP]);
+  useReleaseOnUnmount(tex);
   const ref = useRef();
   useFrame((_, dt) => {
     if (ref.current) ref.current.rotation.y += dt * 0.02;
