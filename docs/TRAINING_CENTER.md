@@ -1,182 +1,232 @@
 # Flight Training Center
 
-The Training Center lets a player practise LUNAVIA's two flight-control problems on their own, without
-the launch, staging, Earth orbit or lunar transfer:
-
-- the powered lunar descent;
-- the Earth reentry.
-
-The full mission is unchanged.
+The Training Center lets a player practise LUNAVIA's two flight-control problems on their own: the
+powered lunar descent and the Earth reentry. There is no launch, staging, Earth orbit or lunar
+transfer to sit through. The full mission is unchanged.
 
 ## Navigation
 
-- **Main menu** (`/`): **FLIGHT TRAINING** in the hero, next to INICIAR MISSÃO, and **Training** in the
-  navbar.
+- **Home screen** (`/`): **FLIGHT TRAINING** in the hero, next to INICIAR MISSÃO, outlined in orange
+  and above the fold on landscape phones. **Training** is also in the navbar.
 - **`/training`**:
-  1. Choose **LUNAR LANDING** or **EARTH REENTRY**.
-  2. Pick a scenario from the list. The briefing shows its situation, objective and what it practises.
-  3. Choose a difficulty: CADET, ASTRONAUT or COMMANDER. The two COMMANDER challenges are locked to
-     COMMANDER.
-  4. **START TRAINING**.
+  - Choose the **LUNAR LANDING SIMULATOR** ("Practice descending and landing on the Moon") or the
+    **EARTH REENTRY SIMULATOR** ("Practice surviving atmospheric reentry and landing safely in the
+    ocean").
+  - The header shows attempts, successful attempts, completed slots and the build label.
+  - **TRAINING RECORDS** opens the personal bests.
+- **Scenario screen**:
+  - Pick one of the four scenarios. The briefing shows its situation, objective and what it practises.
+  - Choose **CADET**, **ASTRONAUT** or **COMMANDER**. The COMMANDER scenarios are locked to
+    COMMANDER.
+  - The speaker button is **MUTE INSTRUCTOR**.
+  - Then **START TRAINING**.
 - **During a run**:
   - The game shows a three-second "STARTS IN" hold. The scene and HUD are live, the physics waits, and
     controls can already be held.
   - Then the mission's own descent or reentry runs.
-  - ABORT returns to the scenario list.
+  - PAUSE and ABORT work as in the mission. ABORT returns to the scenarios.
 - **After each attempt**: a debrief with **RETRY**, **CHANGE SCENARIO**, **TRAINING CENTER** and
   **MAIN MENU**.
-  - RETRY remounts the same scenario immediately, at the same difficulty, without replaying anything.
-  - On desktop, R also retries.
 
-## Scenarios
+## Same simulation as the mission
 
-### Lunar landing
+Training mounts the mission's own `DescentGame` and `ReentryGame`. These are unchanged:
 
-The lunar scenarios use `DescentGame` with the mission's `DIFFICULTY` config. These are unchanged:
+- the integrators (`landerSim.js`, `reentryPhysics.js`);
+- the difficulty configs (`DIFFICULTY`, `ENTRY_DIFFICULTY`);
+- controls, cameras, HUD, guidance, limits, hazards and grading (`gradeLanding`, the reentry outcomes).
 
-- thrust, fuel flow and gravity;
-- the touchdown limits, hazards and grading (`gradeLanding`).
+A scenario only chooses where the flight starts and what counts as meeting its objective. Objectives
+are never easier than a safe mission landing or splashdown. The COMMANDER rebalance is kept (fuel
+160, limits 2.0 / 1.2 m/s, tilt 30°/s), and a test fails if the old 105-unit tank comes back.
 
-| Scenario | Start | Objective |
-|---|---|---|
-| Guided descent | the difficulty's own mission start (CADET 400 m, ASTRONAUT 550 m, COMMANDER 750 m) | land safely |
-| Horizontal velocity correction | 220 m, the reference descent's rate and fuel, plus a 10 m/s eastward drift toward a crater | land safely |
-| Precision landing | 120 m, the reference descent's rate and fuel, 35 m past the primary LZ across a crater | land safely **inside the primary LZ** (< 6 m) |
-| COMMANDER challenge (locked) | the COMMANDER mission start | land safely |
+The games gained optional props:
 
-**Mid-descent starts are never more generous than the mission.** The state at 220 m and 120 m is
-taken from the reference descent: the guided pilot of `landerPilots.js`, with its reaction lag, tap
-length and HUD refresh, flying the full descent.
+- `init` / `scenario`: start state;
+- `coach`: instructor callout;
+- `onResult`: debrief data;
+- `holdSeconds`: "starts in" hold.
 
-- **Descent rate:** the reference pilot's.
-- **Fuel:** rounded down from what that pilot has left.
-- **Engine:** running where it was mid-burn over the previous second (off at CADET 220 m, where it is
-  still coasting to its braking burn).
+Without them both behave exactly as in the mission.
 
-`trainingScenarios.test.js` re-derives these values.
-
-### Earth reentry
-
-The reentry scenarios use `ReentryGame` with the mission's `reentryPhysics.js` and `ENTRY_DIFFICULTY`
-guidance settings.
+## Lunar scenarios
 
 | Scenario | Start | Objective |
 |---|---|---|
-| Nominal entry | ENTRY PREP, planned EI angle −6.50°, lift up | trim, commit, fly to splashdown |
-| Shallow entry recovery | entry interface, committed at **−5.7°**, lift **up** | avoid the skip-out |
-| Steep entry recovery | entry interface, committed at **−6.9°**, lift **down** | keep heating and G inside the limits |
-| COMMANDER reentry challenge (locked) | the mission's COMMANDER ENTRY PREP: random dispersion up to ±1.8°, 6.5 m/s RCS, no corridor zones, no prediction | splashdown |
+| Standard landing | the difficulty's mission start (CADET 400 m, ASTRONAUT 550 m, COMMANDER 750 m) | land safely inside the primary LZ (< 6 m) |
+| Precision landing | 120 m and braking, 35 m past the LZ across a crater: the reference descent's rate, fuel rounded down and engine on | land safely within 3 m of the LZ centre |
+| Braking practice | the mission start after 10 s of coasting engine-off, with the full tank: CADET 279 m at −20 m/s, ASTRONAUT 389 m at −24 m/s, COMMANDER 529 m at −30 m/s; braking burn due in ~5 s | brake in time and land safely |
+| COMMANDER challenge (locked) | the COMMANDER mission start | land safely inside the primary LZ |
 
-**How the shallow and steep angles were chosen.** They come from the physics, not a guess.
-`trainingScenarios.test.js` sweeps entry angles with a simulated crew flying in real time, as the
-game paces it (`timeScaleFor`). The crew has a 3–6 s reaction delay, decides twice a second on a
-state 0.8 s old, and rolls at the physical 20°/s.
+**Feasibility.** `trainingScenarios.test.js` flies every scenario with the simulated pilots of
+`landerPilots.js`. They have reaction lag, minimum tap length, HUD refresh and misreadings, at three
+lags and six noise seeds (18 runs each).
 
-- **Shallow:**
-  - Holding the attitude skips out at every angle from −5.2° to −5.9°.
-  - Following the look-ahead guidance recovers from −5.5° to −5.9°.
-  - So does a gauge rule a player can fly: lift down while not descending, lift up in a fast dive.
-  - −5.7° sits mid-band, and the test checks ±0.2° around it.
-  - Holding lift down instead overloads the capsule, so the scenario needs management, not one roll.
-- **Steep:**
+| Pilot | Scenarios | Result |
+|---|---|---|
+| Guided and profile pilots | all | land ≥ 90 % at CADET and ASTRONAUT; ≥ 75 % at COMMANDER, matching the COMMANDER mission itself (78–96 %) |
+| Guided pilot | standard, braking, COMMANDER challenge | meets the objective ≥ 90 % (CADET, ASTRONAUT) and ≥ 75 % (COMMANDER) |
+| Precision pilot (keeps steering for the centre down to ~2 m) | precision | 100 % within 3 m at CADET and ASTRONAUT, 78 % at COMMANDER |
+
+Braking practice is a real problem: without braking the LM crashes at every difficulty.
+
+## Reentry scenarios
+
+| Scenario | Start | Objective |
+|---|---|---|
+| Nominal entry | ENTRY PREP, planned EI −6.50°, lift up | trim, commit, fly to splashdown |
+| Shallow entry recovery | entry interface, committed at **−5.7°**, lift **up** | avoid the skip-out, splash down |
+| Steep entry recovery | entry interface, committed at **−6.9°**, lift **down** | keep heating and G inside the limits, splash down |
+| COMMANDER reentry (locked) | the mission's COMMANDER ENTRY PREP: random EI dispersion up to ±1.8°, 6.5 m/s RCS, no corridor zones, no prediction | splashdown |
+
+`trainingScenarios.test.js` flies these with a simulated crew in real time, as the game paces it
+(`timeScaleFor`). The crew has a 3–6 s reaction delay, decides twice a second on a 0.8 s-old state,
+and rolls at the physical 20°/s.
+
+- **Shallow (−5.7°):**
+  - Holding lift up skips out.
+  - Managing the lift vector recovers, with both the look-ahead guidance and a gauge rule (lift down
+    while not descending, lift up in a fast dive).
+  - Holding lift down overloads the capsule.
+  - The test checks ±0.2° around −5.7°, which sits mid-way in the recoverable band (−5.5° to −5.9°).
+- **Steep (−6.9°):**
   - Holding lift down breaks the capsule.
-  - Managed entries recover from about −6.8° to −7.2°, with peak loads of about 10–11 g against
-    8.6 g for the nominal entry.
-  - Holding lift up all the way skips out, so it too needs management.
+  - Managed entries recover at higher loads than nominal.
+  - Holding lift up all the way skips out.
   - The test checks ±0.1° around −6.9°.
-- **Failure stays possible:** entries well outside the corridor (−4.9°, −7.6°) are still lost even
-  with ideal guidance. Training adds no margin.
+- **COMMANDER:**
+  - The worst dispersion (1.8°) needs 6.0 m/s of trim against a 6.5 m/s budget, which takes 12 s of
+    the 18 s prep.
+  - Trimmed to within 0.4° of the target, a managed entry splashes down.
+  - Left untrimmed at either extreme, the capsule skips out or burns up.
+- **Failures stay possible.** Training adds no margin:
+  - entries well outside the corridor are lost even with ideal guidance;
+  - skip-out (shallow, no input), thermal failure (trimmed to −8.0° and held lift up) and structural
+    failure (steep, no input) all come from the same physics.
 
-## Guidance by difficulty
+## Instructor
 
-The instructor appears inside the telemetry column, so it never covers the vehicle, the LZ, the
-entry-corridor gauge or the lift-vector dial. It shows one line at a time and never pauses the
-simulation. The mission's own HUD guidance for the difficulty is shown as usual. For example:
+The instructor is one callout at a time, computed from the live simulation values the HUD already
+shows:
 
-- the descent shows TGT V/S, BRAKE and RESERVE;
-- the CADET reentry shows the bank cue and lift assist;
-- CADET and ASTRONAUT reentries show the prediction.
+- the descent assessment;
+- the reentry prediction, heating and G;
+- parachute state.
 
-| Difficulty | Instructor |
+It sits inside the telemetry column, so it never covers the vehicle, the LZ, the controls, the
+corridor gauge or the lift dial. It never pauses the simulation.
+
+| Lunar callout | When |
 |---|---|
-| CADET | Explains each event and what to do. Lunar: braking, drift, attitude, fuel, final-approach limits. Reentry: entry angle, corridor, trim, bank orientation, skip-out, G-load, heating, thermal limit, blackout, end of the hypersonic phase, parachutes. |
-| ASTRONAUT | The objective; touchdown limits below 40 m; hazard, skip-out and overload warnings; corridor reminder in ENTRY PREP. |
-| COMMANDER | The objective only. |
+| DESCENT RATE HIGH — BEGIN BRAKING | the descent assessment is in danger, or the braking burn is due |
+| HORIZONTAL VELOCITY EXCESSIVE | drift that cannot be nulled in time, or over the limit below 80 m |
+| HAZARD AT TOUCHDOWN POINT · ATTITUDE · FUEL RESERVE LOW | projected hazard; tilt caution; reserve or fuel caution |
+| BRAKING ALTITUDE | coasting, braking burn due in under 8 s |
+| LANDING ZONE AHEAD | projected touchdown on the primary LZ, 15–150 m up |
+| FINAL APPROACH | below 40 m: the touchdown limits |
+| SAFE TOUCHDOWN / HARD CONTACT | at contact |
+
+| Reentry callout | When |
+|---|---|
+| ENTRY CORRIDOR TOO SHALLOW / TOO STEEP | ENTRY PREP: planned EI angle outside the difficulty's guidance band |
+| GO FOR ENTRY | in the band, attitude ready |
+| SHALLOW / STEEP EDGE OF CORRIDOR | start of the recovery scenarios |
+| ADJUST LIFT VECTOR | prediction SKIP or OVERLOAD (or climbing at low G) |
+| TRAJECTORY RECOVERED | prediction back to nominal after a predicted failure |
+| HEATING APPROACHING LIMIT | heat rate above 80 % of the 200 W/cm² design, or over it |
+| G-LOAD INCREASING | above 6 g and rising |
+| COMM BLACKOUT · ENTRY COMPLETE · PARACHUTE CONDITIONS MET · MAIN CHUTES · SPLASHDOWN | as they happen |
+
+**By difficulty:**
+
+- **CADET** gets every callout, each with a one-line explanation using the live numbers.
+- **ASTRONAUT** gets the warnings and key events in a few words.
+- **COMMANDER** gets the objective and the outcome only.
+
+The reentry prediction comes from the mission's look-ahead (`predict`). As in the mission, it runs at
+CADET and ASTRONAUT only.
+
+**Voice (optional).** When the callout changes, a short phrase is spoken through the existing audio
+hook (`speak`, the device's own speech synthesis), for example "Descent rate high. Begin braking."
+
+- It works offline, with no backend or paid service.
+- It never speaks over a Houston call, at most once every 4 s, and never at COMMANDER.
+- **MUTE INSTRUCTOR** (the speaker button in the briefing, also in the debrief) is remembered on the
+  device.
+
+## Retry
+
+RETRY remounts the same scenario with a new key. That gives a fresh integrator state, timers,
+controls, camera, telemetry, instructor and "starts in" hold, with no cinematic.
+
+The games remove their keyboard listeners and animation loops on unmount. React-three-fiber disposes
+each Canvas. The page-level audio graph is shared and its rumble is stopped on retry.
+
+`retries.js` checks for accumulation across 10 lunar and 5 reentry retries:
+
+- heap after forced GC;
+- window and document listeners;
+- canvases;
+- animation-frame callbacks per second;
+- WebGL warnings.
+
+The results are under Validation.
 
 ## Debrief
 
 All values come from the flown simulation.
 
 - **Lunar landing**:
-  - touchdown vertical speed, horizontal velocity and tilt, each against its limit;
+  - landing result and zone;
+  - grade and score (`gradeLanding`);
+  - vertical and horizontal touchdown speed against their limits;
+  - final attitude (tilt);
+  - distance from the LZ centre and its accuracy band;
   - fuel remaining, with the starting level for mid-descent starts;
-  - landing accuracy, with its band and zone;
-  - grade and score from `gradeLanding`;
-  - failure reasons.
+  - main reason for success or failure.
 - **Reentry**:
-  - initial (EI) entry angle;
-  - peak G-load against 12 g;
-  - peak heating rate against the 200 W/cm² design rate;
+  - initial EI angle;
+  - entry-corridor status against the physics corridor (−5.5° to −7.2°): inside, shallow or steep edge,
+    or outside;
+  - peak heating rate;
   - maximum thermal load (J/cm² and % of the shield);
-  - bank-control performance;
-  - result, and the reason for failure.
+  - peak G;
+  - parachutes (drogue and main deployment altitudes, or not deployed);
+  - splashdown velocity;
+  - bank-control agreement with the look-ahead guidance (% of hypersonic time, total roll);
+  - outcome;
+  - main reason.
 
-**Bank-control performance** is the share of hypersonic flight time during which the lift vector's
-vertical component was within 0.5 of the look-ahead guidance's recommendation, plus the total roll
-flown. The recommendation is sampled every 0.75 s, the same `recommendBank` that drives the CADET
-cue.
+One or two recommendations follow, chosen from what limited the attempt.
 
-**The recommendation** names what limited the attempt:
+## Training records
 
-- the failure cause; or
-- the precision miss; or
-- a nearly dry tank; or
-- the weakest touchdown component; or
-- for reentry, high G, shield use or poor guidance agreement.
+Records are kept on this device only, in `localStorage["lunavia.training.v2"]`, separate from the full
+mission. For each simulator, scenario and difficulty they store:
 
-## Progress
+- attempts and successful attempts;
+- best result;
+- best landing grade, best fuel remaining and best LZ distance (safe landings);
+- lowest peak G (successful entries).
 
-Progress is kept on this device only, under `localStorage["lunavia.training.v1"]`, per discipline,
-scenario and difficulty:
+**TRAINING RECORDS** shows the personal bests by difficulty, including which reentry scenarios have
+been passed. The instructor-voice choice is stored in `lunavia.training.voice`.
 
-- attempts;
-- successful attempts;
-- best result: landing grade and score, or the reentry's lowest peak G.
-
-The header shows attempts, successful attempts and completed slots (20). There is no account, backend
-or sync. If storage is unavailable, training still works and progress simply is not kept.
+**Persistence.** In the iOS app the WebView's `localStorage` survives closing and reopening the app.
+It is removed when the app is deleted, and iOS can clear it under severe storage pressure.
+`persist.js` checks that the records survive a browser restart on the same profile. On a phone this
+must still be confirmed by closing and reopening the app.
 
 ## Code
 
 | File | Role |
 |---|---|
-| `pages/Training.jsx` | Training Center UI: selection, runs, debrief, retry and navigation |
-| `data/trainingScenarios.js` | Scenario starts and objectives |
-| `data/trainingCoach.js` | Instructor lines by difficulty |
-| `data/trainingDebrief.js` | Debriefs and recommendations |
-| `lib/trainingProgress.js` | Local progress |
+| `pages/Training.jsx` | Training Center UI: simulators, scenarios, briefing, records, runs, debrief, retry, voice |
+| `data/trainingScenarios.js` | Scenario starts (reference descent, coasted start, entry angles) and objectives |
+| `data/trainingCoach.js` | Instructor callouts by difficulty |
+| `data/trainingDebrief.js` | Debriefs, corridor status, recommendations |
+| `lib/trainingProgress.js` | Local records and personal bests |
 | `components/training/CoachCard.jsx` | Instructor card |
-| `DescentGame.jsx`, `ReentryGame.jsx` | Optional props: `init` / `scenario`, `coach`, `onResult`, `holdSeconds`. Without them, both behave exactly as in the mission. |
-| `data/trainingScenarios.test.js` | 21 tests: start-condition derivation, landability, objectives, instructor, debrief |
-
-## Validation
-
-Validation used Chromium with iPhone emulation: touch only, through CDP multi-touch, simulated safe
-areas and production builds. The desktop runs were keyboard only. **No physical iPhone was used.**
-
-| Check | Result |
-|---|---|
-| Unit tests | 77 / 77 (56 existing + 21 training) |
-| Production build | passes (only the existing `useMissionAudio` warning) |
-| iPhone 16 Pro 852 × 393, touch, 9 attempts | **Lunar:** guided CADET S 92; drift ASTRONAUT B 81; precision COMMANDER A 83; COMMANDER challenge A 85. All objectives met. **Reentry:** nominal CADET splashdown at 7.5 g; shallow recovery ASTRONAUT splashdown at 6.3 g; steep recovery COMMANDER splashdown at 9.7 g; COMMANDER challenge splashdown (dispersion trimmed to −6.56°). **Failure case:** shallow entry with no input ends in ATMOSPHERIC SKIP, and the debrief shows the reason and the fix. Progress after a reload: 9 attempts, 8 successful. 0 console errors |
-| iPhone SE 667 × 375 (touch) | guided CADET landing; precision CADET A 90; steep CADET splashdown at 10.0 g; nominal ASTRONAUT splashdown. The briefing and START fit without scrolling |
-| iPhone 16 Pro Max 932 × 430 (touch) | drift CADET B 80; shallow CADET splashdown at 5.2 g |
-| Desktop 1440 × 900 (keyboard) | guided ASTRONAUT A 85, then R → retry; nominal and steep ASTRONAUT splashdowns |
-| Navigation | main menu → Training Center; RETRY (the same scenario restarts at once, about 2.5 s in the emulator including the harness's own waits); ABORT → scenarios; CHANGE SCENARIO; TRAINING CENTER; MAIN MENU |
-| Layout (every run) | the instructor card, telemetry, controls, corridor gauge and lift dial never overlap and are never off screen; buttons are ≥ 44 pt |
-| Full mission regression (touch, 852 × 393, training build) | departure → cruise → landing by touch → reentry → parachutes → splashdown → relaunch; only the blocked optional photo errors |
-
-With three emulated browsers running at once, the scripted pilot's reaction time grew. Two 852
-landings then failed: CADET touched down at 5.0 m/s against a 4.5 m/s limit, and the COMMANDER
-challenge also failed. The debriefs reported both correctly. Re-run alone, both landed (A 83, B 80).
-This was the test pilot, not the game.
+| `data/landerPilots.js` | Adds `precisionStrategy` (tests only) |
+| `DescentGame.jsx`, `ReentryGame.jsx` | The optional training props above |
+| `data/trainingScenarios.test.js` | 26 tests: start derivation, feasibility, objectives, survivability, instructor, debrief |
