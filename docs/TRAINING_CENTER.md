@@ -158,3 +158,25 @@ or sync. If storage is unavailable, training still works and progress simply is 
 | `components/training/CoachCard.jsx` | Instructor card |
 | `DescentGame.jsx`, `ReentryGame.jsx` | Optional props: `init` / `scenario`, `coach`, `onResult`, `holdSeconds`. Without them, both behave exactly as in the mission. |
 | `data/trainingScenarios.test.js` | 21 tests: start-condition derivation, landability, objectives, instructor, debrief |
+
+## Validation
+
+Validation used Chromium with iPhone emulation: touch only, through CDP multi-touch, simulated safe
+areas and production builds. The desktop runs were keyboard only. **No physical iPhone was used.**
+
+| Check | Result |
+|---|---|
+| Unit tests | 77 / 77 (56 existing + 21 training) |
+| Production build | passes (only the existing `useMissionAudio` warning) |
+| iPhone 16 Pro 852 × 393, touch, 9 attempts | **Lunar:** guided CADET S 92; drift ASTRONAUT B 81; precision COMMANDER A 83; COMMANDER challenge A 85. All objectives met. **Reentry:** nominal CADET splashdown at 7.5 g; shallow recovery ASTRONAUT splashdown at 6.3 g; steep recovery COMMANDER splashdown at 9.7 g; COMMANDER challenge splashdown (dispersion trimmed to −6.56°). **Failure case:** shallow entry with no input ends in ATMOSPHERIC SKIP, and the debrief shows the reason and the fix. Progress after a reload: 9 attempts, 8 successful. 0 console errors |
+| iPhone SE 667 × 375 (touch) | guided CADET landing; precision CADET A 90; steep CADET splashdown at 10.0 g; nominal ASTRONAUT splashdown. The briefing and START fit without scrolling |
+| iPhone 16 Pro Max 932 × 430 (touch) | drift CADET B 80; shallow CADET splashdown at 5.2 g |
+| Desktop 1440 × 900 (keyboard) | guided ASTRONAUT A 85, then R → retry; nominal and steep ASTRONAUT splashdowns |
+| Navigation | main menu → Training Center; RETRY (the same scenario restarts at once, about 2.5 s in the emulator including the harness's own waits); ABORT → scenarios; CHANGE SCENARIO; TRAINING CENTER; MAIN MENU |
+| Layout (every run) | the instructor card, telemetry, controls, corridor gauge and lift dial never overlap and are never off screen; buttons are ≥ 44 pt |
+| Full mission regression (touch, 852 × 393, training build) | departure → cruise → landing by touch → reentry → parachutes → splashdown → relaunch; only the blocked optional photo errors |
+
+With three emulated browsers running at once, the scripted pilot's reaction time grew. Two 852
+landings then failed: CADET touched down at 5.0 m/s against a 4.5 m/s limit, and the COMMANDER
+challenge also failed. The debriefs reported both correctly. Re-run alone, both landed (A 83, B 80).
+This was the test pilot, not the game.
