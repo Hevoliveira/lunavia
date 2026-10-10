@@ -171,6 +171,26 @@ export function guidedStrategy({ band = 0.35, aim = true } = {}) {
 }
 
 /**
+ * PRECISION: the guided vertical technique, with the lateral attention of a
+ * pilot aiming for the centre of the LZ: keeps steering toward it down to a
+ * couple of metres, at a closing speed that shrinks with height (never above
+ * 40 % of the touchdown limit near the ground), with finer RCS taps low down.
+ */
+export function precisionStrategy({ band = 0.35 } = {}) {
+  return (seen, mem, cfg) => {
+    const h = Math.max(0, seen.alt - CONTACT_ALT);
+    const a = assessDescent({ ...seen, cfg });
+    const throttle = verticalHold(seen, mem, cfg, a.envelope.mid, band);
+    const tGo = timeToGo(h, -seen.vy, cfg, { frac: 0.55, tau: 6 });
+    const lim = Math.min(8, Math.max(cfg.safeVx * 0.4, (seen.alt - 2) / 5));
+    const vxT = Math.max(-lim, Math.min(lim, -seen.xPos / Math.max(2, tGo * 0.4)));
+    const err = seen.vx - vxT;
+    const db = seen.alt < 25 ? 0.15 : 0.4;
+    return { throttle, strafeLeft: err > db, strafeRight: err < -db, ...levelTilt(seen, mem) };
+  };
+}
+
+/**
  * BEGINNER: brakes once the descent "looks fast" for the altitude (a steep
  * schedule using 75 % of the braking authority), keeps a loose band, and has
  * little feel yet for the engine's lag. Use with BEGINNER_HANDICAP.

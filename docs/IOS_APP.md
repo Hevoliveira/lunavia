@@ -187,6 +187,13 @@ All changes are presentation / input only; desktop renders the same.
   button and swallowed taps; the PDI briefing's BEGIN PDI button and the difficulty
   screen's skip link were below the fold with no way to scroll.
 
+## Flight Training Center
+
+`/training` (main menu → FLIGHT TRAINING) runs the lunar descent and the Earth reentry on their own.
+It uses the same games, physics and touch controls as the mission. On phones, a run hides the
+navbar like the mission's flight states. The instructor line lives inside the telemetry column, so
+the descent camera's visibility area is unchanged. See `TRAINING_CENTER.md`.
+
 ## Audio on iOS
 
 WebKit only starts audio inside a user gesture, but LUNAVIA's engine rumble and comms are

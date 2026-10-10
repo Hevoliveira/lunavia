@@ -25,6 +25,7 @@ import {
   DANGER,
 } from "@/data/descentProfile";
 import { initialState, stepFrame, gradeTouchdown, CONTACT_ALT } from "@/data/landerSim";
+import CoachCard from "@/components/training/CoachCard";
 import {
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
   Pause, Play, X,
@@ -37,8 +38,18 @@ const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.j
  * 3D scene layer
  * ============================================================ */
 
+/*
+ * drei's useTexture caches a texture for the whole session and every Canvas
+ * that uses it registers a "dispose" listener on it, which keeps that renderer,
+ * its canvas and the HUD around it alive after the Canvas unmounts (one per
+ * descent retry). Disposing on unmount releases them; the next Canvas simply
+ * re-uploads the cached image.
+ */
+const useReleaseOnUnmount = (tex) => useEffect(() => () => tex.dispose(), [tex]);
+
 function MoonSurface() {
   const [tex] = useTexture([MOON_MAP]);
+  useReleaseOnUnmount(tex);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
       <planeGeometry args={[300, 300, 1, 1]} />
@@ -237,6 +248,7 @@ function TouchdownPath({ physRef, view, cfg }) {
 
 function DistantEarth() {
   const [tex] = useTexture([EARTH_MAP]);
+  useReleaseOnUnmount(tex);
   const ref = useRef();
   useFrame((_, dt) => {
     if (ref.current) ref.current.rotation.y += dt * 0.02;
@@ -654,7 +666,7 @@ const guidanceTone = (g) => (g.level === DANGER ? "text-[#FF3B00]" : g.level ===
 function CompactDescentHud({
   cfg, alt, vy, vx, tilt, fuel, fuelPct, throttle, throttleCmd, setThrottleCmd, inputRef,
   view, setView, paused, setPaused, setShowAbort, chip, guidance, distanceToLZ,
-  projectedZoneLabel, projectedHazard, contactLight, flags, readouts,
+  projectedZoneLabel, projectedHazard, contactLight, flags, readouts, tip,
 }) {
   const { warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt } = flags;
   const chipTone = chip.level === DANGER ? "text-[#FF3B00]" : chip.level === CAUTION ? "text-amber-400" : "text-emerald-400";
@@ -734,6 +746,7 @@ function CompactDescentHud({
         data-testid="descent-hud-left"
         className="absolute bottom-2 left-3 safe-mb safe-ml z-30 w-[132px] bg-black/40 backdrop-blur-sm border border-white/10 px-2 py-1.5 space-y-px"
       >
+        <CoachCard tip={tip} className="-mx-2 -mt-1.5 mb-1" />
         <CompactRow label="ALT" value={alt.toFixed(0)} unit="m" big testId="gauge-altitude" />
         <CompactRow label="V/S" value={vy.toFixed(1)} unit="m/s" tone={tone(warnVy, dangerVy)} testId="gauge-vspeed" />
         <GuideRow label="TGT V/S" value={readouts.tgt} testId="guide-target" />
@@ -799,17 +812,27 @@ function CompactDescentHud({
  *  - difficulty: DIFFICULTY key
  *  - audio: useMissionAudio() instance (optional)
  *  - onSuccess(result), onCrash(result), onAbort()
+ *  - init: optional flight-state override for the Training Center (alt, vy,
+ *    vx, xPos, fuel). The vehicle, limits and grading stay the difficulty's.
+ *  - coach(d): optional Training Center instructor; returns a line or null.
+ *  - holdSeconds: optional "starts in" hold before the physics runs (training).
  */
-export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess, onCrash, onAbort }) {
+export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess, onCrash, onAbort, init = null, coach = null, holdSeconds = 0 }) {
   const cfg = DIFFICULTY[difficulty] || DIFFICULTY.ASTRONAUT;
+  // Physics state, created once: the mission's start or a training start.
+  const startRef = useRef(null);
+  if (!startRef.current) startRef.current = { ...initialState(cfg), ...(init || {}) };
+  const start = startRef.current;
 
-  const [alt, setAlt] = useState(cfg.initialAlt);
-  const [vy, setVy] = useState(cfg.initialVy);
-  const [vx, setVx] = useState(cfg.initialVx);
-  const [xPos, setXPos] = useState(-cfg.initialAlt * 0.3);
+  const [alt, setAlt] = useState(start.alt);
+  const [vy, setVy] = useState(start.vy);
+  const [vx, setVx] = useState(start.vx);
+  const [xPos, setXPos] = useState(start.xPos);
   const [tilt, setTilt] = useState(0);
-  const [throttle, setThrottle] = useState(0);
-  const [fuel, setFuel] = useState(cfg.initialFuel);
+  const [throttle, setThrottle] = useState(start.throttle || 0);
+  const [fuel, setFuel] = useState(start.fuel);
+  const holdRef = useRef(holdSeconds);
+  const [holdLeft, setHoldLeft] = useState(Math.ceil(holdSeconds));
   // Phase 2 - what the player has ASKED for, mirrored straight off the key
   // event so the HUD acknowledges input on the same frame the engine begins
   // to spool. Display only; the integrator still reads inputRef.
@@ -841,7 +864,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const commsFiredRef = useRef({});
 
   // Physics refs — the source of truth. State is only for HUD display.
-  const phys = useRef(initialState(cfg));
+  const phys = useRef(start);
   const pausedRef = useRef(false);
   const endedRef = useRef(false);
   // Combine user pause + any modal into a single physics pause.
@@ -923,6 +946,14 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       const totalDt = Math.min(0.25, rawDt);
 
       if (endedRef.current || pausedRef.current) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      // Training "starts in" hold: physics frozen, inputs may already be held.
+      if (holdRef.current > 0) {
+        holdRef.current -= totalDt;
+        const n = Math.max(0, Math.ceil(holdRef.current));
+        setHoldLeft(n);
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
@@ -1091,6 +1122,12 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const guidance = ended ? null : guidanceFor(profile, projectedHazard);
   const chip = profileLabel(profile, projectedHazard);
   const readouts = guidanceReadouts(profile, vy);
+  const tip = coach
+    ? coach({
+        t: phys.current.t || 0, alt, vy, vx, tilt, cfg, profile, projectedHazard, distanceToLZ,
+        projectedZone: projectedZoneLabel, outcome: ended ? (ended.crashed ? "crashed" : "landed") : null,
+      })
+    : null;
 
   const warnFuelLow = profile.fuelState >= CAUTION;
   const dangerFuelCritical = profile.fuelState >= DANGER;
@@ -1143,6 +1180,12 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         hint="RETICLE ALIGNED WITH DESCENT VECTOR"
       />
 
+      {holdLeft > 0 && (
+        <div className="absolute top-[4.6rem] short:top-[5.1rem] left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-black/60 border border-[#FF3B00]/50 px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-white" data-testid="training-hold">
+          ● STARTS IN <span className="text-[#FF3B00] tabular">{holdLeft}</span>
+        </div>
+      )}
+
       {/* Off-screen primary LZ: chevron on the edge of the visibility area */}
       <div
         ref={lzIndicatorRef}
@@ -1171,6 +1214,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           projectedZoneLabel={projectedZoneLabel} projectedHazard={projectedHazard} contactLight={contactLight}
           flags={{ warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt }}
           readouts={readouts}
+          tip={tip}
         />
       ) : (
       <>
@@ -1249,6 +1293,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
 
       {/* LEFT: primary instrument HUD */}
       <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-4 short:py-2 w-[300px] short:w-[240px] narrow:w-[215px] z-30" data-testid="descent-hud-left" data-hud-block="left">
+        <CoachCard tip={tip} className="-mx-2 mb-3 short:mb-1.5" />
         <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:hidden">
           LM-1 · GUIDANCE · {cfg.label}
         </div>

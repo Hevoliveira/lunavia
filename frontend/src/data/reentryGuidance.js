@@ -4,7 +4,7 @@
  * changes what the crew is told, how precisely the entry is targeted and
  * how much help the flight computer gives.
  */
-import { NOMINAL_FPA } from "@/data/reentryPhysics";
+import { NOMINAL_FPA } from "./reentryPhysics";
 
 export const TARGET_FPA = NOMINAL_FPA;
 

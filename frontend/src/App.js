@@ -2,6 +2,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Landing from "@/pages/Landing";
 import Mission from "@/pages/Mission";
+import Training from "@/pages/Training";
 import Manifesto from "@/pages/Manifesto";
 import Navbar from "@/components/Navbar";
 import { Toaster } from "sonner";
@@ -18,6 +19,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/mission" element={<Mission />} />
+          <Route path="/training" element={<Training />} />
           <Route path="/manifesto" element={<Manifesto />} />
         </Routes>
         <Toaster

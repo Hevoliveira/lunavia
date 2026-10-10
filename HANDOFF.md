@@ -999,3 +999,39 @@ finale, and the sequence runs 108 s (was 102 s):
 The lander is about 20–25 % larger in EXTERNAL view. The LZ, the LPD and the visibility
 area logic are unchanged. Physics, fuel, hazards, scoring and the touch layout are
 untouched.
+
+## 26. Flight Training Center
+
+`/training`, reached from the home screen and the navbar. FLIGHT TRAINING sits above the fold on
+phones. It practises the lunar landing and the Earth reentry without the outbound flight; the full
+mission is unchanged. Details and validation: `docs/TRAINING_CENTER.md`.
+
+- **Same simulation.** Training mounts the mission's `DescentGame` / `ReentryGame`, with their physics,
+  controls, difficulty configs, limits and grading. New optional props:
+  - `init` / `scenario`: start state;
+  - `coach`: instructor callout;
+  - `onResult`: debrief data;
+  - `holdSeconds`: "starts in" hold.
+
+  Without them both games behave exactly as before.
+- **Lunar scenarios**:
+  - standard (mission start, land in the LZ);
+  - precision (120 m, reference-descent state, within 3 m of the centre);
+  - braking (mission start after 10 s of engine-off coasting, full tank);
+  - COMMANDER challenge.
+
+  Every scenario is shown achievable by the simulated human pilots in `trainingScenarios.test.js`.
+- **Reentry scenarios**:
+  - nominal (PREP −6.5°);
+  - shallow (−5.7°, lift up);
+  - steep (−6.9°, lift down);
+  - COMMANDER (the mission's dispersed prep; the worst case is shown trimmable and survivable).
+
+  The angles were chosen by a real-time simulated-crew sweep.
+- **Instructor.** One telemetry-driven callout at a time, with an optional on-device voice and MUTE
+  INSTRUCTOR. CADET gets everything, ASTRONAUT concise calls, COMMANDER the objective only.
+- **Debrief.** Flown values only, a main reason and 1–2 tips. RETRY / CHANGE SCENARIO / TRAINING
+  CENTER / MAIN MENU.
+- **Records.** `localStorage`, separate from the mission: personal bests by difficulty.
+- **Retry leak fixed.** `DescentGame` disposes its cached textures on unmount; before, each retry
+  retained the old renderer, canvas and HUD.
