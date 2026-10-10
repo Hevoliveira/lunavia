@@ -398,6 +398,22 @@ describe("reentry monitor (real entry physics)", () => {
     expect(ids[ids.length - 1]).toBe("reentry.los");
   });
 
+  test("entry prep: trim advice, then go for entry carrying the blackout warning", () => {
+    const mon = createReentryMonitor();
+    const ids = [];
+    const feed = (u) => mon({ vel: 11000, g: 0, q: 0, overheat: 0, pred: null, drogue: { alt: null }, main: { alt: null }, outcome: null, ...u }).requests.forEach((r) => ids.push(r.id));
+    for (let t = 0; t < 3; t += 0.1) feed({ phase: "PREP", realT: t, prepFpa: -5.6, inBand: false, attitudeReady: false });
+    feed({ phase: "PREP", realT: 3.1, prepFpa: -6.5, inBand: true, attitudeReady: true });
+    feed({ phase: "ENTRY", realT: 3.5, q: 8, blackout: false });
+    expect(ids).toEqual(["reentry.separation", "reentry.prepShallow", "reentry.prepGo", "reentry.ei"]);
+    expect(LINE["reentry.prepGo"].variants.every((v) => /other side|blackout/i.test(v.en) && /outro lado|blecaute/i.test(v.pt))).toBe(true);
+    // committed without a go: the separate warning is the fallback
+    const m2 = createReentryMonitor();
+    const ids2 = [];
+    m2({ phase: "ENTRY", realT: 0, vel: 11000, g: 0, q: 2, overheat: 0, blackout: false, pred: null, drogue: { alt: null }, main: { alt: null } }).requests.forEach((r) => ids2.push(r.id));
+    expect(ids2).toEqual(["reentry.ei", "reentry.blackoutExpected"]);
+  });
+
   test("without the prediction (COMMANDER) there is no lift advice", () => {
     const { ids } = flyEntry({ fpa: -5.0, bank: 0, guided: false, prediction: false });
     expect(ids).not.toContain("reentry.shallow");

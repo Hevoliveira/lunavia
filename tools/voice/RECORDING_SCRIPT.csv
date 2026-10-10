@@ -137,8 +137,10 @@ en/reentry.prepSteep.0.mp3,CAPCOM,HIGH,focused,en,You're a little steep. Trim it
 pt/reentry.prepSteep.0.mp3,CAPCOM,HIGH,focused,pt,Vocês estão um pouco íngremes. Ajustem para cima.
 en/reentry.prepSteep.1.mp3,CAPCOM,HIGH,focused,en,Entry angle is steep. Bring it up a bit.
 pt/reentry.prepSteep.1.mp3,CAPCOM,HIGH,focused,pt,Ângulo de entrada íngreme. Subam um pouco.
-en/reentry.prepGo.0.mp3,CAPCOM,NORMAL,calm,en,You're in the corridor. Go for entry.
-pt/reentry.prepGo.0.mp3,CAPCOM,NORMAL,calm,pt,Vocês estão no corredor. Liberados para a reentrada.
+en/reentry.prepGo.0.mp3,CAPCOM,NORMAL,calm,en,You're in the corridor. Go for entry... See you on the other side.
+pt/reentry.prepGo.0.mp3,CAPCOM,NORMAL,calm,pt,Vocês estão no corredor. Liberados para a reentrada... Nos vemos do outro lado.
+en/reentry.prepGo.1.mp3,CAPCOM,NORMAL,calm,en,Entry angle looks good. You're go for entry... Talk to you after blackout.
+pt/reentry.prepGo.1.mp3,CAPCOM,NORMAL,calm,pt,Ângulo de entrada bom. Liberados para a reentrada... Falamos depois do blecaute.
 en/reentry.ei.0.mp3,CAPCOM,NORMAL,focused,en,Entry interface. Here we go.
 pt/reentry.ei.0.mp3,CAPCOM,NORMAL,focused,pt,Interface de entrada. Lá vamos nós.
 en/reentry.ei.1.mp3,CAPCOM,NORMAL,focused,en,"Entry interface, LUNAVIA. Stay with it."

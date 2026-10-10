@@ -452,8 +452,12 @@
     ],
     "reentry.prepGo": [
      {
-      "d": 2.05,
+      "d": 3.89,
       "f": "en/reentry.prepGo.0.mp3"
+     },
+     {
+      "d": 4.68,
+      "f": "en/reentry.prepGo.1.mp3"
      }
     ],
     "reentry.prepShallow": [
@@ -993,8 +997,12 @@
     ],
     "reentry.prepGo": [
      {
-      "d": 3.19,
+      "d": 5.34,
       "f": "pt/reentry.prepGo.0.mp3"
+     },
+     {
+      "d": 5.5,
+      "f": "pt/reentry.prepGo.1.mp3"
      }
     ],
     "reentry.prepShallow": [

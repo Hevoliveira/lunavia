@@ -76,16 +76,17 @@ export function createReentryMonitor() {
       }
       prepOutSide = side;
       if (u.inBand && u.attitudeReady && once("prepGo")) {
+        // "Go for entry... see you on the other side": the blackout warning
+        // rides on this call, because the plasma closes the link about a
+        // second after entry interface in real time.
         out.push({ id: "reentry.prepGo", relevant: () => latest && latest.phase === "PREP" && latest.inBand });
-        // The plasma closes the link about a second after entry interface in
-        // real time, so the warning is given before the crew commits.
-        if (once("blackoutExpected")) out.push({ id: "reentry.blackoutExpected", delay: 0.3, relevant: () => latest && !latest.blackout });
       }
     }
 
     if (entry) {
       if (once("ei")) out.push({ id: "reentry.ei", delay: 0.3 });
-      if (!blackout && u.q > 4 && hyper && once("blackoutExpected")) out.push({ id: "reentry.blackoutExpected", relevant: live((x) => !x.blackout) });
+      // Fallback when "go for entry" was never said (committed outside the band, or a training ENTRY start)
+      if (!blackout && hyper && !fired.has("prepGo") && once("blackoutExpected")) out.push({ id: "reentry.blackoutExpected", relevant: live((x) => !x.blackout) });
       if (blackout) hadBlackout = true;
 
       if (hyper) {
