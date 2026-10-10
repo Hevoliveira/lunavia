@@ -1,0 +1,181 @@
+import {
+  SHOTS, EVENTS, DURATION, LIFTOFF_T, MILESTONES, metAt, formatMet, trajectoryAt, padHeight,
+  stage1Thrust, upperThrust, sepProgress, eventTime, shotAt, airDensity, sunAt, rollAt, stage1Visible,
+  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE,
+} from "./launchTimeline";
+
+describe("launch timeline", () => {
+  test("shots tile the whole sequence without gaps or overlaps", () => {
+    expect(SHOTS[0].start).toBe(0);
+    for (let i = 1; i < SHOTS.length; i++) expect(SHOTS[i].start).toBe(SHOTS[i - 1].end);
+    expect(SHOTS[SHOTS.length - 1].end).toBe(DURATION);
+    SHOTS.forEach((s) => expect(s.end - s.start).toBeGreaterThanOrEqual(3));
+  });
+
+  test("events are ordered, inside the sequence, and never gate on input", () => {
+    for (let i = 1; i < EVENTS.length; i++) expect(EVENTS[i].t).toBeGreaterThan(EVENTS[i - 1].t);
+    EVENTS.forEach((e) => {
+      expect(e.t).toBeGreaterThanOrEqual(0);
+      expect(e.t).toBeLessThan(DURATION);
+      expect(e).not.toHaveProperty("requiresInput");
+    });
+    const order = MILESTONES.map(eventTime);
+    for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1]);
+  });
+
+  test("ignition precedes liftoff by a visible delay; the vehicle does not move before release", () => {
+    expect(LIFTOFF_T - eventTime("engineStart")).toBeGreaterThanOrEqual(5);
+    expect(padHeight(LIFTOFF_T - 0.01)).toBe(0);
+    expect(padHeight(LIFTOFF_T + 1)).toBeLessThan(0.1); // ~2 m in the first second: heavy, slow
+    expect(padHeight(eventTime("towerClear"))).toBeGreaterThan(4.6); // base above the 4.7-unit tower top
+    expect(padHeight(eventTime("towerClear") - 1.5)).toBeLessThan(4.7);
+  });
+
+  test("mission clock: countdown in real time, then monotonic", () => {
+    expect(metAt(0)).toBe(-15);
+    expect(metAt(LIFTOFF_T)).toBe(0);
+    let prev = -Infinity;
+    for (let t = 0; t <= DURATION; t += 0.1) {
+      const m = metAt(t);
+      expect(m).toBeGreaterThanOrEqual(prev);
+      prev = m;
+    }
+    expect(formatMet(metAt(eventTime("orbit")))).toBe("T+00:10:00");
+    // TLI on the second orbit, close to Apollo's T+2:44 and Artemis-class timing
+    expect(metAt(eventTime("tli"))).toBeGreaterThan(2.6 * 3600);
+    expect(metAt(eventTime("tli"))).toBeLessThan(3 * 3600);
+    expect(formatMet(-10)).toBe("T-00:00:10");
+  });
+
+  test("ascent, orbit insertion, TLI and lunar transfer stay distinct", () => {
+    const meco = trajectoryAt(eventTime("meco"));
+    const orbit = trajectoryAt(eventTime("orbit") + 2);
+    const tliEnd = trajectoryAt(eventTime("lunarTransfer") - 0.3);
+    const away = trajectoryAt(DURATION);
+    expect(meco.altKm).toBeGreaterThan(55);
+    expect(meco.speedKmps).toBeLessThan(3); // far from orbital speed at staging
+    expect(orbit.altKm).toBeCloseTo(185, 0);
+    expect(orbit.speedKmps).toBeCloseTo(7.8, 1); // circular LEO
+    expect(tliEnd.speedKmps).toBeGreaterThan(10.4); // above LEO, escape-class after TLI
+    expect(away.altKm).toBeGreaterThan(10000); // Earth recedes into a globe
+    // The whole parking orbit is flown at 185 km, at orbital speed
+    for (let t = eventTime("orbit") + 0.5; t < eventTime("tli"); t += 0.5) {
+      expect(trajectoryAt(t).altKm).toBeCloseTo(185, 0);
+      expect(trajectoryAt(t).speedKmps).toBeCloseTo(7.8, 1);
+    }
+    // Altitude never decreases through the flight regime
+    let prev = 0;
+    for (let t = 32; t <= DURATION; t += 0.25) {
+      const a = trajectoryAt(t).altKm;
+      expect(a).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = a;
+    }
+  });
+
+  test("engine schedule: MECO before separation, upper stage lights only after a clear gap", () => {
+    expect(stage1Thrust(eventTime("engineStart") - 0.1)).toBe(0);
+    expect(stage1Thrust(LIFTOFF_T - 1)).toBeCloseTo(1, 5); // full thrust before release
+    expect(stage1Thrust(eventTime("meco") + 1)).toBe(0);
+    expect(upperThrust(eventTime("separation"))).toBe(0);
+    expect(sepProgress(eventTime("usIgnition"))).toBeGreaterThan(0.4);
+    expect(upperThrust(eventTime("usIgnition") + 1)).toBe(1);
+    expect(upperThrust(eventTime("orbit") + 2)).toBe(0); // coasting in parking orbit
+    expect(upperThrust(eventTime("tli") + 1)).toBe(1);
+    expect(upperThrust(DURATION)).toBe(0);
+    let prev = 0;
+    for (let t = 40; t <= DURATION; t += 0.1) {
+      const s = sepProgress(t);
+      expect(s).toBeGreaterThanOrEqual(prev);
+      prev = s;
+    }
+  });
+
+  test("shot lookup and atmosphere", () => {
+    expect(shotAt(0).id).toBe("wide");
+    expect(shotAt(eventTime("separation")).id).toBe("sepJoint");
+    expect(shotAt(eventTime("tli")).id).toBe("tli");
+    expect(shotAt(DURATION - 0.01).id).toBe("farewell");
+    expect(airDensity(0)).toBe(1);
+    expect(airDensity(65)).toBeLessThan(0.001);
+  });
+
+  test("Earth orbit is a sequence of distinct compositions, not one shot", () => {
+    const orbitShots = SHOTS.filter((s) => s.start >= eventTime("orbit") && s.end <= eventTime("tli") + 0.5);
+    expect(orbitShots.map((s) => s.id)).toEqual(["orbitWide", "orbitClose", "orbitLimb", "finalPass", "tliPrep", "tliCount"]);
+    // Within each shot the ground moves (orbital motion), at a readable rate
+    orbitShots.forEach((s) => {
+      const a = trajectoryAt(s.start + 0.2).downrangeKm;
+      const b = trajectoryAt(s.end - 0.2).downrangeKm;
+      const rate = (b - a) / (s.end - s.start - 0.4);
+      expect(rate).toBeGreaterThan(15);
+      expect(rate).toBeLessThan(200);
+    });
+  });
+
+  test("orbital day, sunset, night pass and a sunrise TLI", () => {
+    const at = (id, u) => {
+      const s = SHOTS.find((x) => x.id === id);
+      return sunAt(s.start + (s.end - s.start) * u);
+    };
+    expect(at("orbitWide", 0.5).lit).toBe(1);
+    expect(at("orbitWide", 0.5).elev).toBeGreaterThan(0.3); // Sun high over the day side
+    expect(at("finalPass", 0.1).lit).toBe(1);
+    expect(at("finalPass", 0.9).red).toBeGreaterThan(0.5); // reddened, low over the limb
+    expect(at("finalPass", 0.5).elev).toBeLessThan(0); // the ground below is already in night
+    expect(at("tliCount", 0.2).lit).toBe(0); // anticipation in the dark, just before sunrise
+    expect(at("tliPrep", 0.3).lit).toBe(0); // in Earth's shadow
+    expect(sunAt(eventTime("tli")).lit).toBeGreaterThan(0.5); // the burn starts at sunrise
+    // Roll to burn attitude during the night pass, complete before ignition
+    expect(rollAt(eventTime("tliPrep") - 1)).toBe(0);
+    expect(rollAt(eventTime("tli"))).toBeCloseTo(Math.PI, 5);
+  });
+
+  test("TLI finale: roll, ullage, a 3-2-1 hold, ignition, then the vehicle leaves", () => {
+    const shot = (id) => SHOTS.find((x) => x.id === id);
+    // Order of the finale beats
+    expect(SHOTS.slice(-6).map((s) => s.id)).toEqual(["finalPass", "tliPrep", "tliCount", "tli", "departure", "farewell"]);
+    // RCS roll inside the night pass; ullage just before ignition
+    RCS_WINDOWS.forEach(([a, b]) => {
+      expect(a).toBeGreaterThanOrEqual(shot("tliPrep").start);
+      expect(b).toBeLessThanOrEqual(shot("tliPrep").end);
+    });
+    expect(ULLAGE[0]).toBeGreaterThan(shot("tliCount").start);
+    expect(ULLAGE[1]).toBeGreaterThan(eventTime("tli"));
+    // Countdown 3, 2, 1 in the anticipation shot, nothing outside it
+    const ign = eventTime("tli");
+    expect(tliCountdown(ign - 2.9)).toBe(3);
+    expect(tliCountdown(ign - 1.5)).toBe(2);
+    expect(tliCountdown(ign - 0.4)).toBe(1);
+    expect(tliCountdown(ign + 0.1)).toBe(null);
+    expect(tliCountdown(ign - 3.2)).toBe(null);
+    expect(ign - 3).toBeGreaterThanOrEqual(shot("tliCount").start);
+    expect(ign).toBeGreaterThan(shot("tli").start); // ignition just after the cut
+    // The burn is still on as the departure shot opens, then cuts off
+    expect(upperThrust(shot("departure").start + 0.2)).toBe(1);
+    expect(upperThrust(eventTime("lunarTransfer") + 0.5)).toBe(0);
+    // Leaving: altitude rises through the departure shot, then the Earth recedes
+    expect(trajectoryAt(shot("departure").end - 0.1).altKm).toBeGreaterThan(trajectoryAt(shot("departure").start).altKm);
+    expect(trajectoryAt(shot("farewell").start).altKm).toBeGreaterThan(5000);
+  });
+
+  test("orbit progress: revolution count and position against day and night", () => {
+    expect(orbitPhase(eventTime("orbit") + 1).rev).toBe(1);
+    expect(orbitPhase(eventTime("finalPass")).rev).toBe(1);
+    expect(orbitPhase(eventTime("tliPrep")).rev).toBe(2);
+    // Final pass ends on the sunset side, TLI is on the sunrise side
+    const end = orbitPhase(SHOTS.find((x) => x.id === "finalPass").end - 0.1).phi;
+    expect(end).toBeGreaterThan(90);
+    expect(end).toBeLessThan(120);
+    const tli = orbitPhase(eventTime("tli")).tliPhi;
+    expect(tli).toBeGreaterThan(240);
+    expect(tli).toBeLessThan(270);
+  });
+
+  test("the spent stage stays in the picture through the separation shots", () => {
+    ["stages", "stage1Cam", "usIgnition"].forEach((id) => {
+      const s = SHOTS.find((x) => x.id === id);
+      expect(stage1Visible(s.end - 0.1)).toBe(true);
+    });
+    expect(stage1Visible(eventTime("orbit"))).toBe(false);
+  });
+});

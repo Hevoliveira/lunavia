@@ -84,7 +84,9 @@ support is required for smooth playback.
 │       │   ├── CockpitOverlay.jsx
 │       │   ├── Navbar.jsx
 │       │   ├── scenes/
-│       │   │   ├── AscentScene.jsx       ← launch/ascent/staging (Visual Fidelity Pass)
+│       │   │   ├── LaunchCinematic.jsx   ← automatic Earth departure: pad → orbit → TLI (§23)
+│       │   │   ├── launch/               ← environment layer (sky/planet shader, clouds) + GPU particles
+│       │   │   ├── LaunchComplex.jsx     ← LC-39 pad, tower, flame pit and trench
 │       │   │   ├── DescentScene.jsx      ← descent 3D world (used by DescentGame)
 │       │   │   ├── ReentryScene.jsx      ← reentry cinematic
 │       │   │   └── ControlRoomView.jsx   ← pre-launch mission control room
@@ -92,7 +94,9 @@ support is required for smooth playback.
 │       ├── data/
 │       │   ├── missionPhases.js        ← client-side canonical phase timings + trajectory math
 │       │   ├── landingPhysics.js       ← lunar-descent physics constants, difficulty, scoring
-│       │   └── descentProfile.js       ← reference descent altitude/velocity gates
+│       │   ├── landerSim.js            ← lunar-descent integrator (game + tests share it)
+│       │   ├── landerPilots.js         ← simulated pilots for balance tests (not bundled)
+│       │   └── descentProfile.js       ← descent guidance: target band, braking cue, reserve
 │       ├── hooks/
 │       │   ├── useMissionAudio.js      ← WebAudio comms/TTS
 │       │   └── use-toast.js
@@ -202,7 +206,7 @@ Serve `frontend/build/` from any static host, and point
 | Landing / marketing site  | `frontend/src/pages/Landing.jsx`                        |
 | Manifesto page            | `frontend/src/pages/Manifesto.jsx`                      |
 | Control room (pre-launch) | `frontend/src/components/scenes/ControlRoomView.jsx`    |
-| Launch + ascent cinematic | `frontend/src/components/scenes/AscentScene.jsx`        |
+| Launch cinematic (auto)   | `frontend/src/components/scenes/LaunchCinematic.jsx` + `data/launchTimeline.js` |
 | LV-001 rocket             | `frontend/src/components/RocketModel.jsx`               |
 | Cislunar cinematic        | `frontend/src/components/MissionScene.jsx`              |
 | CSM spacecraft model      | `frontend/src/components/SpacecraftModel.jsx`           |
@@ -210,7 +214,8 @@ Serve `frontend/build/` from any static host, and point
 | Descent 3D scene          | `frontend/src/components/scenes/DescentScene.jsx`       |
 | Lunar lander model        | `frontend/src/components/LanderModel.jsx`               |
 | Landing physics constants | `frontend/src/data/landingPhysics.js`                   |
-| Descent reference profile | `frontend/src/data/descentProfile.js`                   |
+| Lunar-descent integrator  | `frontend/src/data/landerSim.js` (+ `landerSim.test.js`) |
+| Descent guidance          | `frontend/src/data/descentProfile.js`                   |
 | Mission phase catalog     | `frontend/src/data/missionPhases.js`                    |
 | Reentry cinematic         | `frontend/src/components/scenes/ReentryScene.jsx`       |
 | Landing hero (Earth+Moon) | `frontend/src/components/EarthMoonHero.jsx`             |
@@ -233,19 +238,16 @@ Serve `frontend/build/` from any static host, and point
 
 | # | State                | Type              | User interaction                                          |
 | - | -------------------- | ----------------- | --------------------------------------------------------- |
-| 1 | `CONTROL_ROOM`       | **INTERACTIVE**   | Click `LAUNCH SEQUENCE` (`data-testid="control-launch-btn"`). |
-| 2 | `COUNTDOWN`          | SCRIPTED          | 10 s countdown.                                            |
-| 3 | `ASCENT`             | SCRIPTED cinematic| Launch pad ignition, staged smoke, atmospheric climb.      |
-| 4 | `SEP_PROMPT`         | **INTERACTIVE**   | Click `INITIATE STAGE SEPARATION` (`btn-separate`).        |
-| 5 | `SEP_DONE`           | SCRIPTED cinematic| MECO → coast → separation impulse → drift + tumble → delayed S2 ignition. |
-| 6 | `SPACE` (cislunar)   | SCRIPTED cinematic| Earth recedes, deep-space cruise, Moon grows on approach.  |
+| 1 | `CONTROL_ROOM`       | **INTERACTIVE**   | Click `LAUNCH SEQUENCE` (`data-testid="control-launch-btn"`) — the only input before the Moon. |
+| 2 | `LAUNCH`             | AUTOMATIC cinematic | T-15 count → engine start → liftoff → tower clear → max-Q → MECO → staging → upper-stage ignition → parking orbit → TLI (`LaunchCinematic.jsx`, §23). Optional `SKIP CINEMATIC`. |
+| 6 | `SPACE` (cislunar)   | SCRIPTED cinematic| Starts after TLI (mission time 12000 s): Earth recedes, deep-space cruise, Moon grows on approach. |
 | 7 | `ORBIT` (lunar)      | SCRIPTED cinematic| Slow orbital drift; enables `INITIATE DESCENT` (`btn-descend`) when overhead LZ. |
 | 8 | `DIFFICULTY`         | **INTERACTIVE**   | Pick CADET / ASTRONAUT / COMMANDER.                        |
 | 9 | `BRIEFING`           | **INTERACTIVE**   | `PdiBriefing` — controls & limits card, click `BEGIN PDI`. |
 |10 | `MANUAL_DESCENT`     | **PLAYABLE**      | Full lunar-landing gameplay (`DescentGame.jsx`).           |
 |11 | `RESULT`             | **INTERACTIVE**   | Score screen, retry / abort / continue.                    |
 |12 | `RETURN` (TEI + coast)| SCRIPTED cinematic|                                                            |
-|13 | `REENTRY`            | SCRIPTED cinematic| Atmospheric reentry (`ReentryScene.jsx`).                  |
+|13 | `REENTRY`            | **PLAYABLE**      | Earth entry gameplay (`ReentryGame.jsx` + `data/reentryPhysics.js`), see §18. |
 |14 | `MISSION_COMPLETE`   | End screen        | Splashdown wrap.                                           |
 
 Abort/retry: `AbortModal.jsx` is reachable from `MANUAL_DESCENT` and
@@ -509,10 +511,11 @@ than the three.js texture CDN reachability described above.
 2. Open `http://localhost:3000`.
 3. Landing hero should render 3D Earth + Moon + trajectory arc.
 4. Navigate to `/mission`. Control room appears.
-5. Click **LAUNCH SEQUENCE** → countdown → ascent cinematic.
-6. Click **INITIATE STAGE SEPARATION** when prompted.
-7. Watch stage 1 drift and tumble; stage 2 vacuum plume ignites after a
-   short delay.
+5. Click **LAUNCH SEQUENCE** → the Earth departure plays on its own
+   (~80 s): countdown, ignition, liftoff, ascent, MECO, staging, upper
+   stage, Earth orbit, TLI. No further input until lunar orbit.
+6. Optionally press **SKIP CINEMATIC** — it goes straight to the cruise.
+7. (Staging is automatic: no button.)
 8. Cislunar cruise: Earth visible and lit early on, Moon grows during
    approach.
 9. Lunar orbit: **INITIATE DESCENT** becomes enabled ("GO FOR PDI").
@@ -717,3 +720,282 @@ fetched at runtime. See §11 to self-host.
   graded S; COMMANDER no-input crash → RESULT (F) → RETRY; DESCENT → ABORT →
   CONTROL ROOM; EXT/COCKPIT/NAV cameras. 0 page errors; no requests to any
   Emergent host.
+
+---
+
+## 18. Playable Earth reentry + LV-001 Fidelity II
+
+The scripted reentry cinematic has been replaced by the second genuine
+flight-gameplay system in LUNAVIA. The manual lunar landing is unchanged.
+
+### 18.1 Files
+
+| File | Role |
+| ---- | ---- |
+| `frontend/src/data/reentryPhysics.js` | Pure, deterministic entry simulation (no React). |
+| `frontend/src/data/reentryPhysics.test.js` | Jest tests: nominal / too shallow / too steep, recovery, corridor, determinism, step convergence. `yarn test` |
+| `frontend/src/data/reentryGuidance.js` | Difficulty, guidance bands, presentation time scale, blackout / phase labels. Never alters physics. |
+| `frontend/src/components/ReentryGame.jsx` | Playable layer: approach, ENTRY PREP, bank control, HUD, corridor gauge, failure / retry, abort. |
+| `frontend/src/components/scenes/ReentryScene.jsx` | Rendered from live sim state: plasma, Earth limb, sky, chutes, ocean, splashdown. |
+| `frontend/src/components/RocketModel.jsx`, `scenes/AscentScene.jsx` | LV-001 Fidelity II geometry/materials and ascent/separation cinematography. |
+
+### 18.2 Physics model (simplified, internally coherent)
+
+- Planar point-mass entry over a spherical, non-rotating Earth; fixed-step
+  RK4 at `SIM_DT = 0.02 s` of simulation time.
+- Atmosphere: `ρ = 1.225·exp(−h/7200 m)`.
+- Capsule: 5560 kg, 11.95 m², C_D 1.29 (β ≈ 361 kg/m²), trim L/D 0.30.
+  Drag `D = ½ρv²·C_D·A/m`; lift `L = (L/D)·D`, and only its vertical
+  component `L·cos(bank)` shapes the trajectory (cross-range ignored).
+- Heating: Sutton-Graves stagnation rate `q = k·√(ρ/R_n)·v³` (R_n 4.69 m),
+  integrated to heat load.
+- G-load: sensed aerodynamic deceleration `|D, L| / g₀`.
+- Vehicle limits (outcomes emerge from these, no angle rules):
+  structural 12 g; heat shield over-design budget 90 J/cm² absorbed above
+  200 W/cm²; ablator capacity 32 kJ/cm².
+- Skip-out: after entering, the capsule climbs back above 121 km.
+- Chutes: drogues when h ≤ 7.3 km and v ≤ 220 m/s; mains when
+  h ≤ 3.2 km and v ≤ 90 m/s after drogue inflation; both inflate over time
+  (reefing), splashdown success requires mains and v < 15 m/s.
+- Roll is rate-limited to 20°/s of simulation time.
+
+Survivable EI flight-path angle under ideal lift modulation: about −5.5° to
+−7.2° (the tests re-derive this), close to Apollo's documented −5.3° to −7.4°.
+
+### 18.3 Time
+
+Simulation time advances only in fixed `SIM_DT` steps. Presentation time
+maps to it through `timeScaleFor()` (4× during the rising heat pulse, up to
+32× under main chutes). Rendering reads the state each frame.
+
+### 18.4 Controls
+
+ENTRY PREP: `W/S` or `↑/↓` trims the planned EI angle with the final RCS
+corridor-correction burn (limited Δv); `A/D` or `←/→` sets the initial lift
+vector; `Enter` commits. Entry: `A/D`, `←/→` or `Q/E` roll the lift vector
+(up = shallower, down = steeper). `P` pauses, `G` toggles CADET lift assist.
+
+### 18.5 Difficulty (guidance only — physics identical)
+
+| | CADET | ASTRONAUT | COMMANDER |
+| - | - | - | - |
+| Entry-angle dispersion to trim out | ±0.6° | ±1.2° | ±1.8° |
+| RCS trim Δv | 8 m/s | 7 m/s | 6.5 m/s |
+| "GO" guidance band around −6.5° | ±0.7° | ±0.5° | ±0.3° |
+| Corridor zones on the gauge | yes | yes | no |
+| Outcome prediction (look-ahead sim) | yes | yes | no |
+| Bank cue + lift assist (`G`) | yes | no | no |
+| Skip-risk warning | yes | yes | no |
+
+The originally proposed ±2.5° / ±1.5° / ±0.8° bands were narrowed: the
+physics corridor is only ~1.7° wide in total, so wider bands would have
+called fatal angles "GO".
+
+### 18.6 Visuals
+
+- Plasma is driven by the simulated heat rate: faint violet ionization,
+  bow-shock cap ahead of the heat shield, edge-lit sheath along the
+  afterbody, downstream wake, ablation sparks, heat-shield glow.
+- Comm blackout (v > 6 km/s and q > 20 W/cm²) silences comms only;
+  telemetry stays live.
+- Earth limb / sky / ocean are placed by true altitude; drogues and mains
+  inflate from the physics deployment events.
+- LV-001 Fidelity II: lathe bells with dark interiors, engine cavity and
+  thrust structure, per-engine plume origins, panel-seam textures, ribbed
+  interstage with separation joint and retro motors, upper-stage thrust
+  cone and vacuum bell, CSM adapter / radiators / CM cover, trussed LES.
+  Static parts are batched by material (fewer draw calls than before).
+
+### 18.7 Validation at delivery
+
+- Unit: 19/19 (`yarn test`). Build: `yarn build` passes (pre-existing
+  warnings only).
+- Headless Chromium, full mission with keyboard-only pilots: nominal −6.5°
+  → splashdown 8.5 m/s (peak 7.4 g, 176 W/cm² at 56.9 km, drogues 7.3 km /
+  132 m/s, mains 3.2 km / 62 m/s); −5.0° → skip-out; −8.0° → thermal loss.
+  Crash→retry and descent→abort unchanged. 0 application console errors.
+
+### 18.8 Known limitations
+
+- Planar model: no cross-range, Earth rotation, Mach-dependent aero or
+  radiative heating.
+- The corridor constants in `CORRIDOR` are guidance display values derived
+  from the physics; the tests fail if they drift from what the physics does.
+- Earth/Moon textures still load from the three.js CDN (see §11).
+
+## 19. Native iPhone app (Capacitor)
+
+LUNAVIA ships as an installable iOS app built from the same React / Three.js
+game. The web version is unchanged in behaviour; no physics, guidance or
+mission-progression code was touched.
+
+- Project: `frontend/ios/App/App.xcodeproj` (Capacitor 8, Swift Package Manager,
+  iOS 15+, iPhone, landscape only, fullscreen).
+- Refresh the app after web changes: `cd frontend && yarn ios:sync`, then commit
+  `frontend/ios/App/App/public`.
+- Temporary bundle id `com.lunavia.app.dev`: replace it in Xcode and in
+  `frontend/capacitor.config.json` (details in `docs/IOS_APP.md`).
+- Essential assets (planet textures, fonts) are bundled; the mission runs offline.
+- Mobile layout uses Tailwind screens `short` (landscape phones) and `touch`
+  (coarse pointers), plus safe-area margins `safe-ml / safe-mr / safe-mb`.
+- Flight controls use `components/HoldButton.jsx` (multi-touch, pressed state,
+  release on cancel).
+- iOS audio is unlocked on the first tap (`hooks/useMissionAudio.js`).
+
+Developer notes: `docs/IOS_APP.md`. Non-programmer install guide:
+`INSTALL_ON_IPHONE.md`.
+
+## 20. iPhone gameplay UX + Visual Fidelity III
+
+Driven by the first physical-iPhone test. Presentation and input only: lunar gravity,
+thrust, fuel use, landing scoring and hazards, entry physics, heating, G-load,
+parachutes, progression and difficulty are unchanged.
+
+- **Lunar descent on phones**: split controls on the lower edges (throttle left thumb,
+  tilt + RCS right thumb), slim telemetry, a measured gameplay visibility area, and an
+  adaptive camera that keeps the lander, predicted touchdown and LZ inside it
+  (`DescentGame.jsx`, `lib/cameraFraming.js`). Landing markers now use the same
+  physics-to-scene mapping as the lander (`WORLD_X`).
+- **Mission mode**: the website navbar is hidden during active flight on landscape phones
+  (`html[data-flight]`, `--hud-top`).
+- **LV-001 Fidelity III** (`RocketModel.jsx`), **launch complex** (`scenes/LaunchComplex.jsx`),
+  sky environment map, pad shadows, anisotropic filtering.
+- **Staging cinematography** (`scenes/AscentScene.jsx`): beats framed by solving for the
+  hardware that must be visible.
+- **Xcode**: `prefersHomeIndicatorAutoHidden` must not be overridden (Capacitor 8 declares
+  it `public`); the Home Indicator is hidden via `plugins.SystemBars.hidden`.
+
+Details, measurements and validation: `docs/IOS_APP.md`.
+
+## 21. iOS build identity and stale-install hardening
+
+Triggered by a physical-iPhone report showing the pre-§20 descent UI after a fresh ZIP
+download. The committed bundle (`ios/App/App/public`, `main.7013b6f6.js`) did contain the
+§20 UI, so the repository was not stale.
+
+- **Build label**: the home screen shows `LUNAVIA iOS · BUILD <commit> · <UTC time>`,
+  compiled into the bundle by `craco.config.js`. The same data is in
+  `public/build-info.json`.
+- **Native phone layout**: inside the app, `html[data-native="1"]` forces the
+  `short`/`narrow` Tailwind variants, `useCompact()` and the flight navbar hiding,
+  independent of the reported viewport height.
+- **Install guide**: deleting the old app, deleting the old folders, opening from Finder and
+  Clean Build Folder are now mandatory update steps. No script is needed on the Mac.
+
+Details: `docs/IOS_APP.md` → *Build identity and stale installs*.
+
+## 22. iPhone lunar landing UX refinement
+
+Driven by the first physical-iPhone test of §20. Presentation and input only. Lunar
+gravity, thrust, fuel, RCS, tilt, landing limits, hazards, scoring and mission flow are
+unchanged.
+
+- **Camera** (`DescentCamera`, EXTERNAL):
+  - The lander is sized first, at roughly 12–18 % of the visibility area's height.
+  - A nearby LZ is kept in frame; then the view leans towards the projected touchdown
+    point within that zoom budget.
+  - Off-frame LZ and touchdown point get edge chips.
+  - A dashed no-thrust arc shows the trajectory to the touchdown point.
+- **Controls** (`CompactDescentHud`, phones): tilt, RCS and throttle are now one cluster
+  in the lower-right corner, replacing the left/right split. Telemetry is one compact
+  panel on the lower left.
+- **Lander** sits on its footpads at altitude 0 (visual offset only).
+
+Details and measurements: `docs/IOS_APP.md`.
+
+## 23. Cinematic Earth departure (automatic)
+
+The outbound flight from LAUNCH to lunar orbit needs no input. `LaunchCinematic.jsx`
+replaces `AscentScene.jsx` and the `SEP_PROMPT` gate. It is driven by
+`data/launchTimeline.js` (shots, events, mission clock, trajectory and engine schedules,
+unit-tested in `launchTimeline.test.js`).
+
+- **Sequence (~102 s since §24)**: T-15 count with venting and HBOI sparklers → staggered
+  five-engine start (6.5 s before release, stack "twang") → hold-down release and a slow,
+  heavy rise → tower clear → atmospheric ascent through cirrus with max-Q → MECO (plume
+  tails off, nozzles cool) → separation motors → spent stage tumbles away, seen from its
+  own onboard camera as the vacuum engine lights → leaving the atmosphere → upper-stage
+  cutoff in a 185 km parking orbit → five orbit compositions through orbital sunset and a
+  night pass → TLI restart at sunrise → LUNAR TRANSFER with the Earth receding, then the
+  cruise (from mission time 12000 s, after the burn).
+- **Rendering**: two layers. The environment is true scale: one full-screen shader
+  ray-traces the planet and its atmosphere (single scattering, exact horizon at any
+  altitude, thin limb in orbit), plus true-altitude clouds. The vehicle, pad and
+  particles are drawn at pad scale over a cleared depth buffer, so the vehicle is never
+  oversized against the Earth.
+- **Effects**: GPU particle pools for smoke, steam, dust and the trail, plus fire, sparks
+  and the turbulent plume. They are world-anchored, so smoke stays at the pad; each pool
+  is one draw call. The flame pit and a west-facing trench carry the exhaust. The plume
+  has shock-diamond cores at sea level and expands with altitude.
+- **Audio**: synthesized roar with crackle, hold-down clank, structure-borne staging
+  thud, venting hiss, pad ambience, deliberate silence at MECO, and a restrained drone in
+  space (the vacuum carries no external sound).
+- **Unchanged**: descent physics, scoring, fuel, hazards, difficulty, reentry, splashdown,
+  mission completion and the descent touch controls.
+
+Details, measurements and validation: `docs/IOS_APP.md` → *Cinematic Earth departure*.
+
+## 24. COMMANDER rebalance + Cinematic Flight IV
+
+**COMMANDER.** A physical-iPhone test found COMMANDER almost impossible. It was: its
+105-unit tank held 93 % of what even an ideal single braking burn needs from the start
+state, so no input could land. The integrator moved to `data/landerSim.js` (the game and
+the tests share it, and a test proves it reproduces the old inline code). Simulated pilots
+with human handicaps (`data/landerPilots.js`, tests only) measured every factor.
+
+- **Changes**: COMMANDER fuel 105 → 160 (1.44× the ideal burn; ASTRONAUT 2.27×), touchdown
+  limits 1.5 / 1.0 → 2.0 / 1.2 m/s, tilt rate 38 → 30°/s, plus fine control on all modes
+  (a tap trims ~1° or ~0.15 m/s, a held press keeps full authority).
+- **Unchanged**: altitude, descent rate, drift, thrust, gravity, hazards and scoring.
+- **Guidance** (`descentProfile.js`, all modes): TGT V/S band, BRAKE countdown or stop
+  margin, RESERVE (hover seconds beyond the minimum landing fuel), and a touchdown
+  prediction along the recommended descent.
+- `landerSim.test.js` (25 tests) covers the diagnosis, the hierarchy and every
+  success / failure scenario. Full analysis: `docs/COMMANDER_BALANCE.md`.
+
+**Cinematic Flight IV** (`LaunchCinematic.jsx`, `launch/environment.js`, `launchTimeline.js`):
+
+- Ignition: camera exposure surge, pit steam, a ground surge of smoke at release and
+  heavier deck billows.
+- Separation: an onboard camera on the spent stage watches the upper stage pull away and
+  light.
+- Earth orbit, five compositions: wide over the Atlantic, close engineering shot over West
+  Africa, the atmospheric limb, orbital sunset (warm light on the vehicle over the night
+  side), and a night pass with an RCS roll to burn attitude.
+- The Sun is fixed in the Earth frame, so day, sunset, Earth's shadow and sunrise follow
+  the vehicle's position.
+- Earth shader: sub-texture cloud and land detail from orbit, a tighter rippled glint,
+  thinner orbital haze, night-side city lights and a tighter Sun glare.
+- TLI at sunrise on the second orbit, then the Earth recedes to a globe (19 000 km).
+- Audio: sub-bass rumble, pyro and clank at staging, RCS thumps, and Quindar tones on
+  space-to-ground calls.
+
+
+## 25. Orbit finale polish + larger lander (EXTERNAL view)
+
+**Orbit finale** (`LaunchCinematic.jsx`, `launch/environment.js`, `launchTimeline.js`).
+The orbit shots A–C are kept. The last part of the parking orbit is now its own six-shot
+finale, and the sequence runs 108 s (was 102 s):
+
+1. final Earth pass: the last sunset, the terminator below, the Sun setting into the limb;
+2. TLI preparation: the rev 2 night pass, with the RCS roll under the airglow;
+3. GO FOR TLI: ullage, a 3-2-1 hold, first light on the limb;
+4. TLI ignition at sunrise: the burn carries the vehicle out of the night into daylight;
+5. leaving Earth orbit: the camera falls back as the stage climbs away above the sunlit
+   Earth;
+6. the farewell globe.
+
+- **Light**: a limb twilight band where the terminator meets the atmosphere, green
+  airglow on the night side, a Sun starburst, and three additive glint sprites on the
+  vehicle's metal bands, driven by the Sun–camera half-vector.
+- **Overlay**: an orbit dial and REV in the telemetry while in Earth orbit; a TLI
+  countdown with beeps; caption kickers (EARTH ORBIT · REV 1/2, DEPARTURE FOR THE MOON).
+- **Audio**: final pass and go-for-TLI calls, ullage, cutoff and "good burn".
+- **Unchanged**: the timeline tests still check the sunset, night and sunrise geometry,
+  plus the roll, ullage, countdown and revolution count. The ascent, the cruise and
+  every mission state are untouched.
+
+**Lander camera.** `LANDER_FRAC_NEAR/FAR` 0.185 / 0.14 → 0.225 / 0.175 in `DescentGame.jsx`.
+The lander is about 20–25 % larger in EXTERNAL view. The LZ, the LPD and the visibility
+area logic are unchanged. Physics, fuel, hazards, scoring and the touch layout are
+untouched.

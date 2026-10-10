@@ -21,9 +21,9 @@ export default function MissionResult({ result, onRestart, onContinue, onEndMiss
   return (
     <div
       data-testid="mission-result"
-      className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center px-4 md:px-6 py-6 overflow-y-auto"
+      className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center px-4 md:pl-[max(1.5rem,var(--sal))] md:pr-[max(1.5rem,var(--sar))] py-6 overflow-y-auto short:items-start"
     >
-      <div className="hud-panel corners relative max-w-4xl w-full p-6 md:p-10 fade-in">
+      <div className="hud-panel corners relative max-w-4xl w-full p-6 md:p-10 short:p-5 short:my-auto fade-in">
         <div className="flex items-center justify-between mb-4">
           <div className="font-mono text-[10px] tracking-[0.4em] text-zinc-500">
             LM-1 · {result.zone} · {difficulty}

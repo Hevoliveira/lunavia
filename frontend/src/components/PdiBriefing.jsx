@@ -40,17 +40,17 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
   return (
     <div
       data-testid="pdi-briefing"
-      className="absolute inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center px-6"
+      className="absolute inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center pl-[max(1.5rem,var(--sal))] pr-[max(1.5rem,var(--sar))] short:items-start short:overflow-y-auto short:pt-14 short:pb-4"
     >
-      <div className="max-w-4xl w-full">
-        <div className="text-center mb-6">
+      <div className="max-w-4xl w-full short:my-auto">
+        <div className="text-center mb-6 short:mb-3">
           <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink mb-3">
             ● POWERED DESCENT INITIATION
           </div>
-          <h2 className="font-display font-black text-white text-4xl md:text-6xl leading-none">
+          <h2 className="font-display font-black text-white text-4xl md:text-6xl short:text-4xl leading-none">
             {cfg.label} · PDI READY
           </h2>
-          <p className="text-zinc-400 mt-4 max-w-xl mx-auto text-sm leading-relaxed">
+          <p className="text-zinc-400 mt-4 short:mt-2 max-w-xl mx-auto text-sm leading-relaxed">
             <span className="font-mono text-[10px] tracking-widest text-zinc-500 block mb-1">
               MISSION OBJECTIVE
             </span>
@@ -60,7 +60,7 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Controls, laid out to mirror the in-flight control cluster */}
-          <div className="hud-panel corners p-6" data-testid="pdi-controls">
+          <div className="hud-panel corners p-6 short:p-4" data-testid="pdi-controls">
             <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] mb-4">CONTROLS</div>
 
             <div className="flex items-center gap-4 mb-4">
@@ -80,14 +80,26 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
                   <ArrowRight size={16} />
                 </span>
               </div>
-              <p className="font-mono text-[9px] tracking-widest text-zinc-500 leading-relaxed">
+              <p className="font-mono text-[9px] tracking-widest text-zinc-500 leading-relaxed touch:hidden">
                 THE ON-SCREEN CLUSTER
                 <br />
                 MIRRORS THESE KEYS
               </p>
+              <p className="hidden touch:block font-mono text-[9px] tracking-widest text-zinc-500 leading-relaxed">
+                HOLD THE ON-SCREEN
+                <br />
+                CONTROLS · BOTTOM RIGHT
+              </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="hidden touch:block space-y-2 font-mono text-[10px] tracking-widest text-white" data-testid="pdi-touch-controls">
+              <div>↑ · HOLD · MAIN ENGINE THROTTLE</div>
+              <div>← → · TAP TO TRIM · HOLD · ATTITUDE / TILT</div>
+              <div>◄ RCS · RCS ► · TAP TO TRIM · HOLD · LATERAL TRANSLATION</div>
+              <div>EXTERNAL · COCKPIT · NAV · CAMERA</div>
+              <div>PAUSE · TOP RIGHT</div>
+            </div>
+            <div className="space-y-2 touch:hidden">
               <div className="flex items-center gap-3">
                 <KeyCap wide>SPACE</KeyCap>
                 <span className="font-mono text-[10px] tracking-widest text-white">MAIN ENGINE THROTTLE</span>
@@ -114,13 +126,13 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
           </div>
 
           {/* Safety envelope, read from the same cfg the simulation uses */}
-          <div className="hud-panel corners p-6" data-testid="pdi-envelope">
+          <div className="hud-panel corners p-6 short:p-4" data-testid="pdi-envelope">
             <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] mb-4">SAFE TOUCHDOWN</div>
             <Limit label="VERTICAL SPEED" value={cfg.safeVy} unit="m/s" />
             <Limit label="HORIZONTAL SPEED" value={cfg.safeVx} unit="m/s" />
             <Limit label="TILT" value={cfg.safeTilt} unit="deg" />
 
-            <div className="font-mono text-[10px] tracking-[0.4em] text-zinc-500 mt-6 mb-3">ENTRY STATE</div>
+            <div className="font-mono text-[10px] tracking-[0.4em] text-zinc-500 mt-6 short:mt-3 mb-3">ENTRY STATE</div>
             <div className="grid grid-cols-2 gap-2 font-mono text-[9px] tracking-widest text-zinc-500">
               <div>
                 ALTITUDE
@@ -149,7 +161,7 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
           </div>
         </div>
 
-        <div className="mt-6 flex flex-col items-center gap-3">
+        <div className="mt-6 short:mt-3 flex flex-col items-center gap-3 short:gap-1">
           <button
             onClick={onBegin}
             data-testid="begin-pdi"
@@ -160,7 +172,7 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
           <button
             onClick={onBack}
             data-testid="pdi-back"
-            className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 hover:text-white transition-colors"
+            className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 hover:text-white transition-colors py-3 px-2"
           >
             CHANGE DIFFICULTY
           </button>
