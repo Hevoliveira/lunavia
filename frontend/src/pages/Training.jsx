@@ -93,23 +93,6 @@ function Stat({ label, value }) {
   );
 }
 
-function VoiceToggle({ on, onToggle, className = "" }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={!on}
-      data-testid="training-voice"
-      className={`min-h-[44px] px-3 border font-mono text-[9px] tracking-[0.2em] flex items-center gap-1.5 ${
-        on ? "border-white/20 text-zinc-300" : "border-[#FF3B00]/50 text-[#FF3B00]"
-      } ${className}`}
-    >
-      {on ? <Volume2 size={12} /> : <VolumeX size={12} />}
-      {on ? "INSTRUCTOR VOICE ON" : "INSTRUCTOR MUTED"}
-    </button>
-  );
-}
-
 const fmt = (x, d = 0, unit = "") => (x === null || x === undefined ? "—" : `${x.toFixed(d)}${unit}`);
 
 function RecordsPanel({ progress }) {
@@ -562,21 +545,34 @@ export default function Training() {
                   MAIN REASON · {debrief.reason}
                 </div>
               </div>
-              {debrief.grade && (
-                <div className="text-right shrink-0">
-                  <div className="font-mono text-[9px] tracking-[0.3em] text-zinc-500">GRADE</div>
-                  <div className={`font-display font-black text-4xl short:text-2xl ${debrief.landed ? "text-white" : "text-[#FF3B00]"}`}>{debrief.grade}</div>
-                </div>
-              )}
+              <div className="flex items-start gap-3 shrink-0">
+                {debrief.grade && (
+                  <div className="text-right">
+                    <div className="font-mono text-[9px] tracking-[0.3em] text-zinc-500">GRADE</div>
+                    <div className={`font-display font-black text-4xl short:text-2xl ${debrief.landed ? "text-white" : "text-[#FF3B00]"}`}>{debrief.grade}</div>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={toggleVoice}
+                  aria-label={voiceOn ? "Mute instructor" : "Unmute instructor"}
+                  aria-pressed={!voiceOn}
+                  data-testid="training-voice"
+                  title={voiceOn ? "MUTE INSTRUCTOR" : "INSTRUCTOR MUTED"}
+                  className={`min-h-[44px] w-11 border flex items-center justify-center ${voiceOn ? "border-white/20 text-zinc-300" : "border-[#FF3B00]/60 text-[#FF3B00]"}`}
+                >
+                  {voiceOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
+                </button>
+              </div>
             </div>
 
-            <div className="grid md:grid-cols-2 short:grid-cols-2 gap-x-6 gap-y-0 mt-2 short:mt-1.5">
+            <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] short:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-6 gap-y-0 mt-2 short:mt-1.5">
               {debrief.rows.map((r) => (
-                <div key={r.label} className="flex items-baseline justify-between gap-2 border-b border-white/10 py-1.5 short:py-[3px]" data-testid={r.testId}>
-                  <span className="font-mono text-[9px] tracking-[0.15em] text-zinc-500 whitespace-nowrap">{r.label}</span>
-                  <span className="text-right min-w-0 truncate">
+                <div key={r.label} className="flex items-baseline justify-between gap-2 border-b border-white/10 py-1.5 short:py-[3px] min-w-0" data-testid={r.testId}>
+                  <span className="font-mono text-[9px] tracking-[0.15em] text-zinc-500 truncate min-w-0">{r.label}</span>
+                  <span className="text-right shrink-0 whitespace-nowrap">
                     <span className={`font-mono tabular text-sm short:text-[11px] ${r.ok ? "text-white" : "text-[#FF3B00]"}`}>{r.value}</span>
-                    {r.limit && <span className="font-mono text-[9px] text-zinc-600 ml-1.5">{r.limit}</span>}
+                    {r.limit && <span className="font-mono text-[9px] text-zinc-600 ml-1.5 short:hidden">{r.limit}</span>}
                   </span>
                 </div>
               ))}
@@ -602,9 +598,6 @@ export default function Training() {
               <button type="button" onClick={toMenu} className="btn-hud justify-center !px-2 min-h-[44px]" data-testid="debrief-menu">
                 MAIN MENU
               </button>
-            </div>
-            <div className="mt-2 flex justify-end">
-              <VoiceToggle on={voiceOn} onToggle={toggleVoice} />
             </div>
           </div>
         </div>
