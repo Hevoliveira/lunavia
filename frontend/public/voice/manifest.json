@@ -1,0 +1,1077 @@
+{
+ "format": "mp3 mono 24000 Hz 48 kbps, dry (radio added at runtime)",
+ "langs": {
+  "en": {
+   "cast": {
+    "CAPCOM": "af_heart",
+    "COMPUTER": "bf_emma",
+    "CREW": "am_puck",
+    "FLIGHT": "am_michael",
+    "GUIDANCE": "am_fenrir"
+   },
+   "clips": {
+    "cruise.ambient": [
+     {
+      "d": 3.9,
+      "f": "en/cruise.ambient.0.mp3"
+     },
+     {
+      "d": 4.6,
+      "f": "en/cruise.ambient.1.mp3"
+     }
+    ],
+    "descent.alt100fuelGood": [
+     {
+      "d": 2.02,
+      "f": "en/descent.alt100fuelGood.0.mp3"
+     },
+     {
+      "d": 2.1,
+      "f": "en/descent.alt100fuelGood.1.mp3"
+     }
+    ],
+    "descent.alt100fuelTight": [
+     {
+      "d": 2.29,
+      "f": "en/descent.alt100fuelTight.0.mp3"
+     }
+    ],
+    "descent.alt200": [
+     {
+      "d": 1.07,
+      "f": "en/descent.alt200.0.mp3"
+     }
+    ],
+    "descent.alt200good": [
+     {
+      "d": 2.34,
+      "f": "en/descent.alt200good.0.mp3"
+     },
+     {
+      "d": 2.27,
+      "f": "en/descent.alt200good.1.mp3"
+     }
+    ],
+    "descent.alt30": [
+     {
+      "d": 1.86,
+      "f": "en/descent.alt30.0.mp3"
+     },
+     {
+      "d": 1.61,
+      "f": "en/descent.alt30.1.mp3"
+     }
+    ],
+    "descent.attitude": [
+     {
+      "d": 1.32,
+      "f": "en/descent.attitude.0.mp3"
+     }
+    ],
+    "descent.brakeNow": [
+     {
+      "d": 1.05,
+      "f": "en/descent.brakeNow.0.mp3"
+     },
+     {
+      "d": 1.22,
+      "f": "en/descent.brakeNow.1.mp3"
+     }
+    ],
+    "descent.contact": [
+     {
+      "d": 0.88,
+      "f": "en/descent.contact.0.mp3"
+     }
+    ],
+    "descent.crash": [
+     {
+      "d": 3.12,
+      "f": "en/descent.crash.0.mp3"
+     },
+     {
+      "d": 3.59,
+      "f": "en/descent.crash.1.mp3"
+     }
+    ],
+    "descent.crashFlight": [
+     {
+      "d": 2.39,
+      "f": "en/descent.crashFlight.0.mp3"
+     }
+    ],
+    "descent.drift": [
+     {
+      "d": 2.63,
+      "f": "en/descent.drift.0.mp3"
+     },
+     {
+      "d": 2.31,
+      "f": "en/descent.drift.1.mp3"
+     }
+    ],
+    "descent.driftAway": [
+     {
+      "d": 2.06,
+      "f": "en/descent.driftAway.0.mp3"
+     },
+     {
+      "d": 2.89,
+      "f": "en/descent.driftAway.1.mp3"
+     }
+    ],
+    "descent.fuelCritical": [
+     {
+      "d": 2.03,
+      "f": "en/descent.fuelCritical.0.mp3"
+     },
+     {
+      "d": 1.91,
+      "f": "en/descent.fuelCritical.1.mp3"
+     }
+    ],
+    "descent.fuelTight": [
+     {
+      "d": 1.74,
+      "f": "en/descent.fuelTight.0.mp3"
+     },
+     {
+      "d": 1.32,
+      "f": "en/descent.fuelTight.1.mp3"
+     }
+    ],
+    "descent.goLanding": [
+     {
+      "d": 2.42,
+      "f": "en/descent.goLanding.0.mp3"
+     },
+     {
+      "d": 3.09,
+      "f": "en/descent.goLanding.1.mp3"
+     }
+    ],
+    "descent.hazard": [
+     {
+      "d": 2.87,
+      "f": "en/descent.hazard.0.mp3"
+     },
+     {
+      "d": 2.15,
+      "f": "en/descent.hazard.1.mp3"
+     }
+    ],
+    "descent.pdiStart": [
+     {
+      "d": 2.41,
+      "f": "en/descent.pdiStart.0.mp3"
+     }
+    ],
+    "descent.rateHigh": [
+     {
+      "d": 1.95,
+      "f": "en/descent.rateHigh.0.mp3"
+     },
+     {
+      "d": 1.95,
+      "f": "en/descent.rateHigh.1.mp3"
+     },
+     {
+      "d": 1.92,
+      "f": "en/descent.rateHigh.2.mp3"
+     }
+    ],
+    "descent.steady": [
+     {
+      "d": 2.19,
+      "f": "en/descent.steady.0.mp3"
+     },
+     {
+      "d": 1.86,
+      "f": "en/descent.steady.1.mp3"
+     },
+     {
+      "d": 1.45,
+      "f": "en/descent.steady.2.mp3"
+     }
+    ],
+    "descent.touchdown": [
+     {
+      "d": 3.71,
+      "f": "en/descent.touchdown.0.mp3"
+     },
+     {
+      "d": 3.57,
+      "f": "en/descent.touchdown.1.mp3"
+     }
+    ],
+    "descent.touchdownFlight": [
+     {
+      "d": 1.76,
+      "f": "en/descent.touchdownFlight.0.mp3"
+     }
+    ],
+    "launch.count1": [
+     {
+      "d": 0.47,
+      "f": "en/launch.count1.0.mp3"
+     }
+    ],
+    "launch.count10": [
+     {
+      "d": 0.98,
+      "f": "en/launch.count10.0.mp3"
+     }
+    ],
+    "launch.count2": [
+     {
+      "d": 0.53,
+      "f": "en/launch.count2.0.mp3"
+     }
+    ],
+    "launch.count3": [
+     {
+      "d": 0.56,
+      "f": "en/launch.count3.0.mp3"
+     }
+    ],
+    "launch.count4": [
+     {
+      "d": 0.55,
+      "f": "en/launch.count4.0.mp3"
+     }
+    ],
+    "launch.count7": [
+     {
+      "d": 0.6,
+      "f": "en/launch.count7.0.mp3"
+     }
+    ],
+    "launch.count8": [
+     {
+      "d": 0.53,
+      "f": "en/launch.count8.0.mp3"
+     }
+    ],
+    "launch.count9": [
+     {
+      "d": 0.57,
+      "f": "en/launch.count9.0.mp3"
+     }
+    ],
+    "launch.engineStart": [
+     {
+      "d": 1.17,
+      "f": "en/launch.engineStart.0.mp3"
+     }
+    ],
+    "launch.finalPass": [
+     {
+      "d": 8.36,
+      "f": "en/launch.finalPass.0.mp3"
+     }
+    ],
+    "launch.goTli": [
+     {
+      "d": 3.7,
+      "f": "en/launch.goTli.0.mp3"
+     }
+    ],
+    "launch.liftoff": [
+     {
+      "d": 3.83,
+      "f": "en/launch.liftoff.0.mp3"
+     }
+    ],
+    "launch.lunarTransfer": [
+     {
+      "d": 4.87,
+      "f": "en/launch.lunarTransfer.0.mp3"
+     }
+    ],
+    "launch.maxQ": [
+     {
+      "d": 1.33,
+      "f": "en/launch.maxQ.0.mp3"
+     }
+    ],
+    "launch.meco": [
+     {
+      "d": 1.25,
+      "f": "en/launch.meco.0.mp3"
+     }
+    ],
+    "launch.orbit": [
+     {
+      "d": 7.41,
+      "f": "en/launch.orbit.0.mp3"
+     }
+    ],
+    "launch.staging": [
+     {
+      "d": 2.35,
+      "f": "en/launch.staging.0.mp3"
+     }
+    ],
+    "launch.tliCutoff": [
+     {
+      "d": 0.63,
+      "f": "en/launch.tliCutoff.0.mp3"
+     }
+    ],
+    "launch.tliIgnition": [
+     {
+      "d": 2.13,
+      "f": "en/launch.tliIgnition.0.mp3"
+     }
+    ],
+    "launch.towerClear": [
+     {
+      "d": 2.71,
+      "f": "en/launch.towerClear.0.mp3"
+     }
+    ],
+    "launch.usIgnition": [
+     {
+      "d": 2.17,
+      "f": "en/launch.usIgnition.0.mp3"
+     }
+    ],
+    "orbit.arrival": [
+     {
+      "d": 4.79,
+      "f": "en/orbit.arrival.0.mp3"
+     }
+    ],
+    "orbit.goPdi": [
+     {
+      "d": 2.15,
+      "f": "en/orbit.goPdi.0.mp3"
+     }
+    ],
+    "reentry.aos": [
+     {
+      "d": 4.55,
+      "f": "en/reentry.aos.0.mp3"
+     },
+     {
+      "d": 3.79,
+      "f": "en/reentry.aos.1.mp3"
+     }
+    ],
+    "reentry.approach": [
+     {
+      "d": 4.66,
+      "f": "en/reentry.approach.0.mp3"
+     }
+    ],
+    "reentry.blackoutExpected": [
+     {
+      "d": 3.69,
+      "f": "en/reentry.blackoutExpected.0.mp3"
+     },
+     {
+      "d": 3.57,
+      "f": "en/reentry.blackoutExpected.1.mp3"
+     }
+    ],
+    "reentry.climbWarning": [
+     {
+      "d": 1.47,
+      "f": "en/reentry.climbWarning.0.mp3"
+     }
+    ],
+    "reentry.corridorLost": [
+     {
+      "d": 3.47,
+      "f": "en/reentry.corridorLost.0.mp3"
+     }
+    ],
+    "reentry.drogues": [
+     {
+      "d": 1.04,
+      "f": "en/reentry.drogues.0.mp3"
+     },
+     {
+      "d": 0.89,
+      "f": "en/reentry.drogues.1.mp3"
+     }
+    ],
+    "reentry.ei": [
+     {
+      "d": 1.72,
+      "f": "en/reentry.ei.0.mp3"
+     },
+     {
+      "d": 2.45,
+      "f": "en/reentry.ei.1.mp3"
+     }
+    ],
+    "reentry.gWarning": [
+     {
+      "d": 1.28,
+      "f": "en/reentry.gWarning.0.mp3"
+     }
+    ],
+    "reentry.heatWarning": [
+     {
+      "d": 1.33,
+      "f": "en/reentry.heatWarning.0.mp3"
+     }
+    ],
+    "reentry.heating": [
+     {
+      "d": 2.05,
+      "f": "en/reentry.heating.0.mp3"
+     },
+     {
+      "d": 2.67,
+      "f": "en/reentry.heating.1.mp3"
+     }
+    ],
+    "reentry.los": [
+     {
+      "d": 4.53,
+      "f": "en/reentry.los.0.mp3"
+     }
+    ],
+    "reentry.mains": [
+     {
+      "d": 1.27,
+      "f": "en/reentry.mains.0.mp3"
+     },
+     {
+      "d": 1.09,
+      "f": "en/reentry.mains.1.mp3"
+     }
+    ],
+    "reentry.peakDecel": [
+     {
+      "d": 1.65,
+      "f": "en/reentry.peakDecel.0.mp3"
+     }
+    ],
+    "reentry.prepGo": [
+     {
+      "d": 2.05,
+      "f": "en/reentry.prepGo.0.mp3"
+     }
+    ],
+    "reentry.prepShallow": [
+     {
+      "d": 2.27,
+      "f": "en/reentry.prepShallow.0.mp3"
+     },
+     {
+      "d": 2.49,
+      "f": "en/reentry.prepShallow.1.mp3"
+     }
+    ],
+    "reentry.prepSteep": [
+     {
+      "d": 1.71,
+      "f": "en/reentry.prepSteep.0.mp3"
+     },
+     {
+      "d": 2.34,
+      "f": "en/reentry.prepSteep.1.mp3"
+     }
+    ],
+    "reentry.recovered": [
+     {
+      "d": 2.02,
+      "f": "en/reentry.recovered.0.mp3"
+     },
+     {
+      "d": 2.39,
+      "f": "en/reentry.recovered.1.mp3"
+     }
+    ],
+    "reentry.separation": [
+     {
+      "d": 4.84,
+      "f": "en/reentry.separation.0.mp3"
+     }
+    ],
+    "reentry.shallow": [
+     {
+      "d": 2.73,
+      "f": "en/reentry.shallow.0.mp3"
+     },
+     {
+      "d": 1.9,
+      "f": "en/reentry.shallow.1.mp3"
+     }
+    ],
+    "reentry.skipOut": [
+     {
+      "d": 1.24,
+      "f": "en/reentry.skipOut.0.mp3"
+     }
+    ],
+    "reentry.splashFlight": [
+     {
+      "d": 2.97,
+      "f": "en/reentry.splashFlight.0.mp3"
+     }
+    ],
+    "reentry.splashdown": [
+     {
+      "d": 3.27,
+      "f": "en/reentry.splashdown.0.mp3"
+     },
+     {
+      "d": 2.83,
+      "f": "en/reentry.splashdown.1.mp3"
+     }
+    ],
+    "reentry.steep": [
+     {
+      "d": 1.57,
+      "f": "en/reentry.steep.0.mp3"
+     },
+     {
+      "d": 1.89,
+      "f": "en/reentry.steep.1.mp3"
+     }
+    ]
+   }
+  },
+  "pt": {
+   "cast": {
+    "CAPCOM": "pf_dora",
+    "COMPUTER": "pf_dora",
+    "CREW": "pm_alex",
+    "FLIGHT": "pm_alex",
+    "GUIDANCE": "pm_santa"
+   },
+   "clips": {
+    "cruise.ambient": [
+     {
+      "d": 3.64,
+      "f": "pt/cruise.ambient.0.mp3"
+     },
+     {
+      "d": 4.75,
+      "f": "pt/cruise.ambient.1.mp3"
+     }
+    ],
+    "descent.alt100fuelGood": [
+     {
+      "d": 2.0,
+      "f": "pt/descent.alt100fuelGood.0.mp3"
+     },
+     {
+      "d": 2.23,
+      "f": "pt/descent.alt100fuelGood.1.mp3"
+     }
+    ],
+    "descent.alt100fuelTight": [
+     {
+      "d": 2.58,
+      "f": "pt/descent.alt100fuelTight.0.mp3"
+     }
+    ],
+    "descent.alt200": [
+     {
+      "d": 1.3,
+      "f": "pt/descent.alt200.0.mp3"
+     }
+    ],
+    "descent.alt200good": [
+     {
+      "d": 2.49,
+      "f": "pt/descent.alt200good.0.mp3"
+     },
+     {
+      "d": 2.23,
+      "f": "pt/descent.alt200good.1.mp3"
+     }
+    ],
+    "descent.alt30": [
+     {
+      "d": 2.04,
+      "f": "pt/descent.alt30.0.mp3"
+     },
+     {
+      "d": 1.79,
+      "f": "pt/descent.alt30.1.mp3"
+     }
+    ],
+    "descent.attitude": [
+     {
+      "d": 1.46,
+      "f": "pt/descent.attitude.0.mp3"
+     }
+    ],
+    "descent.brakeNow": [
+     {
+      "d": 1.77,
+      "f": "pt/descent.brakeNow.0.mp3"
+     },
+     {
+      "d": 2.06,
+      "f": "pt/descent.brakeNow.1.mp3"
+     }
+    ],
+    "descent.contact": [
+     {
+      "d": 1.34,
+      "f": "pt/descent.contact.0.mp3"
+     }
+    ],
+    "descent.crash": [
+     {
+      "d": 3.6,
+      "f": "pt/descent.crash.0.mp3"
+     },
+     {
+      "d": 3.94,
+      "f": "pt/descent.crash.1.mp3"
+     }
+    ],
+    "descent.crashFlight": [
+     {
+      "d": 3.09,
+      "f": "pt/descent.crashFlight.0.mp3"
+     }
+    ],
+    "descent.drift": [
+     {
+      "d": 2.65,
+      "f": "pt/descent.drift.0.mp3"
+     },
+     {
+      "d": 3.16,
+      "f": "pt/descent.drift.1.mp3"
+     }
+    ],
+    "descent.driftAway": [
+     {
+      "d": 2.72,
+      "f": "pt/descent.driftAway.0.mp3"
+     },
+     {
+      "d": 3.73,
+      "f": "pt/descent.driftAway.1.mp3"
+     }
+    ],
+    "descent.fuelCritical": [
+     {
+      "d": 2.08,
+      "f": "pt/descent.fuelCritical.0.mp3"
+     },
+     {
+      "d": 2.47,
+      "f": "pt/descent.fuelCritical.1.mp3"
+     }
+    ],
+    "descent.fuelTight": [
+     {
+      "d": 2.85,
+      "f": "pt/descent.fuelTight.0.mp3"
+     },
+     {
+      "d": 1.95,
+      "f": "pt/descent.fuelTight.1.mp3"
+     }
+    ],
+    "descent.goLanding": [
+     {
+      "d": 3.4,
+      "f": "pt/descent.goLanding.0.mp3"
+     },
+     {
+      "d": 3.69,
+      "f": "pt/descent.goLanding.1.mp3"
+     }
+    ],
+    "descent.hazard": [
+     {
+      "d": 3.09,
+      "f": "pt/descent.hazard.0.mp3"
+     },
+     {
+      "d": 3.22,
+      "f": "pt/descent.hazard.1.mp3"
+     }
+    ],
+    "descent.pdiStart": [
+     {
+      "d": 3.02,
+      "f": "pt/descent.pdiStart.0.mp3"
+     }
+    ],
+    "descent.rateHigh": [
+     {
+      "d": 2.34,
+      "f": "pt/descent.rateHigh.0.mp3"
+     },
+     {
+      "d": 2.32,
+      "f": "pt/descent.rateHigh.1.mp3"
+     },
+     {
+      "d": 2.19,
+      "f": "pt/descent.rateHigh.2.mp3"
+     }
+    ],
+    "descent.steady": [
+     {
+      "d": 2.36,
+      "f": "pt/descent.steady.0.mp3"
+     },
+     {
+      "d": 1.68,
+      "f": "pt/descent.steady.1.mp3"
+     },
+     {
+      "d": 2.04,
+      "f": "pt/descent.steady.2.mp3"
+     }
+    ],
+    "descent.touchdown": [
+     {
+      "d": 4.52,
+      "f": "pt/descent.touchdown.0.mp3"
+     },
+     {
+      "d": 3.75,
+      "f": "pt/descent.touchdown.1.mp3"
+     }
+    ],
+    "descent.touchdownFlight": [
+     {
+      "d": 1.88,
+      "f": "pt/descent.touchdownFlight.0.mp3"
+     }
+    ],
+    "launch.count1": [
+     {
+      "d": 0.57,
+      "f": "pt/launch.count1.0.mp3"
+     }
+    ],
+    "launch.count10": [
+     {
+      "d": 1.08,
+      "f": "pt/launch.count10.0.mp3"
+     }
+    ],
+    "launch.count2": [
+     {
+      "d": 0.61,
+      "f": "pt/launch.count2.0.mp3"
+     }
+    ],
+    "launch.count3": [
+     {
+      "d": 0.58,
+      "f": "pt/launch.count3.0.mp3"
+     }
+    ],
+    "launch.count4": [
+     {
+      "d": 0.65,
+      "f": "pt/launch.count4.0.mp3"
+     }
+    ],
+    "launch.count7": [
+     {
+      "d": 0.69,
+      "f": "pt/launch.count7.0.mp3"
+     }
+    ],
+    "launch.count8": [
+     {
+      "d": 0.66,
+      "f": "pt/launch.count8.0.mp3"
+     }
+    ],
+    "launch.count9": [
+     {
+      "d": 0.61,
+      "f": "pt/launch.count9.0.mp3"
+     }
+    ],
+    "launch.engineStart": [
+     {
+      "d": 2.17,
+      "f": "pt/launch.engineStart.0.mp3"
+     }
+    ],
+    "launch.finalPass": [
+     {
+      "d": 8.74,
+      "f": "pt/launch.finalPass.0.mp3"
+     }
+    ],
+    "launch.goTli": [
+     {
+      "d": 4.09,
+      "f": "pt/launch.goTli.0.mp3"
+     }
+    ],
+    "launch.liftoff": [
+     {
+      "d": 3.6,
+      "f": "pt/launch.liftoff.0.mp3"
+     }
+    ],
+    "launch.lunarTransfer": [
+     {
+      "d": 5.22,
+      "f": "pt/launch.lunarTransfer.0.mp3"
+     }
+    ],
+    "launch.maxQ": [
+     {
+      "d": 2.53,
+      "f": "pt/launch.maxQ.0.mp3"
+     }
+    ],
+    "launch.meco": [
+     {
+      "d": 2.02,
+      "f": "pt/launch.meco.0.mp3"
+     }
+    ],
+    "launch.orbit": [
+     {
+      "d": 8.27,
+      "f": "pt/launch.orbit.0.mp3"
+     }
+    ],
+    "launch.staging": [
+     {
+      "d": 2.88,
+      "f": "pt/launch.staging.0.mp3"
+     }
+    ],
+    "launch.tliCutoff": [
+     {
+      "d": 0.71,
+      "f": "pt/launch.tliCutoff.0.mp3"
+     }
+    ],
+    "launch.tliIgnition": [
+     {
+      "d": 2.47,
+      "f": "pt/launch.tliIgnition.0.mp3"
+     }
+    ],
+    "launch.towerClear": [
+     {
+      "d": 3.22,
+      "f": "pt/launch.towerClear.0.mp3"
+     }
+    ],
+    "launch.usIgnition": [
+     {
+      "d": 2.64,
+      "f": "pt/launch.usIgnition.0.mp3"
+     }
+    ],
+    "orbit.arrival": [
+     {
+      "d": 4.65,
+      "f": "pt/orbit.arrival.0.mp3"
+     }
+    ],
+    "orbit.goPdi": [
+     {
+      "d": 3.29,
+      "f": "pt/orbit.goPdi.0.mp3"
+     }
+    ],
+    "reentry.aos": [
+     {
+      "d": 4.77,
+      "f": "pt/reentry.aos.0.mp3"
+     },
+     {
+      "d": 4.43,
+      "f": "pt/reentry.aos.1.mp3"
+     }
+    ],
+    "reentry.approach": [
+     {
+      "d": 4.4,
+      "f": "pt/reentry.approach.0.mp3"
+     }
+    ],
+    "reentry.blackoutExpected": [
+     {
+      "d": 3.67,
+      "f": "pt/reentry.blackoutExpected.0.mp3"
+     },
+     {
+      "d": 4.22,
+      "f": "pt/reentry.blackoutExpected.1.mp3"
+     }
+    ],
+    "reentry.climbWarning": [
+     {
+      "d": 1.52,
+      "f": "pt/reentry.climbWarning.0.mp3"
+     }
+    ],
+    "reentry.corridorLost": [
+     {
+      "d": 4.22,
+      "f": "pt/reentry.corridorLost.0.mp3"
+     }
+    ],
+    "reentry.drogues": [
+     {
+      "d": 2.47,
+      "f": "pt/reentry.drogues.0.mp3"
+     },
+     {
+      "d": 1.74,
+      "f": "pt/reentry.drogues.1.mp3"
+     }
+    ],
+    "reentry.ei": [
+     {
+      "d": 2.26,
+      "f": "pt/reentry.ei.0.mp3"
+     },
+     {
+      "d": 2.58,
+      "f": "pt/reentry.ei.1.mp3"
+     }
+    ],
+    "reentry.gWarning": [
+     {
+      "d": 1.45,
+      "f": "pt/reentry.gWarning.0.mp3"
+     }
+    ],
+    "reentry.heatWarning": [
+     {
+      "d": 1.56,
+      "f": "pt/reentry.heatWarning.0.mp3"
+     }
+    ],
+    "reentry.heating": [
+     {
+      "d": 2.46,
+      "f": "pt/reentry.heating.0.mp3"
+     },
+     {
+      "d": 2.94,
+      "f": "pt/reentry.heating.1.mp3"
+     }
+    ],
+    "reentry.los": [
+     {
+      "d": 5.18,
+      "f": "pt/reentry.los.0.mp3"
+     }
+    ],
+    "reentry.mains": [
+     {
+      "d": 2.16,
+      "f": "pt/reentry.mains.0.mp3"
+     },
+     {
+      "d": 1.55,
+      "f": "pt/reentry.mains.1.mp3"
+     }
+    ],
+    "reentry.peakDecel": [
+     {
+      "d": 2.16,
+      "f": "pt/reentry.peakDecel.0.mp3"
+     }
+    ],
+    "reentry.prepGo": [
+     {
+      "d": 3.19,
+      "f": "pt/reentry.prepGo.0.mp3"
+     }
+    ],
+    "reentry.prepShallow": [
+     {
+      "d": 3.38,
+      "f": "pt/reentry.prepShallow.0.mp3"
+     },
+     {
+      "d": 2.45,
+      "f": "pt/reentry.prepShallow.1.mp3"
+     }
+    ],
+    "reentry.prepSteep": [
+     {
+      "d": 2.98,
+      "f": "pt/reentry.prepSteep.0.mp3"
+     },
+     {
+      "d": 2.47,
+      "f": "pt/reentry.prepSteep.1.mp3"
+     }
+    ],
+    "reentry.recovered": [
+     {
+      "d": 2.35,
+      "f": "pt/reentry.recovered.0.mp3"
+     },
+     {
+      "d": 2.02,
+      "f": "pt/reentry.recovered.1.mp3"
+     }
+    ],
+    "reentry.separation": [
+     {
+      "d": 4.96,
+      "f": "pt/reentry.separation.0.mp3"
+     }
+    ],
+    "reentry.shallow": [
+     {
+      "d": 3.66,
+      "f": "pt/reentry.shallow.0.mp3"
+     },
+     {
+      "d": 3.34,
+      "f": "pt/reentry.shallow.1.mp3"
+     }
+    ],
+    "reentry.skipOut": [
+     {
+      "d": 1.53,
+      "f": "pt/reentry.skipOut.0.mp3"
+     }
+    ],
+    "reentry.splashFlight": [
+     {
+      "d": 3.58,
+      "f": "pt/reentry.splashFlight.0.mp3"
+     }
+    ],
+    "reentry.splashdown": [
+     {
+      "d": 3.75,
+      "f": "pt/reentry.splashdown.0.mp3"
+     },
+     {
+      "d": 3.51,
+      "f": "pt/reentry.splashdown.1.mp3"
+     }
+    ],
+    "reentry.steep": [
+     {
+      "d": 2.64,
+      "f": "pt/reentry.steep.0.mp3"
+     },
+     {
+      "d": 3.04,
+      "f": "pt/reentry.steep.1.mp3"
+     }
+    ]
+   }
+  }
+ },
+ "source": "Kokoro-82M v1.0 (Apache-2.0), synthesized offline by tools/voice/render.py",
+ "version": 1
+}
