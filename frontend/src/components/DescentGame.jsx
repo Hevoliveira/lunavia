@@ -1112,7 +1112,10 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const chip = profileLabel(profile, projectedHazard);
   const readouts = guidanceReadouts(profile, vy);
   const tip = coach
-    ? coach({ t: phys.current.t || 0, alt, vy, vx, tilt, cfg, profile, projectedHazard, distanceToLZ, ended: !!ended })
+    ? coach({
+        t: phys.current.t || 0, alt, vy, vx, tilt, cfg, profile, projectedHazard, distanceToLZ,
+        projectedZone: projectedZoneLabel, outcome: ended ? (ended.crashed ? "crashed" : "landed") : null,
+      })
     : null;
 
   const warnFuelLow = profile.fuelState >= CAUTION;

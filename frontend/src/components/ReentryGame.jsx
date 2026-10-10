@@ -247,6 +247,8 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
       bankAgreement: b.totalT > 1 ? b.onT / b.totalT : null,
       rollDeg: b.rollDeg,
       splashV: s.splashV,
+      drogue: { ...s.drogue },
+      main: { ...s.main },
     };
   };
 

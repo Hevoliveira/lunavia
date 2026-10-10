@@ -4,14 +4,14 @@
  */
 export default function CoachCard({ tip, className = "" }) {
   if (!tip) return null;
-  const warn = tip.tone === "warn";
+  const tone = { warn: ["border-[#FF3B00]", "text-[#FF3B00]"], good: ["border-emerald-400", "text-emerald-400"] }[tip.tone] || ["border-sky-300/70", "text-sky-300"];
   return (
     <div
       data-testid="training-coach"
       data-tone={tip.tone}
-      className={`border-l-2 ${warn ? "border-[#FF3B00]" : "border-emerald-400"} bg-black/55 px-2 py-1 ${className}`}
+      className={`border-l-2 ${tone[0]} bg-black/55 px-2 py-1 ${className}`}
     >
-      <div className={`font-mono text-[8px] tracking-[0.2em] truncate ${warn ? "text-[#FF3B00]" : "text-emerald-400"}`}>
+      <div className={`font-mono text-[8px] tracking-[0.2em] truncate ${tone[1]}`}>
         <span className="short:hidden">INSTRUCTOR · </span>
         {tip.title}
       </div>
