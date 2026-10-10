@@ -84,6 +84,7 @@ function transmit({ id, line, variant, keyed }, done) {
       ducked = true;
     }
     emit({ type: "start", id, role: line.role, label: role.label, priority: line.priority, text, dur });
+    log({ type: voiced ? "voice" : "silent", id, lang });
   };
   const end = () => {
     if (ended) return;

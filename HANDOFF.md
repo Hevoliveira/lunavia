@@ -1035,3 +1035,33 @@ mission is unchanged. Details and validation: `docs/TRAINING_CENTER.md`.
 - **Records.** `localStorage`, separate from the mission: personal bests by difficulty.
 - **Retry leak fixed.** `DescentGame` disposes its cached textures on unmount; before, each retry
   retained the old renderer, canvas and HUD.
+
+## 27. Mission Control voice
+
+Device speech synthesis is replaced by a cast of mission controllers. They speak from bundled neural
+voice clips through a live radio chain, decided by telemetry and scheduled by priority. Details,
+approach comparison, validation and the human-recording spec: `docs/VOICE.md`.
+
+- **Cast.** FLIGHT, CAPCOM, GUIDANCE, the onboard COMPUTER (alarms only) and the crew. English and
+  Brazilian Portuguese. 69 lines, 98 variants per language, rendered offline with Kokoro-82M
+  (Apache-2.0, local CPU, no API) by `tools/voice/render.py` into `frontend/public/voice` (3.0 MB).
+- **Who speaks when.** `src/audio/commsDirector.js` keeps one channel:
+  - CRITICAL > HIGH > NORMAL > AMBIENT;
+  - only CRITICAL cuts a speaker;
+  - gaps of silence by priority;
+  - cooldowns, dedupe, staleness and a relevance re-check before speaking;
+  - blackout gating;
+  - verbosity by difficulty (COMMANDER: no coaching).
+- **What is said.** `descentComms.js` and `reentryComms.js` read the same assessments the HUDs show
+  (`assessDescent`, the entry prediction, heat rate, G) and trigger on sustained conditions with a
+  reminder interval. Reentry also drives the link quality (degrading with heat) and the blackout.
+- **Mix.** `useMissionAudio` has an SFX bus and a voice bus. The SFX bus is ducked to 60 % (42 % for
+  CRITICAL calls) while someone speaks.
+- **Player settings.** AUDIO in the navbar: voice on/off, voice language, subtitles, subtitle language,
+  volumes, radio effects, RADIO CHECK. Saved in `lunavia.audio.v1`. Subtitles: `CommsSubtitles`.
+- **Training.** The instructor card stays. The spoken instructor is now this mission control, and
+  MUTE INSTRUCTOR mutes it on that page.
+- **Not changed.** Physics, difficulty, controls, cameras, parachutes, progression and
+  cinematography. Only the audio calls moved.
+- **Premium pack.** Record `tools/voice/RECORDING_SCRIPT.csv` with voice actors and replace the MP3s,
+  keeping the file names. No code change is needed.

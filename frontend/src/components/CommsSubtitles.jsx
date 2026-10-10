@@ -6,8 +6,9 @@ import { useAudioSettings } from "@/audio/audioSettings";
  * Mission-control subtitles. Shown while a call is on the air (and briefly
  * after), in the SUBTITLE language, which is independent of the voice
  * language. Placed in the upper middle of the screen, below the HUD's top
- * band and away from the flight controls in the lower corners; never
- * intercepts touches.
+ * band and the training hold chip; on phones it stays inside the gap
+ * between the left and right HUD columns, away from the flight controls in
+ * the lower corners. Never intercepts touches.
  */
 const ROLE_TONE = {
   CAPCOM: "text-[#FF3B00]",
@@ -42,8 +43,7 @@ export default function CommsSubtitles() {
   const lang = st.subLang;
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-[45] pointer-events-none w-max max-w-[min(560px,64vw)] short:max-w-[50vw]"
-      style={{ top: "calc(var(--hud-top) + 4.4rem)" }}
+      className="fixed left-1/2 -translate-x-1/2 z-[45] pointer-events-none w-max max-w-[min(560px,64vw)] short:max-w-[32vw] top-[calc(var(--hud-top)+6.2rem)] short:top-[calc(var(--hud-top)+5.9rem)]"
       data-testid="comms-subtitle"
       data-line={cur.id}
       aria-live="polite"

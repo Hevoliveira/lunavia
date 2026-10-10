@@ -125,12 +125,13 @@ already fixed the problem, it is never said.
 | Priority | Examples | Gap before it | Max wait | Interrupts |
 |---|---|---|---|---|
 | CRITICAL | descent rate high, fuel critical, G load, heat shield | 0.25 s | 2 s | anything lower |
-| HIGH | drift, hazard, lift vector, attitude | 0.45 s | 3.5 s | NORMAL / AMBIENT |
+| HIGH | drift, hazard, lift vector, attitude | 0.45 s | 5 s | AMBIENT only; waits for a routine call to finish |
 | NORMAL | milestones, events | 0.9 s | 8 s | — |
 | AMBIENT | "Quiet night on the ground" | 4 s of silence, and nothing else waiting | 3 s | — |
 
-- **One voice at a time.** An interrupted speaker is cut off with a squelch,
-  as on a real loop.
+- **One voice at a time.** Only a CRITICAL call cuts a speaker, with a
+  squelch, as on a real loop. A HIGH warning waits for a routine call to
+  finish; the queue is served by priority.
 - **Spam control:**
   - per-line cooldowns (for example, descent rate high: 7 s);
   - shared cooldowns between alternates (shallow/steep);
@@ -142,6 +143,11 @@ already fixed the problem, it is never said.
   - COMMANDER also loses corrective advice (`coach`) and chatter.
 
   Status calls and alarms are for everyone.
+- **Sustained conditions:** a warning fires once when its condition has held
+  for a moment, then at most once per reminder interval while it persists. It
+  is never requested on every frame.
+- **Follow-ups keep their order:** FLIGHT's line after CAPCOM's touchdown or
+  splashdown call, and the corridor-lost call after the crew's.
 - **Pause / abort / app in background:** the call on the air is cut and the
   queue is dropped.
 
@@ -239,7 +245,7 @@ Validation levels, kept separate:
 | Level | What was done |
 |---|---|
 | Code inspection | Audit of the old path (§1); review of every call site migrated (launch, mission, descent, reentry, training). |
-| Automated tests | `src/audio/comms.test.js`, 19 tests: catalog and pack completeness (every line × variant × language), director rules (no overlap, interrupts, cooldowns, stale or irrelevant drop, AMBIENT gating, blackout, verbosity, keyed mic), descent monitor flown on the real lander physics (guided landing, free fall, low fuel, monitor+director over a crash), and reentry monitor flown on the real entry physics (nominal with blackout and AOS, shallow skip-out, steep overload, COMMANDER without advice). |
+| Automated tests | `src/audio/comms.test.js`, 20 tests: catalog and pack completeness (every line × variant × language), director rules (no overlap, interrupts, cooldowns, stale or irrelevant drop, AMBIENT gating, blackout, verbosity, keyed mic), descent monitor flown on the real lander physics (guided landing, free fall, low fuel, monitor+director over a crash), and reentry monitor flown on the real entry physics (nominal with blackout and AOS, shallow skip-out, steep overload, COMMANDER without advice). |
 | Browser captures (headless Chromium) | The exact Web Audio mix the app sends to the speakers was recorded from inside the page: character, emotion, launch and blackout reels in EN and PT, radio on and off; and touch-driven Training flights (landing and reentry) with the comms timeline and on-screen subtitles logged. Signal checks found no overlap, no clipping, the band-limiting present and Quindar tones present. |
 | Listening | **Not done by the developer**: the automated tools cannot judge how human a voice sounds. The reels are delivered for the human review this milestone requires. |
 | Real iPhone | **Not done** (no device in this environment). Checklist in §12. |
