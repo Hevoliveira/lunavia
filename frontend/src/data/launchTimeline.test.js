@@ -1,6 +1,7 @@
 import {
   SHOTS, EVENTS, DURATION, LIFTOFF_T, MILESTONES, metAt, formatMet, trajectoryAt, padHeight,
   stage1Thrust, upperThrust, sepProgress, eventTime, shotAt, airDensity, sunAt, rollAt, stage1Visible,
+  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE,
 } from "./launchTimeline";
 
 describe("launch timeline", () => {
@@ -93,14 +94,14 @@ describe("launch timeline", () => {
     expect(shotAt(0).id).toBe("wide");
     expect(shotAt(eventTime("separation")).id).toBe("sepJoint");
     expect(shotAt(eventTime("tli")).id).toBe("tli");
-    expect(shotAt(DURATION - 0.01).id).toBe("departure");
+    expect(shotAt(DURATION - 0.01).id).toBe("farewell");
     expect(airDensity(0)).toBe(1);
     expect(airDensity(65)).toBeLessThan(0.001);
   });
 
   test("Earth orbit is a sequence of distinct compositions, not one shot", () => {
     const orbitShots = SHOTS.filter((s) => s.start >= eventTime("orbit") && s.end <= eventTime("tli") + 0.5);
-    expect(orbitShots.map((s) => s.id)).toEqual(["orbitWide", "orbitClose", "orbitLimb", "orbitSunset", "tliPrep"]);
+    expect(orbitShots.map((s) => s.id)).toEqual(["orbitWide", "orbitClose", "orbitLimb", "finalPass", "tliPrep", "tliCount"]);
     // Within each shot the ground moves (orbital motion), at a readable rate
     orbitShots.forEach((s) => {
       const a = trajectoryAt(s.start + 0.2).downrangeKm;
@@ -118,14 +119,56 @@ describe("launch timeline", () => {
     };
     expect(at("orbitWide", 0.5).lit).toBe(1);
     expect(at("orbitWide", 0.5).elev).toBeGreaterThan(0.3); // Sun high over the day side
-    expect(at("orbitSunset", 0.1).lit).toBe(1);
-    expect(at("orbitSunset", 0.9).red).toBeGreaterThan(0.5); // reddened, low over the limb
-    expect(at("orbitSunset", 0.5).elev).toBeLessThan(0); // the ground below is already in night
+    expect(at("finalPass", 0.1).lit).toBe(1);
+    expect(at("finalPass", 0.9).red).toBeGreaterThan(0.5); // reddened, low over the limb
+    expect(at("finalPass", 0.5).elev).toBeLessThan(0); // the ground below is already in night
+    expect(at("tliCount", 0.2).lit).toBe(0); // anticipation in the dark, just before sunrise
     expect(at("tliPrep", 0.3).lit).toBe(0); // in Earth's shadow
     expect(sunAt(eventTime("tli")).lit).toBeGreaterThan(0.5); // the burn starts at sunrise
     // Roll to burn attitude during the night pass, complete before ignition
     expect(rollAt(eventTime("tliPrep") - 1)).toBe(0);
     expect(rollAt(eventTime("tli"))).toBeCloseTo(Math.PI, 5);
+  });
+
+  test("TLI finale: roll, ullage, a 3-2-1 hold, ignition, then the vehicle leaves", () => {
+    const shot = (id) => SHOTS.find((x) => x.id === id);
+    // Order of the finale beats
+    expect(SHOTS.slice(-6).map((s) => s.id)).toEqual(["finalPass", "tliPrep", "tliCount", "tli", "departure", "farewell"]);
+    // RCS roll inside the night pass; ullage just before ignition
+    RCS_WINDOWS.forEach(([a, b]) => {
+      expect(a).toBeGreaterThanOrEqual(shot("tliPrep").start);
+      expect(b).toBeLessThanOrEqual(shot("tliPrep").end);
+    });
+    expect(ULLAGE[0]).toBeGreaterThan(shot("tliCount").start);
+    expect(ULLAGE[1]).toBeGreaterThan(eventTime("tli"));
+    // Countdown 3, 2, 1 in the anticipation shot, nothing outside it
+    const ign = eventTime("tli");
+    expect(tliCountdown(ign - 2.9)).toBe(3);
+    expect(tliCountdown(ign - 1.5)).toBe(2);
+    expect(tliCountdown(ign - 0.4)).toBe(1);
+    expect(tliCountdown(ign + 0.1)).toBe(null);
+    expect(tliCountdown(ign - 3.2)).toBe(null);
+    expect(ign - 3).toBeGreaterThanOrEqual(shot("tliCount").start);
+    expect(ign).toBeGreaterThan(shot("tli").start); // ignition just after the cut
+    // The burn is still on as the departure shot opens, then cuts off
+    expect(upperThrust(shot("departure").start + 0.2)).toBe(1);
+    expect(upperThrust(eventTime("lunarTransfer") + 0.5)).toBe(0);
+    // Leaving: altitude rises through the departure shot, then the Earth recedes
+    expect(trajectoryAt(shot("departure").end - 0.1).altKm).toBeGreaterThan(trajectoryAt(shot("departure").start).altKm);
+    expect(trajectoryAt(shot("farewell").start).altKm).toBeGreaterThan(5000);
+  });
+
+  test("orbit progress: revolution count and position against day and night", () => {
+    expect(orbitPhase(eventTime("orbit") + 1).rev).toBe(1);
+    expect(orbitPhase(eventTime("finalPass")).rev).toBe(1);
+    expect(orbitPhase(eventTime("tliPrep")).rev).toBe(2);
+    // Final pass ends on the sunset side, TLI is on the sunrise side
+    const end = orbitPhase(SHOTS.find((x) => x.id === "finalPass").end - 0.1).phi;
+    expect(end).toBeGreaterThan(90);
+    expect(end).toBeLessThan(120);
+    const tli = orbitPhase(eventTime("tli")).tliPhi;
+    expect(tli).toBeGreaterThan(240);
+    expect(tli).toBeLessThan(270);
   });
 
   test("the spent stage stays in the picture through the separation shots", () => {

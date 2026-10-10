@@ -237,8 +237,31 @@ const SKY_FRAG = `
       col += trans * vec3(1.0, 0.94, 0.84) * smoothstep(0.99985, 0.99995, sd) * 60.0;
       // Lens glare round the Sun: a tight core and a faint wide halo
       col += trans * vec3(1.0, 0.9, 0.75) * (pow(max(sd, 0.0), 4000.0) * 1.6 + pow(max(sd, 0.0), 160.0) * 0.06);
+      // The limb seen from orbit: layered twilight colours where the
+      // terminator crosses it (red low down, through amber and white, to blue
+      // above), and the faint green airglow layer near 95 km on the night side.
+      if (orb > 0.0 && mu < 0.0) {
+        float ht = (uCamR * sqrt(max(0.0, 1.0 - mu * mu)) - uR) * uKm;
+        float ts = dot(normalize(ro - rd * (uCamR * mu)), uSun);
+        float twi = exp(-pow(ts / 0.1, 2.0)) * (0.35 + 0.65 * smoothstep(-0.2, 0.9, dot(rd, uSun)));
+        vec3 band = mix(vec3(0.95, 0.24, 0.05), vec3(1.0, 0.6, 0.2), smoothstep(1.0, 9.0, ht));
+        band = mix(band, vec3(1.0, 0.9, 0.7), smoothstep(9.0, 16.0, ht));
+        band = mix(band, vec3(0.3, 0.5, 1.0), smoothstep(16.0, 34.0, ht));
+        col += band * exp(-ht / 11.0) * twi * 0.9 * orb;
+        float nightSide = 1.0 - smoothstep(-0.18, 0.02, ts);
+        col += vec3(0.32, 0.95, 0.45) * exp(-pow((ht - 95.0) / 4.5, 2.0)) * nightSide * 0.045 * orb;
+      }
       float dark = 1.0 - smoothstep(0.004, 0.06, dot(col, vec3(0.3, 0.5, 0.2)));
       col += stars(rd) * dark;
+    }
+    // From orbit, a restrained starburst (lens diffraction spikes) when the
+    // Sun itself is in view above the limb.
+    if (orb > 0.0 && hitSphere(dot(uSun, uUp), uCamH, uR).x < 0.0) {
+      vec3 d = rd - uSun;
+      vec2 q = vec2(dot(d, normalize(uCamWorld[0].xyz)), dot(d, normalize(uCamWorld[1].xyz)));
+      q = vec2(0.866 * q.x - 0.5 * q.y, 0.5 * q.x + 0.866 * q.y);
+      float spikes = exp(-abs(q.y) * 900.0) * exp(-abs(q.x) * 32.0) + exp(-abs(q.x) * 900.0) * exp(-abs(q.y) * 32.0);
+      col += vec3(1.0, 0.92, 0.8) * spikes * smoothstep(0.0, 0.5, dot(rd, uSun)) * orb * 0.6;
     }
     gl_FragColor = vec4(col, 1.0);
     #include <tonemapping_fragment>

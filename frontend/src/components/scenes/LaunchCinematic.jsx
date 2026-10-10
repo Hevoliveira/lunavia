@@ -129,22 +129,109 @@ const FLIGHT_SHOTS = {
   orbitClose: { d0: dirOf(0.32, 0.5, 0.8), d1: dirOf(0.52, 0.44, 0.73), pts: "detail", roll: -0.1, rect: FRAME, extra: 1.0 },
   // C: along the atmospheric limb ahead of the vehicle.
   orbitLimb: { d0: dirOf(-0.88, 0.4, 0.25), d1: dirOf(-0.84, 0.46, 0.28), pts: "upperWide", roll: 0.02, rect: FRAME, extra: 1.5 },
-  // D: orbital sunset - the vehicle in the last warm light over the night side.
-  orbitSunset: { d0: dirOf(0.42, 0.24, -0.88), d1: dirOf(0.62, 0.2, -0.76), pts: "upperWide", roll: -0.04, rect: FRAME, extra: 1.25 },
-  // E: night pass, roll to burn attitude on RCS.
-  tliPrep: { d0: dirOf(-0.35, 0.5, -0.79), d1: dirOf(-0.25, 0.42, -0.87), pts: "upperWide", roll: 0.06, rect: FRAME, extra: 1.15 },
-  // TLI burn at orbital sunrise.
-  tli: { d0: dirOf(-0.58, 0.3, -0.76), d1: dirOf(-0.74, 0.26, -0.62), pts: "upperBurn", roll: 0.04, rect: FRAME, extra: 1.2 },
-  // Lunar transfer: looking back past the spacecraft at the receding Earth.
-  departure: { d0: dirOf(0.3, 0.9, -0.3), d1: dirOf(0.1, 0.98, -0.16), pts: "upperWide", roll: 0.0, rect: FRAME, extra: 2.4 },
+  // Finale (B-F). B: the final Earth pass - the last orbital sunset, low
+  // along the limb so the curve of the Earth and its layered atmosphere fill
+  // the frame.
+  finalPass: { d0: dirOf(0.4, 0.17, -0.9), d1: dirOf(0.6, 0.14, -0.79), pts: "upperWide", roll: -0.05, rect: FRAME, extra: 1.45, fov: 52 },
+  // C: night pass, roll to burn attitude on RCS under the green airglow.
+  tliPrep: { d0: dirOf(-0.35, 0.42, -0.84), d1: dirOf(-0.25, 0.36, -0.9), pts: "upperWide", roll: 0.06, rect: FRAME, extra: 1.3, fov: 50 },
+  // D: the held breath - close on the engine, dawn coming up on the limb
+  // ahead, ullage motors settling the propellant.
+  tliCount: { d0: dirOf(-0.84, 0.02, -0.54), d1: dirOf(-0.8, 0.08, -0.6), pts: "aftUpper", roll: 0.03, rect: FRAME, extra: 1.05, fov: 40 },
+  // E: ignition at sunrise, wide, with the Earth's curve as the backdrop.
+  tli: { d0: dirOf(-0.5, 0.2, -0.84), d1: dirOf(-0.62, 0.18, -0.76), pts: "upperBurn", roll: 0.04, rect: FRAME, extra: 1.7, fov: 58 },
+  // Farewell: looking back past the spacecraft at the receding, half-lit Earth.
+  farewell: { d0: dirOf(0.3, 0.9, -0.3), d1: dirOf(0.1, 0.98, -0.16), pts: "upperWide", roll: 0.0, rect: FRAME, extra: 2.4 },
 };
 
 // The onboard camera on the spent stage, looking up its axis at the upper stage.
 const STAGE1_CAM = { at: [0.85, S1.top - 0.35, 0], fov: 50 };
+// F: leaving orbit. A camera left behind on the parking orbit watches the
+// vehicle climb away towards the sunrise (distance grows d0 -> d1, in units).
+const DEPART_CAM = { d0: 3.2, d1: 28, side: -0.3, up: 0.34, fov: 46 };
+// ... framed high, so the sunlit Earth below fills the lower half
+const DEPART_RECT = { x0: 0.1, x1: 0.9, y0: 0.14, y1: 0.56 };
+
+/* Sunlight glints: places on the spacecraft where the Sun reflects towards
+ * the camera, each a band of the surface of revolution (model units): the
+ * polished spacecraft adapter, the boost cover's cone (normal tilted towards
+ * the nose) and the engine bell's lip (tilted aft). */
+const GLINT_BANDS = [
+  { y: 4.26, r: 0.3, tilt: 0 },
+  { y: 4.86, r: 0.2, tilt: 0.54 },
+  { y: 2.22, r: 0.2, tilt: -0.3 },
+];
+
+function makeStarTexture() {
+  const N = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = N;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(N / 2, N / 2, 0, N / 2, N / 2, N / 2);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.08, "rgba(255,250,240,0.9)");
+  g.addColorStop(0.25, "rgba(255,240,220,0.18)");
+  g.addColorStop(1, "rgba(255,240,220,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, N, N);
+  // Four thin diffraction spikes
+  ctx.globalCompositeOperation = "lighter";
+  [[1, 0.035], [0, 0.035]].forEach(([horizontal, w]) => {
+    const lg = horizontal ? ctx.createLinearGradient(0, 0, N, 0) : ctx.createLinearGradient(0, 0, 0, N);
+    lg.addColorStop(0, "rgba(255,245,230,0)");
+    lg.addColorStop(0.5, "rgba(255,245,230,0.85)");
+    lg.addColorStop(1, "rgba(255,245,230,0)");
+    ctx.fillStyle = lg;
+    if (horizontal) ctx.fillRect(0, N / 2 - (N * w) / 2, N, N * w);
+    else ctx.fillRect(N / 2 - (N * w) / 2, 0, N * w, N);
+  });
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sunlight glints on the spacecraft.                                  */
+
+const _g = { inv: new THREE.Quaternion(), q: new THREE.Quaternion(), s: new THREE.Vector3(), v: new THREE.Vector3(), h: new THREE.Vector3(), p: new THREE.Vector3(), c: new THREE.Vector3() };
+
+function updateGlints(glints, rig, camera, sunW, sun) {
+  if (!glints) return;
+  glints.forEach((sp) => (sp.visible = false));
+  if (!sun || !sunW || !rig || !rig.root || sun.lit < 0.05) return;
+  const root = rig.root;
+  root.updateWorldMatrix(true, false);
+  _g.inv.copy(root.getWorldQuaternion(_g.q)).invert();
+  const sL = _g.s.copy(sunW).normalize().applyQuaternion(_g.inv);
+  const halfH = Math.tan((camera.fov * Math.PI) / 360);
+  GLINT_BANDS.forEach((b, i) => {
+    const sp = glints[i];
+    const c = root.localToWorld(_g.c.set(0, b.y, 0));
+    const vL = _g.v.copy(camera.position).sub(c).normalize().applyQuaternion(_g.inv);
+    const h = _g.h.copy(sL).add(vL).normalize();
+    const rad = Math.hypot(h.x, h.z);
+    if (rad < 1e-3) return;
+    // The band's normal is radial * cos(tilt) + axis * sin(tilt); the Sun
+    // reflects into the lens where that normal lines up with the half vector.
+    const ct = Math.sqrt(1 - b.tilt * b.tilt);
+    const nx = (h.x / rad) * ct;
+    const nz = (h.z / rad) * ct;
+    if (nx * vL.x + b.tilt * vL.y + nz * vL.z < 0.05 || nx * sL.x + b.tilt * sL.y + nz * sL.z < 0.05) return;
+    const k = Math.exp(-(((h.y - b.tilt) / 0.07) ** 2)) * sun.lit * (1 - 0.35 * sun.red);
+    if (k < 0.02) return;
+    const p = root.localToWorld(_g.p.set((h.x / rad) * b.r * 1.02, b.y, (h.z / rad) * b.r * 1.02));
+    const size = 2 * camera.position.distanceTo(p) * halfH * 0.12 * (0.45 + 0.55 * k);
+    sp.position.copy(p);
+    sp.scale.set(size, size, 1);
+    sp.material.opacity = Math.min(1, k * 1.1);
+    sp.material.color.setRGB(1, 0.95 - 0.35 * sun.red, 0.88 - 0.55 * sun.red);
+    sp.visible = true;
+  });
+}
 
 /* ------------------------------------------------------------------ */
 
-function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRef, fillRefs, pools, hooks, envMaps }) {
+function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRef, fillRefs, pools, glints, hooks, envMaps }) {
   const { gl, scene, camera, size } = useThree();
   const setDpr = useThree((state) => state.setDpr);
   const env = useMemo(() => createEnvironment(), []);
@@ -247,6 +334,7 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     const theta = traj.downrangeKm / 6371;
     _qz.setFromAxisAngle(_ax, theta); // env → vehicle frame (local horizon at the vehicle)
     const sunV = _v.copy(SUN_ENV).applyQuaternion(_qz);
+    S.sunW = (S.sunW || new THREE.Vector3()).copy(sunV);
     // In orbit the vehicle passes from day through sunset into Earth's
     // shadow and back out at sunrise: dim and redden its sunlight to match.
     const sun = regime === "pad" ? null : TL.sunAt(t);
@@ -353,6 +441,27 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
         camera.clearViewOffset();
         S.roll = 0;
       }
+    } else if (shot.id === "departure") {
+      // The camera stays on the parking orbit while the vehicle climbs away
+      // from it, burning towards the sunrise, then coasting.
+      const rig = rigRef.current;
+      if (rig && rig.root) {
+        rig.root.updateWorldMatrix(true, true);
+        const mid = rig.root.localToWorld(_cam.a.set(0, (S2.bell + S2.tip) / 2, 0));
+        const nose = rig.root.localToWorld(_cam.b.set(0, S2.tip, 0)).sub(mid).normalize();
+        const k = DEPART_CAM.d0 * Math.pow(DEPART_CAM.d1 / DEPART_CAM.d0, smooth(shotU) * 0.7 + shotU * 0.3);
+        camera.position.copy(mid).addScaledVector(nose, -k);
+        camera.position.z += DEPART_CAM.side * k;
+        camera.position.y += DEPART_CAM.up * k;
+        camera.up.set(0, 1, 0);
+        camera.lookAt(_w.copy(mid).addScaledVector(nose, k * 0.12));
+        if (camera.fov !== DEPART_CAM.fov) {
+          camera.fov = DEPART_CAM.fov;
+          camera.updateProjectionMatrix();
+        }
+        centreViewOn(camera, size.width, size.height, DEPART_RECT);
+        S.roll = 0;
+      }
     } else {
       const f = FLIGHT_SHOTS[shot.id];
       const rig = rigRef.current;
@@ -383,6 +492,9 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
           case "detail":
             pts = [pt(rig.root, S2.bell + 0.2, 0.3), pt(rig.root, S2.low + 0.9, 0.28), pt(rig.root, S2.tip - 0.9, 0.2)];
             break;
+          case "aftUpper":
+            pts = [pt(rig.root, S2.bell - 0.25, 0.28), pt(rig.root, S2.low + 0.2, 0.3)];
+            break;
           case "upperWide":
           case "upperBurn":
             pts = [pt(rig.root, S2.bell - (c.upper > 0.1 ? 1.2 : 0.1), 0.3), pt(rig.root, S2.tip, 0.2)];
@@ -390,8 +502,9 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
           default:
             pts = [pt(rig.root, plumeLen + S1.bells, 0.4), pt(rig.root, S2.tip, 0.18)];
         }
-        if (camera.fov !== 45) {
-          camera.fov = 45;
+        const fov = f.fov || 45;
+        if (camera.fov !== fov) {
+          camera.fov = fov;
           camera.updateProjectionMatrix();
         }
         const u = smooth(shotU);
@@ -418,6 +531,7 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     }
     camera.updateMatrixWorld();
     S.lastShot = shot;
+    updateGlints(glints, rigRef.current, camera, S.sunW, regime === "flight" && t >= 61 ? TL.sunAt(t) : null);
 
     // --- Environment camera (true scale) ---
     let altKm;
@@ -630,11 +744,12 @@ function emitParticles(t, dt, pools, S, rigRef, rocketGroupRef) {
     }
     // RCS firings that start and stop the roll to burn attitude: short white
     // puffs from the thruster quads at the forward end of the upper stage
-    const rcsOn = (t > 85.6 && t < 86.4) || (t > 87.9 && t < 88.7);
+    const rcsWin = TL.RCS_WINDOWS.findIndex(([a, b]) => t > a && t < b);
+    const rcsOn = rcsWin >= 0;
     if (rcsOn && rigRef.current && rigRef.current.root) {
       const root = rigRef.current.root;
       root.updateWorldMatrix(true, false);
-      const sign = t < 87 ? 1 : -1;
+      const sign = rcsWin === 0 ? 1 : -1;
       for (let i = rate(S, "rcs", 55, dt); i > 0; i--) {
         const q = Math.floor(r() * 4);
         const a = (q * Math.PI) / 2 + Math.PI / 4;
@@ -644,6 +759,21 @@ function emitParticles(t, dt, pools, S, rigRef, rocketGroupRef) {
         // tangential jet, opposite to the roll it drives
         const tan = new THREE.Vector3(-out.z, 0, out.x).multiplyScalar(sign);
         sm.emit(t, [w.x, w.y, w.z], [out.x * 0.4 + tan.x * 1.4, out.y * 0.4 + tan.y * 1.4, out.z * 0.4 + tan.z * 1.4], 0.35 + r() * 0.3, 0.02, 0.13 + r() * 0.08, 0.95, 0.96, 1.0, 0.32, 1.6, 0);
+      }
+    }
+    // Ullage motors: two small solid motors on the aft skirt fire for the last
+    // seconds before the TLI restart, settling the propellant
+    if (t > TL.ULLAGE[0] && t < TL.ULLAGE[1] && rigRef.current && rigRef.current.root) {
+      const root = rigRef.current.root;
+      root.updateWorldMatrix(true, false);
+      const aft = root.localToWorld(new THREE.Vector3(0, 3.05, 0));
+      const back = root.localToWorld(new THREE.Vector3(0, 2.05, 0)).sub(aft).normalize();
+      for (let i = rate(S, "ullage", 70, dt); i > 0; i--) {
+        const w = root.localToWorld(new THREE.Vector3(r() < 0.5 ? 0.34 : -0.34, 3.05, 0));
+        const sp = 1.6 + r() * 0.8;
+        const jit = () => (r() - 0.5) * 0.15;
+        fi.emit(t, [w.x, w.y, w.z], [back.x * sp + jit(), back.y * sp + jit(), back.z * sp + jit()], 0.2 + r() * 0.15, 0.02, 0.05 + r() * 0.03, 1.0, 0.82, 0.6, 0.55, 0.5, 0);
+        if (r() < 0.12) sm.emit(t, [w.x, w.y, w.z], [back.x * sp * 0.8 + jit(), back.y * sp * 0.8 + jit(), back.z * sp * 0.8 + jit()], 0.6 + r() * 0.4, 0.02, 0.07 + r() * 0.04, 0.9, 0.9, 0.92, 0.16, 0.6, 0);
       }
     }
     // Separation: motor smoke and a brief ring of released vapour at the joint
@@ -731,6 +861,19 @@ function Scene({ hooks }) {
   useEffect(() => setRocketTextureAnisotropy(anisotropy), [anisotropy]);
   const envMaps = useMemo(() => buildEnvMaps(gl), [gl]);
   useEffect(() => () => Object.values(envMaps).forEach((m) => m.dispose()), [envMaps]);
+  const glints = useMemo(() => {
+    const tex = makeStarTexture();
+    return GLINT_BANDS.map(() => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true }));
+      sp.visible = false;
+      sp.renderOrder = 20;
+      return sp;
+    });
+  }, []);
+  useEffect(() => () => {
+    glints[0].material.map.dispose();
+    glints.forEach((g) => g.material.dispose());
+  }, [glints]);
   const pools = useMemo(
     () => ({
       smoke: new ParticlePool({ count: 1300, kind: "smoke", accel: [0, 0.16, 0], seed: 11 }),
@@ -764,6 +907,9 @@ function Scene({ hooks }) {
       </group>
       <primitive object={pools.smoke.mesh} />
       <primitive object={pools.fire.mesh} />
+      {glints.map((g, i) => (
+        <primitive key={i} object={g} />
+      ))}
       <Director
         rigRef={rigRef}
         rocketGroupRef={rocketGroupRef}
@@ -773,6 +919,7 @@ function Scene({ hooks }) {
         padLightRef={padLightRef}
         fillRefs={fillRefs}
         pools={pools}
+        glints={glints}
         hooks={hooks}
         envMaps={envMaps}
       />
@@ -852,22 +999,34 @@ function useAudioDirector(audio) {
           quindar("Cutoff. Orbit insertion confirmed. Parking orbit, one eighty-five kilometers.", 900);
           audio.padStart?.();
           break;
-        case "sunset":
-          quindar("LV-001, Houston. Loss of daylight in one minute. Systems look good.", 600);
+        case "finalPass":
+          quindar("LV-001, Houston. Final pass. Loss of daylight in one minute. You are go for T. L. I. on the next revolution.", 700);
           break;
-        case "tliPrep":
-          // RCS thrusters starting the roll, heard as thumps through the hull
-          [0, 260, 2600, 2860].forEach((d) => setTimeout(() => audio.thud?.(0.16), 400 + d));
-          quindar("LV-001, Houston. You are go for T. L. I.", 1400);
+        case "tliPrep": {
+          // RCS thrusters starting and stopping the roll, heard as thumps through the hull
+          const ms = (x) => (x - e.t) * 1000;
+          TL.RCS_WINDOWS.forEach(([a]) => [0, 260].forEach((d) => setTimeout(() => audio.thud?.(0.16), ms(a) + d)));
+          quindar("LV-001, Houston. You are go for T. L. I.", 1500);
+          break;
+        }
+        case "tliCount":
+          // Ullage motors: a soft, felt rumble before the restart
+          setTimeout(() => {
+            audio.thud?.(0.22);
+            audio.hiss?.(1.5, 0.05);
+          }, (TL.ULLAGE[0] - e.t) * 1000);
           break;
         case "tli":
-          audio.thud?.(0.3);
+          audio.thud?.(0.32);
           audio.roarStart?.({ onboard: true });
-          quindar("Translunar injection burn underway. Thrust is good.", 300);
+          audio.comms("Ignition. T. L. I. burn underway.", 400);
+          break;
+        case "tliCutoff":
+          audio.roarStop?.(1.2);
+          audio.comms("Cutoff.", 200);
           break;
         case "lunarTransfer":
-          audio.roarStop?.(1.5);
-          quindar("Cutoff. LV-001, you are on your way to the Moon.", 600);
+          quindar("LV-001, Houston. Good burn. You are on your way to the Moon.", 900);
           break;
         default:
       }
@@ -900,10 +1059,34 @@ function useAudioDirector(audio) {
         level = TL.upperThrust(t) * 0.32;
         muffle = 0.95;
       }
-      if (shot.id === "stage1Cam") level = 0; // the camera on the spent stage hears nothing
+      // Cameras outside the vehicle in vacuum hear nothing: the spent stage's,
+      // and the one left on the parking orbit as the vehicle leaves.
+      if (shot.id === "stage1Cam" || shot.id === "departure" || shot.id === "farewell") level = 0;
       audio.roarSet(level, muffle);
     },
   };
+}
+
+/* Orbit dial: the Earth with its night half, the parking orbit, the vehicle
+ * (orange) and the TLI point (white tick), so the player can follow the
+ * revolutions towards departure. Sun to the left. */
+function OrbitDial({ orbit }) {
+  const pos = (deg, r) => {
+    const a = (deg * Math.PI) / 180;
+    return [17 - Math.cos(a) * r, 17 - Math.sin(a) * r];
+  };
+  const [vx, vy] = pos(orbit.phi, 12.5);
+  const [t0x, t0y] = pos(orbit.tliPhi, 10.5);
+  const [t1x, t1y] = pos(orbit.tliPhi, 15);
+  return (
+    <svg width="34" height="34" viewBox="0 0 34 34" className="-my-1 shrink-0" data-testid="orbit-dial" aria-hidden>
+      <circle cx="17" cy="17" r="12.5" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" strokeDasharray="1.6 1.6" />
+      <circle cx="17" cy="17" r="7" fill="#3d6ea8" />
+      <path d="M17 10 A7 7 0 0 1 17 24 Z" fill="#05070c" opacity="0.88" />
+      <line x1={t0x} y1={t0y} x2={t1x} y2={t1y} stroke="#ffffff" strokeWidth="1.2" />
+      <circle cx={vx} cy={vy} r="2.1" fill="#FF3B00" />
+    </svg>
+  );
 }
 
 const CinematicCanvas = memo(function CinematicCanvas({ hooks }) {
@@ -930,6 +1113,7 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
   const flashRef = useRef();
   const capTimer = useRef(null);
   const lastCount = useRef(null);
+  const lastTliCount = useRef(null);
   const director = useAudioDirector(audio);
   const doneRef = useRef(false);
 
@@ -946,7 +1130,7 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
       onEvent(e) {
         director.event(e);
         if (e.caption) {
-          setCaption({ id: e.id, title: e.caption, sub: e.sub });
+          setCaption({ id: e.id, title: e.caption, sub: e.sub, kicker: e.kicker });
           clearTimeout(capTimer.current);
           capTimer.current = setTimeout(() => setCaption(null), 4200);
         }
@@ -965,11 +1149,18 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
           lastCount.current = n;
           director.countdown(n);
         }
+        // TLI hold: a quiet tone for each of the last three seconds
+        const tn = TL.tliCountdown(t);
+        if (tn != null && tn !== lastTliCount.current) {
+          lastTliCount.current = tn;
+          if (audio) audio.beep(880, 0.05, 0.05);
+        }
         // Fades: dip to black across the pad → flight cut, out at the end; a
         // short bright bloom as the full-thrust exhaust hits the trench.
+        // A slower fade at the very end hands over to the cislunar cruise.
         const f = Math.max(
           1 - Math.abs(t - 32) / 0.4,
-          smooth((t - (TL.DURATION - 0.9)) / 0.8),
+          smooth((t - (TL.DURATION - 1.6)) / 1.5),
           0
         );
         if (fadeRef.current) fadeRef.current.style.opacity = String(clamp01(f));
@@ -985,6 +1176,8 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
             alt: t >= TL.LIFTOFF_T ? traj.altKm : null,
             vel: t >= TL.LIFTOFF_T ? traj.speedKmps : null,
             count: t < TL.LIFTOFF_T && TL.LIFTOFF_T - t <= 10.5 ? Math.ceil(TL.LIFTOFF_T - t) : null,
+            tliCount: TL.tliCountdown(t),
+            orbit: t >= TL.eventTime("orbit") && t < TL.eventTime("lunarTransfer") ? TL.orbitPhase(t) : null,
           });
         }
       },
@@ -1010,6 +1203,7 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
         className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-4 py-1.5 short:py-1 flex flex-col items-center z-30 pointer-events-none"
       >
         <div className="flex items-center gap-3">
+          {hud.orbit && <OrbitDial orbit={hud.orbit} />}
           <span className="font-mono text-[11px] short:text-[10px] tracking-[0.3em] text-white tabular" data-testid="launch-met">{hud.met}</span>
           <span className="w-px h-3.5 bg-white/15" />
           <span className="font-mono text-[10px] short:text-[9px] tracking-[0.3em] text-zinc-300 whitespace-nowrap" data-testid="launch-phase">{hud.name}</span>
@@ -1017,6 +1211,7 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
         {hud.alt != null && (
           <div className="font-mono text-[9px] tracking-[0.25em] text-zinc-500 mt-0.5 tabular whitespace-nowrap" data-testid="launch-telemetry">
             ALT {fmtAlt(hud.alt)} · VEL {hud.vel.toFixed(hud.vel < 1 ? 2 : 1)} KM/S
+            {hud.orbit && <span data-testid="launch-rev"> · REV {hud.orbit.rev}</span>}
           </div>
         )}
       </div>
@@ -1029,6 +1224,14 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
         </div>
       )}
 
+      {/* TLI hold: the last three seconds before the restart */}
+      {hud.tliCount != null && (
+        <div className="absolute bottom-10 short:bottom-4 left-1/2 -translate-x-1/2 safe-mb z-30 pointer-events-none text-center" data-testid="tli-countdown">
+          <div className="font-mono text-[9px] tracking-[0.4em] text-zinc-400">TLI IGNITION</div>
+          <div className="font-display font-black text-white/90 text-5xl short:text-4xl tabular leading-none">{hud.tliCount}</div>
+        </div>
+      )}
+
       {/* Event caption, lower third */}
       {caption && (
         <div
@@ -1038,7 +1241,7 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
           className="absolute bottom-10 short:bottom-3 left-6 md:left-10 safe-ml safe-mb z-30 pointer-events-none scan-in bg-black/45 backdrop-blur-sm border-l-2 border-[#FF3B00] px-3 py-2 short:py-1.5 max-w-[min(26rem,60vw)]"
         >
           <div className="flex items-center gap-2 font-mono text-[9px] tracking-[0.4em] text-[#FF3B00]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#FF3B00]" /> MISSION EVENT
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF3B00]" /> {caption.kicker || "MISSION EVENT"}
           </div>
           <div className="font-display font-black text-white text-2xl md:text-3xl short:text-xl tracking-tight mt-0.5">{caption.title}</div>
           <div className="font-mono text-[10px] short:text-[9px] tracking-[0.22em] text-zinc-300 mt-0.5">{caption.sub}</div>
