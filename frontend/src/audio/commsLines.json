@@ -8,6 +8,7 @@
     "CREW": {"label": {"en": "LUNAVIA", "pt": "LUNAVIA"}, "radio": "space"}
   },
   "lines": [
+    {"id": "settings.radioCheck", "role": "CAPCOM", "priority": "NORMAL", "gap": 0, "mood": "calm", "variants": [{"en": "LUNAVIA, Houston. Radio check. How do you read?", "pt": "LUNAVIA, Houston. Teste de rádio. Como nos ouvem?"}]},
     {"id": "launch.count10", "role": "GUIDANCE", "priority": "NORMAL", "mood": "focused", "variants": [{"en": "T-minus ten.", "pt": "T menos dez."}], "gap": 0},
     {"id": "launch.count9", "role": "GUIDANCE", "priority": "NORMAL", "mood": "focused", "variants": [{"en": "Nine.", "pt": "Nove."}], "gap": 0},
     {"id": "launch.count8", "role": "GUIDANCE", "priority": "NORMAL", "mood": "focused", "variants": [{"en": "Eight.", "pt": "Oito."}], "gap": 0},

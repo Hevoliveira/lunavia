@@ -1,0 +1,197 @@
+file,role,priority,mood,language,line
+en/settings.radioCheck.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. Radio check. How do you read?"
+pt/settings.radioCheck.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Teste de rádio. Como nos ouvem?"
+en/launch.count10.0.mp3,GUIDANCE,NORMAL,focused,en,T-minus ten.
+pt/launch.count10.0.mp3,GUIDANCE,NORMAL,focused,pt,T menos dez.
+en/launch.count9.0.mp3,GUIDANCE,NORMAL,focused,en,Nine.
+pt/launch.count9.0.mp3,GUIDANCE,NORMAL,focused,pt,Nove.
+en/launch.count8.0.mp3,GUIDANCE,NORMAL,focused,en,Eight.
+pt/launch.count8.0.mp3,GUIDANCE,NORMAL,focused,pt,Oito.
+en/launch.count7.0.mp3,GUIDANCE,NORMAL,focused,en,Seven.
+pt/launch.count7.0.mp3,GUIDANCE,NORMAL,focused,pt,Sete.
+en/launch.count4.0.mp3,GUIDANCE,NORMAL,focused,en,Four.
+pt/launch.count4.0.mp3,GUIDANCE,NORMAL,focused,pt,Quatro.
+en/launch.count3.0.mp3,GUIDANCE,NORMAL,focused,en,Three.
+pt/launch.count3.0.mp3,GUIDANCE,NORMAL,focused,pt,Três.
+en/launch.count2.0.mp3,GUIDANCE,NORMAL,focused,en,Two.
+pt/launch.count2.0.mp3,GUIDANCE,NORMAL,focused,pt,Dois.
+en/launch.count1.0.mp3,GUIDANCE,NORMAL,focused,en,One.
+pt/launch.count1.0.mp3,GUIDANCE,NORMAL,focused,pt,Um.
+en/launch.engineStart.0.mp3,GUIDANCE,NORMAL,focused,en,Main engine start.
+pt/launch.engineStart.0.mp3,GUIDANCE,NORMAL,focused,pt,Partida dos motores principais.
+en/launch.liftoff.0.mp3,FLIGHT,NORMAL,lift,en,And liftoff. We have liftoff of LV-001.
+pt/launch.liftoff.0.mp3,FLIGHT,NORMAL,lift,pt,E decolagem. Temos a decolagem do LV-001.
+en/launch.towerClear.0.mp3,CAPCOM,NORMAL,focused,en,Tower cleared. Roll and pitch program looks good.
+pt/launch.towerClear.0.mp3,CAPCOM,NORMAL,focused,pt,Torre liberada. Programa de rolagem e arfagem nominal.
+en/launch.maxQ.0.mp3,GUIDANCE,NORMAL,focused,en,Passing through max Q.
+pt/launch.maxQ.0.mp3,GUIDANCE,NORMAL,focused,pt,Passando pela pressão dinâmica máxima.
+en/launch.meco.0.mp3,GUIDANCE,NORMAL,focused,en,Main engine cutoff.
+pt/launch.meco.0.mp3,GUIDANCE,NORMAL,focused,pt,Corte dos motores principais.
+en/launch.staging.0.mp3,GUIDANCE,NORMAL,focused,en,Staging... separation confirmed.
+pt/launch.staging.0.mp3,GUIDANCE,NORMAL,focused,pt,Separação de estágio... confirmada.
+en/launch.usIgnition.0.mp3,CAPCOM,NORMAL,calm,en,Upper stage ignition. Good burn.
+pt/launch.usIgnition.0.mp3,CAPCOM,NORMAL,calm,pt,Ignição do estágio superior. Queima nominal.
+en/launch.orbit.0.mp3,CAPCOM,NORMAL,calm,en,"LV-001, Houston. Cutoff confirmed. You're in a good parking orbit, one eighty-five kilometers."
+pt/launch.orbit.0.mp3,CAPCOM,NORMAL,calm,pt,"LV-001, Houston. Corte confirmado. Vocês estão numa boa órbita de estacionamento, a cento e oitenta e cinco quilômetros."
+en/launch.finalPass.0.mp3,CAPCOM,NORMAL,calm,en,"LV-001, Houston. Final pass. You'll lose daylight in about a minute. You're go for TLI on the next rev."
+pt/launch.finalPass.0.mp3,CAPCOM,NORMAL,calm,pt,"LV-001, Houston. Última passagem. Vocês perdem a luz do dia em cerca de um minuto. Liberados para a TLI na próxima volta."
+en/launch.goTli.0.mp3,CAPCOM,NORMAL,focused,en,"LV-001, Houston. You are go for TLI."
+pt/launch.goTli.0.mp3,CAPCOM,NORMAL,focused,pt,"LV-001, Houston. Vocês estão liberados para a TLI."
+en/launch.tliIgnition.0.mp3,GUIDANCE,NORMAL,focused,en,Ignition. TLI burn is underway.
+pt/launch.tliIgnition.0.mp3,GUIDANCE,NORMAL,focused,pt,Ignição. Queima de TLI em andamento.
+en/launch.tliCutoff.0.mp3,GUIDANCE,NORMAL,focused,en,Cutoff.
+pt/launch.tliCutoff.0.mp3,GUIDANCE,NORMAL,focused,pt,Corte.
+en/launch.lunarTransfer.0.mp3,CAPCOM,NORMAL,relief,en,"LV-001, Houston... good burn. You're on your way to the Moon."
+pt/launch.lunarTransfer.0.mp3,CAPCOM,NORMAL,relief,pt,"LV-001, Houston... ótima queima. Vocês estão a caminho da Lua."
+en/cruise.ambient.0.mp3,CAPCOM,AMBIENT,calm,en,"LUNAVIA, Houston. Everything looks good from here. Enjoy the view."
+pt/cruise.ambient.0.mp3,CAPCOM,AMBIENT,calm,pt,"LUNAVIA, Houston. Tudo certo por aqui. Aproveitem a vista."
+en/cruise.ambient.1.mp3,CAPCOM,AMBIENT,calm,en,"LUNAVIA, Houston. Systems are all nominal. Quiet night on the ground."
+pt/cruise.ambient.1.mp3,CAPCOM,AMBIENT,calm,pt,"LUNAVIA, Houston. Todos os sistemas nominais. Noite tranquila aqui embaixo."
+en/orbit.arrival.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. Lunar orbit insertion looks good. Welcome to the Moon."
+pt/orbit.arrival.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Inserção em órbita lunar confirmada. Bem-vindos à Lua."
+en/orbit.goPdi.0.mp3,FLIGHT,NORMAL,focused,en,"Capcom, we're go for powered descent."
+pt/orbit.goPdi.0.mp3,FLIGHT,NORMAL,focused,pt,"Capcom, estamos liberados para a descida motorizada."
+en/descent.pdiStart.0.mp3,CREW,NORMAL,focused,en,"Houston, LUNAVIA. Beginning powered descent."
+pt/descent.pdiStart.0.mp3,CREW,NORMAL,focused,pt,"Houston, LUNAVIA. Iniciando a descida motorizada."
+en/descent.goLanding.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. You're go for landing."
+pt/descent.goLanding.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Vocês estão liberados para o pouso."
+en/descent.goLanding.1.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. Go for landing. Looking good."
+pt/descent.goLanding.1.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Liberados para o pouso. Tudo bem por aqui."
+en/descent.alt200.0.mp3,GUIDANCE,NORMAL,focused,en,Two hundred meters.
+pt/descent.alt200.0.mp3,GUIDANCE,NORMAL,focused,pt,Duzentos metros.
+en/descent.alt200good.0.mp3,GUIDANCE,NORMAL,calm,en,Two hundred meters. Descent rate's good.
+pt/descent.alt200good.0.mp3,GUIDANCE,NORMAL,calm,pt,Duzentos metros. Razão de descida boa.
+en/descent.alt200good.1.mp3,GUIDANCE,NORMAL,calm,en,"Two hundred meters, right on the profile."
+pt/descent.alt200good.1.mp3,GUIDANCE,NORMAL,calm,pt,"Duzentos metros, em cima do perfil."
+en/descent.alt100fuelGood.0.mp3,GUIDANCE,NORMAL,calm,en,One hundred meters. Fuel's good.
+pt/descent.alt100fuelGood.0.mp3,GUIDANCE,NORMAL,calm,pt,Cem metros. Combustível bom.
+en/descent.alt100fuelGood.1.mp3,GUIDANCE,NORMAL,calm,en,"One hundred meters, plenty of fuel."
+pt/descent.alt100fuelGood.1.mp3,GUIDANCE,NORMAL,calm,pt,"Cem metros, combustível de sobra."
+en/descent.alt100fuelTight.0.mp3,GUIDANCE,NORMAL,focused,en,One hundred meters. Fuel's getting tight.
+pt/descent.alt100fuelTight.0.mp3,GUIDANCE,NORMAL,focused,pt,Cem metros. Combustível ficando apertado.
+en/descent.alt30.0.mp3,GUIDANCE,NORMAL,focused,en,Thirty meters. Picking up some dust.
+pt/descent.alt30.0.mp3,GUIDANCE,NORMAL,focused,pt,Trinta metros. Levantando poeira.
+en/descent.alt30.1.mp3,GUIDANCE,NORMAL,focused,en,"Thirty meters, kicking up dust."
+pt/descent.alt30.1.mp3,GUIDANCE,NORMAL,focused,pt,"Trinta metros, poeira subindo."
+en/descent.rateHigh.0.mp3,CAPCOM,CRITICAL,urgent,en,Descent rate is high. Start braking.
+pt/descent.rateHigh.0.mp3,CAPCOM,CRITICAL,urgent,pt,Razão de descida alta. Comecem a frear.
+en/descent.rateHigh.1.mp3,CAPCOM,CRITICAL,urgent,en,You're coming down fast. Throttle up.
+pt/descent.rateHigh.1.mp3,CAPCOM,CRITICAL,urgent,pt,Vocês estão descendo rápido. Acelerem.
+en/descent.rateHigh.2.mp3,CAPCOM,CRITICAL,urgent,en,"Too fast, LUNAVIA. Brake now."
+pt/descent.rateHigh.2.mp3,CAPCOM,CRITICAL,urgent,pt,"Rápido demais, LUNAVIA. Freiem agora."
+en/descent.brakeNow.0.mp3,GUIDANCE,HIGH,focused,en,"Braking burn, now."
+pt/descent.brakeNow.0.mp3,GUIDANCE,HIGH,focused,pt,"Queima de frenagem, agora."
+en/descent.brakeNow.1.mp3,GUIDANCE,HIGH,focused,en,Start your braking burn.
+pt/descent.brakeNow.1.mp3,GUIDANCE,HIGH,focused,pt,Iniciem a queima de frenagem.
+en/descent.drift.0.mp3,CAPCOM,HIGH,focused,en,Horizontal velocity is still above target.
+pt/descent.drift.0.mp3,CAPCOM,HIGH,focused,pt,Velocidade horizontal ainda acima do alvo.
+en/descent.drift.1.mp3,CAPCOM,HIGH,focused,en,Watch your drift. Null that lateral rate.
+pt/descent.drift.1.mp3,CAPCOM,HIGH,focused,pt,Cuidado com a deriva. Zerem a velocidade lateral.
+en/descent.driftAway.0.mp3,CAPCOM,NORMAL,calm,en,You're drifting away from the landing zone.
+pt/descent.driftAway.0.mp3,CAPCOM,NORMAL,calm,pt,Vocês estão se afastando da zona de pouso.
+en/descent.driftAway.1.mp3,CAPCOM,NORMAL,calm,en,Landing zone is behind you. Translate back.
+pt/descent.driftAway.1.mp3,CAPCOM,NORMAL,calm,pt,A zona de pouso ficou para trás. Voltem com o RCS.
+en/descent.hazard.0.mp3,CAPCOM,HIGH,focused,en,Your touchdown point is in rough terrain. Move it.
+pt/descent.hazard.0.mp3,CAPCOM,HIGH,focused,pt,O ponto de toque está em terreno irregular. Desviem.
+en/descent.hazard.1.mp3,CAPCOM,HIGH,focused,en,Rough ground under you. Translate clear.
+pt/descent.hazard.1.mp3,CAPCOM,HIGH,focused,pt,Terreno irregular embaixo de vocês. Desviem para longe.
+en/descent.fuelTight.0.mp3,CAPCOM,HIGH,focused,en,Fuel reserve is getting tight.
+pt/descent.fuelTight.0.mp3,CAPCOM,HIGH,focused,pt,A reserva de combustível está ficando apertada.
+en/descent.fuelTight.1.mp3,CAPCOM,HIGH,focused,en,Keep an eye on the fuel.
+pt/descent.fuelTight.1.mp3,CAPCOM,HIGH,focused,pt,Fiquem de olho no combustível.
+en/descent.fuelCritical.0.mp3,CAPCOM,CRITICAL,urgent,en,Fuel is critical. Bring it down now.
+pt/descent.fuelCritical.0.mp3,CAPCOM,CRITICAL,urgent,pt,Combustível crítico. Desçam agora.
+en/descent.fuelCritical.1.mp3,CAPCOM,CRITICAL,urgent,en,You're on minimum fuel. Get it down.
+pt/descent.fuelCritical.1.mp3,CAPCOM,CRITICAL,urgent,pt,Vocês estão no combustível mínimo. Pousem.
+en/descent.attitude.0.mp3,COMPUTER,HIGH,neutral,en,Attitude warning.
+pt/descent.attitude.0.mp3,COMPUTER,HIGH,neutral,pt,Alerta de atitude.
+en/descent.steady.0.mp3,CAPCOM,AMBIENT,calm,en,Looking good. Keep that descent steady.
+pt/descent.steady.0.mp3,CAPCOM,AMBIENT,calm,pt,Está bom. Mantenham a descida estável.
+en/descent.steady.1.mp3,CAPCOM,AMBIENT,calm,en,That's better. Nice and steady.
+pt/descent.steady.1.mp3,CAPCOM,AMBIENT,calm,pt,Agora sim. Bem estável.
+en/descent.steady.2.mp3,CAPCOM,AMBIENT,calm,en,You're right on the profile.
+pt/descent.steady.2.mp3,CAPCOM,AMBIENT,calm,pt,Vocês estão em cima do perfil.
+en/descent.contact.0.mp3,CREW,HIGH,focused,en,Contact light.
+pt/descent.contact.0.mp3,CREW,HIGH,focused,pt,Luz de contato.
+en/descent.touchdown.0.mp3,CAPCOM,NORMAL,relief,en,"Touchdown confirmed... We copy you down, LUNAVIA."
+pt/descent.touchdown.0.mp3,CAPCOM,NORMAL,relief,pt,"Pouso confirmado... Copiamos vocês na superfície, LUNAVIA."
+en/descent.touchdown.1.mp3,CAPCOM,NORMAL,relief,en,"We copy you down, LUNAVIA... Beautiful job."
+pt/descent.touchdown.1.mp3,CAPCOM,NORMAL,relief,pt,"Copiamos o pouso, LUNAVIA... Belo trabalho."
+en/descent.touchdownFlight.0.mp3,FLIGHT,NORMAL,relief,en,"Nice work, everybody."
+pt/descent.touchdownFlight.0.mp3,FLIGHT,NORMAL,relief,pt,"Belo trabalho, pessoal."
+en/descent.crash.0.mp3,CAPCOM,NORMAL,somber,en,"LUNAVIA, Houston... do you read?"
+pt/descent.crash.0.mp3,CAPCOM,NORMAL,somber,pt,"LUNAVIA, Houston... vocês me ouvem?"
+en/descent.crash.1.mp3,CAPCOM,NORMAL,somber,en,"LUNAVIA, Houston... we've lost your signal."
+pt/descent.crash.1.mp3,CAPCOM,NORMAL,somber,pt,"LUNAVIA, Houston... perdemos o seu sinal."
+en/descent.crashFlight.0.mp3,FLIGHT,NORMAL,somber,en,"All stations, hold your data."
+pt/descent.crashFlight.0.mp3,FLIGHT,NORMAL,somber,pt,"Todas as estações, guardem os seus dados."
+en/reentry.approach.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. Earth approach looks good. Stand by for separation."
+pt/reentry.approach.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Aproximação da Terra nominal. Aguardem a separação."
+en/reentry.separation.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. We see a good separation. Maneuver to entry attitude."
+pt/reentry.separation.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Separação confirmada. Manobrem para a atitude de reentrada."
+en/reentry.prepShallow.0.mp3,CAPCOM,HIGH,focused,en,You're running a little shallow. Trim it steeper.
+pt/reentry.prepShallow.0.mp3,CAPCOM,HIGH,focused,pt,Vocês estão um pouco rasos. Ajustem para mais inclinado.
+en/reentry.prepShallow.1.mp3,CAPCOM,HIGH,focused,en,Entry angle is shallow. Bring it down a bit.
+pt/reentry.prepShallow.1.mp3,CAPCOM,HIGH,focused,pt,Ângulo de entrada raso. Desçam um pouco.
+en/reentry.prepSteep.0.mp3,CAPCOM,HIGH,focused,en,You're a little steep. Trim it up.
+pt/reentry.prepSteep.0.mp3,CAPCOM,HIGH,focused,pt,Vocês estão um pouco íngremes. Ajustem para cima.
+en/reentry.prepSteep.1.mp3,CAPCOM,HIGH,focused,en,Entry angle is steep. Bring it up a bit.
+pt/reentry.prepSteep.1.mp3,CAPCOM,HIGH,focused,pt,Ângulo de entrada íngreme. Subam um pouco.
+en/reentry.prepGo.0.mp3,CAPCOM,NORMAL,calm,en,You're in the corridor. Go for entry.
+pt/reentry.prepGo.0.mp3,CAPCOM,NORMAL,calm,pt,Vocês estão no corredor. Liberados para a reentrada.
+en/reentry.ei.0.mp3,CAPCOM,NORMAL,focused,en,Entry interface. Here we go.
+pt/reentry.ei.0.mp3,CAPCOM,NORMAL,focused,pt,Interface de entrada. Lá vamos nós.
+en/reentry.ei.1.mp3,CAPCOM,NORMAL,focused,en,"Entry interface, LUNAVIA. Stay with it."
+pt/reentry.ei.1.mp3,CAPCOM,NORMAL,focused,pt,"Interface de entrada, LUNAVIA. Firmes aí."
+en/reentry.blackoutExpected.0.mp3,CAPCOM,NORMAL,calm,en,Communications blackout expected. See you on the other side.
+pt/reentry.blackoutExpected.0.mp3,CAPCOM,NORMAL,calm,pt,Blecaute de comunicações previsto. Nos vemos do outro lado.
+en/reentry.blackoutExpected.1.mp3,CAPCOM,NORMAL,calm,en,We'll lose you in the blackout shortly. Talk to you on the other side.
+pt/reentry.blackoutExpected.1.mp3,CAPCOM,NORMAL,calm,pt,Vamos perder vocês no blecaute em instantes. Falamos do outro lado.
+en/reentry.shallow.0.mp3,CAPCOM,HIGH,focused,en,You're running a little shallow. Adjust your lift vector.
+pt/reentry.shallow.0.mp3,CAPCOM,HIGH,focused,pt,Vocês estão um pouco rasos. Ajustem o vetor de sustentação.
+en/reentry.shallow.1.mp3,CAPCOM,HIGH,focused,en,Roll your lift down. You're climbing.
+pt/reentry.shallow.1.mp3,CAPCOM,HIGH,focused,pt,Girem a sustentação para baixo. Vocês estão subindo.
+en/reentry.steep.0.mp3,CAPCOM,HIGH,urgent,en,"You're steep. Lift up, lift up."
+pt/reentry.steep.0.mp3,CAPCOM,HIGH,urgent,pt,Vocês estão íngremes. Sustentação para cima.
+en/reentry.steep.1.mp3,CAPCOM,HIGH,urgent,en,Ease the dive. Lift vector up.
+pt/reentry.steep.1.mp3,CAPCOM,HIGH,urgent,pt,Aliviem o mergulho. Vetor de sustentação para cima.
+en/reentry.recovered.0.mp3,CAPCOM,NORMAL,calm,en,That's better. You're back in the corridor.
+pt/reentry.recovered.0.mp3,CAPCOM,NORMAL,calm,pt,Agora sim. Vocês voltaram ao corredor.
+en/reentry.recovered.1.mp3,CAPCOM,NORMAL,calm,en,Good correction. Trajectory looks good.
+pt/reentry.recovered.1.mp3,CAPCOM,NORMAL,calm,pt,Boa correção. Trajetória boa.
+en/reentry.heating.0.mp3,CAPCOM,NORMAL,calm,en,Heating is building. Stay with it.
+pt/reentry.heating.0.mp3,CAPCOM,NORMAL,calm,pt,O aquecimento está subindo. Firmes aí.
+en/reentry.heating.1.mp3,CAPCOM,NORMAL,calm,en,Shield temperature is climbing. Stay with it.
+pt/reentry.heating.1.mp3,CAPCOM,NORMAL,calm,pt,A temperatura do escudo está subindo. Firmes aí.
+en/reentry.peakDecel.0.mp3,GUIDANCE,HIGH,focused,en,Peak deceleration coming up.
+pt/reentry.peakDecel.0.mp3,GUIDANCE,HIGH,focused,pt,Pico de desaceleração chegando.
+en/reentry.gWarning.0.mp3,COMPUTER,CRITICAL,neutral,en,G load warning.
+pt/reentry.gWarning.0.mp3,COMPUTER,CRITICAL,neutral,pt,Alerta de carga G.
+en/reentry.heatWarning.0.mp3,COMPUTER,CRITICAL,neutral,en,Heat shield limit.
+pt/reentry.heatWarning.0.mp3,COMPUTER,CRITICAL,neutral,pt,Limite do escudo térmico.
+en/reentry.climbWarning.0.mp3,COMPUTER,HIGH,neutral,en,Altitude increasing.
+pt/reentry.climbWarning.0.mp3,COMPUTER,HIGH,neutral,pt,Altitude aumentando.
+en/reentry.aos.0.mp3,CAPCOM,NORMAL,relief,en,"LUNAVIA, Houston... telemetry is back. Capsule looks stable."
+pt/reentry.aos.0.mp3,CAPCOM,NORMAL,relief,pt,"LUNAVIA, Houston... telemetria de volta. A cápsula está estável."
+en/reentry.aos.1.mp3,CAPCOM,NORMAL,relief,en,"LUNAVIA, Houston... we have you. Good to hear from you."
+pt/reentry.aos.1.mp3,CAPCOM,NORMAL,relief,pt,"LUNAVIA, Houston... temos vocês. Bom ouvir vocês de novo."
+en/reentry.drogues.0.mp3,GUIDANCE,NORMAL,focused,en,Drogues deployed.
+pt/reentry.drogues.0.mp3,GUIDANCE,NORMAL,focused,pt,Paraquedas estabilizadores abertos.
+en/reentry.drogues.1.mp3,GUIDANCE,NORMAL,focused,en,Drogues are out.
+pt/reentry.drogues.1.mp3,GUIDANCE,NORMAL,focused,pt,Estabilizadores abertos.
+en/reentry.mains.0.mp3,CAPCOM,NORMAL,relief,en,Main chutes are good.
+pt/reentry.mains.0.mp3,CAPCOM,NORMAL,relief,pt,Paraquedas principais abertos.
+en/reentry.mains.1.mp3,CAPCOM,NORMAL,relief,en,Three good chutes.
+pt/reentry.mains.1.mp3,CAPCOM,NORMAL,relief,pt,Três paraquedas bons.
+en/reentry.splashdown.0.mp3,CAPCOM,NORMAL,relief,en,"Splashdown... Welcome home, LUNAVIA."
+pt/reentry.splashdown.0.mp3,CAPCOM,NORMAL,relief,pt,"Amerissagem... Bem-vindos de volta, LUNAVIA."
+en/reentry.splashdown.1.mp3,CAPCOM,NORMAL,relief,en,We have splashdown... Welcome home.
+pt/reentry.splashdown.1.mp3,CAPCOM,NORMAL,relief,pt,Temos amerissagem... Bem-vindos de volta.
+en/reentry.splashFlight.0.mp3,FLIGHT,NORMAL,relief,en,"Nice work, everyone. Recovery, you're go."
+pt/reentry.splashFlight.0.mp3,FLIGHT,NORMAL,relief,pt,"Belo trabalho, pessoal. Resgate, estão liberados."
+en/reentry.skipOut.0.mp3,CREW,HIGH,urgent,en,"Houston, we're climbing out."
+pt/reentry.skipOut.0.mp3,CREW,HIGH,urgent,pt,"Houston, estamos subindo."
+en/reentry.corridorLost.0.mp3,CAPCOM,NORMAL,somber,en,"Copy, LUNAVIA... we've lost the corridor."
+pt/reentry.corridorLost.0.mp3,CAPCOM,NORMAL,somber,pt,"Entendido, LUNAVIA... perdemos o corredor."
+en/reentry.los.0.mp3,FLIGHT,NORMAL,somber,en,"Loss of signal... All stations, hold your data."
+pt/reentry.los.0.mp3,FLIGHT,NORMAL,somber,pt,"Perda de sinal... Todas as estações, guardem os seus dados."

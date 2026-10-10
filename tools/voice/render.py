@@ -22,7 +22,7 @@ Usage:
 """
 import argparse, csv, json, os, re, sys, time
 
-import numpy as np
+np = None  # numpy, imported in main() so --script needs only the standard library
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CATALOG = os.path.join(ROOT, "frontend", "src", "audio", "commsLines.json")
@@ -178,6 +178,10 @@ def main():
     if a.script:
         return write_script(a.script, catalog)
 
+    global np
+    import numpy
+
+    np = numpy
     from kokoro_onnx import Kokoro
 
     k = Kokoro(a.model, a.voices)

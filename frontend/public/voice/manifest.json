@@ -533,6 +533,12 @@
       "d": 1.89,
       "f": "en/reentry.steep.1.mp3"
      }
+    ],
+    "settings.radioCheck": [
+     {
+      "d": 3.15,
+      "f": "en/settings.radioCheck.0.mp3"
+     }
     ]
    }
   },
@@ -1067,6 +1073,12 @@
      {
       "d": 3.04,
       "f": "pt/reentry.steep.1.mp3"
+     }
+    ],
+    "settings.radioCheck": [
+     {
+      "d": 3.22,
+      "f": "pt/settings.radioCheck.0.mp3"
      }
     ]
    }

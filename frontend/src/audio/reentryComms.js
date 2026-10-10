@@ -32,13 +32,20 @@ export function createReentryMonitor() {
   const fired = new Set();
   const since = {};
   const once = (key) => (fired.has(key) ? false : (fired.add(key), true));
-  const held = (key, cond, t, hold) => {
+  // true once `cond` has held for `hold` seconds; then again every `repeat`
+  // seconds while it still holds (a reminder), never on every frame
+  const fireAt = {};
+  const held = (key, cond, t, hold, repeat = Infinity) => {
     if (!cond) {
       delete since[key];
+      delete fireAt[key];
       return false;
     }
     if (since[key] === undefined) since[key] = t;
-    return t - since[key] >= hold;
+    if (t - since[key] < hold) return false;
+    if (fireAt[key] !== undefined && t - fireAt[key] < repeat) return false;
+    fireAt[key] = t;
+    return true;
   };
   const live = (fn) => () => !!latest && !latest.outcome && fn(latest);
 
@@ -61,7 +68,7 @@ export function createReentryMonitor() {
     if (u.phase === "PREP") {
       if (once("sep")) out.push({ id: "reentry.separation", delay: 0.4 });
       const side = u.inBand ? null : u.prepFpa > TARGET_FPA ? "SHALLOW" : "STEEP";
-      if (held("prepOut", !!side && side === prepOutSide, t, 1.2) && fired.has("sep")) {
+      if (held("prepOut", !!side && side === prepOutSide, t, 1.2, 9) && fired.has("sep")) {
         out.push({
           id: side === "SHALLOW" ? "reentry.prepShallow" : "reentry.prepSteep",
           relevant: () => latest && latest.phase === "PREP" && !latest.inBand,
@@ -70,6 +77,9 @@ export function createReentryMonitor() {
       prepOutSide = side;
       if (u.inBand && u.attitudeReady && once("prepGo")) {
         out.push({ id: "reentry.prepGo", relevant: () => latest && latest.phase === "PREP" && latest.inBand });
+        // The plasma closes the link about a second after entry interface in
+        // real time, so the warning is given before the crew commits.
+        if (once("blackoutExpected")) out.push({ id: "reentry.blackoutExpected", delay: 0.3, relevant: () => latest && !latest.blackout });
       }
     }
 
@@ -82,11 +92,11 @@ export function createReentryMonitor() {
         // Prediction-driven lift calls, and the recovery when they work
         const skip = u.pred === "SHALLOW";
         const steep = u.pred === "STEEP";
-        if (held("shallow", skip, t, 0.8)) {
+        if (held("shallow", skip, t, 0.8, 8)) {
           threatened = "SHALLOW";
           out.push({ id: "reentry.shallow", relevant: live((x) => x.pred === "SHALLOW") });
         }
-        if (held("steep", steep, t, 0.8)) {
+        if (held("steep", steep, t, 0.8, 8)) {
           threatened = "STEEP";
           out.push({ id: "reentry.steep", relevant: live((x) => x.pred === "STEEP") });
         }
@@ -94,22 +104,22 @@ export function createReentryMonitor() {
           threatened = null;
           out.push({ id: "reentry.recovered", relevant: live((x) => x.pred === "NOMINAL") });
         }
-        if (held("climb", u.climbing, t, 1)) out.push({ id: "reentry.climbWarning", relevant: live((x) => x.climbing) });
+        if (held("climb", u.climbing, t, 1, 8)) out.push({ id: "reentry.climbWarning", relevant: live((x) => x.climbing) });
         if (!blackout && u.q > 10 && once("heating")) out.push({ id: "reentry.heating", relevant: live((x) => !x.blackout) });
         if (!blackout && u.g > 3 && gRising && once("peakDecel")) out.push({ id: "reentry.peakDecel", relevant: live((x) => !x.blackout) });
       }
       // Onboard alarms: these are heard even in blackout
-      if (held("heatAlarm", u.overheat > 0 || u.q > LIMITS.heatRateDesign * 0.92, t, 0.3)) out.push({ id: "reentry.heatWarning", relevant: live((x) => x.overheat > 0 || x.q > LIMITS.heatRateDesign * 0.85) });
-      if (held("gAlarm", u.g > LIMITS.structuralG * 0.7 && gRising, t, 0.3)) out.push({ id: "reentry.gWarning", relevant: live((x) => x.g > LIMITS.structuralG * 0.6) });
+      if (held("heatAlarm", u.overheat > 0 || u.q > LIMITS.heatRateDesign * 0.92, t, 0.3, 6)) out.push({ id: "reentry.heatWarning", relevant: live((x) => x.overheat > 0 || x.q > LIMITS.heatRateDesign * 0.85) });
+      if (held("gAlarm", u.g > LIMITS.structuralG * 0.7 && gRising, t, 0.3, 6)) out.push({ id: "reentry.gWarning", relevant: live((x) => x.g > LIMITS.structuralG * 0.6) });
 
-      if (hadBlackout && !blackout && !u.outcome && once("aos")) out.push({ id: "reentry.aos", delay: 1.1 });
+      if (hadBlackout && !blackout && !u.outcome && once("aos")) out.push({ id: "reentry.aos", delay: 1.1, relevant: live((x) => !x.blackout && !x.climbing) });
       if (u.drogue && u.drogue.alt !== null && once("drogue")) out.push({ id: "reentry.drogues", delay: 0.5 });
       if (u.main && u.main.alt !== null && once("main")) out.push({ id: "reentry.mains", delay: 0.6 });
     }
 
-    if (u.phase === "SPLASHED" && once("splash")) out.push({ id: "reentry.splashdown", delay: 0.9 }, { id: "reentry.splashFlight", delay: 0.3 });
+    if (u.phase === "SPLASHED" && once("splash")) out.push({ id: "reentry.splashdown", delay: 0.9 }, { id: "reentry.splashFlight", delay: 2.5 });
     if (u.phase === "FAILED" && once("failed")) {
-      if (u.outcome === "SKIP_OUT") out.push({ id: "reentry.skipOut", delay: 0.3 }, { id: "reentry.corridorLost", delay: 0.2 });
+      if (u.outcome === "SKIP_OUT") out.push({ id: "reentry.skipOut", delay: 0.3 }, { id: "reentry.corridorLost", delay: 1.5 });
       else out.push({ id: "reentry.los", delay: 0.8 });
     }
     return { requests: out, blackout, link };

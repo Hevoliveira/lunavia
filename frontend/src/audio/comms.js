@@ -18,7 +18,7 @@ import catalog from "./commsLines.json";
 import { createDirector } from "./commsDirector";
 import { createVoicePack } from "./voicePack";
 import { playTransmission, staticBurst } from "./radio";
-import { getAudioSettings, subscribeAudioSettings } from "./audioSettings";
+import { getAudioSettings, setAudioSettings, subscribeAudioSettings } from "./audioSettings";
 
 const listeners = new Set();
 const pack = createVoicePack();
@@ -194,9 +194,49 @@ const comms = {
       pack.trim();
     }
   },
+  /**
+   * RADIO CHECK from the audio settings (a tap, so audio may start). Outside a
+   * mission there is no engine attached: borrow a short-lived AudioContext.
+   */
+  radioCheck() {
+    let temp = null;
+    if (!engine) {
+      const AC = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
+      if (AC) {
+        const ctx = new AC();
+        const out = ctx.createGain();
+        out.gain.value = getAudioSettings().voiceVolume;
+        out.connect(ctx.destination);
+        temp = { ctx, out, duck: null };
+        engine = temp;
+      }
+    }
+    const go = () => {
+      director.flush("check");
+      director.request("settings.radioCheck");
+    };
+    if (engine && engine.ctx.state !== "running") engine.ctx.resume().then(go, go);
+    else go();
+    if (temp) {
+      const off = comms.subscribe((e) => {
+        if (e.type !== "end" || e.id !== "settings.radioCheck") return;
+        off();
+        setTimeout(() => {
+          if (engine === temp) engine = null;
+          temp.ctx.close().catch(() => {});
+        }, 800);
+      });
+    }
+  },
   get onAir() {
     return director.onAir;
   },
 };
 
 export default comms;
+
+// QA hook (validation harness / Safari Web Inspector): set window.__lvDebug before load.
+if (typeof window !== "undefined" && window.__lvDebug) {
+  window.__lvComms = comms;
+  window.__lvAudioSettings = { get: getAudioSettings, set: setAudioSettings };
+}

@@ -24,14 +24,20 @@ export function createDescentMonitor() {
   const since = {};
 
   const once = (key) => (fired.has(key) ? false : (fired.add(key), true));
-  // true once `cond` has held for `hold` seconds
-  const held = (key, cond, t, hold) => {
+  // true once `cond` has held for `hold` seconds; then again every `repeat`
+  // seconds while it still holds (a reminder), never on every frame
+  const fireAt = {};
+  const held = (key, cond, t, hold, repeat = Infinity) => {
     if (!cond) {
       delete since[key];
+      delete fireAt[key];
       return false;
     }
     if (since[key] === undefined) since[key] = t;
-    return t - since[key] >= hold;
+    if (t - since[key] < hold) return false;
+    if (fireAt[key] !== undefined && t - fireAt[key] < repeat) return false;
+    fireAt[key] = t;
+    return true;
   };
   const live = (fn) => () => !ended && latest && fn(latest);
 
@@ -43,8 +49,8 @@ export function createDescentMonitor() {
 
     if (d.outcome) {
       ended = true;
-      if (d.outcome === "landed") out.push({ id: "descent.touchdown", delay: 0.7 }, { id: "descent.touchdownFlight", delay: 0.2 });
-      else out.push({ id: "descent.crash", delay: 1.4 }, { id: "descent.crashFlight", delay: 0.3 });
+      if (d.outcome === "landed") out.push({ id: "descent.touchdown", delay: 0.7 }, { id: "descent.touchdownFlight", delay: 2.5 });
+      else out.push({ id: "descent.crash", delay: 1.4 }, { id: "descent.crashFlight", delay: 3 });
       return out;
     }
 
@@ -64,24 +70,24 @@ export function createDescentMonitor() {
     prevAlt = d.alt;
 
     // Descent rate: too fast for the height left
-    if (held("vy", p.vyState === DANGER && d.alt > 4, d.t, 0.35)) {
+    if (held("vy", p.vyState === DANGER && d.alt > 4, d.t, 0.35, 7)) {
       out.push({ id: "descent.rateHigh", relevant: live((x) => x.profile.vyState >= CAUTION && x.alt > 4) });
       warned = true;
     }
     // Braking burn due now (still coasting)
-    if (Number.isFinite(p.brakeTime) && p.brakeTime < 1 && !p.burning && d.alt > 30) {
+    if (held("brake", Number.isFinite(p.brakeTime) && p.brakeTime < 1 && !p.burning && d.alt > 30, d.t, 0, 12)) {
       out.push({ id: "descent.brakeNow", relevant: live((x) => !x.profile.burning) });
     }
     // Lateral drift that the remaining time can barely null
-    if (held("vx", p.vxState >= CAUTION && d.alt > 3, d.t, 0.6)) {
+    if (held("vx", p.vxState >= CAUTION && d.alt > 3, d.t, 0.6, 8)) {
       out.push({ id: "descent.drift", relevant: live((x) => x.profile.vxState >= CAUTION) });
       warned = true;
     }
     // Moving away from the landing zone while there is height to fix it
     const away = d.distanceToLZ > 25 && Math.sign(d.vx) === Math.sign(d.xPos) && Math.abs(d.vx) > 0.8 && d.alt > 60;
-    if (held("away", away, d.t, 1.5)) out.push({ id: "descent.driftAway", relevant: live((x) => x.distanceToLZ > 20) });
+    if (held("away", away, d.t, 1.5, 14)) out.push({ id: "descent.driftAway", relevant: live((x) => x.distanceToLZ > 20) });
     // Projected touchdown on rough ground
-    if (held("hazard", d.hazard && d.alt > 8, d.t, 0.6)) {
+    if (held("hazard", d.hazard && d.alt > 8, d.t, 0.6, 9)) {
       out.push({ id: "descent.hazard", relevant: live((x) => x.hazard) });
       warned = true;
     }
@@ -89,7 +95,7 @@ export function createDescentMonitor() {
     if (p.fuelState === CAUTION && once("fuelTight")) out.push({ id: "descent.fuelTight", relevant: live((x) => x.profile.fuelState >= CAUTION) });
     if (p.fuelState === DANGER && once("fuelCritical")) out.push({ id: "descent.fuelCritical", relevant: live((x) => x.alt > 2) });
     // Attitude: the onboard computer's alarm
-    if (held("tilt", p.tiltState === DANGER, d.t, 0.3)) out.push({ id: "descent.attitude", relevant: live((x) => x.profile.tiltState >= CAUTION) });
+    if (held("tilt", p.tiltState === DANGER, d.t, 0.3, 6)) out.push({ id: "descent.attitude", relevant: live((x) => x.profile.tiltState >= CAUTION) });
 
     // After a warning, a word when the descent is back under control
     const calm = p.vyState === OK && p.vxState === OK && p.tiltState === OK && !d.hazard;

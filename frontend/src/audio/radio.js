@@ -169,8 +169,9 @@ export function playTransmission(ctx, out, opts) {
     comp.attack.value = 0.003;
     comp.release.value = 0.15;
     comp.knee.value = 6;
+    // Level-matched to the clean path, so RADIO EFFECTS on/off does not jump in loudness.
     const makeup = add(ctx.createGain());
-    makeup.gain.value = 1.5;
+    makeup.gain.value = 0.95;
     last.connect(comp).connect(makeup).connect(out);
 
     // Static bed under the transmission, and dropouts on a weak link
@@ -211,7 +212,9 @@ export function playTransmission(ctx, out, opts) {
     comp.ratio.value = 2;
     comp.attack.value = 0.005;
     comp.release.value = 0.2;
-    chainIn.connect(comp).connect(out);
+    const lift = add(ctx.createGain());
+    lift.gain.value = 1.35;
+    chainIn.connect(comp).connect(lift).connect(out);
   }
   src.start(vStart);
 

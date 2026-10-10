@@ -154,6 +154,16 @@ describe("comms director", () => {
     expect(overlaps(aired)).toBe(false);
   });
 
+  test("a HIGH warning waits for a routine call to finish instead of cutting it", () => {
+    const { dir, clock, aired } = rig();
+    dir.request("descent.alt200good");
+    clock.advance(600);
+    dir.request("descent.drift");
+    clock.advance(15000);
+    expect(aired.map((a) => [a.id, a.cut])).toEqual([["descent.alt200good", false], ["descent.drift", false]]);
+    expect(aired[1].start - aired[0].end).toBeGreaterThanOrEqual(0.45 - 1e-6);
+  });
+
   test("cooldowns and duplicates stop spam", () => {
     const { dir, clock, aired } = rig();
     for (let i = 0; i < 40; i++) {
@@ -170,17 +180,17 @@ describe("comms director", () => {
 
   test("stale calls expire and irrelevant calls are dropped before they are spoken", () => {
     const { dir, clock, aired } = rig();
-    dir.request("launch.orbit");
+    dir.request("launch.towerClear");
     dir.request("descent.hazard", { relevant: () => false });
     dir.request("descent.alt30"); // NORMAL: may wait up to 8 s
     clock.advance(30000);
-    expect(aired.map((a) => a.id)).toEqual(["launch.orbit", "descent.alt30"]);
+    expect(aired.map((a) => a.id)).toEqual(["launch.towerClear", "descent.alt30"]);
+    // A routine call that cannot get the channel within 8 s is never spoken late.
     const r2 = rig();
-    r2.dir.request("reentry.los"); // ~5 s
-    r2.clock.advance(100);
-    r2.dir.request("descent.fuelTight"); // HIGH: expires after 3.5 s of waiting... but cuts NORMAL
-    r2.clock.advance(20000);
-    expect(r2.aired[1].id).toBe("descent.fuelTight");
+    r2.dir.request("launch.finalPass"); // 8.4 s on the air
+    r2.dir.request("descent.goLanding");
+    r2.clock.advance(30000);
+    expect(r2.aired.map((a) => a.id)).toEqual(["launch.finalPass"]);
   });
 
   test("AMBIENT chatter needs a quiet channel", () => {
@@ -273,9 +283,13 @@ describe("descent monitor (real lander physics)", () => {
   });
 
   test("falling without braking calls the descent rate, then the crash", () => {
-    const { ids, result } = flyDescent("ASTRONAUT", null);
+    const { ids, req, result } = flyDescent("ASTRONAUT", null);
     expect(result.crashed).toBe(true);
     expect(ids).toContain("descent.rateHigh");
+    // edge-triggered with a 7 s reminder, never once per frame
+    const rate = req.filter((r) => r.id === "descent.rateHigh");
+    const span = rate[rate.length - 1].t - rate[0].t;
+    expect(rate.length).toBeLessThanOrEqual(Math.floor(span / 7) + 1);
     expect(ids.indexOf("descent.rateHigh")).toBeLessThan(ids.indexOf("descent.crash"));
     expect(ids).not.toContain("descent.touchdown");
   });

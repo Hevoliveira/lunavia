@@ -5,9 +5,10 @@
  * so no two voices ever overlap, and hands each transmission to `transmit`
  * (the audio engine, a silent subtitle-only player, or a test double).
  *
- *   Priority   CRITICAL > HIGH > NORMAL > AMBIENT. A CRITICAL or HIGH call
- *              cuts into a lower-priority transmission (the speaker is cut
- *              off, as on a real loop); otherwise calls wait their turn.
+ *   Priority   CRITICAL > HIGH > NORMAL > AMBIENT. A CRITICAL call cuts
+ *              into anything lower (the speaker is cut off, as on a real
+ *              loop) and a HIGH call cuts AMBIENT chatter; everything else
+ *              waits its turn, highest priority first.
  *   Silence    after every transmission the channel stays quiet for a gap
  *              that depends on what comes next: 0.25 s before a CRITICAL
  *              call, about a second before routine traffic, several
@@ -30,7 +31,7 @@ export const PRIORITY = { AMBIENT: 0, NORMAL: 1, HIGH: 2, CRITICAL: 3 };
 // Seconds of silence needed before a call of this priority starts.
 const GAP = [4, 0.9, 0.45, 0.25];
 // Seconds a call may wait for the channel before it is dropped as stale.
-const MAX_AGE = [3, 8, 3.5, 2];
+const MAX_AGE = [3, 8, 5, 2];
 
 export const VERBOSITY = { CADET: "full", ASTRONAUT: "standard", COMMANDER: "minimal" };
 
@@ -206,7 +207,8 @@ export function createDirector({ catalog, transmit, now = () => Date.now(), setT
       item.expires = item.at + MAX_AGE[item.p];
       queue.push(item);
       log("queue", item);
-      if (current && delay === 0 && item.p >= PRIORITY.HIGH && item.p > current.item.p) interrupt("priority");
+      const cur = current && current.item.p;
+      if (current && delay === 0 && ((item.p === PRIORITY.CRITICAL && cur < PRIORITY.CRITICAL) || (item.p === PRIORITY.HIGH && cur === PRIORITY.AMBIENT))) interrupt("priority");
       pump();
       return true;
     },
