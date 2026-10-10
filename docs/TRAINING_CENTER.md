@@ -230,3 +230,34 @@ must still be confirmed by closing and reopening the app.
 | `data/landerPilots.js` | Adds `precisionStrategy` (tests only) |
 | `DescentGame.jsx`, `ReentryGame.jsx` | The optional training props above |
 | `data/trainingScenarios.test.js` | 26 tests: start derivation, feasibility, objectives, survivability, instructor, debrief |
+
+## Validation
+
+Validation used Chromium with iPhone emulation: touch only through CDP multi-touch, simulated safe
+areas and production builds. The desktop runs were keyboard only. The automated pilots read the HUD,
+or for reentry the telemetry the HUD is drawn from. **No physical iPhone was used**: frame rate,
+WKWebView behaviour, speech voices and storage persistence on a device are still to be confirmed.
+
+| Check | Result |
+|---|---|
+| Unit tests | 82 / 82: 56 existing (lander physics and COMMANDER balance 25, reentry physics 19, launch timeline 12) plus 26 training |
+| Production build | passes (only the existing `useMissionAudio` warning) |
+| iPhone 16 Pro 852 × 393, touch, 13 attempts | **Lunar:** standard CADET A 88 (0.5 m from centre); precision ASTRONAUT A 84 (0.6 m); braking ASTRONAUT and CADET (muted run) safe; COMMANDER challenge 0.3 m from centre. **Reentry:** nominal CADET 7.5 g; shallow recovery ASTRONAUT 5.9 g; steep recovery COMMANDER 9.7 g; COMMANDER reentry 7.3 g. **Failures:** lunar crash (COMMANDER, no input); skip-out (shallow, no input); thermal (trimmed to −7.94°, lift up held); structural (steep, no input). Each debrief names the right cause. Instructor voice heard in the CADET / ASTRONAUT runs, silent when muted and at COMMANDER. 0 console errors |
+| iPhone SE 667 × 375 (touch) | standard CADET in the LZ (0.2 m); shallow CADET 5.4 g; COMMANDER crash and steep structural failure debriefs. Training Center, briefing, debrief and buttons all on screen |
+| iPhone 16 Pro Max 932 × 430 (touch) | nominal ASTRONAUT 7.4 g; braking COMMANDER crashed at 4.4 m/s (the scripted pilot; the debrief reported it correctly) |
+| Desktop 1440 × 900 (keyboard) | precision CADET S 96 (1.3 m); standard ASTRONAUT B 81; steep CADET 9.7 g; COMMANDER reentry 8.0 g; R retries |
+| Navigation | main menu → Training Center; RETRY; ABORT → scenarios; CHANGE SCENARIO; TRAINING CENTER; MAIN MENU; records view |
+| Retry accumulation (`retries.js`) | 20 lunar + 5 reentry retries: window and document listeners, canvases (1) and animation callbacks flat; heap levels off at 9.8–10.1 MB from retry 9. A snapshot diff (retry 10 vs 20) shows no retained WebGL contexts, shaders or HUD DOM after the texture fix below |
+| Records persistence (`persist.js`) | records and the mute choice survive a full browser restart on the same profile |
+| Full mission regression (touch, 852 × 393, training build) | departure → cruise → landing by touch → reentry → parachutes → splashdown → relaunch; only the blocked optional photo errors |
+| Home screen | FLIGHT TRAINING above the fold at 852 × 393 and 667 × 375 (button bottom 368 px) |
+
+**Leak found and fixed.** Before the fix the heap grew about 0.1 MB per descent retry, linearly over 30
+retries. drei's `useTexture` caches the Moon and Earth textures for the session, and each renderer
+that used them registered a `dispose` listener on the shared texture. That listener kept every
+retired renderer alive, with its WebGL context, canvas and detached HUD. `DescentGame` now disposes
+the two textures on unmount; this also covers the mission's "restart descent".
+
+The reentry scene loads its own textures per mount and was not affected. The landing page, mission
+cruise and descent-skip scenes still use the shared cache. They mount once per mission, so there was
+nothing to fix for training there.

@@ -1002,37 +1002,36 @@ untouched.
 
 ## 26. Flight Training Center
 
-`/training`, reached from the main menu (FLIGHT TRAINING in the hero, Training in the navbar). It
-practises the lunar landing and the Earth reentry without the outbound flight. The full mission is
-unchanged. Details: `docs/TRAINING_CENTER.md`.
+`/training`, reached from the home screen and the navbar. FLIGHT TRAINING sits above the fold on
+phones. It practises the lunar landing and the Earth reentry without the outbound flight; the full
+mission is unchanged. Details and validation: `docs/TRAINING_CENTER.md`.
 
 - **Same simulation.** Training mounts the mission's `DescentGame` / `ReentryGame`, with their physics,
   controls, difficulty configs, limits and grading. New optional props:
   - `init` / `scenario`: start state;
-  - `coach`: instructor line;
-  - `onResult`: debrief callback;
+  - `coach`: instructor callout;
+  - `onResult`: debrief data;
   - `holdSeconds`: "starts in" hold.
 
   Without them both games behave exactly as before.
 - **Lunar scenarios**:
-  - guided descent;
-  - horizontal velocity correction (220 m, 10 m/s drift);
-  - precision landing (120 m, inside the primary LZ);
+  - standard (mission start, land in the LZ);
+  - precision (120 m, reference-descent state, within 3 m of the centre);
+  - braking (mission start after 10 s of engine-off coasting, full tank);
   - COMMANDER challenge.
 
-  Mid-descent starts copy the reference descent's state at that altitude (rate, fuel rounded down,
-  engine on/off), so they are never more generous than the mission.
+  Every scenario is shown achievable by the simulated human pilots in `trainingScenarios.test.js`.
 - **Reentry scenarios**:
-  - nominal (PREP at −6.5°);
-  - shallow recovery (committed at −5.7°, lift up);
-  - steep recovery (committed at −6.9°, lift down);
-  - COMMANDER challenge.
+  - nominal (PREP −6.5°);
+  - shallow (−5.7°, lift up);
+  - steep (−6.9°, lift down);
+  - COMMANDER (the mission's dispersed prep; the worst case is shown trimmable and survivable).
 
-  The shallow and steep angles were chosen by a physics sweep with a real-time simulated crew, and
-  `trainingScenarios.test.js` keeps them honest. They fail when unmanaged and are recoverable when
-  managed, with margin either side.
-- **Guidance.** CADET gets a full instructor, ASTRONAUT key calls, COMMANDER the objective only. The
-  instructor sits in the telemetry column and never pauses the simulation.
-- **Debrief.** Flown telemetry only, a recommendation, and RETRY / CHANGE SCENARIO / TRAINING CENTER /
-  MAIN MENU.
-- **Progress.** Local only (`localStorage`).
+  The angles were chosen by a real-time simulated-crew sweep.
+- **Instructor.** One telemetry-driven callout at a time, with an optional on-device voice and MUTE
+  INSTRUCTOR. CADET gets everything, ASTRONAUT concise calls, COMMANDER the objective only.
+- **Debrief.** Flown values only, a main reason and 1–2 tips. RETRY / CHANGE SCENARIO / TRAINING
+  CENTER / MAIN MENU.
+- **Records.** `localStorage`, separate from the mission: personal bests by difficulty.
+- **Retry leak fixed.** `DescentGame` disposes its cached textures on unmount; before, each retry
+  retained the old renderer, canvas and HUD.
