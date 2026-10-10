@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Headphones, X, Radio } from "lucide-react";
 import { useAudioSettings, setAudioSettings } from "@/audio/audioSettings";
 import comms from "@/audio/comms";
@@ -6,12 +7,15 @@ import comms from "@/audio/comms";
 /*
  * AUDIO panel (navigation bar): mission-control voice, languages, subtitles,
  * volumes and radio effects. Saved on the device as soon as anything changes.
+ * Rendered into <body>: the navbar's backdrop blur would otherwise make it
+ * the containing block for the panel and its tap-outside-to-close layer.
+ * Landscape phones get two columns so everything fits without scrolling.
  */
 function Row({ label, children, hint }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-2.5 short:py-1.5 border-b border-white/5">
+    <div className="flex items-center justify-between gap-4 short:gap-2 py-2 short:py-1 border-b border-white/5 min-w-0">
       <div className="min-w-0">
-        <div className="font-mono text-[10px] tracking-[0.25em] text-zinc-300">{label}</div>
+        <div className="font-mono text-[10px] tracking-[0.25em] short:tracking-[0.15em] text-zinc-300">{label}</div>
         {hint && <div className="font-mono text-[9px] tracking-wider text-zinc-600 mt-0.5 short:hidden">{hint}</div>}
       </div>
       <div className="shrink-0">{children}</div>
@@ -27,7 +31,7 @@ function Toggle({ on, onChange, testId, label }) {
       aria-label={label}
       data-testid={testId}
       onClick={() => onChange(!on)}
-      className={`min-h-[40px] w-16 border font-mono text-[10px] tracking-[0.25em] ${on ? "border-[#FF3B00] text-white bg-[#FF3B00]/15" : "border-white/20 text-zinc-500"}`}
+      className={`min-h-[44px] w-16 short:w-14 border font-mono text-[10px] tracking-[0.25em] ${on ? "border-[#FF3B00] text-white bg-[#FF3B00]/15" : "border-white/20 text-zinc-500"}`}
     >
       {on ? "ON" : "OFF"}
     </button>
@@ -47,7 +51,7 @@ function Lang({ value, onChange, testId, label }) {
           aria-checked={value === k}
           data-testid={`${testId}-${k}`}
           onClick={() => onChange(k)}
-          className={`min-h-[40px] px-3 border font-mono text-[10px] tracking-[0.2em] -ml-px first:ml-0 ${value === k ? "border-[#FF3B00] text-white bg-[#FF3B00]/15 relative z-10" : "border-white/20 text-zinc-500"}`}
+          className={`min-h-[44px] min-w-[44px] px-3 short:px-2 border font-mono text-[10px] tracking-[0.2em] -ml-px first:ml-0 ${value === k ? "border-[#FF3B00] text-white bg-[#FF3B00]/15 relative z-10" : "border-white/20 text-zinc-500"}`}
         >
           {l}
         </button>
@@ -68,7 +72,7 @@ function Volume({ value, onChange, testId, label }) {
         aria-label={label}
         data-testid={testId}
         onChange={(e) => onChange(Number(e.target.value) / 100)}
-        className="w-28 short:w-24 accent-[#FF3B00]"
+        className="w-28 short:w-20 min-h-[44px] accent-[#FF3B00]"
       />
       <span className="font-mono text-[10px] text-zinc-400 tabular w-8 text-right">{Math.round(value * 100)}</span>
     </div>
@@ -78,7 +82,6 @@ function Volume({ value, onChange, testId, label }) {
 export default function AudioSettings() {
   const st = useAudioSettings();
   const [open, setOpen] = useState(false);
-  const panelRef = useRef(null);
   const set = (patch) => setAudioSettings(patch);
 
   useEffect(() => {
@@ -102,15 +105,14 @@ export default function AudioSettings() {
         <Headphones size={14} />
         <span className="short:hidden">Audio</span>
       </button>
-      {open && (
+      {open && createPortal(
         <>
-          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} aria-hidden />
+          <div className="fixed inset-0 z-[60] bg-black/40" onClick={() => setOpen(false)} aria-hidden data-testid="audio-settings-backdrop" />
           <div
-            ref={panelRef}
             data-testid="audio-settings"
             role="dialog"
             aria-label="Audio settings"
-            className="fixed right-4 md:right-10 top-16 short:top-12 z-[61] hud-panel corners border border-white/10 w-[380px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-5rem)] short:max-h-[calc(100vh-3.5rem)] overflow-y-auto px-5 py-4 short:py-2 safe-mr"
+            className="fixed right-4 md:right-10 top-16 short:top-12 z-[61] bg-[#0b0b0c] border border-white/15 shadow-2xl w-[380px] short:w-[600px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-5rem)] short:max-h-[calc(100vh-3.25rem)] overflow-y-auto px-5 py-4 short:px-4 short:py-2 safe-mr"
           >
             <div className="flex items-center justify-between mb-1">
               <div className="font-mono text-[10px] tracking-[0.35em] text-[#FF3B00]">● AUDIO · MISSION CONTROL</div>
@@ -118,6 +120,7 @@ export default function AudioSettings() {
                 <X size={14} />
               </button>
             </div>
+            <div className="short:grid short:grid-cols-2 short:gap-x-5">
             <Row label="MISSION CONTROL VOICE" hint="Flight, Capcom, Guidance, onboard computer">
               <Toggle on={st.voice} onChange={(v) => set({ voice: v })} testId="audio-voice" label="Mission control voice" />
             </Row>
@@ -139,15 +142,17 @@ export default function AudioSettings() {
             <Row label="RADIO EFFECTS" hint="Band-limited radio, static, squelch, Quindar tones">
               <Toggle on={st.radioFx} onChange={(v) => set({ radioFx: v })} testId="audio-radio-fx" label="Radio effects" />
             </Row>
+            </div>
             <button
               onClick={() => comms.radioCheck()}
               data-testid="audio-radio-check"
-              className="mt-3 short:mt-2 w-full min-h-[44px] border border-white/20 hover:border-[#FF3B00] text-zinc-300 hover:text-white font-mono text-[10px] tracking-[0.3em] flex items-center justify-center gap-2"
+              className="mt-3 short:mt-1.5 w-full min-h-[44px] border border-white/20 hover:border-[#FF3B00] text-zinc-300 hover:text-white font-mono text-[10px] tracking-[0.3em] flex items-center justify-center gap-2"
             >
               <Radio size={13} /> RADIO CHECK
             </button>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </>
   );
