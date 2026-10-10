@@ -40,9 +40,10 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <nav className="flex items-center gap-8">
+        <nav className="flex items-center gap-8 short:gap-5">
           {link("/", "Home", "nav-home")}
           {link("/mission", "Mission", "nav-mission")}
+          {link("/training", "Training", "nav-training")}
           {link("/manifesto", "Manifesto", "nav-manifesto")}
           <a
             data-testid="nav-launch-btn"

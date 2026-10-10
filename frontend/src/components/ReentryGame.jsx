@@ -3,6 +3,8 @@ import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Pause, Play, X, RotateCcw } 
 import ReentryScene from "@/components/scenes/ReentryScene";
 import AbortModal from "@/components/AbortModal";
 import HoldButton from "@/components/HoldButton";
+import CoachCard from "@/components/training/CoachCard";
+import { liftAgrees } from "@/data/trainingDebrief";
 
 const CTRL_BTN = "border border-white/40 hover:border-[#FF3B00] flex items-center justify-center text-white";
 import {
@@ -29,6 +31,8 @@ import {
   inBlackout,
   flightPhase,
 } from "@/data/reentryGuidance";
+
+const DEG = Math.PI / 180;
 
 const FAILURE_TEXT = {
   [OUTCOME.SKIP_OUT]: {
@@ -149,11 +153,46 @@ function newPrep(cfg) {
   return { fpa: TARGET_FPA + err, rcs: cfg.rcsBudget, timeLeft: PREP_SECONDS, bank: 0 };
 }
 
-export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplete, onAbort }) {
+/*
+ * Training Center start (`scenario`): { phase: "PREP" | "ENTRY", fpa, bank }.
+ * PREP starts the mission's entry prep at the given planned angle (null fpa:
+ * the difficulty's usual random dispersion); ENTRY starts already committed
+ * at entry interface. The physics, limits and guidance are the mission's.
+ */
+function initialSim(scenario) {
+  return scenario && scenario.phase === "ENTRY"
+    ? createEntryState({ fpaDeg: scenario.fpa, bankDeg: scenario.bank })
+    : createEntryState();
+}
+function initialView(scenario) {
+  if (!scenario) return { phase: "APPROACH", phaseT: 0, sepT: 0, attitudeU: 0, prepBank: 0, approachAlt: 1500e3, approachFpa: -0.11, failT: 0 };
+  if (scenario.phase === "ENTRY") return { phase: "ENTRY", phaseT: 0, sepT: 8, attitudeU: 1, prepBank: scenario.bank, approachAlt: 0, approachFpa: scenario.fpa * DEG, failT: 0 };
+  return { phase: "PREP", phaseT: 0, sepT: 0, attitudeU: 0, prepBank: scenario.bank || 0, approachAlt: 250e3, approachFpa: -0.11, failT: 0 };
+}
+function initialPrep(cfg, scenario) {
+  const p = newPrep(cfg);
+  if (scenario && scenario.fpa !== null && scenario.fpa !== undefined) p.fpa = scenario.fpa;
+  if (scenario) p.bank = scenario.bank || 0;
+  return p;
+}
+
+/**
+ * Props: difficulty, audio, onComplete(summary), onAbort().
+ * Training Center only: scenario (start), coach(u) instructor line, and
+ * onResult(data) — called for splashdown AND failure with the flown values,
+ * replacing the mission's own failure panel.
+ */
+export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplete, onAbort, scenario = null, coach = null, onResult = null, holdSeconds = 0 }) {
   const cfg = ENTRY_DIFFICULTY[difficulty] || ENTRY_DIFFICULTY.ASTRONAUT;
-  const simRef = useRef(createEntryState());
-  const viewRef = useRef({ phase: "APPROACH", phaseT: 0, sepT: 0, attitudeU: 0, prepBank: 0, approachAlt: 1500e3, approachFpa: -0.11, failT: 0 });
-  const prepRef = useRef(newPrep(cfg));
+  const simRef = useRef(null);
+  if (!simRef.current) simRef.current = initialSim(scenario);
+  const viewRef = useRef(null);
+  if (!viewRef.current) viewRef.current = initialView(scenario);
+  const prepRef = useRef(null);
+  if (!prepRef.current) prepRef.current = initialPrep(cfg, scenario);
+  // Bank-control sampling (training debrief): hypersonic sim time with the
+  // lift vector on / off the look-ahead guidance, and total roll.
+  const bankRef = useRef({ rec: null, nextRec: 0, onT: 0, totalT: 0, rollDeg: 0, lastBank: null });
   const inputRef = useRef({ left: false, right: false, up: false, down: false });
   const guideRef = useRef({ cue: null, pred: null, lastCue: -1, lastPred: -1 });
   const commitRef = useRef(false);
@@ -161,7 +200,10 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
   const eventsRef = useRef({});
   const realTRef = useRef(0);
 
-  const [phase, setPhase] = useState("APPROACH");
+  const [phase, setPhase] = useState(viewRef.current.phase);
+  // Training "starts in" hold: the simulation waits, the scene and HUD are live.
+  const holdRef = useRef(holdSeconds);
+  const [holdLeft, setHoldLeft] = useState(Math.ceil(holdSeconds));
   const [ui, setUi] = useState(null);
   const [paused, setPaused] = useState(false);
   const [showAbort, setShowAbort] = useState(false);
@@ -178,6 +220,35 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
   }, [assist]);
 
   const say = useCallback((text, delay) => audio && audio.comms && audio.comms(text, delay), [audio]);
+
+  // Training starts skip the approach: give the same calls the mission gives there.
+  useEffect(() => {
+    if (!scenario) return;
+    if (scenario.phase === "ENTRY") {
+      if (audio && audio.startRumble) audio.startRumble(0.12);
+      say("Entry interface. Four hundred thousand feet. Stand by for blackout.", 300);
+    } else {
+      say("CM/SM separation confirmed. Maneuver to entry attitude.", 300);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const resultData = () => {
+    const s = simRef.current;
+    const b = bankRef.current;
+    return {
+      outcome: s.outcome,
+      eiFpa: s.ei.fpa,
+      peakG: s.peak.g,
+      peakHeatRate: s.peak.heatRate,
+      heatLoad: s.heatLoad,
+      overheat: s.overheat,
+      shieldPct: Math.max(s.heatLoad / LIMITS.heatLoadCapacity, s.overheat / LIMITS.overheatBudget) * 100,
+      bankAgreement: b.totalT > 1 ? b.onT / b.totalT : null,
+      rollDeg: b.rollDeg,
+      splashV: s.splashV,
+    };
+  };
 
   const startEntry = useCallback(() => {
     const p = prepRef.current;
@@ -268,7 +339,12 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
       const v = viewRef.current;
       const inp = inputRef.current;
 
-      if (!pausedRef.current) {
+      const holding = holdRef.current > 0 && !pausedRef.current;
+      if (holding) {
+        holdRef.current -= dt;
+        setHoldLeft(Math.max(0, Math.ceil(holdRef.current)));
+      }
+      if (!pausedRef.current && !holding) {
         realTRef.current += dt;
         v.phaseT += dt;
         if (v.phase === "APPROACH") {
@@ -311,7 +387,25 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
           else if (assistRef.current && g.cue !== null && s.v > 3000) s.rollInput = rollToward(s.bank, g.cue);
           else s.rollInput = 0;
 
-          advance(s, dt * timeScaleFor(s));
+          const simDt = dt * timeScaleFor(s);
+          if (onResult) {
+            const b = bankRef.current;
+            if (b.lastBank !== null) {
+              let d = Math.abs(s.bank - b.lastBank);
+              if (d > 180) d = 360 - d;
+              b.rollDeg += d;
+            }
+            b.lastBank = s.bank;
+            if (s.entered && s.v > 3000 && s.drogueT === null) {
+              if (realTRef.current >= b.nextRec) {
+                b.rec = cfg.bankCue && g.cue !== null ? g.cue : recommendBank(s).bank;
+                b.nextRec = realTRef.current + 0.75;
+              }
+              b.totalT += simDt;
+              if (liftAgrees(s.bank, b.rec)) b.onT += simDt;
+            }
+          }
+          advance(s, simDt);
 
           // Look-ahead guidance (cheap fixed-step predictions, throttled)
           if (!s.outcome && s.v > 3000 && s.drogueT === null) {
@@ -374,13 +468,15 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
           if (v.phaseT > 4 && !doneRef.current) {
             doneRef.current = true;
             const s = simRef.current;
-            onComplete && onComplete({ peakG: s.peak.g, peakHeatRate: s.peak.heatRate, splashV: s.splashV });
+            if (onResult) onResult(resultData());
+            else onComplete && onComplete({ peakG: s.peak.g, peakHeatRate: s.peak.heatRate, splashV: s.splashV });
           }
         } else if (v.phase === "FAILED") {
           v.failT += dt;
           if (v.failT > 2.6 && !doneRef.current) {
             doneRef.current = true;
-            setFailure(simRef.current.outcome);
+            if (onResult) onResult(resultData());
+            else setFailure(simRef.current.outcome);
           }
         }
       }
@@ -468,6 +564,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
 
   const clock = u && inEntry ? `EI+${String(Math.floor(u.simT / 60)).padStart(2, "0")}:${String(Math.floor(u.simT % 60)).padStart(2, "0")}` : u && phase === "PREP" ? `EI−00:${String(Math.max(0, Math.ceil(u.timeLeft))).padStart(2, "0")}` : "EI−--:--";
   const failText = failure ? FAILURE_TEXT[failure] : null;
+  const tip = coach && u ? coach({ ...u, inBand: !!inBand }) : null;
 
   return (
     <div className="absolute inset-0" data-testid="reentry-game">
@@ -505,6 +602,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
       {/* LEFT: primary telemetry */}
       {u && phase !== "SPLASHED" && (
         <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-3 short:py-2 w-[300px] short:w-[210px] narrow:w-[190px] z-30" data-testid="reentry-hud-left">
+          <CoachCard tip={tip} className="-mx-2 mb-3 short:mb-1.5" />
           <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:hidden">CM-1 · ENTRY · {difficulty}</div>
           <div className="grid grid-cols-2 gap-3 short:gap-x-2 short:gap-y-1">
             <Readout label="ALTITUDE" value={(u.alt / 1000).toFixed(1)} unit="km" testId="reentry-alt" />
@@ -665,6 +763,12 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {holdLeft > 0 && (
+        <div className="absolute top-32 short:top-[4.2rem] left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-black/60 border border-[#FF3B00]/50 px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-white" data-testid="training-hold">
+          ● STARTS IN <span className="text-[#FF3B00] tabular">{holdLeft}</span>
         </div>
       )}
 

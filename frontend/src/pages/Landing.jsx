@@ -75,6 +75,13 @@ export default function Landing() {
                 INICIAR MISSÃO <ArrowUpRight size={14} />
               </Link>
               <Link
+                to="/training"
+                data-testid="hero-cta-training"
+                className="btn-hud"
+              >
+                FLIGHT TRAINING <ChevronRight size={14} />
+              </Link>
+              <Link
                 to="/manifesto"
                 data-testid="hero-cta-manifesto"
                 className="btn-hud"
