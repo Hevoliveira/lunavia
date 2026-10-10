@@ -970,3 +970,32 @@ with human handicaps (`data/landerPilots.js`, tests only) measured every factor.
 - Audio: sub-bass rumble, pyro and clank at staging, RCS thumps, and Quindar tones on
   space-to-ground calls.
 
+
+## 25. Orbit finale polish + larger lander (EXTERNAL view)
+
+**Orbit finale** (`LaunchCinematic.jsx`, `launch/environment.js`, `launchTimeline.js`).
+The orbit shots A–C are kept. The last part of the parking orbit is now its own six-shot
+finale, and the sequence runs 108 s (was 102 s):
+
+1. final Earth pass: the last sunset, the terminator below, the Sun setting into the limb;
+2. TLI preparation: the rev 2 night pass, with the RCS roll under the airglow;
+3. GO FOR TLI: ullage, a 3-2-1 hold, first light on the limb;
+4. TLI ignition at sunrise: the burn carries the vehicle out of the night into daylight;
+5. leaving Earth orbit: the camera falls back as the stage climbs away above the sunlit
+   Earth;
+6. the farewell globe.
+
+- **Light**: a limb twilight band where the terminator meets the atmosphere, green
+  airglow on the night side, a Sun starburst, and three additive glint sprites on the
+  vehicle's metal bands, driven by the Sun–camera half-vector.
+- **Overlay**: an orbit dial and REV in the telemetry while in Earth orbit; a TLI
+  countdown with beeps; caption kickers (EARTH ORBIT · REV 1/2, DEPARTURE FOR THE MOON).
+- **Audio**: final pass and go-for-TLI calls, ullage, cutoff and "good burn".
+- **Unchanged**: the timeline tests still check the sunset, night and sunrise geometry,
+  plus the roll, ullage, countdown and revolution count. The ascent, the cruise and
+  every mission state are untouched.
+
+**Lander camera.** `LANDER_FRAC_NEAR/FAR` 0.185 / 0.14 → 0.225 / 0.175 in `DescentGame.jsx`.
+The lander is about 20–25 % larger in EXTERNAL view. The LZ, the LPD and the visibility
+area logic are unchanged. Physics, fuel, hazards, scoring and the touch layout are
+untouched.

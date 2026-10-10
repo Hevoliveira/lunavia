@@ -162,7 +162,8 @@ All changes are presentation / input only; desktop renders the same.
   cluster.
 - **Descent camera (EXTERNAL).** A pilot's chase view that sizes the lander first
   (`DescentCamera` in `DescentGame.jsx`):
-  - The lander fills roughly 12–18 % of the visibility area's height (`LANDER_FRAC_*`).
+  - The lander fills roughly 15–22 % of the visibility area's height (`LANDER_FRAC_*`;
+    12–18 % before the orbit-finale polish, raised for readability on a phone).
     The zoom is clamped against the lander's own depth, so leaning the view never shrinks
     or blows up the lander.
   - Within that budget the camera keeps a nearby primary LZ in frame. It then leans
@@ -252,20 +253,22 @@ not the mission states.
 | 53–57 | Onboard camera on the spent stage | the upper stage pulls away and its engine lights into the lens (**UPPER STAGE IGNITION**); silent |
 | 57–61 | Upper stage, external | vacuum plume; spent stage recedes |
 | 61–65 | Wide: vehicle against the limb | leaving the atmosphere |
-| 65–70.5 | A · wide over the Atlantic | **EARTH ORBIT** (cutoff, 185 km parking orbit) |
-| 70.5–75.5 | B · engineering close-up | upper stage and spacecraft over the West African coast, Earth sliding past |
-| 75.5–80 | C · along the atmospheric limb | the thin blue limb ahead of the vehicle |
-| 80–85 | D · orbital sunset | warm, low sunlight on the vehicle over the night side |
-| 85–89 | E · night pass | **TLI PREPARATION**: RCS roll to burn attitude in Earth's shadow |
-| 89–95.5 | Behind the burning stage | **TRANSLUNAR INJECTION** at orbital sunrise |
-| 95.5–102 | Looking back past the spacecraft | **LUNAR TRANSFER**: the Earth recedes to a half-lit globe |
+| 65–70.5 | Orbit A · wide over the Atlantic | **EARTH ORBIT** (cutoff, 185 km parking orbit); the orbit dial and REV 1 appear |
+| 70.5–75.5 | Orbit B · engineering close-up | upper stage and spacecraft over the West African coast, Earth sliding past |
+| 75.5–80 | Orbit C · along the atmospheric limb | the thin blue limb ahead of the vehicle |
+| 80–85.5 | Finale 1 · final Earth pass | **FINAL EARTH PASS**: the last sunset in Earth orbit. The day/night terminator crosses below, the Sun sinks into the limb with a starburst, and sunlight glints off the stage's bands |
+| 85.5–89.5 | Finale 2 · night pass, rev 2 | **TLI PREPARATION**: a 180° RCS roll to burn attitude under the airglow, with "Go for TLI" from Houston |
+| 89.5–92.5 | Finale 3 · close behind the engine | **GO FOR TLI**: ullage motors fire, a 3-2-1 hold, and the first light of sunrise on the limb |
+| 92.5–99 | Finale 4 · wide, Earth below | **TRANSLUNAR INJECTION** at orbital sunrise; the terminator sweeps beneath the burning stage |
+| 99–103.5 | Finale 5 · falling behind | the camera drops back; the vehicle shrinks against the sunlit Earth (cutoff at 100 s); **LUNAR TRANSFER** |
+| 103.5–108 | Finale 6 · looking back | the Earth recedes to a half-lit globe; fade to the cruise |
 
 **Pacing and clock.** The countdown and the first 17 s of flight run in real time.
 Documentary cuts then compress the flight, and the mission clock jumps with them:
 T+00:02:30 at MECO, T+00:10:00 at orbit insertion, about T+02:52 at TLI (second orbit).
 In orbit each shot is a separate moment of the parking orbit; within a shot the ground
 moves at 3–4× real speed, so the orbital motion reads without blurring. The whole
-sequence is about 102 s; **SKIP CINEMATIC** is available throughout. Ascent, orbit
+sequence is about 108 s; **SKIP CINEMATIC** is available throughout. Ascent, orbit
 insertion, TLI and lunar transfer stay distinct; the tests check altitude, speed, the
 orbit compositions and the day / sunset / night / sunrise geometry.
 
@@ -311,7 +314,19 @@ against the Earth.
   visible, with a soft halo.
 - Ignition and liftoff: the close cameras' exposure surges with thrust; steam boils off
   the flame pit; a ground surge of smoke rolls out at release; heavier deck billows.
-- Orbit: RCS puffs during the roll to burn attitude.
+- Orbit: RCS puffs start and stop the roll to burn attitude; small ullage jets settle the
+  propellant before the TLI restart.
+- Finale light (environment shader, no extra draw calls): a twilight band on the limb
+  where the terminator meets it (red at the surface, through amber and white, to blue at
+  ~30 km); a faint green airglow line at ~95 km on the night side; and a starburst on the
+  Sun when it is above the horizon.
+- Sunlight glints: three additive sprites (one draw call each, hidden when unlit) sit on
+  the vehicle's metal bands and flare when the Sun–camera half-vector lines up with a
+  band. They warm towards orange as the light reddens at sunset.
+- Orbit overlay: a 34 px orbit dial (Earth with its night half, the vehicle's position,
+  the TLI point) and the revolution count in the telemetry; a 3-2-1 **TLI IGNITION**
+  countdown with beeps before the burn. Captions carry a kicker line (EARTH ORBIT · REV 1,
+  EARTH ORBIT · REV 2, DEPARTURE FOR THE MOON), so orbit and departure stay distinct.
 - No shock heating is drawn during powered ascent.
 
 **Audio** (`hooks/useMissionAudio.js`, synthesized):
@@ -323,7 +338,9 @@ against the Earth.
 - Launch: a sub-bass layer under the roar (felt more than heard).
 - Space: silence at MECO, then pyro, a clank and a structure-borne thud at separation.
   The camera on the spent stage hears nothing. A muffled onboard rumble plays while a
-  stage burns (no external sound in vacuum), and RCS thumps during the roll. A soft drone
+  stage burns (no external sound in vacuum), and RCS thumps during the roll. Before TLI:
+  "final pass" and "go for TLI" calls, an ullage thud and hiss, and a beep per countdown
+  second; "Cutoff" and "Good burn" close the burn. A soft drone
   plays through orbit and cruise and fades at the Moon.
 - Comms calls mark each event. Space-to-ground calls carry Quindar tones, as Apollo's
   did.
