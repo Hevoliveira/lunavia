@@ -357,11 +357,11 @@ export default function Training() {
 
               {!discipline && !showRecords && (
                 <>
-                  <p className="text-zinc-400 text-sm short:text-xs mt-4 short:mt-2 max-w-2xl">
+                  <p className="text-zinc-400 text-sm mt-4 max-w-2xl short:hidden">
                     Practise the mission&apos;s two flight-control challenges on their own, with the same physics, controls and
                     limits as the full mission. No launch, no cruise: straight to the problem.
                   </p>
-                  <div className="grid md:grid-cols-2 short:grid-cols-2 gap-5 short:gap-3 mt-8 short:mt-3">
+                  <div className="grid md:grid-cols-2 short:grid-cols-2 gap-5 short:gap-3 mt-8 short:mt-2.5">
                     {Object.entries(DISCIPLINES).map(([key, d]) => (
                       <button
                         key={key}
@@ -382,7 +382,7 @@ export default function Training() {
                       </button>
                     ))}
                   </div>
-                  <div className="mt-8 short:mt-3 flex flex-wrap gap-3">
+                  <div className="mt-8 short:mt-2.5 flex flex-wrap gap-3">
                     <Link to="/" className="btn-hud min-h-[44px]" data-testid="training-menu">
                       <ArrowLeft size={14} /> MAIN MENU
                     </Link>
