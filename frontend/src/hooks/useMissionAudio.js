@@ -372,6 +372,112 @@ export default function useMissionAudio() {
     src.stop(now + dur + 0.5);
   }, []);
 
+  // CONTACT LIGHT: a probe reaches the surface. A panel relay click and a
+  // soft annunciator tone, quiet enough to sit under the crew's call.
+  const contactLight = useCallback(() => {
+    if (!enabledRef.current) return;
+    const ctx = ensureCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = makeNoiseBuffer(ctx);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 3200;
+    bp.Q.value = 3;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.linearRampToValueAtTime(0.22, now + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+    src.connect(bp).connect(g).connect(sfxOut(ctx));
+    src.start(now);
+    src.stop(now + 0.05);
+    const o = ctx.createOscillator();
+    const og = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = 1320;
+    og.gain.setValueAtTime(0.0001, now + 0.04);
+    og.gain.linearRampToValueAtTime(0.06, now + 0.05);
+    og.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    o.connect(og).connect(sfxOut(ctx));
+    o.start(now + 0.04);
+    o.stop(now + 0.18);
+  }, []);
+
+  // ENGINE STOP at touchdown: the descent engine's rumble ends at once (no
+  // slow fade), with the thunk of the valves closing and a short pressure bleed.
+  const engineStop = useCallback(() => {
+    if (!enabledRef.current) return;
+    const ctx = ensureCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    if (rumbleRef.current) {
+      const { src, gain } = rumbleRef.current;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.06);
+      try {
+        src.stop(now + 0.08);
+      } catch (e) {}
+      rumbleRef.current = null;
+    }
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(110, now + 0.03);
+    o.frequency.exponentialRampToValueAtTime(52, now + 0.22);
+    g.gain.setValueAtTime(0.0001, now + 0.03);
+    g.gain.linearRampToValueAtTime(0.26, now + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.26);
+    o.connect(g).connect(sfxOut(ctx));
+    o.start(now + 0.03);
+    o.stop(now + 0.3);
+    const n = ctx.createBufferSource();
+    n.buffer = makeNoiseBuffer(ctx);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 1800;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, now + 0.05);
+    ng.gain.linearRampToValueAtTime(0.05, now + 0.08);
+    ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+    n.connect(hp).connect(ng).connect(sfxOut(ctx));
+    n.start(now + 0.05);
+    n.stop(now + 0.5);
+  }, []);
+
+  // Touchdown on the footpads: a structural thud sized by how hard it was
+  // (impact 0..1 of the safe limit) and a light creak of the struts.
+  const touchdown = useCallback((impact = 0.5) => {
+    if (!enabledRef.current) return;
+    const ctx = ensureCtx();
+    if (!ctx) return;
+    const k = Math.min(1, Math.max(0, impact));
+    const now = ctx.currentTime + 0.06;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(64, now);
+    o.frequency.exponentialRampToValueAtTime(34, now + 0.45);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.linearRampToValueAtTime(0.16 + 0.3 * k, now + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+    o.connect(g).connect(sfxOut(ctx));
+    o.start(now);
+    o.stop(now + 0.65);
+    const c = ctx.createOscillator();
+    const cg = ctx.createGain();
+    c.type = "triangle";
+    c.frequency.setValueAtTime(340, now + 0.05);
+    c.frequency.linearRampToValueAtTime(300, now + 0.35);
+    cg.gain.setValueAtTime(0.0001, now + 0.05);
+    cg.gain.linearRampToValueAtTime(0.03 + 0.06 * k, now + 0.07);
+    cg.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
+    c.connect(cg).connect(sfxOut(ctx));
+    c.start(now + 0.05);
+    c.stop(now + 0.4);
+  }, []);
+
   const ambienceStop = useCallback((fade = 2) => {
     const a = ambRef.current;
     if (!a || !ctxRef.current) return;
@@ -559,6 +665,9 @@ export default function useMissionAudio() {
     clank,
     thud,
     hiss,
+    contactLight,
+    engineStop,
+    touchdown,
     ambienceStart,
     ambienceStop,
     padStart,
