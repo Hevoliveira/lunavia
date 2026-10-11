@@ -6,15 +6,17 @@ import * as THREE from "three";
  * Apollo CSM-inspired procedural model.
  * Total length is normalized so the whole vehicle fits in ~0.4 scene units.
  * Uses only primitive geometries (cheap and always renders in headless too).
+ * `matte` lowers the hull's metalness so it still reads against black space
+ * where there is no environment to reflect (the lunar-orbit shot).
  */
-export default function SpacecraftModel({ scale = 1, glow = true }) {
+export default function SpacecraftModel({ scale = 1, glow = true, roll = 0.4, matte = false }) {
   const rootRef = useRef();
   const engineRef = useRef();
 
   useFrame((state, delta) => {
     if (rootRef.current) {
       // slow roll
-      rootRef.current.rotation.z += delta * 0.4;
+      rootRef.current.rotation.z += delta * roll;
     }
     if (engineRef.current) {
       const s = 1 + Math.sin(state.clock.elapsedTime * 25) * 0.08;
@@ -29,8 +31,8 @@ export default function SpacecraftModel({ scale = 1, glow = true }) {
         <coneGeometry args={[0.07, 0.12, 24]} />
         <meshStandardMaterial
           color="#e6e6e6"
-          metalness={0.7}
-          roughness={0.35}
+          metalness={matte ? 0.25 : 0.7}
+          roughness={matte ? 0.55 : 0.35}
         />
       </mesh>
 
@@ -45,8 +47,8 @@ export default function SpacecraftModel({ scale = 1, glow = true }) {
         <cylinderGeometry args={[0.075, 0.075, 0.22, 24]} />
         <meshStandardMaterial
           color="#c8c8cc"
-          metalness={0.85}
-          roughness={0.28}
+          metalness={matte ? 0.3 : 0.85}
+          roughness={matte ? 0.5 : 0.28}
         />
       </mesh>
 
@@ -54,7 +56,7 @@ export default function SpacecraftModel({ scale = 1, glow = true }) {
       <mesh position={[-0.02, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.076, 0.076, 0.18, 24, 1, true]} />
         <meshStandardMaterial
-          color="#0d1218"
+          color={matte ? "#3a414b" : "#0d1218"}
           metalness={0.4}
           roughness={0.6}
           side={THREE.DoubleSide}

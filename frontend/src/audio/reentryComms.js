@@ -30,6 +30,7 @@ export function createReentryMonitor() {
   let aosAt = null; // when "telemetry is back" was asked for
   let threatened = null; // "SHALLOW" | "STEEP" while a correction is needed
   let prepOutSide = null;
+  let sepAt = null; // when the separation call was asked for
   const fired = new Set();
   const since = {};
   const once = (key) => (fired.has(key) ? false : (fired.add(key), true));
@@ -67,9 +68,13 @@ export function createReentryMonitor() {
     if (u.phase === "APPROACH" && once("approach")) out.push({ id: "reentry.approach", delay: 0.8 });
 
     if (u.phase === "PREP") {
-      if (once("sep")) out.push({ id: "reentry.separation", delay: 0.4 });
+      if (once("sep")) {
+        sepAt = t;
+        out.push({ id: "reentry.separation", delay: 0.4 });
+      }
       const side = u.inBand ? null : u.prepFpa > TARGET_FPA ? "SHALLOW" : "STEEP";
-      if (held("prepOut", !!side && side === prepOutSide, t, 1.2, 9) && fired.has("sep")) {
+      // Trim advice follows CAPCOM's separation call (about 5 s on the air), never jumps ahead of it.
+      if (sepAt !== null && t - sepAt >= 6 && held("prepOut", !!side && side === prepOutSide, t, 1.2, 9)) {
         out.push({
           id: side === "SHALLOW" ? "reentry.prepShallow" : "reentry.prepSteep",
           relevant: () => latest && latest.phase === "PREP" && !latest.inBand,
