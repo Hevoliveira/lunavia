@@ -404,6 +404,9 @@ describe("reentry monitor (real entry physics)", () => {
     expect(s.outcome).toBe("SPLASHDOWN");
     for (const id of ["reentry.ei", "reentry.aos", "reentry.drogues", "reentry.mains", "reentry.splashdown"]) expect(ids).toContain(id);
     expect(ids.indexOf("reentry.aos")).toBeLessThan(ids.indexOf("reentry.drogues"));
+    // after the blackout, nothing from the ground is asked for before AOS
+    const groundAfter = out.filter((r, i) => r.id && !r.blackout && out.slice(0, i).some((x) => x.blackout) && catalog.roles[LINE[r.id].role].radio !== "onboard");
+    expect(groundAfter[0].id).toBe("reentry.aos");
     const links = out.filter((r) => r.link !== undefined);
     expect(links.some((r) => r.blackout)).toBe(true);
     expect(links.some((r) => !r.blackout && r.link < 0.8)).toBe(true); // strained before LOS

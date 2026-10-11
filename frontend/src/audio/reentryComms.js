@@ -27,6 +27,7 @@ export function createReentryMonitor() {
   let latest = null;
   let prevG = 0;
   let hadBlackout = false;
+  let aosAt = null; // when "telemetry is back" was asked for
   let threatened = null; // "SHALLOW" | "STEEP" while a correction is needed
   let prepOutSide = null;
   const fired = new Set();
@@ -88,6 +89,8 @@ export function createReentryMonitor() {
       // Fallback when "go for entry" was never said (committed outside the band, or a training ENTRY start)
       if (!blackout && hyper && !fired.has("prepGo") && once("blackoutExpected")) out.push({ id: "reentry.blackoutExpected", relevant: live((x) => !x.blackout) });
       if (blackout) hadBlackout = true;
+      // After the blackout, Houston's first word is the AOS call; advice waits for it.
+      const groundOpen = !blackout && (!hadBlackout || (aosAt !== null && t - aosAt >= 3.5));
 
       if (hyper) {
         // Prediction-driven lift calls, and the recovery when they work
@@ -95,25 +98,28 @@ export function createReentryMonitor() {
         const steep = u.pred === "STEEP";
         if (held("shallow", skip, t, 0.8, 8)) {
           threatened = "SHALLOW";
-          out.push({ id: "reentry.shallow", relevant: live((x) => x.pred === "SHALLOW") });
+          if (groundOpen) out.push({ id: "reentry.shallow", relevant: live((x) => x.pred === "SHALLOW") });
         }
         if (held("steep", steep, t, 0.8, 8)) {
           threatened = "STEEP";
-          out.push({ id: "reentry.steep", relevant: live((x) => x.pred === "STEEP") });
+          if (groundOpen) out.push({ id: "reentry.steep", relevant: live((x) => x.pred === "STEEP") });
         }
-        if (threatened && held("recovered", u.pred === "NOMINAL", t, 1.5)) {
+        if (threatened && groundOpen && held("recovered", u.pred === "NOMINAL", t, 1.5)) {
           threatened = null;
           out.push({ id: "reentry.recovered", relevant: live((x) => x.pred === "NOMINAL") });
         }
         if (held("climb", u.climbing, t, 1, 8)) out.push({ id: "reentry.climbWarning", relevant: live((x) => x.climbing) });
-        if (!blackout && u.q > 10 && once("heating")) out.push({ id: "reentry.heating", relevant: live((x) => !x.blackout) });
-        if (!blackout && u.g > 3 && gRising && once("peakDecel")) out.push({ id: "reentry.peakDecel", relevant: live((x) => !x.blackout) });
+        if (groundOpen && u.q > 10 && once("heating")) out.push({ id: "reentry.heating", relevant: live((x) => !x.blackout) });
+        if (groundOpen && u.g > 3 && gRising && once("peakDecel")) out.push({ id: "reentry.peakDecel", relevant: live((x) => !x.blackout) });
       }
       // Onboard alarms: these are heard even in blackout
       if (held("heatAlarm", u.overheat > 0 || u.q > LIMITS.heatRateDesign * 0.92, t, 0.3, 6)) out.push({ id: "reentry.heatWarning", relevant: live((x) => x.overheat > 0 || x.q > LIMITS.heatRateDesign * 0.85) });
       if (held("gAlarm", u.g > LIMITS.structuralG * 0.7 && gRising, t, 0.3, 6)) out.push({ id: "reentry.gWarning", relevant: live((x) => x.g > LIMITS.structuralG * 0.6) });
 
-      if (hadBlackout && !blackout && !u.outcome && once("aos")) out.push({ id: "reentry.aos", delay: 1.1, relevant: live((x) => !x.blackout && !x.climbing) });
+      if (hadBlackout && !blackout && !u.outcome && once("aos")) {
+        aosAt = t;
+        out.push({ id: "reentry.aos", delay: 1.1, relevant: live((x) => !x.blackout && !x.climbing) });
+      }
       if (u.drogue && u.drogue.alt !== null && once("drogue")) out.push({ id: "reentry.drogues", delay: 0.5 });
       if (u.main && u.main.alt !== null && once("main")) out.push({ id: "reentry.mains", delay: 0.6 });
     }
