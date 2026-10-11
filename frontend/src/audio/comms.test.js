@@ -5,6 +5,7 @@ import { createDirector, allowed, PRIORITY } from "./commsDirector";
 import { createDescentMonitor } from "./descentComms";
 import { createReentryMonitor } from "./reentryComms";
 import { createVoicePack } from "./voicePack";
+import comms from "./comms";
 import { DIFFICULTY, evaluateGround } from "../data/landingPhysics";
 import { initialState, stepFrame, gradeTouchdown, CONTACT_ALT } from "../data/landerSim";
 import { humanPilot, guidedStrategy } from "../data/landerPilots";
@@ -123,6 +124,17 @@ describe("line catalog and voice pack", () => {
     }
     expect(ids.size).toBeGreaterThan(30);
     for (const id of ids) expect([id, !!LINE[id]]).toEqual([id, true]);
+  });
+});
+
+describe("comms hub", () => {
+  test("nothing new is said while the app is in the background", () => {
+    const set = (v) => Object.defineProperty(document, "visibilityState", { value: v, configurable: true });
+    set("hidden");
+    expect(comms.say("descent.alt30")).toBe(false);
+    set("visible");
+    expect(comms.say("descent.alt30")).toBe(true);
+    comms.reset();
   });
 });
 

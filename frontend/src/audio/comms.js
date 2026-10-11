@@ -161,7 +161,8 @@ function bindLifecycle() {
 
 const comms = {
   catalog,
-  say: (id, opts) => director.request(id, opts),
+  // Nothing is said while the app is in the background; it would be stale on return.
+  say: (id, opts) => (typeof document !== "undefined" && document.visibilityState === "hidden" ? false : director.request(id, opts)),
   setBlackout(on) {
     const was = blackout;
     blackout = !!on;

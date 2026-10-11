@@ -1043,7 +1043,7 @@ voice clips through a live radio chain, decided by telemetry and scheduled by pr
 approach comparison, validation and the human-recording spec: `docs/VOICE.md`.
 
 - **Cast.** FLIGHT, CAPCOM, GUIDANCE, the onboard COMPUTER (alarms only) and the crew. English and
-  Brazilian Portuguese. 69 lines, 98 variants per language, rendered offline with Kokoro-82M
+  Brazilian Portuguese. 69 lines, 99 variants per language, rendered offline with Kokoro-82M
   (Apache-2.0, local CPU, no API) by `tools/voice/render.py` into `frontend/public/voice` (3.0 MB).
 - **Who speaks when.** `src/audio/commsDirector.js` keeps one channel:
   - CRITICAL > HIGH > NORMAL > AMBIENT;

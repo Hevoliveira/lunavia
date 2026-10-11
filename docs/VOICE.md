@@ -26,7 +26,7 @@ optional subtitles. It all runs offline, from clips bundled in the app.
 | Consistency | Fixed cast, identical on every device | Fixed cast | Fixed cast | Varies by device and iOS version |
 | Offline | Yes (bundled) | Yes (bundled) | Yes once generated; needs the service and an API key to generate | Yes |
 | Cost | Free (Apache-2.0 model, local CPU) | Paid studio sessions per actor and language | Paid subscription / API usage | Free |
-| Pack size | 3.0 MB (196 clips, EN+PT) | About the same at this bitrate | About the same | 0 |
+| Pack size | 3.0 MB (198 clips, EN+PT) | About the same at this bitrate | About the same | 0 |
 | Multilingual | EN strong; PT-BR usable but weaker (the model has only 3 PT voices and less PT training data) | Needs native actors per language | Strong in both | Depends on installed voices |
 | Latency | ~0 (decoded locally in milliseconds) | ~0 | ~0 | Variable start delay |
 | Radio processing / ducking | Yes | Yes | Yes | No |
@@ -201,7 +201,7 @@ Training's MUTE INSTRUCTOR mutes mission control on that page only.
 - `frontend/public/voice/<lang>/<line id>.<variant>.mp3` plus `manifest.json` (duration per clip).
 - **Kokoro pack:**
   - mono, 24 kHz, 48 kbps;
-  - 196 clips, 8.4 minutes of speech, 3.0 MB;
+  - 198 clips, 8.6 minutes of speech, 3.0 MB;
   - dry (the radio is added live).
 - **Regenerate:** see the header of `tools/voice/render.py`.
   - The model files come from GitHub releases (Hugging Face is not needed).
