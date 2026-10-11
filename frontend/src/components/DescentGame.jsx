@@ -2,7 +2,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Stars, useTexture } from "@react-three/drei";
 import { useRef, useState, useEffect, useMemo, Suspense } from "react";
 import * as THREE from "three";
-import LanderModel from "@/components/LanderModel";
+import { LanderRig, RegolithSheet, GroundMarks, createTouchdownFx } from "@/components/scenes/TouchdownFx";
 import HoldButton from "@/components/HoldButton";
 import { useCompact } from "@/hooks/useMediaQuery";
 import { solveDistance } from "@/lib/cameraFraming";
@@ -25,6 +25,7 @@ import {
   DANGER,
 } from "@/data/descentProfile";
 import { initialState, stepFrame, gradeTouchdown, CONTACT_ALT } from "@/data/landerSim";
+import { LM, RESULT_DELAY, contactLit, sceneAlt, touchdownCamera, touchdownPlan } from "@/data/touchdownFx";
 import CoachCard from "@/components/training/CoachCard";
 import { createDescentMonitor } from "@/audio/descentComms";
 import { VERBOSITY } from "@/audio/commsDirector";
@@ -102,8 +103,10 @@ function LandingSiteMarkers({ physRef }) {
     });
   });
 
+  // renderOrder 2: drawn after the regolith sheet, so the dust can never hide
+  // the landing zones, the hazards or the LPD (the landing stays fair).
   return (
-    <group>
+    <group renderOrder={2}>
       {SAFE_ZONES.map((z, i) => (
         <mesh
           key={i}
@@ -193,7 +196,7 @@ function LPD({ physRef, cfg }) {
     ref.current.visible = p.alt > 3;
   });
   return (
-    <group ref={ref}>
+    <group ref={ref} renderOrder={2}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.6, 1.0, 32]} />
         <meshBasicMaterial ref={materialRef} color="#FFDD00" transparent opacity={0} />
@@ -222,6 +225,7 @@ function TouchdownPath({ physRef, view, cfg }) {
     const m = new THREE.LineDashedMaterial({ color: "#FFDD00", dashSize: 0.5, gapSize: 0.4, transparent: true, opacity: 0, depthWrite: false });
     const l = new THREE.Line(g, m);
     l.frustumCulled = false;
+    l.renderOrder = 2;
     return l;
   }, []);
   useEffect(() => () => {
@@ -238,7 +242,7 @@ function TouchdownPath({ physRef, view, cfg }) {
     for (let i = 0; i < N; i++) {
       const [t, h] = path[i];
       a[i * 3] = (p.xPos + p.vx * t) * WORLD_X;
-      a[i * 3 + 1] = (h + (i < N - 1 ? CONTACT_ALT : 0)) * 0.05;
+      a[i * 3 + 1] = sceneAlt(h + (i < N - 1 ? CONTACT_ALT : 0));
       a[i * 3 + 2] = 0;
     }
     line.geometry.attributes.position.needsUpdate = true;
@@ -263,75 +267,10 @@ function DistantEarth() {
   );
 }
 
-// LanderModel origin to footpad bottom (scale 1.2). The model is raised by
-// this much so the pads, not the descent stage, meet the surface at alt 0.
-const LANDER_FOOT = 0.44;
-
-function Lander({ physRef }) {
-  const ref = useRef();
-  useFrame(() => {
-    if (ref.current && physRef.current) {
-      const p = physRef.current;
-      ref.current.position.set(p.xPos * WORLD_X, Math.max(0, p.alt * 0.05) + LANDER_FOOT, 0);
-      ref.current.rotation.z = -p.tilt * (Math.PI / 180);
-    }
-  });
-  return (
-    <group ref={ref}>
-      <LanderModel thrust={0.6 /* visual constant, we scale flame via thrustRef */} scale={1.2} />
-    </group>
-  );
-}
-
-function LanderThrust({ physRef }) {
-  // Empty — thrust visual is handled inside LanderModel by prop.
-  // We can't reactively update the thrust prop of LanderModel without state,
-  // so we keep thrust visualization decoupled via the flame's own scale in
-  // LanderModel which depends on thrust prop; here we live with a mid value.
-  return null;
-}
-
-function Dust({ altitude, thrust }) {
-  const ref = useRef();
-  const N = 40;
-  const parts = useMemo(() => {
-    return Array.from({ length: N }, () => ({
-      x: (Math.random() - 0.5) * 4,
-      z: (Math.random() - 0.5) * 4,
-      vx: (Math.random() - 0.5) * 2,
-      vz: (Math.random() - 0.5) * 2,
-      life: Math.random(),
-    }));
-  }, []);
-  const visible = altitude < 8 && thrust > 0.15;
-  useFrame((_, delta) => {
-    if (!ref.current || !visible) return;
-    ref.current.children.forEach((c, i) => {
-      const p = parts[i];
-      p.life += delta * 1.2;
-      if (p.life > 1) {
-        p.life = 0;
-        p.x = 0;
-        p.z = 0;
-      }
-      c.position.x = p.x + p.vx * p.life * 2;
-      c.position.z = p.z + p.vz * p.life * 2;
-      c.position.y = 0.05 + p.life * 0.3;
-      c.material.opacity = (1 - p.life) * 0.6;
-    });
-  });
-  if (!visible) return null;
-  return (
-    <group ref={ref} position={[0, 0, 0]}>
-      {parts.map((_, i) => (
-        <mesh key={i}>
-          <sphereGeometry args={[0.15, 8, 8]} />
-          <meshBasicMaterial color="#c8c2b3" transparent opacity={0.5} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
+// LanderModel origin to footpad bottom: the pads, not the descent stage, meet
+// the surface at altitude 0. The LM itself (legs, probes, settle) is drawn by
+// LanderRig from data/touchdownFx.
+const LANDER_FOOT = LM.foot;
 
 /* ------------------------------------------------------------------
  * Descent camera. The HUD reports the screen rectangle it leaves
@@ -385,9 +324,11 @@ function placeEdgeChip(el, s, cr, halfW) {
 
 const insideRect = (s, cr, pad) => s.z < 1 && s.x > cr.x0 + pad && s.x < cr.x1 - pad && s.y > cr.y0 + pad && s.y < cr.y1 - pad;
 
-function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndicatorRef }) {
+function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndicatorRef, fx }) {
   const { camera, size } = useThree();
   const pos = useRef(null);
+  const shot = useRef(null); // the post-touchdown shot, once started
+  const lastCentre = useRef(null); // principal point last used (CSS px)
   const look = useRef(new THREE.Vector3());
   const includeLz = useRef(true);
   const keepLz = useRef(true);
@@ -402,7 +343,7 @@ function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndica
     []
   );
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (!physRef.current) return;
     const p = physRef.current;
     const W = size.width;
@@ -410,8 +351,32 @@ function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndica
     const c = clearRef.current;
     const cr = c && c.x1 - c.x0 > 80 && c.y1 - c.y0 > 80 ? c : { x0: 0, y0: 0, x1: W, y1: H };
     const lx = p.xPos * WORLD_X;
-    const ly = Math.max(0, p.alt * 0.05);
+    // The LM as drawn (stretched vertical scale near the ground, settle after touchdown).
+    const ly = Math.max(0, fx.padY);
     const k = 1 - Math.exp(-delta * 2.2);
+
+    // After a landing (EXTERNAL view): one slow crane down and in to a low
+    // three-quarter view of the LM resting on the surface (data/touchdownFx SHOT).
+    if (view === "EXTERNAL" && fx.touchAt != null && fx.plan && !fx.plan.crashed && pos.current) {
+      if (!shot.current) {
+        const lc = lastCentre.current || { x: W / 2, y: H / 2 };
+        shot.current = { from: { pos: pos.current.toArray(), look: look.current.toArray() }, cx: lc.x, cy: lc.y };
+      }
+      const sh = touchdownCamera(state.clock.elapsedTime - fx.touchAt, shot.current.from, [fx.x, 0, 0]);
+      pos.current.set(sh.pos[0], sh.pos[1], sh.pos[2]);
+      look.current.set(sh.look[0], sh.look[1], sh.look[2]);
+      camera.position.copy(pos.current);
+      camera.lookAt(look.current);
+      // The HUD fades away during the shot, so the picture recentres with it.
+      const cx = shot.current.cx + (W / 2 - shot.current.cx) * sh.k;
+      const cy = shot.current.cy + (H / 2 - shot.current.cy) * sh.k;
+      camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
+      camera.updateMatrixWorld();
+      if (lzIndicatorRef.current) lzIndicatorRef.current.style.display = "none";
+      if (lpdIndicatorRef.current) lpdIndicatorRef.current.style.display = "none";
+      if (window.__lvDescentView) window.__lvDescentView.shot = sh.k;
+      return;
+    }
 
     if (view === "COCKPIT") {
       camera.clearViewOffset();
@@ -500,9 +465,17 @@ function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndica
     }
     camera.position.copy(pos.current);
     camera.lookAt(look.current);
+    // A failed landing: one short, restrained jolt of the camera.
+    if (fx.touchAt != null && fx.plan && fx.plan.crashed) {
+      const t = state.clock.elapsedTime - fx.touchAt;
+      const a = 0.07 * Math.exp(-t / 0.18) * (t >= 0 ? 1 : 0);
+      camera.position.x += a * Math.sin(t * 61);
+      camera.position.y += a * Math.sin(t * 47 + 1.3);
+    }
     // Shift the principal point into the clear rectangle's centre.
     const cx = (cr.x0 + cr.x1) / 2;
     const cy = (cr.y0 + cr.y1) / 2;
+    lastCentre.current = { x: cx, y: cy };
     camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
     camera.updateMatrixWorld();
 
@@ -665,10 +638,33 @@ function GuideRow({ label, value, testId }) {
 
 const guidanceTone = (g) => (g.level === DANGER ? "text-[#FF3B00]" : g.level === OK ? "text-zinc-300" : "text-amber-400");
 
+/**
+ * Touchdown annunciators, lit like the LM's panel lamps: CONTACT LIGHT (blue)
+ * when a probe reaches the surface, ENGINE STOP when the descent engine is
+ * shut down at touchdown. Steady, not blinking: they report, they don't alarm.
+ */
+function Lamps({ contact, engineStop, small = false }) {
+  const base = `font-mono tracking-widest border px-2 lamp-on ${small ? "py-0.5 text-[9px]" : "py-1 text-[10px]"}`;
+  return (
+    <>
+      {contact && (
+        <div data-testid="warn-contact" className={`${base} bg-[#06223d]/85 border-[#6cc0ff]/80 text-[#d6eeff] shadow-[0_0_14px_rgba(108,192,255,0.6)]`}>
+          ● CONTACT LIGHT
+        </div>
+      )}
+      {engineStop && (
+        <div data-testid="lamp-engine-stop" className={`${base} bg-[#2e2206]/85 border-amber-200/80 text-amber-50 shadow-[0_0_12px_rgba(253,230,138,0.45)]`}>
+          ● ENGINE STOP
+        </div>
+      )}
+    </>
+  );
+}
+
 function CompactDescentHud({
   cfg, alt, vy, vx, tilt, fuel, fuelPct, throttle, throttleCmd, setThrottleCmd, inputRef,
   view, setView, paused, setPaused, setShowAbort, chip, guidance, distanceToLZ,
-  projectedZoneLabel, projectedHazard, contactLight, flags, readouts, tip,
+  projectedZoneLabel, projectedHazard, contactLight, engineStop = false, hudFade = false, flags, readouts, tip,
 }) {
   const { warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt } = flags;
   const chipTone = chip.level === DANGER ? "text-[#FF3B00]" : chip.level === CAUTION ? "text-amber-400" : "text-emerald-400";
@@ -677,7 +673,6 @@ function CompactDescentHud({
     warnVy && { id: "warn-descent", text: dangerVy ? "DESCENT RATE CRITICAL" : "DESCENT RATE HIGH", danger: dangerVy },
     warnVx && { id: "warn-lateral", text: dangerVx ? "LATERAL DRIFT EXCESSIVE" : "LATERAL DRIFT", danger: dangerVx },
     dangerTilt && { id: "warn-tilt", text: "TILT EXCEEDS LIMIT", danger: true },
-    contactLight && { id: "warn-contact", text: "CONTACT LIGHT", danger: true },
     projectedHazard && alt > 5 && { id: "warn-terrain", text: "TERRAIN AHEAD — DIVERT", danger: true },
   ].filter(Boolean);
   return (
@@ -731,7 +726,8 @@ function CompactDescentHud({
 
       {/* Warnings: one slim row inside the reserved strip under the top band */}
       <div className="absolute top-[3.55rem] left-1/2 -translate-x-1/2 z-40 flex gap-1.5 whitespace-nowrap pointer-events-none">
-        {warnings.map((w) => (
+        <Lamps contact={contactLight} engineStop={engineStop} small />
+        {!engineStop && warnings.map((w) => (
           <div
             key={w.id}
             data-testid={w.id}
@@ -746,7 +742,8 @@ function CompactDescentHud({
       <div
         data-hud-block="left"
         data-testid="descent-hud-left"
-        className="absolute bottom-2 left-3 safe-mb safe-ml z-30 w-[132px] bg-black/40 backdrop-blur-sm border border-white/10 px-2 py-1.5 space-y-px"
+        className="absolute bottom-2 left-3 safe-mb safe-ml z-30 w-[132px] bg-black/40 backdrop-blur-sm border border-white/10 px-2 py-1.5 space-y-px transition-opacity duration-700"
+        style={hudFade ? { opacity: 0, pointerEvents: "none" } : undefined}
       >
         <CoachCard tip={tip} className="-mx-2 -mt-1.5 mb-1" />
         <CompactRow label="ALT" value={alt.toFixed(0)} unit="m" big testId="gauge-altitude" />
@@ -773,7 +770,8 @@ function CompactDescentHud({
       <div
         data-hud-block="right"
         data-testid="descent-controls"
-        className="absolute bottom-2 right-3 safe-mb safe-mr z-30 flex gap-1.5"
+        className="absolute bottom-2 right-3 safe-mb safe-mr z-30 flex gap-1.5 transition-opacity duration-700"
+        style={hudFade ? { opacity: 0, pointerEvents: "none" } : undefined}
       >
         <div className="grid grid-cols-2 gap-1.5">
           <HoldButton onHold={(on) => (inputRef.current.left = on)} data-testid="ctrl-left" aria-label="Tilt left" className={`${PAD_BTN} w-[50px] h-[46px] flex-col text-[7px] tracking-[0.2em] text-zinc-300`}>
@@ -823,7 +821,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const cfg = DIFFICULTY[difficulty] || DIFFICULTY.ASTRONAUT;
   // Physics state, created once: the mission's start or a training start.
   const startRef = useRef(null);
-  if (!startRef.current) startRef.current = { ...initialState(cfg), ...(init || {}) };
+  // window.__lvDescentInit: validation tooling only (start the final approach at a set state).
+  if (!startRef.current) startRef.current = { ...initialState(cfg), ...(init || {}), ...((typeof window !== "undefined" && window.__lvDescentInit) || {}) };
   const start = startRef.current;
 
   const [alt, setAlt] = useState(start.alt);
@@ -868,6 +867,11 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
 
   // Physics refs — the source of truth. State is only for HUD display.
   const phys = useRef(start);
+  // Touchdown presentation (dust, legs, settle, shot): reads the physics, never writes it.
+  const fxRef = useRef(null);
+  if (!fxRef.current) fxRef.current = createTouchdownFx();
+  const contactRef = useRef(false);
+  if (typeof window !== "undefined") window.__lvDescentPhys = phys.current; // validation tooling (read-only)
   const pausedRef = useRef(false);
   const endedRef = useRef(false);
   // Combine user pause + any modal into a single physics pause.
@@ -948,7 +952,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       // stepFrame caps a frame at 0.25 s (tab defocus) and sub-steps it.
       const totalDt = Math.min(0.25, rawDt);
 
-      if (endedRef.current || pausedRef.current) {
+      // window.__lvDescentFreeze: validation tooling (hold the physics for an exact screenshot).
+      if (endedRef.current || pausedRef.current || window.__lvDescentFreeze) {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
@@ -983,8 +988,12 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         setFuel(p.fuel);
       }
 
-      // Contact light
-      setContactLight(p.alt < 5 && p.alt > 0.05);
+      // CONTACT LIGHT: a probe has reached the surface (data/touchdownFx PROBE_ALT).
+      if (!contactRef.current && contactLit(p.alt)) {
+        contactRef.current = true;
+        setContactLight(true);
+        if (audio && audio.contactLight) audio.contactLight();
+      }
 
       // Projected touchdown assessment (drives TERRAIN AHEAD warning + LPD label)
       if (shouldSync) {
@@ -1010,6 +1019,11 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         const finalTilt = p.tilt;
         const finalFuel = p.fuel;
         const result = gradeTouchdown(p, cfg);
+        // The drawing plays out the graded touchdown (it does not decide it).
+        fxRef.current.plan = touchdownPlan({ vy: p.vy, vx: p.vx, tilt: p.tilt }, result, cfg);
+        const impact = Math.min(1, Math.abs(p.vy) / cfg.safeVy);
+        contactRef.current = true;
+        setContactLight(true);
         p.alt = 0; p.vy = 0; p.vx = 0; p.throttle = 0;
         inputRef.current.throttle = false;
         inputRef.current.left = false;
@@ -1020,20 +1034,24 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         endedRef.current = true;
         setEnded({ crashed: result.crashed, result });
         if (audio) {
-          audio.stopRumble();
+          // ENGINE STOP: the descent engine is shut down at touchdown.
+          if (audio.engineStop) audio.engineStop();
+          else audio.stopRumble();
           if (audio.say) {
             commsRef.current({ t: p.t, alt: 0, vx: 0, xPos: p.xPos, profile: null, hazard: false, distanceToLZ: Math.abs(p.xPos), outcome: result.crashed ? "crashed" : "landed" })
               .forEach((r) => audio.say(r.id, r));
           }
           if (result.crashed) {
             audio.boom(0.55);
-            setTimeout(() => onCrash && onCrash(result), 2200);
+            if (audio.clank) audio.clank(0.45);
+            setTimeout(() => onCrash && onCrash(result), RESULT_DELAY.crashed);
           } else {
-            audio.boom(0.25);
-            setTimeout(() => onSuccess && onSuccess(result), 2800);
+            if (audio.touchdown) audio.touchdown(impact);
+            else audio.boom(0.25);
+            setTimeout(() => onSuccess && onSuccess(result), RESULT_DELAY.landed);
           }
         } else {
-          setTimeout(() => (result.crashed ? onCrash?.(result) : onSuccess?.(result)), 2200);
+          setTimeout(() => (result.crashed ? onCrash?.(result) : onSuccess?.(result)), result.crashed ? RESULT_DELAY.crashed : RESULT_DELAY.landed);
         }
       }
 
@@ -1129,7 +1147,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const warnTilt = profile.tiltState >= CAUTION;
   const dangerTilt = profile.tiltState >= DANGER;
 
-  const scenePos = { x: xPos * 0.5, y: alt * 0.05 }; // scene scaled
+  // After a landing the HUD steps aside for the touchdown shot (EXTERNAL view).
+  const hudFade = !!ended && !ended.crashed && view === "EXTERNAL";
 
   return (
     <div
@@ -1144,7 +1163,10 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           camera={{ position: [-8, 20, 14], fov: 45 }}
           dpr={[1, 2]}
           gl={{ antialias: true, alpha: false, toneMapping: THREE.ACESFilmicToneMapping, outputColorSpace: THREE.SRGBColorSpace }}
-          onCreated={({ gl }) => gl.setClearColor("#050505")}
+          onCreated={({ gl }) => {
+            gl.setClearColor("#050505");
+            window.__lvDescentGl = gl; // validation tooling: renderer.info draw calls
+          }}
         >
           <Suspense fallback={null}>
             <color attach="background" args={["#050505"]} />
@@ -1157,9 +1179,10 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
             <LPD physRef={phys} cfg={cfg} />
             <TouchdownPath physRef={phys} view={view} cfg={cfg} />
             <DistantEarth />
-            <Lander physRef={phys} />
-            <Dust altitude={alt} thrust={throttle} />
-            <DescentCamera physRef={phys} cfg={cfg} view={view} clearRef={clearRef} lzIndicatorRef={lzIndicatorRef} lpdIndicatorRef={lpdIndicatorRef} />
+            <LanderRig physRef={phys} fx={fxRef.current} hidden={view === "COCKPIT"} />
+            <GroundMarks fx={fxRef.current} />
+            <RegolithSheet fx={fxRef.current} />
+            <DescentCamera physRef={phys} cfg={cfg} view={view} clearRef={clearRef} lzIndicatorRef={lzIndicatorRef} lpdIndicatorRef={lpdIndicatorRef} fx={fxRef.current} />
           </Suspense>
         </Canvas>
       </div>
@@ -1203,6 +1226,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           view={view} setView={setView} paused={paused} setPaused={setPaused} setShowAbort={setShowAbort}
           chip={chip} guidance={guidance} distanceToLZ={distanceToLZ}
           projectedZoneLabel={projectedZoneLabel} projectedHazard={projectedHazard} contactLight={contactLight}
+          engineStop={!!ended} hudFade={hudFade}
           flags={{ warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt }}
           readouts={readouts}
           tip={tip}
@@ -1270,11 +1294,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
             ● TILT EXCEEDS LIMIT
           </div>
         )}
-        {contactLight && (
-          <div className="hud-panel px-3 py-1 font-mono text-[10px] tracking-widest text-[#FF3B00] blink" data-testid="warn-contact">
-            ● CONTACT LIGHT
-          </div>
-        )}
+        <Lamps contact={contactLight} engineStop={!!ended} />
         {projectedHazard && alt > 5 && (
           <div className="hud-panel px-3 py-1 font-mono text-[10px] tracking-widest text-[#FF3B00] blink" data-testid="warn-terrain">
             ● TERRAIN AHEAD — DIVERT
@@ -1283,7 +1303,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       </div>
 
       {/* LEFT: primary instrument HUD */}
-      <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-4 short:py-2 w-[300px] short:w-[240px] narrow:w-[215px] z-30" data-testid="descent-hud-left" data-hud-block="left">
+      <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-4 short:py-2 w-[300px] short:w-[240px] narrow:w-[215px] z-30 transition-opacity duration-700" style={hudFade ? { opacity: 0, pointerEvents: "none" } : undefined} data-testid="descent-hud-left" data-hud-block="left">
         <CoachCard tip={tip} className="-mx-2 mb-3 short:mb-1.5" />
         <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:hidden">
           LM-1 · GUIDANCE · {cfg.label}
@@ -1351,7 +1371,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       </div>
 
       {/* RIGHT: keys / touch controls */}
-      <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-5 py-4 short:px-3 short:py-2.5 z-30" data-testid="descent-hud-right" data-hud-block="right">
+      <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-5 py-4 short:px-3 short:py-2.5 z-30 transition-opacity duration-700" style={hudFade ? { opacity: 0, pointerEvents: "none" } : undefined} data-testid="descent-hud-right" data-hud-block="right">
         <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:mb-2">
           FLIGHT CONTROLS
         </div>

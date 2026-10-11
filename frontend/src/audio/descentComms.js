@@ -14,6 +14,7 @@
  * Returns [{ id, delay?, relevant? }].
  */
 import { OK, CAUTION, DANGER } from "../data/descentProfile";
+import { PROBE_ALT } from "../data/touchdownFx";
 
 export function createDescentMonitor() {
   let latest = null;
@@ -66,7 +67,8 @@ export function createDescentMonitor() {
       else if (p.fuelState === CAUTION) out.push({ id: "descent.alt100fuelTight", relevant: near(100) });
     }
     if (crossed(30) && p.vyState < DANGER && once("a30")) out.push({ id: "descent.alt30", relevant: near(30) });
-    if (crossed(4) && once("contact")) out.push({ id: "descent.contact" });
+    // "Contact light." when a probe reaches the surface (data/touchdownFx PROBE_ALT).
+    if (crossed(PROBE_ALT) && once("contact")) out.push({ id: "descent.contact" });
     prevAlt = d.alt;
 
     // Descent rate: too fast for the height left

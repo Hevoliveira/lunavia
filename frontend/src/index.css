@@ -168,6 +168,20 @@ html {
     animation: blink 1.6s steps(2, end) infinite;
 }
 
+/* Cockpit annunciator lamp switching on (CONTACT LIGHT, ENGINE STOP) */
+@keyframes lamp-on {
+    0% { opacity: 0; filter: brightness(2.2); }
+    18% { opacity: 1; filter: brightness(2.2); }
+    32% { opacity: 0.55; }
+    50%, 100% { opacity: 1; filter: brightness(1); }
+}
+.lamp-on {
+    animation: lamp-on 520ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+    .lamp-on { animation: none; }
+}
+
 /* Scan-line reveal */
 @keyframes scan-in {
     0% { clip-path: inset(0 100% 0 0); }

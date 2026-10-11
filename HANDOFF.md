@@ -1124,3 +1124,71 @@ On iPhone the Moon appeared to spin rapidly under the spacecraft on the LUNAR DE
   - the descent's initial state and physics (`DescentGame`, `landerSim` untouched);
   - scoring, difficulty and controls;
   - reentry, Training, and the Earth launch, orbit and TLI sequences.
+
+## 29. Lunar touchdown fidelity (the final 50 m)
+
+The touchdown is still captured, graded and scored only by `landerSim` / `landingPhysics`
+(capture at 0.5 m, the same thresholds and scoring). Everything below is presentation that
+reads that state (`data/touchdownFx.js`, pure, 23 tests; drawn by
+`components/scenes/TouchdownFx.jsx`).
+
+- **Vertical scale near the ground.** The scene drew 0.05 unit/m, so with a 1.75-unit LM
+  (35 "metres" tall) the last 50 m looked like the LM was already on the ground.
+  `sceneAlt(alt) = 0.05·alt + 3·(1 − e^(−alt/15))` keeps 0.05 unit/m high up. Near the surface
+  it gives 0.25 unit/m, the LM's true 7 m height. The LM, the camera and the predicted path all
+  use it.
+- **Regolith sheet** (`RegolithSheet`, one instanced draw call, 900 streaks, motion in the vertex
+  shader).
+  - Vacuum behaviour: straight, flat (1–3°), fast grains radiating from where the plume meets
+    the ground (shifted by the attitude). They never billow, and they vanish the instant the
+    engine stops; grains already in flight finish their run.
+  - Level: `dustLevel(alt, throttle)`. It starts at 30 m, is continuous and monotonic in thrust
+    and height, and is dense at hover thrust near the ground.
+  - A light flow sheet on the ground races outward with it (`GroundMarks`). After landing, a
+    slightly brighter blast zone stays.
+  - Fairness: per-streak opacity ≤ 0.42, nothing drawn within 1.35 units of the plume axis (the
+    pads stay visible), and the LZ rings, hazards, LPD and predicted path render after the dust
+    (`renderOrder` 2), so dust can never hide them.
+- **Landing gear** (`LanderModel`).
+  - Legs at front/back/sides. Each has a primary strut (sleeve + stroking piston), two
+    secondary struts and a dished footpad (lathe).
+  - Contact probes sit on three legs; the front leg carries the ladder.
+  - All struts, probes and rungs are one `InstancedMesh`, and the pads another, so the gear is
+    two draw calls.
+  - The flame now follows the real throttle.
+- **Foot contact.** With a bank the low-side pad touches first and its strut compresses
+  (`legContact`); past the stroke the body rides up on it. No pad ever goes below the surface
+  (tested). Contact shadows under each pad, and the LM's shadow, darken as they close.
+- **Settle** (`touchdownPlan`, `settleStep`). The struts take the load as a damped spring:
+  harder landings compress further, within the stroke, and the LM rocks level onto four pads
+  in < 1.2 s. A failed landing plays out its graded reason:
+  - vertical: struts bottom out and crush;
+  - tilt: leans over to ≤ 26°;
+  - drift or terrain: ~13–14° lean.
+- **CONTACT LIGHT / ENGINE STOP.**
+  - The probes reach the surface at 1.7 m (`PROBE_ALT`). The blue CONTACT LIGHT lamp, a relay
+    click with a soft tone, and the crew's "Contact light." (moved from 4 m) happen together.
+  - At capture, the ENGINE STOP lamp comes on and the rumble cuts in 60 ms, with a valve thunk
+    and pressure bleed (`useMissionAudio.engineStop`). The touchdown thud is sized by the
+    impact (`touchdown`).
+  - The lamps are steady panel lamps, not red alarms.
+- **The shot after a landing** (EXTERNAL view, `touchdownCamera`).
+  - From the chase camera: one crane down and in on a sphere round the LM (≤ 12° of swing),
+    ending low with the horizon and stars above the LM.
+  - The HUD fades and the picture recentres. The result card waits for it
+    (`RESULT_DELAY.landed` 5.2 s; failures 3.0 s with a short camera jolt).
+  - In COCKPIT the LM's own deck is hidden from the window view.
+- **Validation tooling** (validation only, read-only): `window.__lvDescentInit` (start state),
+  `__lvDescentPhys`, `__lvDescentFx`, `__lvDescentGl` (renderer.info), `__lvDescentFreeze`
+  (hold the physics for an exact screenshot).
+
+**Architecture note, not done (needs approval).** The simulation treats the ground as a flat
+plane with hazard *zones*: touchdown is graded at one point (the LM's x) at 0.5 m. Per-leg contact
+on real terrain would need:
+- a terrain heightfield shared by the sim and the scene;
+- leg geometry and per-pad contact detection in `landerSim`;
+- a rule for grading a touchdown that spans uneven ground;
+- re-validated difficulty balance.
+
+That would change outcomes (for example, a pad on a boulder edge), so it is left for an explicit
+decision. Today the visual settle only plays out the graded result.
