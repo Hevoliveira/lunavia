@@ -13,6 +13,7 @@ import PdiBriefing from "@/components/PdiBriefing";
 import MissionResult from "@/components/MissionResult";
 import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
+import { goForPdi } from "@/data/lunarOrbitShot";
 
 /*
  * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
@@ -55,6 +56,10 @@ const STATE_LABELS = {
 // Cruise picks up after the TLI burn shown in the launch cinematic.
 const CRUISE_START = 12000;
 
+// Lunar orbit: the LUNAR DESCENT prompt appears once the arrival shot has
+// mostly settled (the camera finishes its push-in at ~12 s, GO FOR PDI ~10 s).
+const PROMPT_AFTER_S = 6.5;
+
 const FLIGHT_STATES = new Set([
   STATES.LAUNCH,
   STATES.SPACE,
@@ -71,7 +76,15 @@ export default function Mission() {
   const [progress, setProgress] = useState(0);
   const [descentAlt, setDescentAlt] = useState(8);
   const [spaceTime, setSpaceTime] = useState(CRUISE_START);
-  const [orbitTime, setOrbitTime] = useState(288000);
+  // Lunar orbit presentation (ORBIT, DIFFICULTY, BRIEFING): real seconds since
+  // orbit began, read every frame by the scene through the ref.
+  const orbitClockRef = useRef(0);
+  const [goPdi, setGoPdi] = useState(false);
+  const goPdiRef = useRef(false);
+  const [orbitPrompt, setOrbitPrompt] = useState(false); // shown once the arrival shot settles
+  const promptRef = useRef(false);
+  const [fade, setFade] = useState(0); // black cut into the descent
+  const fadingRef = useRef(false);
   const [returnTime, setReturnTime] = useState(504000);
   const [difficulty, setDifficulty] = useState("ASTRONAUT");
   const [descentResult, setDescentResult] = useState(null);
@@ -79,7 +92,6 @@ export default function Mission() {
   const rafRef = useRef(null);
   const lastTsRef = useRef(0);
   const stateRef = useRef(state);
-  const orbitAngleRef = useRef(0);
 
   const audio = useMissionAudio();
 
@@ -103,14 +115,22 @@ export default function Mission() {
           const next = t + dt * 30000;
           if (next >= 270000) {
             setState(STATES.ORBIT);
-            orbitAngleRef.current = 0;
+            orbitClockRef.current = 0;
             return 270000;
           }
           return next;
         });
-      } else if (s === STATES.ORBIT) {
-        setOrbitTime((t) => t + dt * 300);
-        orbitAngleRef.current += dt * 0.6;
+      } else if (s === STATES.ORBIT || s === STATES.DIFFICULTY || s === STATES.BRIEFING) {
+        // The orbit keeps flying while the player reads; no React render per frame.
+        orbitClockRef.current += dt;
+        if (!goPdiRef.current && goForPdi(orbitClockRef.current)) {
+          goPdiRef.current = true;
+          setGoPdi(true);
+        }
+        if (!promptRef.current && orbitClockRef.current > PROMPT_AFTER_S) {
+          promptRef.current = true;
+          setOrbitPrompt(true);
+        }
       } else if (s === STATES.DESCENT) {
         setDescentAlt((a) => {
           const next = a - dt * 1.2;
@@ -179,9 +199,20 @@ export default function Mission() {
     setState(STATES.BRIEFING);
   };
 
+  // BEGIN PDI: a short fade through black into the descent view (the descent
+  // itself starts exactly as before, from its own initial state).
   const handleBeginPdi = () => {
-    setState(STATES.MANUAL_DESCENT);
-    audio.say("descent.pdiStart", { delay: 0.4 });
+    if (fadingRef.current) return;
+    fadingRef.current = true;
+    setFade(1);
+    setTimeout(() => {
+      setState(STATES.MANUAL_DESCENT);
+      audio.say("descent.pdiStart", { delay: 0.4 });
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        setFade(0);
+        fadingRef.current = false;
+      }));
+    }, 380);
   };
 
   const handleSkipDifficulty = () => {
@@ -224,13 +255,19 @@ export default function Mission() {
     setProgress(0);
     setDescentAlt(8);
     setSpaceTime(CRUISE_START);
-    setOrbitTime(288000);
+    orbitClockRef.current = 0;
+    goPdiRef.current = false;
+    setGoPdi(false);
+    promptRef.current = false;
+    setOrbitPrompt(false);
     setReturnTime(504000);
     setDescentResult(null);
-    orbitAngleRef.current = 0;
   };
 
-  const overLandingZone = Math.sin(orbitAngleRef.current) > 0.7;
+  // GO FOR PDI: the craft has reached the powered-descent start point over the
+  // landing site (data/lunarOrbitShot). It stays lit while the player decides.
+  const overLandingZone = goPdi;
+  const inLunarOrbit = state === STATES.ORBIT || state === STATES.DIFFICULTY || state === STATES.BRIEFING;
 
   // Mission control between the scripted flight and the manual phases:
   // a word during the cruise, arrival at the Moon, and FLIGHT's go for
@@ -288,18 +325,14 @@ export default function Mission() {
         <LaunchCinematic audio={audio} onComplete={handleLaunchComplete} onSkip={handleSkipLaunch} />
       )}
 
-      {state === STATES.SPACE && (
-        <MissionScene missionTime={spaceTime} cinematic={true} />
-      )}
-
-      {state === STATES.ORBIT && (
-        <MissionScene missionTime={orbitTime} cinematic={true} />
+      {/* One scene for the cruise, lunar orbit and the descent-prep screens:
+          kept mounted across them so the camera never cuts or snaps. */}
+      {(state === STATES.SPACE || inLunarOrbit) && (
+        <MissionScene missionTime={spaceTime} cinematic={true} orbitClock={inLunarOrbit ? orbitClockRef : null} />
       )}
 
       {state === STATES.DIFFICULTY && (
         <>
-          {/* Keep orbit in background */}
-          <MissionScene missionTime={orbitTime} cinematic={true} />
           <DifficultySelect
             onSelect={handleDifficulty}
             onSkip={handleSkipDifficulty}
@@ -309,8 +342,6 @@ export default function Mission() {
 
       {state === STATES.BRIEFING && (
         <>
-          {/* Orbit stays in the background, same as the difficulty screen */}
-          <MissionScene missionTime={orbitTime} cinematic={true} />
           <PdiBriefing
             difficulty={difficulty}
             onBegin={handleBeginPdi}
@@ -382,12 +413,14 @@ export default function Mission() {
       )}
 
       {/* --- Interaction gate: lunar arrival is the first required input after LAUNCH --- */}
-      {state === STATES.ORBIT && (
+      {/* LUNAR DESCENT prompt: bottom-right, clear of the craft and the landing
+          site, appearing once the arrival shot has settled */}
+      {state === STATES.ORBIT && orbitPrompt && (
         <div
           data-testid="prompt-descend"
-          className="absolute inset-0 pointer-events-none flex items-end justify-center pb-32"
+          className="absolute inset-0 pointer-events-none flex items-end justify-end pb-12 pr-8 md:pr-12 short:pb-4 short:pr-4 safe-mr safe-mb"
         >
-          <div className="pointer-events-auto text-center">
+          <div className="pointer-events-auto text-right fade-in bg-black/35 backdrop-blur-[2px] px-5 py-4 short:px-3 short:py-2.5">
             <div
               className={`font-mono text-[10px] tracking-[0.4em] mb-3 ${
                 overLandingZone ? "text-[#FF3B00] blink" : "text-zinc-500"
@@ -395,16 +428,16 @@ export default function Mission() {
             >
               ● {overLandingZone ? "OVER LANDING ZONE — GO FOR PDI" : "STANDBY · WAITING FOR LANDING ZONE"}
             </div>
-            <div className="font-display font-black text-white text-4xl md:text-5xl mb-2">
+            <div className="font-display font-black text-white text-4xl md:text-5xl short:text-2xl mb-2 short:mb-1">
               LUNAR DESCENT
             </div>
-            <div className="font-mono text-[11px] tracking-widest text-zinc-400 mb-6">
+            <div className="font-mono text-[11px] short:text-[9px] tracking-widest text-zinc-400 mb-6 short:mb-3 narrow:hidden">
               MARE TRANQUILLITATIS · WAIT UNTIL "GO FOR PDI"
             </div>
             <button
               onClick={handleDescend}
               data-testid="btn-descend"
-              className={`inline-flex items-center gap-3 px-8 py-3 border-2 font-mono tracking-[0.3em] text-sm transition-colors duration-200 ${
+              className={`inline-flex items-center gap-3 px-8 py-3 short:px-5 border-2 font-mono tracking-[0.3em] text-sm short:text-xs min-h-[44px] transition-colors duration-200 ${
                 overLandingZone
                   ? "border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00]"
                   : "border-zinc-600 text-zinc-500 bg-transparent"
@@ -492,6 +525,13 @@ export default function Mission() {
           setShowAbort(false);
           resetMission();
         }}
+      />
+      {/* Fade through black from lunar orbit into the descent view */}
+      <div
+        aria-hidden
+        data-testid="descent-fade"
+        className="fixed inset-0 z-[70] bg-black pointer-events-none"
+        style={{ opacity: fade, transition: `opacity ${fade ? 360 : 650}ms ease-${fade ? "in" : "out"}` }}
       />
     </main>
   );

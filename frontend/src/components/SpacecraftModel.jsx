@@ -7,14 +7,14 @@ import * as THREE from "three";
  * Total length is normalized so the whole vehicle fits in ~0.4 scene units.
  * Uses only primitive geometries (cheap and always renders in headless too).
  */
-export default function SpacecraftModel({ scale = 1, glow = true }) {
+export default function SpacecraftModel({ scale = 1, glow = true, roll = 0.4 }) {
   const rootRef = useRef();
   const engineRef = useRef();
 
   useFrame((state, delta) => {
     if (rootRef.current) {
       // slow roll
-      rootRef.current.rotation.z += delta * 0.4;
+      rootRef.current.rotation.z += delta * roll;
     }
     if (engineRef.current) {
       const s = 1 + Math.sin(state.clock.elapsedTime * 25) * 0.08;
