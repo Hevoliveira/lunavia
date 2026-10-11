@@ -228,15 +228,20 @@ Training's MUTE INSTRUCTOR mutes mission control on that page only.
 - **Interruptions:** a call, Siri or an alarm moves the AudioContext to
   `interrupted`. The hook re-arms the tap-to-unlock listeners and resumes on
   return.
-- **Background or lock:** the call on the air is cut and the queue dropped.
-  Nothing stale plays when the player returns.
+- **Background or lock:** the call on the air is cut, the queue is dropped,
+  and no new call is accepted while the app is hidden. Nothing stale plays
+  when the player returns.
 - **Memory:**
   - compressed clips of one language: about 1.5 MB;
   - decoded audio: at most 12 clips, a few MB;
   - each transmission's nodes are disconnected after it ends;
   - the AudioContext is closed when the page unmounts.
 - **Offline:** everything is bundled in the app (Capacitor `public/`). There
-  are no network requests, no API keys, and no paid services.
+  are no network requests, no API keys, and no paid services. In the web
+  build a clip that failed to load is fetched again on the next request.
+  Pre-existing, web build only: going offline before the lunar descent's
+  textures are loaded crashes the 3D scene. The iOS app is unaffected because
+  its textures are local.
 
 ## 11. Validation
 
@@ -245,10 +250,48 @@ Validation levels, kept separate:
 | Level | What was done |
 |---|---|
 | Code inspection | Audit of the old path (§1); review of every call site migrated (launch, mission, descent, reentry, training). |
-| Automated tests | `src/audio/comms.test.js`, 20 tests: catalog and pack completeness (every line × variant × language), director rules (no overlap, interrupts, cooldowns, stale or irrelevant drop, AMBIENT gating, blackout, verbosity, keyed mic), descent monitor flown on the real lander physics (guided landing, free fall, low fuel, monitor+director over a crash), and reentry monitor flown on the real entry physics (nominal with blackout and AOS, shallow skip-out, steep overload, COMMANDER without advice). |
-| Browser captures (headless Chromium) | The exact Web Audio mix the app sends to the speakers was recorded from inside the page: character, emotion, launch and blackout reels in EN and PT, radio on and off; and touch-driven Training flights (landing and reentry) with the comms timeline and on-screen subtitles logged. Signal checks found no overlap, no clipping, the band-limiting present and Quindar tones present. |
+| Automated tests | `src/audio/comms.test.js`, 23 tests: catalog and pack completeness (every line × variant × language), director rules (no overlap, interrupts, cooldowns, stale or irrelevant drop, AMBIENT gating, blackout, verbosity, keyed mic), the hub refusing calls while hidden, the pack retrying failed loads, the descent monitor flown on the real lander physics (guided landing, free fall, low fuel, monitor+director over a crash), and the reentry monitor flown on the real entry physics (nominal with blackout and AOS first, shallow skip-out, steep overload, prep and go-for-entry, COMMANDER without advice). Full suite: 105 tests. |
+| Browser runs (headless Chromium, `tools/voice/qa`) | The exact Web Audio mix the app sends to the speakers was recorded from inside the page, with the comms timeline and the on-screen subtitle logged. See the summary below. |
 | Listening | **Not done by the developer**: the automated tools cannot judge how human a voice sounds. The reels are delivered for the human review this milestone requires. |
 | Real iPhone | **Not done** (no device in this environment). Checklist in §12. |
+
+**Browser runs:**
+- **Reels:** cast, emotion, launch and blackout, EN and PT, radio on and off.
+  - No overlaps and no clipping.
+  - Radio on and clean match within about 1 dB RMS.
+  - Quindar energy is present only with the radio on.
+- **Full mission** (desktop, scripted pilot, EN voice with PT subtitles): launch, cruise and orbit, ASTRONAUT descent to touchdown, reentry to splashdown.
+  - Every call aired in order, with no overlaps.
+  - The launch film ran about 5× slower under software rendering, so that capture's gaps are not real-time.
+- **Training on a phone layout** (852×393, touch):
+  - braking CADET, landed;
+  - nominal reentry CADET, splashdown;
+  - shallow lift-up skip-out;
+  - steep lift-down overload with RETRY, then ABORT, with no call starting after the abort;
+  - standard landing with MUTE INSTRUCTOR: 0 voiced, 6 subtitled;
+  - no-brake crash.
+- **AUDIO panel, through the UI:**
+  - PT voice with EN subtitles chosen, saved, and used by RADIO CHECK and the flights;
+  - the panel fits 667×375, 852×393 and desktop with 44 px targets;
+  - it closes on a tap outside.
+- **Deterministic hub test:**
+  - offline playback from the prefetched pack;
+  - backgrounded mid-call: cut, queue dropped, nothing stale on return;
+  - AudioContext suspended: subtitle-only, then voice again after resume;
+  - voice off: subtitles on the clip timing;
+  - subtitles off: nothing on screen.
+
+**Fixed because of these runs:**
+- follow-up lines out of order;
+- per-frame warning requests;
+- routine calls cut by HIGH warnings;
+- the blackout warning lost after a quick commit, now carried by the go-for-entry call;
+- advice before AOS;
+- subtitles over the reentry HUD on phones;
+- the AUDIO panel not closing or fitting;
+- radio louder than clean;
+- failed loads cached;
+- calls accepted while hidden.
 
 ## 12. Real-device checklist
 
