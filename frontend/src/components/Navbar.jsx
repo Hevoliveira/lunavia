@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Circle } from "lucide-react";
+import AudioSettings from "@/components/AudioSettings";
 
 export default function Navbar() {
   const { pathname } = useLocation();
@@ -45,6 +46,7 @@ export default function Navbar() {
           {link("/mission", "Mission", "nav-mission")}
           {link("/training", "Training", "nav-training")}
           {link("/manifesto", "Manifesto", "nav-manifesto")}
+          <AudioSettings />
           <a
             data-testid="nav-launch-btn"
             href="/mission"

@@ -5,6 +5,7 @@ import Mission from "@/pages/Mission";
 import Training from "@/pages/Training";
 import Manifesto from "@/pages/Manifesto";
 import Navbar from "@/components/Navbar";
+import CommsSubtitles from "@/components/CommsSubtitles";
 import { Toaster } from "sonner";
 import { useCompact } from "@/hooks/useMediaQuery";
 
@@ -22,6 +23,7 @@ function App() {
           <Route path="/training" element={<Training />} />
           <Route path="/manifesto" element={<Manifesto />} />
         </Routes>
+        <CommsSubtitles />
         <Toaster
           theme="dark"
           position={compact ? "bottom-left" : "bottom-right"}

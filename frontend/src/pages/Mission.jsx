@@ -159,6 +159,7 @@ export default function Mission() {
   };
 
   const handleSkipLaunch = () => {
+    audio.commsFlush();
     audio.roarStop(0.3);
     audio.ambienceStop(0.5);
     audio.padStart();
@@ -180,7 +181,7 @@ export default function Mission() {
 
   const handleBeginPdi = () => {
     setState(STATES.MANUAL_DESCENT);
-    audio.comms("Houston, beginning powered descent.", 400);
+    audio.say("descent.pdiStart", { delay: 0.4 });
   };
 
   const handleSkipDifficulty = () => {
@@ -200,6 +201,7 @@ export default function Mission() {
   };
 
   const handleRestartDescent = () => {
+    audio.commsFlush();
     setDescentResult(null);
     setState(STATES.DIFFICULTY);
   };
@@ -213,6 +215,7 @@ export default function Mission() {
   };
 
   const resetMission = () => {
+    audio.commsReset();
     audio.stopRumble();
     audio.roarStop(0.3);
     audio.ambienceStop(0.5);
@@ -228,6 +231,26 @@ export default function Mission() {
   };
 
   const overLandingZone = Math.sin(orbitAngleRef.current) > 0.7;
+
+  // Mission control between the scripted flight and the manual phases:
+  // a word during the cruise, arrival at the Moon, and FLIGHT's go for
+  // powered descent the first time the orbit brings the landing zone up.
+  const goPdiCalledRef = useRef(false);
+  useEffect(() => {
+    if (state === STATES.SPACE) audio.say("cruise.ambient", { delay: 3 });
+    if (state === STATES.ORBIT) {
+      goPdiCalledRef.current = false;
+      audio.say("orbit.arrival", { delay: 1.2 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+  useEffect(() => {
+    if (state === STATES.ORBIT && overLandingZone && !goPdiCalledRef.current) {
+      goPdiCalledRef.current = true;
+      audio.say("orbit.goPdi");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, overLandingZone]);
 
   // Engine sound belongs to the launch cinematic; the space music fades out
   // as the crew reaches lunar orbit and takes control.

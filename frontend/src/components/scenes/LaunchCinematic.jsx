@@ -940,15 +940,9 @@ function PadVisible({ padProg, children }) {
 
 function useAudioDirector(audio) {
   const roar = useRef({ level: 0, muffle: 0, last: 0 });
-  // Space-to-ground calls carry Quindar tones, as Apollo's did: an intro
-  // tone before the voice and an outro tone after it.
-  const quindar = (text, delay = 0) => {
-    setTimeout(() => {
-      audio.beep(2525, 0.25, 0.05);
-      audio.comms(text, 320);
-      setTimeout(() => audio.beep(2475, 0.25, 0.05), 320 + 450 + text.length * 62);
-    }, delay);
-  };
+  // Mission-control calls (src/audio/commsLines.json). The radio layer adds
+  // the Quindar tones to CAPCOM's routine air-to-ground calls.
+  const say = (id, delay = 0) => audio.say && audio.say(id, { delay: delay / 1000 });
   return {
     event(e) {
       if (!audio) return;
@@ -963,23 +957,23 @@ function useAudioDirector(audio) {
           // A low whump as the first engine lights, then the roar builds
           audio.thud?.(0.5);
           audio.roarStart?.();
-          audio.comms("Main engine start.", 0);
+          say("launch.engineStart");
           break;
         case "liftoff":
           audio.clank?.(0.6);
           audio.boom(0.55);
-          audio.comms("Zero. And liftoff. Liftoff of LV-001.", 150);
+          say("launch.liftoff", 150);
           break;
         case "towerClear":
-          audio.comms("Tower cleared. Roll and pitch program.", 200);
+          say("launch.towerClear", 200);
           audio.ambienceStop?.();
           break;
         case "maxQ":
-          audio.comms("Vehicle is passing through max-Q.", 0);
+          say("launch.maxQ");
           break;
         case "meco":
           audio.roarStop?.(0.35);
-          audio.comms("Main engine cutoff.", 900);
+          say("launch.meco", 900);
           break;
         case "separation":
           // Pyrotechnic bolts, then the separation motors, felt through the structure
@@ -987,26 +981,26 @@ function useAudioDirector(audio) {
           audio.clank?.(0.35);
           audio.thud?.(0.45);
           audio.hiss?.(0.9, 0.08);
-          audio.comms("Staging. Separation confirmed.", 700);
+          say("launch.staging", 700);
           break;
         case "usIgnition":
           audio.thud?.(0.3);
           audio.roarStart?.({ onboard: true });
-          audio.comms("Upper stage ignition. Good burn.", 600);
+          say("launch.usIgnition", 600);
           break;
         case "orbit":
           audio.roarStop?.(1.2);
-          quindar("Cutoff. Orbit insertion confirmed. Parking orbit, one eighty-five kilometers.", 900);
+          say("launch.orbit", 900);
           audio.padStart?.();
           break;
         case "finalPass":
-          quindar("LV-001, Houston. Final pass. Loss of daylight in one minute. You are go for T. L. I. on the next revolution.", 700);
+          say("launch.finalPass", 700);
           break;
         case "tliPrep": {
           // RCS thrusters starting and stopping the roll, heard as thumps through the hull
           const ms = (x) => (x - e.t) * 1000;
           TL.RCS_WINDOWS.forEach(([a]) => [0, 260].forEach((d) => setTimeout(() => audio.thud?.(0.16), ms(a) + d)));
-          quindar("LV-001, Houston. You are go for T. L. I.", 1500);
+          say("launch.goTli", 1500);
           break;
         }
         case "tliCount":
@@ -1019,14 +1013,14 @@ function useAudioDirector(audio) {
         case "tli":
           audio.thud?.(0.32);
           audio.roarStart?.({ onboard: true });
-          audio.comms("Ignition. T. L. I. burn underway.", 400);
+          say("launch.tliIgnition", 400);
           break;
         case "tliCutoff":
           audio.roarStop?.(1.2);
-          audio.comms("Cutoff.", 200);
+          say("launch.tliCutoff", 200);
           break;
         case "lunarTransfer":
-          quindar("LV-001, Houston. Good burn. You are on your way to the Moon.", 900);
+          say("launch.lunarTransfer", 900);
           break;
         default:
       }
@@ -1034,9 +1028,8 @@ function useAudioDirector(audio) {
     countdown(n) {
       if (!audio) return;
       audio.beep(n === 0 ? 660 : 880, 0.06, 0.08);
-      if (n === 10) audio.comms("T-minus ten.", 0);
-      else if (n <= 9 && n >= 7) audio.speak?.(String(n), { rate: 1.05 });
-      else if (n <= 4 && n >= 1) audio.speak?.(String(n), { rate: 1.05 });
+      // Launch control counts the last seconds; 6 and 5 are covered by engine start.
+      if (n === 10 || (n <= 9 && n >= 7) || (n <= 4 && n >= 1)) say(`launch.count${n}`);
     },
     frame({ t, shot, traj, thrust }) {
       if (!audio || !audio.roarSet) return;

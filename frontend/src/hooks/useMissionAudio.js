@@ -1,15 +1,25 @@
 import { useEffect, useRef, useCallback } from "react";
+import comms from "@/audio/comms";
+import { getAudioSettings, subscribeAudioSettings } from "@/audio/audioSettings";
 
 /**
- * useMissionAudio — Web Audio + SpeechSynthesis Apollo-style comms.
+ * useMissionAudio — mission sound effects (Web Audio) and the
+ * mission-control voice (src/audio/comms: bundled neural voice clips through
+ * a live radio chain, scheduled by priority).
+ *
+ * Mix: every effect goes to an SFX bus (SFX VOLUME), voices to a voice bus
+ * (VOICE VOLUME). While someone is speaking the SFX bus is ducked by a few dB,
+ * never silenced.
  *
  * Exposes:
  *  - init()          initialize AudioContext on first user gesture
+ *  - say(id, opts)   mission-control call from src/audio/commsLines.json
+ *  - commsFlush() / commsReset()   drop pending calls (abort, retry)
+ *  - setBlackout(on) / setRadioLink(q) / setVerbosity(level)
  *  - beep()          countdown blip
- *  - squelch()       radio squelch click before speech
+ *  - squelch()       radio squelch click
  *  - startRumble(intensity)  low-frequency engine rumble loop
  *  - stopRumble()
- *  - speak(text, opts) spoken comms via SpeechSynthesis
  *  - boom()          brief low thump (stage separation, touchdown)
  *  - splash()        soft water hiss (splashdown)
  *
@@ -33,12 +43,40 @@ export default function useMissionAudio() {
   const crackleRef = useRef(null);
   const ambRef = useRef(null);
   const padRef = useRef(null);
+  const busRef = useRef(null); // { sfx, duck, voice }
+  const relockRef = useRef(null);
 
   const ensureCtx = () => {
     if (!ctxRef.current) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
-      ctxRef.current = new AC();
+      const ctx = new AC();
+      ctxRef.current = ctx;
+      const st = getAudioSettings();
+      const sfx = ctx.createGain();
+      sfx.gain.value = st.sfxVolume;
+      const duck = ctx.createGain();
+      const voice = ctx.createGain();
+      voice.gain.value = st.voiceVolume;
+      sfx.connect(duck).connect(ctx.destination);
+      voice.connect(ctx.destination);
+      busRef.current = { sfx, duck, voice };
+      comms.attach({
+        ctx,
+        out: voice,
+        duck(on, depth = 0.6) {
+          const now = ctx.currentTime;
+          duck.gain.cancelScheduledValues(now);
+          duck.gain.setValueAtTime(duck.gain.value, now);
+          if (on) duck.gain.setTargetAtTime(depth, now, 0.04);
+          else duck.gain.setTargetAtTime(1, now + 0.15, 0.25);
+        },
+      });
+      // A phone call, Siri or an alarm interrupts the session; WebKit may need
+      // a fresh tap before it plays again, so listen for one.
+      ctx.onstatechange = () => {
+        if (ctx.state !== "running" && ctx.state !== "closed" && relockRef.current) relockRef.current();
+      };
     }
     // "suspended" (autoplay policy) or "interrupted" (iOS call, Siri, app switch).
     if (ctxRef.current.state !== "running" && ctxRef.current.state !== "closed") {
@@ -46,6 +84,8 @@ export default function useMissionAudio() {
     }
     return ctxRef.current;
   };
+
+  const sfxOut = (ctx) => (busRef.current ? busRef.current.sfx : ctx.destination);
 
   const makeNoiseBuffer = (ctx) => {
     if (noiseBufferRef.current) return noiseBufferRef.current;
@@ -90,7 +130,7 @@ export default function useMissionAudio() {
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 0.005);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(sfxOut(ctx));
     osc.start();
     osc.stop(ctx.currentTime + duration + 0.02);
   }, []);
@@ -110,7 +150,7 @@ export default function useMissionAudio() {
     gain.gain.setValueAtTime(0.001, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 0.008);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.11);
-    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.connect(filter).connect(gain).connect(sfxOut(ctx));
     src.start();
     src.stop(ctx.currentTime + 0.14);
   }, []);
@@ -129,7 +169,7 @@ export default function useMissionAudio() {
     gain.gain.setValueAtTime(0.001, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.connect(filter).connect(gain).connect(sfxOut(ctx));
     src.start();
     src.stop(ctx.currentTime + 0.7);
   }, []);
@@ -148,7 +188,7 @@ export default function useMissionAudio() {
     gain.gain.setValueAtTime(0.001, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.8);
-    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.connect(filter).connect(gain).connect(sfxOut(ctx));
     src.start();
     src.stop(ctx.currentTime + 2);
   }, []);
@@ -168,7 +208,7 @@ export default function useMissionAudio() {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(intensity * 0.5, ctx.currentTime + 0.4);
-    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.connect(filter).connect(gain).connect(sfxOut(ctx));
     src.start();
     rumbleRef.current = { src, gain };
   }, []);
@@ -246,7 +286,7 @@ export default function useMissionAudio() {
     src.connect(lp).connect(low).connect(master);
     crack.connect(hp).connect(cg).connect(master);
     sub.connect(master);
-    master.connect(ctx.destination);
+    master.connect(sfxOut(ctx));
     src.start();
     crack.start();
     roarRef.current = { src, crack, lp, low, cg, sub, subs, master };
@@ -276,7 +316,7 @@ export default function useMissionAudio() {
       o.frequency.value = f;
       g.gain.setValueAtTime(vol * (0.5 / (i + 1)), now);
       g.gain.exponentialRampToValueAtTime(0.0001, now + 0.5 - i * 0.12);
-      o.connect(g).connect(ctx.destination);
+      o.connect(g).connect(sfxOut(ctx));
       o.start(now);
       o.stop(now + 0.6);
     });
@@ -289,7 +329,7 @@ export default function useMissionAudio() {
     const g = ctx.createGain();
     g.gain.setValueAtTime(vol * 0.6, now);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-    src.connect(bp).connect(g).connect(ctx.destination);
+    src.connect(bp).connect(g).connect(sfxOut(ctx));
     src.start(now);
     src.stop(now + 0.2);
   }, []);
@@ -306,7 +346,7 @@ export default function useMissionAudio() {
     o.frequency.exponentialRampToValueAtTime(38, now + 0.5);
     g.gain.setValueAtTime(vol, now);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
-    o.connect(g).connect(ctx.destination);
+    o.connect(g).connect(sfxOut(ctx));
     o.start(now);
     o.stop(now + 0.75);
   }, []);
@@ -327,7 +367,7 @@ export default function useMissionAudio() {
     g.gain.linearRampToValueAtTime(vol, now + 0.12);
     g.gain.setValueAtTime(vol, now + dur);
     g.gain.linearRampToValueAtTime(0, now + dur + 0.4);
-    src.connect(hp).connect(g).connect(ctx.destination);
+    src.connect(hp).connect(g).connect(sfxOut(ctx));
     src.start(now);
     src.stop(now + dur + 0.5);
   }, []);
@@ -369,7 +409,7 @@ export default function useMissionAudio() {
     lfo.connect(lg).connect(g.gain);
     wind.connect(lp).connect(g);
     hum.connect(hg).connect(g);
-    g.connect(ctx.destination);
+    g.connect(sfxOut(ctx));
     wind.start();
     hum.start();
     lfo.start();
@@ -400,7 +440,7 @@ export default function useMissionAudio() {
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = 900;
-    lp.connect(g).connect(ctx.destination);
+    lp.connect(g).connect(sfxOut(ctx));
     const nodes = [];
     [110, 164.81, 220.5, 329.2].forEach((f, i) => {
       const o = ctx.createOscillator();
@@ -421,37 +461,12 @@ export default function useMissionAudio() {
     padRef.current = { g, nodes };
   }, []);
 
-  const speak = useCallback((text, { rate = 0.95, pitch = 0.9, voice } = {}) => {
-    if (!enabledRef.current || !window.speechSynthesis) return;
-    // Cancel any current speech to keep comms clean
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = rate;
-    utter.pitch = pitch;
-    utter.volume = 0.9;
-    const voices = window.speechSynthesis.getVoices();
-    if (voice) {
-      const v = voices.find((x) => x.name.includes(voice));
-      if (v) utter.voice = v;
-    } else {
-      // Prefer a US English male voice for that Houston vibe
-      const preferred =
-        voices.find((v) => /en-US.*(Male|David|Google|Aaron)/i.test(v.name + " " + v.lang)) ||
-        voices.find((v) => v.lang === "en-US");
-      if (preferred) utter.voice = preferred;
-    }
-    window.speechSynthesis.speak(utter);
-  }, []);
-
-  const comms = useCallback(
-    (text, delay = 0) => {
-      setTimeout(() => {
-        squelch();
-        setTimeout(() => speak(text), 130);
-      }, delay);
-    },
-    [squelch, speak]
-  );
+  const say = useCallback((id, opts) => comms.say(id, opts), []);
+  const commsFlush = useCallback(() => comms.flush(), []);
+  const commsReset = useCallback(() => comms.reset(), []);
+  const setBlackout = useCallback((on) => comms.setBlackout(on), []);
+  const setRadioLink = useCallback((q) => comms.setLink(q), []);
+  const setVerbosity = useCallback((v) => comms.setVerbosity(v), []);
 
   /*
    * iOS / WebKit only lets audio start inside a user gesture, but the engine
@@ -465,6 +480,8 @@ export default function useMissionAudio() {
       if (navigator.audioSession) navigator.audioSession.type = "playback";
     } catch (e) {}
     const events = ["touchend", "click", "keydown"];
+    const listen = () => events.forEach((ev) => window.addEventListener(ev, unlock, true));
+    relockRef.current = listen;
     const unlock = () => {
       const ctx = ensureCtx();
       if (ctx) {
@@ -481,7 +498,14 @@ export default function useMissionAudio() {
       }
       if (ctx && ctx.state === "running") events.forEach((ev) => window.removeEventListener(ev, unlock, true));
     };
-    events.forEach((ev) => window.addEventListener(ev, unlock, true));
+    listen();
+    const offSettings = subscribeAudioSettings((st) => {
+      const b = busRef.current;
+      const ctx = ctxRef.current;
+      if (!b || !ctx) return;
+      b.sfx.gain.setTargetAtTime(st.sfxVolume, ctx.currentTime, 0.05);
+      b.voice.gain.setTargetAtTime(st.voiceVolume, ctx.currentTime, 0.05);
+    });
     // Returning to the app after a call or app switch: resume the context.
     const onVisible = () => {
       if (document.visibilityState === "visible" && ctxRef.current && ctxRef.current.state !== "running" && ctxRef.current.state !== "closed") {
@@ -492,16 +516,24 @@ export default function useMissionAudio() {
     return () => {
       events.forEach((ev) => window.removeEventListener(ev, unlock, true));
       document.removeEventListener("visibilitychange", onVisible);
+      offSettings();
+      relockRef.current = null;
       try {
+        comms.detach(ctxRef.current);
         stopRumble();
         roarStop(0.05);
         ambienceStop(0.05);
         padStop(0.05);
         if (window.speechSynthesis) window.speechSynthesis.cancel();
-        if (ctxRef.current) ctxRef.current.close();
+        if (ctxRef.current) {
+          ctxRef.current.onstatechange = null;
+          ctxRef.current.close();
+        }
       } catch (e) {}
       ctxRef.current = null;
+      busRef.current = null;
       noiseBufferRef.current = null;
+      crackleRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopRumble, roarStop, ambienceStop, padStop]);
@@ -515,8 +547,12 @@ export default function useMissionAudio() {
     startRumble,
     stopRumble,
     setRumble,
-    speak,
-    comms,
+    say,
+    commsFlush,
+    commsReset,
+    setBlackout,
+    setRadioLink,
+    setVerbosity,
     roarStart,
     roarSet,
     roarStop,

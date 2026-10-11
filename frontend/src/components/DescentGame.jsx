@@ -26,6 +26,8 @@ import {
 } from "@/data/descentProfile";
 import { initialState, stepFrame, gradeTouchdown, CONTACT_ALT } from "@/data/landerSim";
 import CoachCard from "@/components/training/CoachCard";
+import { createDescentMonitor } from "@/audio/descentComms";
+import { VERBOSITY } from "@/audio/commsDirector";
 import {
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
   Pause, Play, X,
@@ -860,8 +862,9 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   });
   const rafRef = useRef(null);
   const lastTsRef = useRef(0);
-  const lastAudioAltRef = useRef(alt);
-  const commsFiredRef = useRef({});
+  // Mission-control calls, decided from telemetry (src/audio/descentComms)
+  const commsRef = useRef(null);
+  if (!commsRef.current) commsRef.current = createDescentMonitor();
 
   // Physics refs — the source of truth. State is only for HUD display.
   const phys = useRef(start);
@@ -980,36 +983,18 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         setFuel(p.fuel);
       }
 
-      // Comms cues
-      const prev = lastAudioAltRef.current;
-      if (audio) {
-        if (prev > 500 && p.alt <= 500 && !commsFiredRef.current.a500) {
-          commsFiredRef.current.a500 = true;
-          audio.comms("Altitude 500 meters. You are go for landing.");
-        } else if (prev > 200 && p.alt <= 200 && !commsFiredRef.current.a200) {
-          commsFiredRef.current.a200 = true;
-          audio.comms("200 meters. Descent rate looking good.");
-        } else if (prev > 100 && p.alt <= 100 && !commsFiredRef.current.a100) {
-          commsFiredRef.current.a100 = true;
-          audio.comms("100 meters. Fuel " + Math.round((p.fuel / cfg.initialFuel) * 100) + " percent.");
-        } else if (prev > 30 && p.alt <= 30 && !commsFiredRef.current.a30) {
-          commsFiredRef.current.a30 = true;
-          audio.comms("30 meters. Picking up dust.");
-        }
-        if (p.fuel / cfg.initialFuel < 0.2 && !commsFiredRef.current.lowFuel) {
-          commsFiredRef.current.lowFuel = true;
-          const { reserve } = assessDescent({ ...p, cfg });
-          audio.comms(reserve > 0 ? `Fuel low. ${Math.round(reserve)} seconds of hover reserve.` : "Fuel low. Below landing minimum.");
-        }
-      }
-      lastAudioAltRef.current = p.alt;
-
       // Contact light
       setContactLight(p.alt < 5 && p.alt > 0.05);
 
       // Projected touchdown assessment (drives TERRAIN AHEAD warning + LPD label)
       if (shouldSync) {
         const g = evaluateGround(predictTouchdownX(p, cfg));
+        // Mission control reads the same assessment the HUD shows.
+        if (audio && audio.say && p.alt > CONTACT_ALT) {
+          const profile = assessDescent({ ...p, throttle: p.fuel > 0 ? p.throttle : 0, cfg });
+          commsRef.current({ t: p.t, alt: p.alt, vx: p.vx, xPos: p.xPos, profile, hazard: !!g.hazard, distanceToLZ: Math.abs(p.xPos), outcome: null })
+            .forEach((r) => audio.say(r.id, r));
+        }
         setProjectedHazard(!!g.hazard);
         setProjectedZoneLabel(
           g.hazard ? g.hazard.label :
@@ -1036,20 +1021,15 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         setEnded({ crashed: result.crashed, result });
         if (audio) {
           audio.stopRumble();
+          if (audio.say) {
+            commsRef.current({ t: p.t, alt: 0, vx: 0, xPos: p.xPos, profile: null, hazard: false, distanceToLZ: Math.abs(p.xPos), outcome: result.crashed ? "crashed" : "landed" })
+              .forEach((r) => audio.say(r.id, r));
+          }
           if (result.crashed) {
             audio.boom(0.55);
-            const primary = result.failureReasons[0] || "";
-            audio.comms(
-              primary.includes("FUEL") ? "Fuel exhausted. We're going in."
-              : primary.includes("TERRAIN") ? "Ground contact... hazard detected. Structural damage."
-              : primary.includes("HORIZONTAL") ? "Excessive lateral velocity at contact."
-              : primary.includes("TILT") ? "Landing failure. Attitude out of limits."
-              : "Hard landing. Structural failure."
-            );
             setTimeout(() => onCrash && onCrash(result), 2200);
           } else {
             audio.boom(0.25);
-            audio.comms("Contact light. Engine stop. Tranquility Base here.");
             setTimeout(() => onSuccess && onSuccess(result), 2800);
           }
         } else {
@@ -1063,6 +1043,17 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
     return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Comms verbosity follows the difficulty (COMMANDER: no coaching). Pausing
+  // or the abort dialog silences the loop; stale calls are not kept.
+  useEffect(() => {
+    if (audio && audio.setVerbosity) audio.setVerbosity(VERBOSITY[difficulty] || "full");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [difficulty]);
+  useEffect(() => {
+    if ((paused || showAbort) && audio && audio.commsFlush) audio.commsFlush();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused, showAbort]);
 
   // Engine rumble tied to throttle
   useEffect(() => {

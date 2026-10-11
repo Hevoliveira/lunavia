@@ -5,6 +5,7 @@ import DescentGame from "@/components/DescentGame";
 import ReentryGame from "@/components/ReentryGame";
 import BuildBadge from "@/components/BuildBadge";
 import useMissionAudio from "@/hooks/useMissionAudio";
+import comms from "@/audio/comms";
 import { DIFFICULTY } from "@/data/landingPhysics";
 import {
   DIFFICULTY_KEYS,
@@ -173,8 +174,11 @@ export default function Training() {
   });
   // The selection a run was started with (callbacks read it, not the UI state).
   const runRef = useRef(null);
-  const voiceRef = useRef(voiceOn);
-  voiceRef.current = voiceOn;
+  // MUTE INSTRUCTOR silences mission control on this page only (subtitles stay).
+  useEffect(() => {
+    comms.setMuted(!voiceOn);
+  }, [voiceOn]);
+  useEffect(() => () => comms.setMuted(false), []);
 
   const scenario = discipline ? findScenario(discipline, scenarioId) : null;
   const difficulty = scenario ? difficultyFor(scenario, chosenDiff) : chosenDiff;
@@ -195,6 +199,7 @@ export default function Training() {
   audioRef.current = audio;
   const stopSounds = () => {
     const a = audioRef.current;
+    a.commsReset();
     a.stopRumble();
     a.roarStop(0.2);
     a.ambienceStop(0.3);
@@ -221,6 +226,7 @@ export default function Training() {
 
   const start = () => {
     audio.init();
+    audio.commsReset();
     runRef.current = { discipline, scenarioId: scenario.id, difficulty };
     setDebrief(null);
     setRunKey((k) => k + 1);
@@ -276,29 +282,12 @@ export default function Training() {
   });
 
   const run = runRef.current;
-  // A fresh instructor for every attempt. The optional voice speaks a short
-  // phrase when the callout changes: on-device speech, never over another
-  // call (Houston's comms win), at most one phrase every 4 s.
+  // A fresh instructor card for every attempt. What is SPOKEN comes from
+  // mission control (the same telemetry-driven calls as the mission, with
+  // verbosity set by the difficulty), so the card and the voice never compete.
   const coach = useMemo(() => {
     if (!run) return null;
-    const base = run.discipline === "reentry" ? createReentryCoach(run.scenarioId, run.difficulty) : (d) => landingCoach(d, run.scenarioId, run.difficulty);
-    const speaks = COACH_LEVEL[run.difficulty] !== "minimal";
-    let lastTitle = null;
-    let lastSpoke = -Infinity;
-    return (input) => {
-      const l = base(input);
-      const title = l ? l.title : null;
-      if (title !== lastTitle) {
-        lastTitle = title;
-        const synth = window.speechSynthesis;
-        const now = performance.now();
-        if (l && l.say && speaks && voiceRef.current && now - lastSpoke > 4000 && !(synth && synth.speaking)) {
-          lastSpoke = now;
-          audioRef.current.speak(l.say, { rate: 1.05, pitch: 1.1 });
-        }
-      }
-      return l;
-    };
+    return run.discipline === "reentry" ? createReentryCoach(run.scenarioId, run.difficulty) : (d) => landingCoach(d, run.scenarioId, run.difficulty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runKey]);
 

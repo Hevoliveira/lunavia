@@ -5,6 +5,8 @@ import AbortModal from "@/components/AbortModal";
 import HoldButton from "@/components/HoldButton";
 import CoachCard from "@/components/training/CoachCard";
 import { liftAgrees } from "@/data/trainingDebrief";
+import { createReentryMonitor } from "@/audio/reentryComms";
+import { VERBOSITY } from "@/audio/commsDirector";
 
 const CTRL_BTN = "border border-white/40 hover:border-[#FF3B00] flex items-center justify-center text-white";
 import {
@@ -197,7 +199,6 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
   const guideRef = useRef({ cue: null, pred: null, lastCue: -1, lastPred: -1 });
   const commitRef = useRef(false);
   const doneRef = useRef(false);
-  const eventsRef = useRef({});
   const realTRef = useRef(0);
 
   const [phase, setPhase] = useState(viewRef.current.phase);
@@ -219,17 +220,13 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
     assistRef.current = assist;
   }, [assist]);
 
-  const say = useCallback((text, delay) => audio && audio.comms && audio.comms(text, delay), [audio]);
+  // Mission-control calls, blackout and link quality from telemetry (src/audio/reentryComms)
+  const commsRef = useRef(null);
+  if (!commsRef.current) commsRef.current = createReentryMonitor();
 
-  // Training starts skip the approach: give the same calls the mission gives there.
+  // Training ENTRY starts skip the approach: the plasma rumble starts at once.
   useEffect(() => {
-    if (!scenario) return;
-    if (scenario.phase === "ENTRY") {
-      if (audio && audio.startRumble) audio.startRumble(0.12);
-      say("Entry interface. Four hundred thousand feet. Stand by for blackout.", 300);
-    } else {
-      say("CM/SM separation confirmed. Maneuver to entry attitude.", 300);
-    }
+    if (scenario && scenario.phase === "ENTRY" && audio && audio.startRumble) audio.startRumble(0.12);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -259,18 +256,18 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
     v.phase = "ENTRY";
     v.phaseT = 0;
     guideRef.current = { cue: null, pred: null, lastCue: -1, lastPred: -1 };
-    eventsRef.current = {};
     commitRef.current = false;
     setPhase("ENTRY");
     if (audio) audio.startRumble && audio.startRumble(0.12);
-    say("Entry interface. Four hundred thousand feet. Stand by for blackout.", 200);
-  }, [audio, say]);
+  }, [audio]);
 
   const retryEntry = useCallback(() => {
     prepRef.current = newPrep(cfg);
     simRef.current = createEntryState();
     Object.assign(viewRef.current, { phase: "PREP", phaseT: 0, sepT: 8, attitudeU: 1, prepBank: 0, approachAlt: 250e3, failT: 0 });
     doneRef.current = false;
+    commsRef.current = createReentryMonitor();
+    if (audio && audio.commsFlush) audio.commsFlush();
     setFailure(null);
     setPhase("PREP");
     if (audio && audio.stopRumble) audio.stopRumble();
@@ -357,7 +354,6 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
             v.phaseT = 0;
             v.sepT = 0;
             setPhase("PREP");
-            say("CM/SM separation confirmed. Maneuver to entry attitude.", 100);
           }
         } else if (v.phase === "PREP") {
           const p = prepRef.current;
@@ -424,26 +420,6 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
             g.pred = s.outcome ? g.pred : "NOMINAL";
           }
 
-          // Mission events → comms
-          const ev = eventsRef.current;
-          const bo = inBlackout(s);
-          if (bo && !ev.blackout) {
-            ev.blackout = true;
-            if (audio && audio.squelch) audio.squelch();
-          }
-          if (!bo && ev.blackout && !ev.aos && !s.outcome) {
-            ev.aos = true;
-            say("LUNAVIA, Houston. We have you through blackout.", 100);
-          }
-          if (s.drogueT !== null && !ev.drogue) {
-            ev.drogue = true;
-            say("Drogues deployed.", 100);
-          }
-          if (s.mainT !== null && !ev.main) {
-            ev.main = true;
-            say("Three good chutes.", 100);
-          }
-
           if (s.outcome) {
             if (s.outcome === OUTCOME.SPLASHDOWN) {
               v.phase = "SPLASHED";
@@ -453,7 +429,6 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
                 audio.stopRumble && audio.stopRumble();
                 audio.splash && audio.splash();
               }
-              say("Splashdown. LUNAVIA is home.", 400);
             } else {
               v.phase = "FAILED";
               v.phaseT = 0;
@@ -463,7 +438,6 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
                 audio.stopRumble && audio.stopRumble();
                 if (s.outcome !== OUTCOME.SKIP_OUT) audio.boom && audio.boom(0.35);
               }
-              say(s.outcome === OUTCOME.SKIP_OUT ? "Houston, we are climbing out. Entry corridor lost." : "Houston, loss of signal. No telemetry.", 300);
             }
           }
         } else if (v.phase === "SPLASHED") {
@@ -490,6 +464,28 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
         const p = prepRef.current;
         if (audio && audio.setRumble && v.phase === "ENTRY") {
           audio.setRumble(clamp(0.08 + s.gLoad / 10 + (s.heatRate / 250) * 0.3, 0, 0.9));
+        }
+        if (audio && audio.say && !pausedRef.current) {
+          const m = commsRef.current({
+            phase: v.phase,
+            realT: realTRef.current,
+            vel: s.v,
+            g: s.gLoad,
+            q: s.heatRate,
+            overheat: s.overheat,
+            prepFpa: p.fpa,
+            inBand: Math.abs(p.fpa - TARGET_FPA) <= cfg.band,
+            attitudeReady: v.attitudeU >= 1,
+            blackout: v.phase === "ENTRY" && inBlackout(s),
+            pred: guideRef.current.pred,
+            climbing: s.gamma > 0 && s.v > 7800,
+            drogue: s.drogue,
+            main: s.main,
+            outcome: s.outcome,
+          });
+          audio.setBlackout(m.blackout);
+          audio.setRadioLink(m.link);
+          m.requests.forEach((r) => audio.say(r.id, r));
         }
         setUi({
           phase: v.phase,
@@ -532,7 +528,27 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
 
   const audioRef = useRef(audio);
   audioRef.current = audio;
-  useEffect(() => () => audioRef.current && audioRef.current.stopRumble && audioRef.current.stopRumble(), []);
+  useEffect(
+    () => () => {
+      const a = audioRef.current;
+      if (!a) return;
+      a.stopRumble && a.stopRumble();
+      if (a.setBlackout) {
+        a.setBlackout(false);
+        a.setRadioLink(1);
+      }
+    },
+    []
+  );
+  // Comms verbosity follows the difficulty; pausing silences the loop.
+  useEffect(() => {
+    if (audio && audio.setVerbosity) audio.setVerbosity(VERBOSITY[difficulty] || "full");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [difficulty]);
+  useEffect(() => {
+    if ((paused || showAbort) && audio && audio.commsFlush) audio.commsFlush();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused, showAbort]);
 
   const hold = (key) => (on) => {
     inputRef.current[key] = on;
