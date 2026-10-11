@@ -1072,30 +1072,54 @@ On iPhone the Moon appeared to spin rapidly under the spacecraft on the LUNAR DE
 
 - **Root cause** (measured by replaying the camera at 60 fps):
   - In the lunar-orbit shot the camera's orbit angle was `missionTime × 0.015`, while the ORBIT
-    state advanced mission time at 300× real time. The camera target therefore circled the Moon at
-    258°/s.
+    state advanced mission time at 300× real time. The camera target circled the Moon at 258°/s.
   - The smoothing lag pulled the camera in to about half a radius above the surface. The surface
     beneath it swept past at about 130°/s, and the picture panned at about 120°/s.
 - **Contributing problems:**
+  - at the end of the cruise the lagging camera kept looking back at the Earth, then whipped
+    ~110° onto the Moon in half a second;
+  - the Moon then turned at ~17°/s while the craft was drawn inside it;
   - the craft lapped the Moon every 24 s;
   - the Moon mesh had its own spin;
   - ORBIT, DIFFICULTY and BRIEFING each mounted a new scene, so the camera snapped;
   - mission time jumped from 270000 to 288000 on entering orbit;
   - GO FOR PDI ran on a 10-second timer unrelated to the craft.
-- **Fix:**
-  - `data/lunarOrbitShot.js` (pure, 10 tests) defines the orbit in a Moon-fixed frame:
-    - the landing site sits at the top of the globe in low morning sunlight (15.5°);
-    - the craft flies east to west over it, its time compression easing out as it reaches the PDI
-      point (12° uprange), then drifting at 0.1°/s;
-    - the camera holds an establishing shot, makes one push-in (≤ 11°/s) and settles into a stable
-      composition (0.1°/s);
-    - world-up stays fixed throughout (no roll), with a 4 s hand-over from the cruise camera.
-  - The Moon keeps one fixed orientation in every shot.
+- **First fix (82a32ff) was not enough.** It limited rotation *rates* (≤ 12°/s), but the camera
+  still swung around the Moon on arrival: 39° at the end of the cruise, 27° in the hand-over and 42°
+  in the push-in, about 110° in the first ~14 s. On the phone that still read as the Moon turning.
+  Tests now bound the *total* apparent rotation.
+- **The rule now** (`data/lunarOrbitShot.js`, pure, 19 tests): once the Moon is big on screen, the
+  camera never moves around it.
+  - It stays on one fixed ray from the Moon's centre, moving only along it (dolly) and tilting.
+  - The point of the surface under the camera never changes, so the surface cannot slide.
+  - The Moon has one fixed orientation in every shot.
+  - Measured in the app at 667, 852, 932 and 1280 px wide (`window.__lvMissionView`): 0.000° of
+    sweep in orbit and on the prep screens, and 0° in the cruise while the Moon is larger than 8°.
+- **Arrival** (`APPROACH`, MissionScene cruise shots ≥ 55000 s):
+  - The camera turns from the Earth to the Moon on a time-based schedule, fast while only stars are
+    in view and slowing as the small Moon comes in.
+  - It then follows the craft down a fixed ray from the Moon and stops at 4.4 radii while the craft
+    flies on.
+  - At loss of signal (207000 s, craft ~1.9 radii out) `Mission.jsx` fades to black. It never shows
+    the craft reaching the drawn Moon, which the display trajectory does at ~225000 s.
+  - Lunar orbit opens from black (`LOS_FADE_OUT_MS` / `LOS_FADE_IN_MS`).
+- **Orbit:**
+  - The landing site is on the face the camera sees (`CAMERA_RAY`, `LZ_UP`), in 17.6° morning
+    sunlight from the east.
+  - The craft flies east to west (left to right). Its arrival is time-compressed, then eases into a
+    1° creep past PDI that is bounded however long the player reads.
+  - GO FOR PDI lights at ~9 s.
+  - The camera holds the whole Moon, then dollies in from 3.6 to 1.5 radii while tilting (≤ 8°/s)
+    to the settled composition: craft upper left over the surface, site ahead, the bottom-right
+    corner clear for the prompt on every phone size.
+  - The orbit craft uses `SpacecraftModel matte` (a less metallic hull), so it reads without an
+    environment map.
+- **Also:**
   - `Mission.jsx` mounts one scene for the cruise, orbit and prep screens. The orbit clock lives in
-    a ref, so there is no React render per frame and main-thread time per frame is about half.
-  - GO FOR PDI lights when the craft reaches PDI.
-  - The LUNAR DESCENT prompt moves to the bottom-right after the arrival settles.
+    a ref, so there is no React render per frame.
   - BEGIN PDI fades through black into the descent.
+  - The display geometry (`craftScenePos`, `displayRadius`) moved to `data/sceneTrack.js` so tests
+    use the scene's own numbers.
 - **Unchanged:**
   - the descent's initial state and physics (`DescentGame`, `landerSim` untouched);
   - scoring, difficulty and controls;

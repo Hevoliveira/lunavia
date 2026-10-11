@@ -1,24 +1,29 @@
 /*
- * LUNAVIA — lunar orbit presentation before the descent (pure, unit-tested).
+ * LUNAVIA — lunar arrival and orbit presentation before the descent (pure, unit-tested).
  *
- * Everything is defined in a Moon-fixed frame, so the Moon never spins: the
- * only thing that moves over the surface is the spacecraft, and the camera
- * moves with purpose (an establishing shot, one slow push-in, then a stable
- * composition). Vectors are plain [x, y, z] arrays in MissionScene units.
+ * The rule: once the Moon is big on screen, the camera never moves AROUND it.
+ * It stays on one fixed ray from the Moon's centre and only moves along that
+ * ray (dolly) and tilts. The point of the surface under the camera therefore
+ * never changes, so the Moon cannot appear to turn or its texture to slide;
+ * features only grow as the camera approaches. The Moon itself has one fixed
+ * orientation (MOON_ROTATION) in every shot.
  *
- * Orientation. The Moon is turned so that the landing site (Mare
- * Tranquillitatis, 0.67°N 23.47°E) sits at the "top" of the globe (world +Y)
- * with the scene's Sun low in its east, as for Apollo's early-morning
- * landings. The camera keeps world +Y as its up vector throughout, so the
- * transition from the cruise shots never rolls the picture.
+ * Arrival. At the end of the cruise the camera turns from the receding Earth
+ * to the Moon (while it is still small), then holds at a fixed point while the
+ * craft flies past it towards the Moon. The picture fades to black at loss of
+ * signal (LOS), before the craft would reach the drawn Moon, and the lunar
+ * orbit opens from black on the establishing shot.
  *
- * Orbit. The spacecraft flies a near-equatorial great circle over the site,
- * east to west. Arrival is time-compressed, then the compression eases out
- * as the craft reaches the powered-descent start point (PDI), from where it
- * drifts at a gentle, almost real-time pace. GO FOR PDI lights at that point.
+ * Orbit. The landing site (Mare Tranquillitatis, 0.67°N 23.47°E) is lit by a
+ * low morning Sun from the east. The craft flies its orbit over the site, east
+ * to west (left to right on screen): time-compressed on arrival, then easing
+ * into a creep that leaves it at the powered-descent start point (PDI), where
+ * GO FOR PDI lights. The camera opens wide on the whole Moon, makes one slow
+ * dolly in with a gentle tilt, then holds a stable composition for as long
+ * as the player reads.
  *
- * Nothing here touches the descent simulation: the descent game starts from
- * its own fixed initial state, as before.
+ * Vectors are plain [x, y, z] arrays in MissionScene units. Nothing here
+ * touches the descent simulation: the descent starts from its own fixed state.
  */
 
 const DEG = Math.PI / 180;
@@ -32,18 +37,16 @@ const SUN = norm([30, 10, -20]);
 
 export const ORBIT = {
   pdiAlpha: -12 * DEG, // PDI point, along-track angle from the site (negative = before it; Apollo ~15°)
-  arrival: 22 * DEG, // extra arc covered during the time-compressed arrival
-  arrivalT: 3.2, // s, time constant of the compression easing out
-  drift: 0.1 * DEG, // rad per real second once settled (~2x real time)
+  arrival: 22 * DEG, // arc covered during the time-compressed arrival
+  arrivalT: 3.2, // s, time constant of that compression easing out
+  creep: 1 * DEG, // then the craft creeps this far past PDI and holds (bounded, however long the player reads)
+  creepT: 40, // s
   altitude: 0.16, // craft orbit radius above the surface, in Moon radii
   goMargin: 1 * DEG, // GO FOR PDI when the craft is within this of the PDI point
   settleStart: 3.5, // s: establishing shot holds until here
-  settleEnd: 12.5, // s: camera fully settled
-  handover: 4, // s: blend from wherever the cruise camera and craft were
-  // Settled framing, in Moon radii relative to the craft's track point.
-  // Solved for a landscape phone: craft upper left with room ahead, the site
-  // ahead below it, the bottom-right corner left for the LUNAR DESCENT prompt.
-  shot: { side: 0.35, rise: 0.05, back: -0.2, lookAhead: 0.15, lookDrop: 0.1 },
+  settleEnd: 13.5, // s: camera fully settled
+  r0: 3.6, // camera distance from the Moon's centre, establishing shot (Moon radii)
+  r1: 1.5, // ... settled
 };
 
 /* ---- small vector helpers ---------------------------------------------- */
@@ -55,31 +58,51 @@ const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const scale = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const lerp = (a, b, u) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
 export const smoother = (x) => {
   const c = Math.min(1, Math.max(0, x));
   return c * c * c * (c * (c * 6 - 15) + 10);
 };
+/** Spherical interpolation between unit vectors (a gentle tilt, never a swing through the middle). */
+export function slerp(a, b, u) {
+  const c = Math.max(-1, Math.min(1, dot(a, b)));
+  const th = Math.acos(c);
+  if (th < 1e-6) return a.slice();
+  const s = Math.sin(th);
+  return add(scale(a, Math.sin((1 - u) * th) / s), scale(b, Math.sin(u * th) / s));
+}
+const fromAzEl = (az, el) => [Math.cos(el * DEG) * Math.cos(az * DEG), Math.sin(el * DEG), Math.cos(el * DEG) * Math.sin(az * DEG)];
 
-/* ---- Moon orientation --------------------------------------------------- */
+/* ---- orbit geometry ----------------------------------------------------- */
+const UP = [0, 1, 0];
+/** The orbit camera's fixed ray from the Moon's centre (world). */
+export const CAMERA_RAY = fromAzEl(-100, 30);
+// Screen axes of that ray's view (camera up is always world +Y: no roll).
+const RAY_X = norm(cross(scale(CAMERA_RAY, -1), UP)); // screen right
+const RAY_Y = cross(RAY_X, scale(CAMERA_RAY, -1)); // screen up
+// A point on the face the camera sees: gamma degrees from the ray, in screen
+// direction beta (0 = up, positive = right).
+const onFace = (gamma, beta) => {
+  const side = add(scale(RAY_Y, Math.cos(beta * DEG)), scale(RAY_X, Math.sin(beta * DEG)));
+  return norm(add(scale(CAMERA_RAY, Math.cos(gamma * DEG)), scale(side, Math.sin(gamma * DEG))));
+};
+
+/** Landing site direction from the Moon's centre (world): upper right of the face the camera sees. */
+export const LZ_UP = onFace(16, 40);
+/** Local east at the site points to the Sun's azimuth (morning); the craft flies west. */
+export const EAST = norm(add(SUN, scale(LZ_UP, -dot(LZ_UP, SUN))));
+export const WEST = scale(EAST, -1);
+const NORTH = cross(LZ_UP, EAST);
+
 // three.js SphereGeometry with an equirectangular map: longitude λ, latitude φ
 // lands at local (cos φ cos λ, sin φ, -cos φ sin λ).
 const lzLocal = [Math.cos(LZ_LAT) * Math.cos(LZ_LON), Math.sin(LZ_LAT), -Math.cos(LZ_LAT) * Math.sin(LZ_LON)];
 const eastLocal = norm([-Math.sin(LZ_LON), 0, -Math.cos(LZ_LON)]);
 const northLocal = cross(lzLocal, eastLocal);
 
-// World frame at the site: up = +Y, east = towards the Sun's azimuth (morning).
-const UP = [0, 1, 0];
-const EAST = norm([SUN[0], 0, SUN[2]]);
-const NORTH = cross(UP, EAST);
-/** Along-track direction over the site (the craft flies west) and the cross-track side. */
-export const WEST = scale(EAST, -1);
-export const SIDE = cross(WEST, UP); // camera side: the craft then moves left to right on screen
-
-/** Row-major 3x3 rotation taking Moon-local vectors to world (columns: east, north, up mapping). */
+/** Row-major 3x3 rotation taking Moon-local vectors to world: the real site lands at LZ_UP. */
 export const MOON_ROTATION = (() => {
-  // R = W · Lᵀ, W = [EAST NORTH UP] as columns, L = [east north up] (local) as columns.
-  const W = [EAST, NORTH, UP];
+  // R = W · Lᵀ, W = [EAST NORTH LZ_UP] as columns, L = [east north up] (local) as columns.
+  const W = [EAST, NORTH, LZ_UP];
   const L = [eastLocal, northLocal, lzLocal];
   const m = [];
   for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) m.push(W[0][i] * L[0][j] + W[1][i] * L[1][j] + W[2][i] * L[2][j]);
@@ -93,20 +116,17 @@ export const applyRotation = (m, v) => [
 ];
 
 /** Sun elevation at the landing site, degrees (for tests and docs). */
-export const LZ_SUN_ELEVATION = Math.asin(dot(UP, SUN)) / DEG;
+export const LZ_SUN_ELEVATION = Math.asin(dot(LZ_UP, SUN)) / DEG;
 
 /* ---- the craft ---------------------------------------------------------- */
 /** Along-track angle from the site at time tau (s since lunar orbit began). */
 export function craftAlpha(tau) {
   const t = Math.max(0, tau);
-  return ORBIT.pdiAlpha + ORBIT.drift * t - ORBIT.arrival * Math.exp(-t / ORBIT.arrivalT);
+  return ORBIT.pdiAlpha + ORBIT.creep * (1 - Math.exp(-t / ORBIT.creepT)) - ORBIT.arrival * Math.exp(-t / ORBIT.arrivalT);
 }
 
-/** Slow "track" angle the settled camera follows (the craft converges onto it). */
-export const trackAlpha = (tau) => ORBIT.pdiAlpha + ORBIT.drift * Math.max(0, tau);
-
-const radialAt = (alpha) => add(scale(UP, Math.cos(alpha)), scale(WEST, Math.sin(alpha)));
-const forwardAt = (alpha) => add(scale(UP, -Math.sin(alpha)), scale(WEST, Math.cos(alpha)));
+const radialAt = (alpha) => add(scale(LZ_UP, Math.cos(alpha)), scale(WEST, Math.sin(alpha)));
+const forwardAt = (alpha) => add(scale(LZ_UP, -Math.sin(alpha)), scale(WEST, Math.cos(alpha)));
 
 /** Craft position, direction of flight and local vertical. M = Moon centre, R = Moon radius. */
 export function craftPose(tau, M, R) {
@@ -115,43 +135,80 @@ export function craftPose(tau, M, R) {
   return { pos: add(M, scale(radial, R * (1 + ORBIT.altitude))), fwd: forwardAt(a), up: radial, alpha: a };
 }
 
+/** Point on the orbit at along-track angle alpha (for drawing the orbit path). */
+export const orbitPoint = (alpha, M, R) => add(M, scale(radialAt(alpha), R * (1 + ORBIT.altitude)));
+
 /** True once the craft has reached the powered-descent start point. */
 export const goForPdi = (tau) => craftAlpha(tau) >= ORBIT.pdiAlpha - ORBIT.goMargin;
 
 /** Landing site on the surface (for the marker). */
-export const landingSite = (M, R) => add(M, scale(UP, R));
+export const landingSite = (M, R) => add(M, scale(LZ_UP, R));
 
-/* ---- the camera --------------------------------------------------------- */
-// Settled composition, relative to the slow track point: beside and above the
-// flight path, the craft in the upper part of the frame moving left to right,
-// the curved surface and the site ahead below it.
-function settledPose(tau, M, R) {
-  const a = trackAlpha(tau);
-  const radial = radialAt(a);
-  const fwd = forwardAt(a);
-  const craft = add(M, scale(radial, R * (1 + ORBIT.altitude)));
-  const k = ORBIT.shot;
-  const pos = add(add(add(craft, scale(SIDE, R * k.side)), scale(radial, R * k.rise)), scale(fwd, -R * k.back));
-  const look = add(add(craft, scale(fwd, R * k.lookAhead)), scale(radial, -R * k.lookDrop));
-  return { pos, look };
+/* ---- the orbit camera --------------------------------------------------- */
+// View directions (unit, scale-free). Wide: the whole Moon, slightly low in
+// the frame. Settled: solved for a landscape phone with the craft upper left
+// above the horizon, the site ahead and below it, and the bottom-right corner
+// left for the LUNAR DESCENT prompt.
+const WIDE_DIR = norm(add(scale(RAY_Y, 0.25), scale(CAMERA_RAY, -ORBIT.r0)));
+const SETTLED_DIR = norm(add(add(scale(CAMERA_RAY, 1.0785 - ORBIT.r1), scale(RAY_Y, 0.167)), scale(RAY_X, 0.1735)));
+
+/**
+ * Camera pose at tau: the camera is always on CAMERA_RAY (distance r), so the
+ * surface never slides. It holds wide, then dollies in while tilting from the
+ * Moon's centre up to the horizon. Up is always world +Y (no roll).
+ */
+export function orbitCamera(tau, M, R) {
+  const u = smoother((tau - ORBIT.settleStart) / (ORBIT.settleEnd - ORBIT.settleStart));
+  // A barely perceptible push-in while the establishing shot holds.
+  const r = ORBIT.r0 * (1 - 0.04 * smoother(tau / ORBIT.settleStart)) * (1 - u) + ORBIT.r1 * u;
+  const pos = add(M, scale(CAMERA_RAY, R * r));
+  const dir = slerp(WIDE_DIR, SETTLED_DIR, u);
+  return { pos, look: add(pos, scale(dir, R)), up: UP.slice(), settle: u };
 }
 
-// Establishing shot: the whole Moon from the same side, the site near its top.
-function widePose(M, R) {
-  const dir = norm(add(scale(SIDE, Math.cos(32 * DEG)), scale(UP, Math.sin(32 * DEG))));
-  return { pos: add(M, scale(dir, R * 3.6)), look: add(M, scale(UP, R * 0.25)) };
+/* ---- the arrival (end of the cruise, MissionScene missionTime) ------------ */
+export const APPROACH = {
+  turnStart: 55000, // the camera turns from the receding Earth to the (still small) Moon,
+  turnEnd: 160000, //   quickly while only stars are in view, slowing right down as the Moon comes in
+  anchorStart: 120000, // ... and moves onto a fixed ray from the Moon, behind the craft
+  anchorEnd: 160000,
+  ray: fromAzEl(-160, 3), // close to where the smoothed cruise camera is, so that move is short
+  gap: 1.6, // Moon radii behind the craft along that ray ...
+  hold: 4.4, // ... until the camera stops here and the craft flies on towards the Moon
+  los: 207000, // loss of signal: fade to black, then lunar orbit
+  losEnd: 222000, // the cruise clock stops here, under black, before the craft reaches the drawn Moon
+};
+
+/** How far the camera has turned from the Earth to the Moon (0..1): eased in, with a long ease out. */
+export const approachTurn = (t) => {
+  const x = Math.min(1, Math.max(0, (t - APPROACH.turnStart) / (APPROACH.turnEnd - APPROACH.turnStart)));
+  return smoother(1 - (1 - x) * (1 - x));
+};
+/** How far the camera has moved onto its fixed ray (0..1). */
+export const approachAnchor = (t) => smoother((t - APPROACH.anchorStart) / (APPROACH.anchorEnd - APPROACH.anchorStart));
+
+/**
+ * Camera point on the fixed approach ray for a Moon at M and the craft at S:
+ * a constant gap behind the craft, easing to a stop at APPROACH.hold.
+ */
+export function approachPoint(M, R, S) {
+  const d = Math.hypot(S[0] - M[0], S[1] - M[1], S[2] - M[2]) / R + APPROACH.gap;
+  const k = 1.2; // smooth maximum, so the camera glides to a stop instead of braking hard
+  const r = (d + APPROACH.hold + Math.sqrt((d - APPROACH.hold) ** 2 + k * k)) / 2;
+  return add(M, scale(APPROACH.ray, R * r));
 }
 
 /**
- * Camera pose at tau: the establishing shot with a very slow push-in, then one
- * eased move into the settled composition. Up is always world +Y (no roll).
+ * Arrival camera, blended from the cruise camera (position and look point,
+ * which keep their own smoothing and look back at the Earth) onto the
+ * approach ray, turning to the Moon at a steady, time-based rate.
  */
-export function orbitCamera(tau, M, R) {
-  const w = widePose(M, R);
-  const s = settledPose(tau, M, R);
-  // A barely perceptible push-in while the establishing shot holds.
-  const push = 1 - 0.06 * smoother(tau / ORBIT.settleStart);
-  const wide = { pos: add(M, scale(add(w.pos, scale(M, -1)), push)), look: w.look };
-  const u = smoother((tau - ORBIT.settleStart) / (ORBIT.settleEnd - ORBIT.settleStart));
-  return { pos: lerp(wide.pos, s.pos, u), look: lerp(wide.look, s.look, u), up: UP.slice(), settle: u };
+export function approachCamera(t, cruisePos, cruiseLook, M, R, S) {
+  const w = approachAnchor(t);
+  const a = approachPoint(M, R, S);
+  const pos = [cruisePos[0] + (a[0] - cruisePos[0]) * w, cruisePos[1] + (a[1] - cruisePos[1]) * w, cruisePos[2] + (a[2] - cruisePos[2]) * w];
+  const back = norm(add(cruiseLook, scale(pos, -1)));
+  const toMoon = norm(add(M, scale(pos, -1)));
+  const dir = slerp(back, toMoon, approachTurn(t));
+  return { pos, look: add(pos, scale(dir, 10)) };
 }

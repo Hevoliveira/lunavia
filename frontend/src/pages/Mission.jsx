@@ -13,7 +13,7 @@ import PdiBriefing from "@/components/PdiBriefing";
 import MissionResult from "@/components/MissionResult";
 import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
-import { goForPdi } from "@/data/lunarOrbitShot";
+import { APPROACH, goForPdi } from "@/data/lunarOrbitShot";
 
 /*
  * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
@@ -57,8 +57,13 @@ const STATE_LABELS = {
 const CRUISE_START = 12000;
 
 // Lunar orbit: the LUNAR DESCENT prompt appears once the arrival shot has
-// mostly settled (the camera finishes its push-in at ~12 s, GO FOR PDI ~10 s).
+// mostly settled (the camera finishes its push-in at ~12 s, GO FOR PDI ~9 s).
 const PROMPT_AFTER_S = 6.5;
+
+// Loss of signal at the end of the cruise: fade to black, then open on the
+// lunar orbit (data/lunarOrbitShot APPROACH.los).
+const LOS_FADE_OUT_MS = 450;
+const LOS_FADE_IN_MS = 1100;
 
 const FLIGHT_STATES = new Set([
   STATES.LAUNCH,
@@ -76,6 +81,9 @@ export default function Mission() {
   const [progress, setProgress] = useState(0);
   const [descentAlt, setDescentAlt] = useState(8);
   const [spaceTime, setSpaceTime] = useState(CRUISE_START);
+  const cruiseRef = useRef(CRUISE_START); // same clock, for the loop
+  const losRef = useRef(false);
+  const losTimerRef = useRef(null);
   // Lunar orbit presentation (ORBIT, DIFFICULTY, BRIEFING): real seconds since
   // orbit began, read every frame by the scene through the ref.
   const orbitClockRef = useRef(0);
@@ -83,7 +91,8 @@ export default function Mission() {
   const goPdiRef = useRef(false);
   const [orbitPrompt, setOrbitPrompt] = useState(false); // shown once the arrival shot settles
   const promptRef = useRef(false);
-  const [fade, setFade] = useState(0); // black cut into the descent
+  // Fade through black: loss of signal into lunar orbit, and orbit into the descent.
+  const [fade, setFade] = useState({ o: 0, ms: 650 });
   const fadingRef = useRef(false);
   const [returnTime, setReturnTime] = useState(504000);
   const [difficulty, setDifficulty] = useState("ASTRONAUT");
@@ -111,15 +120,23 @@ export default function Mission() {
       const s = stateRef.current;
 
       if (s === STATES.SPACE) {
-        setSpaceTime((t) => {
-          const next = t + dt * 30000;
-          if (next >= 270000) {
-            setState(STATES.ORBIT);
+        // The cruise never shows the craft reaching the drawn Moon: at loss of
+        // signal it fades to black and lunar orbit opens from black.
+        const next = Math.min(cruiseRef.current + dt * 30000, APPROACH.losEnd);
+        cruiseRef.current = next;
+        setSpaceTime(next);
+        if (next >= APPROACH.los && !losRef.current) {
+          losRef.current = true;
+          setFade({ o: 1, ms: LOS_FADE_OUT_MS });
+          losTimerRef.current = setTimeout(() => {
+            losTimerRef.current = null;
             orbitClockRef.current = 0;
-            return 270000;
-          }
-          return next;
-        });
+            cruiseRef.current = 270000;
+            setSpaceTime(270000);
+            setState(STATES.ORBIT);
+            requestAnimationFrame(() => requestAnimationFrame(() => setFade({ o: 0, ms: LOS_FADE_IN_MS })));
+          }, LOS_FADE_OUT_MS + 80);
+        }
       } else if (s === STATES.ORBIT || s === STATES.DIFFICULTY || s === STATES.BRIEFING) {
         // The orbit keeps flying while the player reads; no React render per frame.
         orbitClockRef.current += dt;
@@ -162,7 +179,10 @@ export default function Mission() {
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      clearTimeout(losTimerRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -174,6 +194,8 @@ export default function Mission() {
   // End of the Earth departure (or SKIP): straight into the cislunar cruise.
   // Skipping only shortens the film; the mission states are the same.
   const handleLaunchComplete = () => {
+    cruiseRef.current = CRUISE_START;
+    losRef.current = false;
     setSpaceTime(CRUISE_START);
     setState(STATES.SPACE);
   };
@@ -204,12 +226,12 @@ export default function Mission() {
   const handleBeginPdi = () => {
     if (fadingRef.current) return;
     fadingRef.current = true;
-    setFade(1);
+    setFade({ o: 1, ms: 360 });
     setTimeout(() => {
       setState(STATES.MANUAL_DESCENT);
       audio.say("descent.pdiStart", { delay: 0.4 });
       requestAnimationFrame(() => requestAnimationFrame(() => {
-        setFade(0);
+        setFade({ o: 0, ms: 650 });
         fadingRef.current = false;
       }));
     }, 380);
@@ -254,7 +276,12 @@ export default function Mission() {
     setState(STATES.CONTROL);
     setProgress(0);
     setDescentAlt(8);
+    clearTimeout(losTimerRef.current);
+    losTimerRef.current = null;
+    losRef.current = false;
+    cruiseRef.current = CRUISE_START;
     setSpaceTime(CRUISE_START);
+    setFade({ o: 0, ms: 0 });
     orbitClockRef.current = 0;
     goPdiRef.current = false;
     setGoPdi(false);
@@ -526,12 +553,12 @@ export default function Mission() {
           resetMission();
         }}
       />
-      {/* Fade through black from lunar orbit into the descent view */}
+      {/* Fade through black: loss of signal into lunar orbit, orbit into the descent */}
       <div
         aria-hidden
         data-testid="descent-fade"
         className="fixed inset-0 z-[70] bg-black pointer-events-none"
-        style={{ opacity: fade, transition: `opacity ${fade ? 360 : 650}ms ease-${fade ? "in" : "out"}` }}
+        style={{ opacity: fade.o, transition: `opacity ${fade.ms}ms ease-${fade.o ? "in" : "out"}` }}
       />
     </main>
   );
