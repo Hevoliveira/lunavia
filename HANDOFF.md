@@ -1065,3 +1065,38 @@ approach comparison, validation and the human-recording spec: `docs/VOICE.md`.
   cinematography. Only the audio calls moved.
 - **Premium pack.** Record `tools/voice/RECORDING_SCRIPT.csv` with voice actors and replace the MP3s,
   keeping the file names. No code change is needed.
+
+## 28. Lunar orbit: no more spinning Moon before the descent
+
+On iPhone the Moon appeared to spin rapidly under the spacecraft on the LUNAR DESCENT screen.
+
+- **Root cause** (measured by replaying the camera at 60 fps):
+  - In the lunar-orbit shot the camera's orbit angle was `missionTime × 0.015`, while the ORBIT
+    state advanced mission time at 300× real time. The camera target therefore circled the Moon at
+    258°/s.
+  - The smoothing lag pulled the camera in to about half a radius above the surface. The surface
+    beneath it swept past at about 130°/s, and the picture panned at about 120°/s.
+- **Contributing problems:**
+  - the craft lapped the Moon every 24 s;
+  - the Moon mesh had its own spin;
+  - ORBIT, DIFFICULTY and BRIEFING each mounted a new scene, so the camera snapped;
+  - mission time jumped from 270000 to 288000 on entering orbit;
+  - GO FOR PDI ran on a 10-second timer unrelated to the craft.
+- **Fix:**
+  - `data/lunarOrbitShot.js` (pure, 10 tests) defines the orbit in a Moon-fixed frame:
+    - the landing site sits at the top of the globe in low morning sunlight (15.5°);
+    - the craft flies east to west over it, its time compression easing out as it reaches the PDI
+      point (12° uprange), then drifting at 0.1°/s;
+    - the camera holds an establishing shot, makes one push-in (≤ 11°/s) and settles into a stable
+      composition (0.1°/s);
+    - world-up stays fixed throughout (no roll), with a 4 s hand-over from the cruise camera.
+  - The Moon keeps one fixed orientation in every shot.
+  - `Mission.jsx` mounts one scene for the cruise, orbit and prep screens. The orbit clock lives in
+    a ref, so there is no React render per frame and main-thread time per frame is about half.
+  - GO FOR PDI lights when the craft reaches PDI.
+  - The LUNAR DESCENT prompt moves to the bottom-right after the arrival settles.
+  - BEGIN PDI fades through black into the descent.
+- **Unchanged:**
+  - the descent's initial state and physics (`DescentGame`, `landerSim` untouched);
+  - scoring, difficulty and controls;
+  - reentry, Training, and the Earth launch, orbit and TLI sequences.
