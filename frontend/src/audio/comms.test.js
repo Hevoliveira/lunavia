@@ -4,6 +4,7 @@ import catalog from "./commsLines.json";
 import { createDirector, allowed, PRIORITY } from "./commsDirector";
 import { createDescentMonitor } from "./descentComms";
 import { createReentryMonitor } from "./reentryComms";
+import { createVoicePack } from "./voicePack";
 import { DIFFICULTY, evaluateGround } from "../data/landingPhysics";
 import { initialState, stepFrame, gradeTouchdown, CONTACT_ALT } from "../data/landerSim";
 import { humanPilot, guidedStrategy } from "../data/landerPilots";
@@ -122,6 +123,23 @@ describe("line catalog and voice pack", () => {
     }
     expect(ids.size).toBeGreaterThan(30);
     for (const id of ids) expect([id, !!LINE[id]]).toEqual([id, true]);
+  });
+});
+
+describe("voice pack loader", () => {
+  test("a clip that failed to load (offline) is fetched again on the next request", async () => {
+    let online = false;
+    const fetchImpl = async (url) => {
+      if (url.endsWith("manifest.json")) return { ok: true, json: async () => manifest };
+      if (!online) throw new Error("offline");
+      return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+    };
+    const ctx = { decodeAudioData: (data, ok) => ok({ duration: 1.5 }) };
+    const pack = createVoicePack({ base: "/voice", fetchImpl });
+    expect(await pack.buffer(ctx, "pt", "descent.goLanding", 0)).toBeNull();
+    online = true;
+    expect(await pack.buffer(ctx, "pt", "descent.goLanding", 0)).toEqual({ duration: 1.5 });
+    expect(pack.duration("pt", "descent.goLanding", 0)).toBe(manifest.langs.pt.clips["descent.goLanding"][0].d);
   });
 });
 

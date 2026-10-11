@@ -118,7 +118,11 @@ function transmit({ id, line, variant, keyed }, done) {
   pack.buffer(engine.ctx, lang, id, variant).then((buffer) => {
     if (stopped || ended) return;
     if (!buffer || !engine) {
-      handle = speakFallback(text[lang], lang, { onStart: () => begin(estimate(text[lang])), onEnd: end });
+      // Clip missing or undecodable: the device's speech synthesis says it.
+      // The subtitle starts now, whether or not the speech engine ever does.
+      begin(estimate(text[lang]));
+      log({ type: "fallback", id, lang });
+      handle = speakFallback(text[lang], lang, { onStart: () => {}, onEnd: end });
       return;
     }
     handle = playTransmission(engine.ctx, engine.out, {

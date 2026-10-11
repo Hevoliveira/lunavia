@@ -20,8 +20,12 @@ export function createVoicePack({ base = BASE, fetchImpl = (u) => fetch(u) } = {
     if (!manifestP) {
       manifestP = fetchImpl(`${base}/manifest.json`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((m) => (manifest = m))
-        .catch(() => (manifest = null));
+        .catch(() => null)
+        .then((m) => {
+          manifest = m;
+          if (!m) manifestP = null; // retry on the next request
+          return m;
+        });
     }
     return manifestP;
   }
@@ -30,12 +34,15 @@ export function createVoicePack({ base = BASE, fetchImpl = (u) => fetch(u) } = {
 
   function fetchBytes(file) {
     if (!bytes.has(file)) {
-      bytes.set(
-        file,
-        fetchImpl(`${base}/${file}`)
-          .then((r) => (r.ok ? r.arrayBuffer() : null))
-          .catch(() => null)
-      );
+      const p = fetchImpl(`${base}/${file}`)
+        .then((r) => (r.ok ? r.arrayBuffer() : null))
+        .catch(() => null)
+        .then((data) => {
+          // A failed load is not remembered: the next request tries again.
+          if (!data && bytes.get(file) === p) bytes.delete(file);
+          return data;
+        });
+      bytes.set(file, p);
     }
     return bytes.get(file);
   }
