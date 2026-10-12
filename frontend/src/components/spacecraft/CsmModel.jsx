@@ -1,7 +1,7 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { buildCM, buildSM, PARTS, RCS_THRUSTERS, SM_MARK_U, SM_RADIATORS } from "@/data/csmDesign";
+import { buildCM, buildHGA, buildSM, hgaRotation, HGA, PARTS, RCS_THRUSTERS, SM_MARK_U, SM_RADIATORS } from "@/data/csmDesign";
 
 /**
  * LUNAVIA's command and service module (shape: data/csmDesign.js, metres).
@@ -232,7 +232,7 @@ export function csmMaterials() {
 let GEO = null;
 function geometry() {
   if (GEO) return GEO;
-  GEO = { cm: buildCM(), sm: buildSM() };
+  GEO = { cm: buildCM(), sm: buildSM(), hga: buildHGA() };
   return GEO;
 }
 
@@ -308,7 +308,31 @@ export function RcsPuffs({ thrusters, levelsRef, length = 2.0 }) {
   return <instancedMesh ref={ref} args={[puffGeometry(), mat, thrusters.length]} frustumCulled={false} renderOrder={3} visible={false} />;
 }
 
-export default function CsmModel({ cm = true, sm = true, rcsRef = null, castShadow = false, receiveShadow = false }) {
+/**
+ * The high-gain antenna on its hinge. `hgaRef.current` (0 folded for launch .. 1
+ * deployed) is read every frame; without it the antenna is deployed.
+ */
+function HighGainAntenna({ hgaRef, castShadow, receiveShadow }) {
+  const G = geometry();
+  const M = csmMaterials();
+  const ref = useRef();
+  const last = useRef(null);
+  const set = (k) => {
+    if (!ref.current || last.current === k) return;
+    last.current = k;
+    ref.current.quaternion.set(...hgaRotation(k));
+  };
+  useFrame(() => set(hgaRef && hgaRef.current != null ? hgaRef.current : 1));
+  return (
+    <group ref={ref} position={HGA.root} quaternion={hgaRotation(hgaRef && hgaRef.current != null ? hgaRef.current : 1)}>
+      {["metal", "white", "black"].map((p) => (
+        <mesh key={p} geometry={G.hga[p]} material={M[p]} castShadow={castShadow} receiveShadow={receiveShadow} />
+      ))}
+    </group>
+  );
+}
+
+export default function CsmModel({ cm = true, sm = true, rcsRef = null, hgaRef = null, castShadow = false, receiveShadow = false }) {
   const G = geometry();
   const M = csmMaterials();
   const parts = (set) =>
@@ -321,6 +345,7 @@ export default function CsmModel({ cm = true, sm = true, rcsRef = null, castShad
       {sm && (
         <group name="SM">
           {parts(G.sm)}
+          <HighGainAntenna hgaRef={hgaRef} castShadow={castShadow} receiveShadow={receiveShadow} />
           {rcsRef && <RcsPuffs thrusters={RCS_THRUSTERS} levelsRef={rcsRef} />}
         </group>
       )}

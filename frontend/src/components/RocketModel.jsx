@@ -2,8 +2,9 @@ import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import CsmModel from "@/components/spacecraft/CsmModel";
-import { CM_R, CM_TOP, SM_BOTTOM } from "@/data/csmDesign";
+import PayloadSection from "@/components/spacecraft/PayloadSection";
+import { CM_TOP } from "@/data/csmDesign";
+import { ADAPTER, CSM_MATED, ROCKET_M_PER_UNIT, UPPER_STAGE } from "@/data/payloadDesign";
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 
@@ -19,21 +20,23 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
  * (no React re-render): { engines: [5 thrust 0..1], glow, sep, upper,
  * showStage1, expand, les } — see LaunchCinematic / data/launchTimeline.
  *
- * The spacecraft on top is the expedition's own (components/spacecraft
- * CsmModel, the same model as in lunar orbit): the command and service module
- * at true size on a tapered spacecraft-LM adapter that houses the lunar
- * module, under the boost cover and the launch escape tower. The tower and
- * cover are jettisoned in flight (`les`, seconds since jettison).
+ * The payload on top is the expedition itself (components/spacecraft
+ * PayloadSection, data/payloadDesign): the command and service module (the
+ * same CsmModel as in lunar orbit) at true size on the spacecraft adapter, and
+ * inside the adapter the lunar module (the same LanderModel that lands),
+ * under the boost cover and the launch escape tower. The tower and cover are
+ * jettisoned in flight (`les`, seconds since jettison); after TLI the adapter
+ * opens and the spacecraft come out (`td`, data/transposition).
  */
 
-// Spacecraft stations, model units (1 unit = 18 m at the cinematic's scale).
+// Spacecraft stations, model units (1 unit = 18 m at the cinematic's scale), from data/payloadDesign.
 export const SPACECRAFT = (() => {
-  const M = 1 / 18; // metres to model units
-  const slaBase = 4.22;
-  const slaTop = 4.84;
-  const csm = slaTop - SM_BOTTOM * M; // CSM origin (the CM / SM interface)
+  const M = 1 / ROCKET_M_PER_UNIT; // metres to model units
+  const slaBase = UPPER_STAGE.topUnits;
+  const slaTop = slaBase + ADAPTER.H * M;
+  const csm = slaBase + CSM_MATED.y * M; // CSM origin (the CM / SM interface)
   const cmTop = csm + CM_TOP * M;
-  return { M, slaBase, slaTop, slaR0: 0.302, slaR1: CM_R * M + 0.002, csm, cmTop, towerBase: cmTop + 0.012, towerTop: cmTop + 0.212, tip: cmTop + 0.55 };
+  return { M, slaBase, slaTop, slaR0: ADAPTER.R0 * M, slaR1: ADAPTER.R1 * M, csm, cmTop, towerBase: cmTop + 0.012, towerTop: cmTop + 0.212, tip: cmTop + 0.55 };
 })();
 
 /* ------------------------- procedural textures ------------------------- */
@@ -390,7 +393,7 @@ function haloTexture() {
   return HALO_TEX;
 }
 
-const DEFAULT_CTRL = { engines: [0, 0, 0, 0, 0], glow: 0, sep: 0, upper: 0, showStage1: true, expand: 0 };
+const DEFAULT_CTRL = { engines: [0, 0, 0, 0, 0], glow: 0, sep: 0, upper: 0, showStage1: true, expand: 0, td: null, ghost: 0 };
 
 /* ---- batching: static parts sharing a material are merged into one draw call ---- */
 
@@ -548,11 +551,9 @@ function buildBatches(geo) {
     const a = (i / 16) * Math.PI * 2;
     hw2.push(put(new THREE.BoxGeometry(0.014, 0.018, 0.01), m4([Math.cos(a) * 0.3, 4.235, Math.sin(a) * 0.3], [0, -a, 0])));
   }
-  // Spacecraft-LM adapter: tapers from the upper stage to the service module; the
-  // lunar module rides inside it. Orange LUNAVIA ring at the top, the separation
-  // line at its base.
+  // The spacecraft adapter itself (ring, panels, LM mounts) is PayloadSection's; the
+  // separation line at its base stays with the stage.
   const SC = SPACECRAFT;
-  const sla = [put(new THREE.CylinderGeometry(SC.slaR1, SC.slaR0, SC.slaTop - SC.slaBase, 40, 1, true), m4([0, (SC.slaBase + SC.slaTop) / 2, 0]))];
   // Boost protective cover over the command module, and the escape tower on it.
   const towerY = (u) => SC.towerBase + (SC.towerTop - SC.towerBase) * u;
   const les = [
@@ -591,10 +592,7 @@ function buildBatches(geo) {
   QUAD.forEach((a) => les.push(put(lesNozzle, m4([Math.cos(a) * 0.03, T - 0.01, Math.sin(a) * 0.03], [Math.sin(a) * -0.5, 0, Math.cos(a) * 0.5]))));
   const lesOrange = [put(new THREE.CylinderGeometry(0.0285, 0.0285, 0.02, 16), m4([0, T + 0.2, 0]))];
   const lesSilver = [put(new THREE.SphereGeometry(0.012, 10, 10), m4([0, T + 0.335, 0]))];
-  const orange2 = [
-    put(new THREE.CylinderGeometry(0.305, 0.305, 0.07, 32), m4([0, 4.1, 0])),
-    put(new THREE.CylinderGeometry(SC.slaR1 + 0.003, SC.slaR1 + 0.006, 0.016, 32), m4([0, SC.slaTop - 0.008, 0])),
-  ];
+  const orange2 = [put(new THREE.CylinderGeometry(0.305, 0.305, 0.07, 32), m4([0, 4.1, 0]))];
   const silver2 = [put(new THREE.CylinderGeometry(0.3, 0.302, 0.02, 40), m4([0, SC.slaBase + 0.01, 0]))];
   return {
     bells1: merge(bells1),
@@ -609,7 +607,6 @@ function buildBatches(geo) {
     les: merge(les),
     lesOrange: merge(lesOrange),
     lesSilver: merge(lesSilver),
-    sla: merge(sla),
     orange2: merge(orange2),
     silver2: merge(silver2),
   };
@@ -726,6 +723,7 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
     return m;
   }, [S]);
 
+  const payloadMats = useMemo(() => ({ panel: S.mat.paint2, band: S.mat.orange, hardware: S.mat.hardware }), [S]);
   const plumeMats = useMemo(
     () => ({
       core: plumeMaterial({ color: "#ffb15a", core: "#fffaf0", opacity: 1.15, falloff: 0.9, noise: 0.25 }),
@@ -959,10 +957,9 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
         <cylinderGeometry args={[0.302, 0.302, 0.06, 32]} />
       </mesh>
 
-      {/* Spacecraft-LM adapter (the lunar module rides inside) and the spacecraft itself */}
-      <mesh geometry={S.batch.sla} material={S.mat.paint2} />
-      <group position={[0, SPACECRAFT.csm, 0]} scale={SPACECRAFT.M}>
-        <CsmModel />
+      {/* The payload: spacecraft adapter with the lunar module inside, the CSM on top (metres) */}
+      <group position={[0, SPACECRAFT.slaBase, 0]} scale={SPACECRAFT.M}>
+        <PayloadSection ctrlRef={ctrlRef} materials={payloadMats} />
       </group>
       {/* Boost cover + escape tower, jettisoned in flight */}
       <group ref={lesRef}>

@@ -7,6 +7,8 @@ import { framePoints, centreViewOn } from "@/lib/cameraFraming";
 import { ParticlePool } from "@/components/scenes/launch/particles";
 import { createEnvironment, R as ENV_R, KM_PER_UNIT } from "@/components/scenes/launch/environment";
 import * as TL from "@/data/launchTimeline";
+import { transposition, TD, extractionOffset } from "@/data/transposition";
+import { DOCK, toRocketUnits } from "@/data/payloadDesign";
 
 /*
  * LaunchCinematic — automatic Earth departure of LV-001, from T-15 on the pad
@@ -107,7 +109,10 @@ function buildEnvMaps(gl) {
 
 const PAD_SHOTS = {
   wide: (u) => ({ pos: [17 - 2.2 * u, 2.4 - 0.3 * u, 23 - 2.8 * u], look: [0.6, 2.0, -0.6], fov: 21 }),
-  lowAngle: (u) => ({ pos: [2.3 - 0.12 * u, 0.3, 3.4 - 0.12 * u], look: [0.05, 1.7 + 1.5 * u, 0], fov: 54 }),
+  // Up at the spacecraft, from the side away from the tower: the adapter turns translucent
+  // for a moment to show the lunar module standing inside it (TL.payloadReveal).
+  // The rocket sits in the right third, clear of the caption (lower left) and the countdown.
+  payload: (u) => ({ pos: [-1.24 + 0.1 * u, 3.05 - 0.02 * u, 1.0 - 0.08 * u], look: [-0.22, 2.96 + 0.02 * u, -0.26], fov: 40 }),
   engines: (u) => ({ pos: [0.3 - 0.02 * u, -0.06, 0.31 - 0.02 * u], look: [-0.04, 0.04 + 0.03 * u, -0.04], fov: 64, shake: 1 }),
   trench: (u, c) => ({ pos: [2.9 - 0.2 * u, 0.7 + 0.1 * u, 7.6 - 0.4 * u], look: [0.15, Math.max(1.5, c.baseY + 1.3), -0.8], fov: 40, shake: 0.5 }),
   tower: (u, c) => ({ pos: [2.2, 1.25, 0.8], look: [c.lagX, c.lagY + 1.5, 0], fov: 60, shake: 0.35 }),
@@ -141,8 +146,6 @@ const FLIGHT_SHOTS = {
   tliCount: { d0: dirOf(-0.84, 0.02, -0.54), d1: dirOf(-0.8, 0.08, -0.6), pts: "aftUpper", roll: 0.03, rect: FRAME, extra: 1.05, fov: 40 },
   // E: ignition at sunrise, wide, with the Earth's curve as the backdrop.
   tli: { d0: dirOf(-0.5, 0.2, -0.84), d1: dirOf(-0.62, 0.18, -0.76), pts: "upperBurn", roll: 0.04, rect: FRAME, extra: 1.7, fov: 58 },
-  // Farewell: looking back past the spacecraft at the receding, half-lit Earth.
-  farewell: { d0: dirOf(0.3, 0.9, -0.3), d1: dirOf(0.1, 0.98, -0.16), pts: "upperWide", roll: 0.0, rect: FRAME, extra: 2.4 },
 };
 
 // The onboard camera on the spent stage, looking up its axis at the upper stage.
@@ -152,6 +155,32 @@ const STAGE1_CAM = { at: [0.85, S1.top - 0.35, 0], fov: 50 };
 const DEPART_CAM = { d0: 3.2, d1: 28, side: -0.3, up: 0.34, fov: 46 };
 // ... framed high, so the sunlit Earth below fills the lower half
 const DEPART_RECT = { x0: 0.1, x1: 0.9, y0: 0.14, y1: 0.56 };
+
+/*
+ * Transposition, docking and extraction (data/transposition): cameras in the
+ * payload frame (metres; +Y up the vehicle, which in this attitude points
+ * along the orbit; +X is local up; the Sun is ahead and to the -Z side). The
+ * spacecraft are close enough to read their hardware, never enlarged. u is
+ * the shot's progress, s the transposition state, e the docked pair's offset.
+ */
+const TD_CAMS = {
+  // The adapter opens, the panels fall away, the CSM backs out. Seen between two panels,
+  // from above (the Earth below), so the LM is uncovered rather than hidden by a panel.
+  tdSep: (u) => ({ pos: [17, 8 + 3 * u, -19], look: [0, 10.5 + 1.5 * u, 0], fov: 44 }),
+  // The CSM turns round above the LM.
+  tdTurn: (u) => ({ pos: [20, 13 + 2 * u, -26], look: [-1.5, 14, 0], fov: 50 }),
+  // Closing in: the probe, the drogue, then the rings meeting.
+  tdDock: (u) => ({ pos: [12 - 2 * u, 7.5 - 1 * u, -13 + 2 * u], look: [0, 9 - 1 * u, 0], fov: 42 }),
+  // The docked pair rises out of the adapter; the stage stays.
+  tdExtract: (u, s, e) => ({ pos: [17, 6 + 0.5 * e, -19], look: [0, 9 + 0.7 * e, 0], fov: 44 }),
+  // Looking down past the docked spacecraft at the Earth, the spent stage falling behind.
+  farewell: (u, s, e) => {
+    const mid = DOCK.hardY - 1.5 + e;
+    return { pos: [21 + 4 * u, mid + 9, -11 - 3 * u], look: [-14, mid - 3, 2], fov: 46 };
+  },
+};
+const _tdA = new THREE.Vector3();
+const _tdB = new THREE.Vector3();
 
 /* Sunlight glints: places on the spacecraft where the Sun reflects towards
  * the camera, each a band of the surface of revolution (model units): the
@@ -316,6 +345,8 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     c.showStage1 = TL.stage1Visible(t);
     c.expand = 1 - Math.sqrt(TL.airDensity(traj.altKm));
     c.les = TL.lesJettison(t);
+    c.td = transposition(t - TL.TD_START);
+    c.ghost = TL.payloadReveal(t);
     const g = rocketGroupRef.current;
     let baseY = BASE_Y;
     if (g) {
@@ -445,6 +476,23 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
         camera.clearViewOffset();
         S.roll = 0;
       }
+    } else if (TD_CAMS[shot.id]) {
+      // Transposition and docking, and the coast: framed in the payload frame.
+      const rig = rigRef.current;
+      if (rig && rig.root) {
+        rig.root.updateWorldMatrix(true, true);
+        const e = extractionOffset(t - TL.TD_START);
+        const def = TD_CAMS[shot.id](smooth(shotU) * 0.6 + shotU * 0.4, c.td, e);
+        camera.position.copy(rig.root.localToWorld(_tdA.set(...toRocketUnits(def.pos))));
+        camera.up.set(0, 1, 0);
+        camera.lookAt(rig.root.localToWorld(_tdB.set(...toRocketUnits(def.look))));
+        if (camera.fov !== def.fov) {
+          camera.fov = def.fov;
+          camera.updateProjectionMatrix();
+        }
+        camera.clearViewOffset();
+        S.roll = 0;
+      }
     } else if (shot.id === "departure") {
       // The camera stays on the parking orbit while the vehicle climbs away
       // from it, burning towards the sunrise, then coasting.
@@ -535,7 +583,8 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     }
     camera.updateMatrixWorld();
     S.lastShot = shot;
-    updateGlints(glints, rigRef.current, camera, S.sunW, regime === "flight" && t >= 61 ? TL.sunAt(t) : null);
+    // Glints mark the spacecraft on the rocket; once it comes apart the cameras are close anyway.
+    updateGlints(glints, t < TL.TD_START ? rigRef.current : null, camera, S.sunW, regime === "flight" && t >= 61 ? TL.sunAt(t) : null);
 
     // --- Environment camera (true scale) ---
     let altKm;
@@ -570,6 +619,8 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
       w.met = TL.metAt(t);
       w.altKm = traj.altKm;
       w.fired = [...S.fired];
+      w.td = c.td ? { phase: c.td.phase, csmY: +c.td.csm.pos[1].toFixed(3), pitch: +c.td.csm.pitch.toFixed(4), lmY: +c.td.lm.pos[1].toFixed(3), docked: c.td.docked, panels: +c.td.panels.angle.toFixed(3), hga: +c.td.hga.toFixed(3) } : null;
+      w.ghost = c.ghost;
       w.dpr = gl.getPixelRatio();
       w.calls = gl.info.render.calls;
       w.triangles = gl.info.render.triangles;
@@ -1026,6 +1077,30 @@ function useAudioDirector(audio) {
         case "lunarTransfer":
           say("launch.lunarTransfer", 900);
           break;
+        // Transposition and docking: pyros, RCS, latches, felt through the structure.
+        case "tdSep":
+          audio.thud?.(0.3);
+          audio.clank?.(0.22);
+          audio.hiss?.(1.2, 0.07);
+          break;
+        case "panelsJettison":
+          audio.thud?.(0.18);
+          break;
+        case "tdTurn":
+          audio.hiss?.(0.7, 0.06);
+          setTimeout(() => audio.hiss?.(0.7, 0.06), (TD.pitch.t1 - TD.pitch.t0 - 1.2) * 1000);
+          break;
+        case "capture":
+          audio.clank?.(0.32);
+          break;
+        case "hardDock":
+          audio.clank?.(0.45);
+          setTimeout(() => audio.clank?.(0.25), 180);
+          break;
+        case "tdExtract":
+          audio.thud?.(0.24);
+          audio.hiss?.(1.6, 0.07);
+          break;
         default:
       }
     },
@@ -1045,7 +1120,7 @@ function useAudioDirector(audio) {
       if (t < 32) {
         level = thrust;
         // Distance of the camera from the vehicle (close shots are louder, brighter)
-        muffle = { wide: 0.6, lowAngle: 0.3, engines: 0.05, trench: 0.25, tower: 0.15, wideAscent: 0.65 }[shot.id] ?? 0.4;
+        muffle = { wide: 0.6, payload: 0.3, engines: 0.05, trench: 0.25, tower: 0.15, wideAscent: 0.65 }[shot.id] ?? 0.4;
       } else if (t < 44) {
         // Aerodynamic roar peaks near max-Q, then the air thins out
         const q = Math.exp(-((t - 34) * (t - 34)) / 30);
@@ -1058,7 +1133,7 @@ function useAudioDirector(audio) {
       }
       // Cameras outside the vehicle in vacuum hear nothing: the spent stage's,
       // and the one left on the parking orbit as the vehicle leaves.
-      if (shot.id === "stage1Cam" || shot.id === "departure" || shot.id === "farewell") level = 0;
+      if (shot.id === "stage1Cam" || shot.id === "departure" || t >= TL.TD_START) level = 0;
       audio.roarSet(level, muffle);
     },
   };

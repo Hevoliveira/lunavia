@@ -84,7 +84,7 @@ export const ORBIT_SHOTS = [
     id: "stack",
     start: ORBIT_SEQ.cut,
     caption: "LV-001 IN LUNAR ORBIT",
-    sub: "COMMAND AND SERVICE MODULE · LUNAR MODULE DOCKED",
+    sub: "THE CSM AND LM FROM LV-001 · LM LANDING PROBES DEPLOYED",
     // A slow push along the stack from below its sunlit side, the horizon behind.
     cam: (u) => ({ pos: lerp([-9, 9.5, 26], [-4, 8.2, 21], ease(u)), look: lerp([1.2, -3.6, 0], [1.6, -3.2, 0], ease(u)) }),
     len: 6.5,
@@ -169,10 +169,23 @@ export const returnDistanceKm = (t) => 1837 + 2.2 * Math.pow(Math.max(0, t - 504
 export const CRUISE = { closeEnd: 40000, slowRate: 7000 }; // mission s; time compression during the close shot (s per real s)
 export const CRUISE_SHOT = {
   caption: "TRANSLUNAR COAST",
-  sub: "TRANSPOSITION AND DOCKING COMPLETE · LUNAR MODULE EXTRACTED · UPPER STAGE LEFT BEHIND",
+  sub: "THE CSM AND LM EXTRACTED FROM LV-001 · 3-DAY COAST TO THE MOON",
 };
 export function cruiseCamera(u) {
   return { pos: lerp([10, 4.5, 30], [5, 3.4, 24], ease(u)), look: lerp([STACK.mid + 1, -1.4, 0], [STACK.mid, -1.0, 0], ease(u)) };
+}
+
+/*
+ * Lunar approach: the docked stack close up, the Moon behind it at its true
+ * size, in the last hours before loss of signal (when the spacecraft passes
+ * behind the Moon for lunar orbit insertion; data/lunarOrbitShot APPROACH.los).
+ */
+export const APPROACH_CLOSE = { start: 195000, rate: 3000 }; // mission s; time compression (s per real s)
+export const APPROACH_SHOT = { caption: "LUNAR APPROACH", sub: "THE CSM AND LM FROM LV-001 · LUNAR ORBIT INSERTION BEHIND THE MOON" };
+/** Distance from the Moon's centre (km) closing in towards loss of signal at `los` (mirror of the return). */
+export const approachDistanceKm = (t, los) => 1837 + 2.2 * Math.pow(Math.max(0, los - t), 0.95);
+export function approachCloseCamera(u) {
+  return { pos: lerp([9, 4, 26], [6, 3.2, 21], ease(u)), look: lerp([STACK.mid + 1.5, -0.8, 0], [STACK.mid + 1, -0.4, 0], ease(u)) };
 }
 
 export const RETURN_CLOSE_END = 560000; // mission s

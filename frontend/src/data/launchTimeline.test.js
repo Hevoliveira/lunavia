@@ -1,7 +1,7 @@
 import {
   SHOTS, EVENTS, DURATION, LIFTOFF_T, MILESTONES, metAt, formatMet, trajectoryAt, padHeight,
   stage1Thrust, upperThrust, sepProgress, eventTime, shotAt, airDensity, sunAt, rollAt, stage1Visible,
-  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE, LES_JETTISON, lesJettison,
+  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE, LES_JETTISON, lesJettison, payloadReveal,
 } from "./launchTimeline";
 
 describe("launch timeline", () => {
@@ -133,7 +133,7 @@ describe("launch timeline", () => {
   test("TLI finale: roll, ullage, a 3-2-1 hold, ignition, then the vehicle leaves", () => {
     const shot = (id) => SHOTS.find((x) => x.id === id);
     // Order of the finale beats
-    expect(SHOTS.slice(-6).map((s) => s.id)).toEqual(["finalPass", "tliPrep", "tliCount", "tli", "departure", "farewell"]);
+    expect(SHOTS.slice(-10).map((s) => s.id)).toEqual(["finalPass", "tliPrep", "tliCount", "tli", "departure", "tdSep", "tdTurn", "tdDock", "tdExtract", "farewell"]);
     // RCS roll inside the night pass; ullage just before ignition
     RCS_WINDOWS.forEach(([a, b]) => {
       expect(a).toBeGreaterThanOrEqual(shot("tliPrep").start);
@@ -155,7 +155,36 @@ describe("launch timeline", () => {
     expect(upperThrust(eventTime("lunarTransfer") + 0.5)).toBe(0);
     // Leaving: altitude rises through the departure shot, then the Earth recedes
     expect(trajectoryAt(shot("departure").end - 0.1).altKm).toBeGreaterThan(trajectoryAt(shot("departure").start).altKm);
-    expect(trajectoryAt(shot("farewell").start).altKm).toBeGreaterThan(5000);
+    expect(trajectoryAt(shot("tdSep").start).altKm).toBeGreaterThan(5000);
+  });
+
+  test("after TLI the payload comes out of the rocket before the coast: separation, transposition, docking, extraction", () => {
+    const shot = (id) => SHOTS.find((x) => x.id === id);
+    // The upper stage has finished its burn before the spacecraft separates
+    expect(upperThrust(shot("tdSep").start)).toBe(0);
+    expect(eventTime("tliCutoff")).toBeLessThan(eventTime("tdSep"));
+    // In mission order, each inside its own shot
+    [["tdSep", "tdSep"], ["tdTurn", "tdTurn"], ["tdDock", "tdDock"], ["capture", "tdDock"], ["hardDock", "tdDock"], ["tdExtract", "tdExtract"], ["farewell", "farewell"]].forEach(([e, s]) => {
+      expect(shotAt(eventTime(e)).id).toBe(s);
+    });
+    // The mission clock reaches the cruise (MET 12 000 s) as the cinematic ends, and
+    // the docking runs at a modest compression, the coast after it faster
+    expect(metAt(DURATION)).toBeCloseTo(12000, 0);
+    const rate = (a, b) => (metAt(b) - metAt(a)) / (b - a);
+    expect(rate(shot("tdTurn").start, shot("tdDock").end)).toBeLessThanOrEqual(20);
+    // The spacecraft climbs from ~6 000 km through the docking, then the Earth recedes to the cruise's distance
+    expect(trajectoryAt(shot("tdDock").start).altKm).toBeGreaterThan(6000);
+    expect(trajectoryAt(shot("tdExtract").end).altKm).toBeLessThan(8000);
+    expect(trajectoryAt(DURATION).altKm / 25000).toBeGreaterThan(0.95);
+    // The pad opens on the payload: the spacecraft on top and the lunar module inside the adapter
+    expect(SHOTS[1].id).toBe("payload");
+    // ... seen through the adapter for about two seconds of that shot, and never elsewhere
+    const p = SHOTS[1];
+    expect(payloadReveal(p.start + 2)).toBeCloseTo(1, 6);
+    expect(payloadReveal(p.start)).toBe(0);
+    expect(payloadReveal(p.end)).toBe(0);
+    for (let t = 0; t < DURATION; t += 0.1) if (t < p.start || t >= p.end) expect(payloadReveal(t)).toBe(0);
+    expect(EVENTS.find((e) => e.id === "payload").sub).toMatch(/LUNAR MODULE INSIDE THE ADAPTER/);
   });
 
   test("orbit progress: revolution count and position against day and night", () => {

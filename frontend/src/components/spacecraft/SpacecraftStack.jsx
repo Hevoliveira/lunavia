@@ -4,6 +4,7 @@ import CsmModel, { RcsPuffs } from "@/components/spacecraft/CsmModel";
 import LanderModel from "@/components/LanderModel";
 import { dockedLmPose, LM_M_PER_UNIT, RCS_THRUSTERS as CSM_RCS } from "@/data/csmDesign";
 import { RCS_THRUSTERS as LM_RCS } from "@/data/lmDesign";
+import { PROBE_STOWED, probeSet } from "@/data/payloadDesign";
 
 /**
  * The expedition's spacecraft as one assembly (metres, the CSM's frame:
@@ -16,7 +17,8 @@ import { RCS_THRUSTERS as LM_RCS } from "@/data/lmDesign";
  * apart.
  *
  * `stateRef.current` (optional), read every frame:
- *   { csmY, lmY, lmRoll, csmRcs, lmRollRcs } — see data/undocking.
+ *   { csmY, lmY, lmRoll, csmRcs, lmRollRcs, lmProbe } — see data/undocking.
+ *   The LM's contact probes stay folded, as launched, until lmProbe swings them down.
  * `lm` / `csm`: draw either vehicle (false hides it; e.g. the CSM alone after
  * the lunar module has left the scene).
  */
@@ -30,6 +32,7 @@ export default function SpacecraftStack({ stateRef = null, lm = true, csm = true
   const csmRcs = useRef(CSM_RCS.map(() => 0));
   const lmRcs = useRef(LM_RCS.map(() => 0));
   const docked = useMemo(() => dockedLmPose(0), []);
+  const lmFx = useRef({ thrust: 0, comp: [0, 0, 0, 0], probe: probeSet(PROBE_STOWED) });
 
   useFrame(() => {
     const s = (stateRef && stateRef.current) || null;
@@ -40,6 +43,8 @@ export default function SpacecraftStack({ stateRef = null, lm = true, csm = true
     if (lmRollRef.current) lmRollRef.current.rotation.y = s ? s.lmRoll : 0;
     const k = s ? s.csmRcs : 0;
     FWD.forEach((on, i) => (csmRcs.current[i] = on ? k : 0));
+    const b = s && s.lmProbe != null ? s.lmProbe : PROBE_STOWED;
+    if (lmFx.current.probe[0] !== b) lmFx.current.probe = probeSet(b);
     const r = s ? s.lmRollRcs : 0;
     LM_RCS.forEach((t, i) => (lmRcs.current[i] = t.roll && Math.sign(t.roll) === Math.sign(r) ? Math.abs(r) : 0));
   });
@@ -56,7 +61,7 @@ export default function SpacecraftStack({ stateRef = null, lm = true, csm = true
           {/* Roll about the drogue's axis (the stack axis), then the docked attitude. */}
           <group ref={lmRollRef}>
             <group position={[0, 0, docked.position[2]]} rotation={docked.rotation} scale={LM_SCALE}>
-              <LanderModel />
+              <LanderModel fx={lmFx.current} />
               <RcsPuffs thrusters={LM_RCS} levelsRef={lmRcs} length={0.3} />
             </group>
           </group>

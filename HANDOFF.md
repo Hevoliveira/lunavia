@@ -1784,3 +1784,92 @@ The planet camera stands where the spacecraft is, so the Moon below and the Eart
 - The opening's sound starts on the first tap (iOS allows audio only after a gesture).
 - The ascent stage's rendezvous with the CSM is not shown; the return shows the CSM alone.
 - All validation ran in a browser with software rendering, not on a physical iPhone.
+
+## 35. One launch vehicle, one spacecraft: the payload and transposition
+
+**What was wrong** (audited on BUILD 11618a2, after an iPhone review of the outbound mission). The CSM was the shared model from the pad to reentry (§34), but the lunar module had no origin:
+- the spacecraft adapter was one opaque, empty cone; no lunar module existed anywhere in the launch vehicle;
+- after TLI the cinematic jumped twenty minutes, and the cruise opened on a lunar module already docked; "transposition and docking complete" was a caption, and the upper stage simply vanished;
+- as drawn, the payload could not have worked: the CSM's deployed high-gain antenna pierced the adapter wall by 2 m, and with its contact probes hanging, the lunar module did not fit (footpads against the tapering wall, probes 1.7 m into the upper stage);
+- during the launch the spacecraft was never framed close, so nothing tied the small tip of LV-001 to the vehicles near the Moon.
+
+**The payload** (`data/payloadDesign.js`, pure and tested; `components/spacecraft/PayloadSection.jsx`; metres, origin on the axis at the upper stage's forward bulkhead):
+
+| From the top | Configuration at launch |
+|---|---|
+| Escape tower + boost cover | Over the command module; jettisoned at T+59.3 s (§34) |
+| Command and service module | `CsmModel`; the service module's base on the adapter's top, its engine bell reaching 3 m down into the adapter; the high-gain antenna folded beside the bell (`csmDesign` HGA_FOLD: 47.5° on its hinge, head turned 30°) |
+| Spacecraft adapter | A frustum from the upper stage (10.9 m) to the service module (4 m), 11.2 m tall, as before. Now a fixed 1 m ring on the stage and four panels hinged to it, centred on the lunar module's legs |
+| Lunar module | `LanderModel`, the approved model, unchanged: upright, legs out, contact probes folded up along the legs, standing on four mounts on the bulkhead. Its drogue is on the vehicle's axis, facing the CSM's engine 1.7 m above |
+| Upper stage | Orbit insertion and TLI, then left behind |
+
+Clearances (measured; the tests hold the minimums): lunar module to adapter wall 0.31 m; folded antenna to wall 0.11 m and to the engine bell 0.06 m, and 1.2 m above the lunar module; engine exit 0.86 m above the lunar module's highest point; footpads 0.26 m inside the ring as the lunar module rises out. RocketModel's stations (`SPACECRAFT`) are derived from the same numbers.
+
+**Transposition, docking and extraction** (`data/transposition.js`, pure and tested; launch cinematic 103.5–141.5 s, `TD_START` = 103.5):
+
+| τ (s) | Shot | What happens |
+|---|---|---|
+| 0.3–3.6 | tdSep | Pyros; the panels swing out 45° on their hinges, then are jettisoned and drift away (0.35 m/s). The lunar module is uncovered, standing on the stage. The CSM backs out 4.6 m on its RCS |
+| 5–17 | tdTurn | The CSM turns 180° about +Z, its engine already clear of the adapter, every point at least 1 m above the lunar module |
+| 17.5–28.5 | tdDock | It closes in nose first; the probe touches the drogue on the axis |
+| 28.5–30.8 | tdDock | Capture latches; the probe retracts and pulls the two together; hard dock, twelve latches |
+| 31.5– | tdExtract | The mounts release; the docked pair backs out of the adapter at 0.9 m/s; the stage stays |
+| 34.5–38 | tdExtract | The high-gain antenna swings out |
+| 38– | farewell | Looking down past the docked spacecraft at the Earth; the spent stage falls behind (the coast at 40×) |
+
+- At hard dock, the lunar module's pose relative to the CSM is exactly `dockedLmPose(0)`, the pose the stack flies to the Moon with (tested). Nothing is swapped: the same `PayloadSection` object that stood on the pad does it.
+- Speeds and turn rate are continuous, at most 1.6 m/s and 25°/s (condensed from Apollo's slower turn). RCS puffs fire only while something speeds up, slows down or turns.
+- Captions: SPACECRAFT SEPARATION, TRANSPOSITION, DOCKING, DOCKED, LUNAR MODULE EXTRACTED, HIGH-GAIN ANTENNA DEPLOYED, UPPER STAGE LEFT BEHIND. Sounds: pyro thuds, RCS hiss, capture and latch clanks. No new voice lines.
+- The mission clock reaches the cruise's start (T+3:20:00) as the cinematic ends; the docking runs at 20×.
+
+**Seeing the lunar module in the rocket.** The pad's second shot (`payload`, replacing the low-angle shot, same 3.5 s) frames the spacecraft from the side away from the tower. For about two seconds the adapter turns translucent with an orange outline, showing the lunar module standing inside under the CSM's engine; caption LUNAR PAYLOAD · LUNAR MODULE INSIDE THE ADAPTER. The rest of the launch shows the vehicle as it is.
+
+**After the extraction:**
+- **Cruise:** the docked stack as extracted, probes still folded, antenna deployed. New lunar approach close shot (mission 195,000 s to loss of signal): the same stack, the Moon behind it at its true size, growing from 11° to about 40° across. Caption LUNAR APPROACH.
+- **Lunar orbit:** the probes swing down 9–6 s before the latches release (in the mission's stack shot and in the opening), then the undocking of §34, unchanged.
+
+**Lineage** (`data/lineage.js`, tested): one ordered list of configurations from the pad to splashdown. Each step names the event, the parts it removes or joins, the shot that shows it, and the component that draws it. The tests hold:
+- no part appears after the pad;
+- every part that leaves is shown leaving;
+- the CSM and LM that undock in lunar orbit are the ones from the pad;
+- every scene draws the spacecraft from `CsmModel` and `LanderModel` only (a source check also fails if a substitute model appears).
+
+**Validation** (headless Chromium with software rendering; browser tests, not a physical iPhone):
+- **Jest:** 281 tests pass (253 before). New tests:
+  - `payloadDesign`: the fit of the LM, engine bell and folded antenna in the adapter, and that a deployed antenna or hanging probes would not fit;
+  - `transposition`: the order of steps; no jumps or jolts; a turn clear of the LM; probe-to-drogue contact and a hard dock equal to `dockedLmPose(0)`; rigid docked motion; extraction clear of the ring; the stage left behind; panels; RCS; antenna;
+  - `lineage`: nothing appears after the pad, every removal shown in an existing shot, the same CSM and LM in lunar orbit, no substitute models (a source check);
+  - `undocking`: probes folded in the coast and deployed before release;
+  - `launchTimeline`: transposition after TLI cutoff, the MET reaching the cruise, the payload reveal only in its shot;
+  - `orbitSequence`: the lunar approach.
+- **Checkpoints A–H**, frames against BUILD 11618a2 at 852×393: launch, Earth orbit, TLI, transposition and docking, translunar coast, lunar arrival, lunar orbit, undocking. The transposition sequence was also checked at 667×375 and 932×430; the turn camera was widened so the CSM stays in frame at 932×430.
+- **Full mission**, flown end to end in the app at 1280×720, no page errors (the harness blocks one external font):
+  - launch, now with transposition, all 22 calls aired;
+  - lunar orbit: the descent setup opened by itself;
+  - THE EAGLE HAS LANDED; reentry and splashdown with all calls aired; MISSION COMPLETE.
+- **The opening** (unchanged apart from the probes) at 852×393: autoplay, the seven shots, records untouched, no autoplay on return or relaunch, replay and skip.
+- **Performance**: the launch cinematic played in real time, back to back against BUILD 11618a2. Median frame per shot; draw calls counted at the WebGL API; 852×393:
+
+  | Shot | 11618a2 → now | Draw calls |
+  |---|---|---|
+  | Pad, wide | 283 → 300 ms | 108 → 116 |
+  | Pad, payload (was the low-angle shot) | 283 → 333 ms | 108 → 135 (the LM is drawn while the adapter is seen through) |
+  | Earth orbit (wide / close) | 167 / 200 → 183 / 200 ms | 25 / 26 → 29 / 30 |
+  | TLI | 150 → 150 ms | 29 → 33 |
+  | Transposition and docking (new) | 183–233 ms | 40–45 |
+  | Farewell | 117 → 150 ms | 25 → 28 |
+
+  - Until the adapter opens (or is seen through) it is drawn as one closed frustum and its band, and nothing inside it is drawn; the open adapter's and the LM's shaders are compiled at mount.
+  - A first version without this cost 21 extra draw calls in every launch shot (double-sided transparent panels draw twice); measured and fixed before release.
+  - The four extra calls left are the antenna's own hinge group (3) and the adapter's band.
+  - The transposition shots cost less than the pad shots (300–417 ms) and the descent's final 50 m (200 ms, §34).
+
+**Limitations:**
+- SKIP CINEMATIC skips the transposition with the rest of the launch, by the player's choice; the cruise then shows the docked stack.
+- The lunar module rides with its legs out (LV-001's adapter is wide enough at its base); Apollo's were folded until lunar orbit. Its contact probes are folded and deploy in lunar orbit. At 3 cm they are thin, so their swing is subtle at the distances shown.
+- The turn and the approach are condensed (the turn averages 15°/s; Apollo's took minutes).
+- The upper stage's evasive burn and propellant dump are not shown; it is simply left behind.
+- The pad's look inside the adapter is a stylised, translucent view: the real adapter is opaque.
+- The ascent stage's rendezvous with the CSM is not flown; the return is the CSM alone (§34).
+- No new voice lines: the transposition has captions and mechanical sounds only.
+- All validation ran in a browser with software rendering, not on a physical iPhone.

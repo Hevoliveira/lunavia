@@ -14,7 +14,7 @@ import MissionResult from "@/components/MissionResult";
 import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import { APPROACH, goForPdi } from "@/data/lunarOrbitShot";
-import { CRUISE, CRUISE_SHOT, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, orbitShotAt } from "@/data/orbitSequence";
+import { APPROACH_CLOSE, APPROACH_SHOT, CRUISE, CRUISE_SHOT, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, orbitShotAt } from "@/data/orbitSequence";
 
 /*
  * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
@@ -70,6 +70,7 @@ const UNDOCK_SOUND = [
 // Shot captions (lower third), keyed by shot.
 const SHOT_CAPTIONS = {
   cruiseClose: { kicker: "TRANSLUNAR COAST", title: CRUISE_SHOT.caption, sub: CRUISE_SHOT.sub },
+  approachClose: { kicker: "TRANSLUNAR COAST", title: APPROACH_SHOT.caption, sub: APPROACH_SHOT.sub },
   returnClose: { kicker: "TRANS-EARTH INJECTION", title: RETURN_SHOT.caption, sub: RETURN_SHOT.sub },
 };
 
@@ -140,9 +141,11 @@ export default function Mission() {
         // The cruise never shows the craft reaching the drawn Moon: at loss of
         // signal it fades to black and lunar orbit opens from black.
         // Slower over the first, close shot of the docked spacecraft, then the 3-day coast at full compression.
-        const rate = cruiseRef.current < CRUISE.closeEnd ? CRUISE.slowRate : 30000;
-        const next = Math.min(cruiseRef.current + dt * rate, APPROACH.losEnd);
-        const cap = next < CRUISE.closeEnd ? "cruiseClose" : null;
+        // ... and slower again over the close shot of the stack closing on the Moon.
+        const c0 = cruiseRef.current;
+        const rate = c0 < CRUISE.closeEnd ? CRUISE.slowRate : c0 >= APPROACH_CLOSE.start && c0 < APPROACH.los ? APPROACH_CLOSE.rate : 30000;
+        const next = Math.min(c0 < APPROACH_CLOSE.start ? Math.min(c0 + dt * rate, APPROACH_CLOSE.start) : c0 + dt * rate, APPROACH.losEnd);
+        const cap = next < CRUISE.closeEnd ? "cruiseClose" : next >= APPROACH_CLOSE.start && next < APPROACH.los ? "approachClose" : null;
         if (cap !== captionRef.current) {
           captionRef.current = cap;
           setCaption(cap ? { id: cap, ...SHOT_CAPTIONS[cap] } : null);

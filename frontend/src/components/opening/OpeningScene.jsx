@@ -6,7 +6,7 @@ import { Composite, Earth, Glint, Moon, VehicleLayer, vehicleView } from "@/comp
 import { craftPose, orbitCamera } from "@/data/lunarOrbitShot";
 import { MOON_UNITS, moonScenePos } from "@/data/sceneTrack";
 import { ORBIT_SEQ, vehicleFrame } from "@/data/orbitSequence";
-import { undocking } from "@/data/undocking";
+import { COAST, undocking } from "@/data/undocking";
 import { OPENING, loopCamera, openingCamera, openingUndockTime } from "@/data/openingSequence";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
 
@@ -34,7 +34,7 @@ function Director({ clockRef, mode, viewRef }) {
     const frame = vehicleFrame(pose.fwd, pose.up);
     let cam;
     if (mode === "loop") {
-      v.stack = undocking(-1);
+      v.stack = undocking(COAST);
       cam = loopCamera(t);
       v.focus = [-2, 0, 0];
       v.shot = "loop";
@@ -70,7 +70,7 @@ function Director({ clockRef, mode, viewRef }) {
 }
 
 function Contents({ clockRef, mode }) {
-  const viewRef = useRef({ vehicle: false, glint: false, origin: [0, 0, 0], stack: undocking(-1), focus: [0, 0, 0], sunV: [0, 1, 0] });
+  const viewRef = useRef({ vehicle: false, glint: false, origin: [0, 0, 0], stack: undocking(COAST), focus: [0, 0, 0], sunV: [0, 1, 0] });
   const vScene = useMemo(() => new THREE.Scene(), []);
   const vCam = useMemo(() => new THREE.PerspectiveCamera(45, 1, 0.1, 4000), []);
   return (
