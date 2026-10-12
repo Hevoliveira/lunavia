@@ -76,11 +76,19 @@ export const timeToGo = (h, rate, cfg) => nominalDescent(h, rate, cfg, 16)[16][0
 /**
  * Predicted touchdown x (physics metres) if the drift is left alone and the
  * descent follows the recommended schedule. Shared by the LPD reticle, the
- * PROJECTED TOUCHDOWN readout and the descent camera.
+ * PROJECTED TOUCHDOWN readout and the descent camera. Over a landing site
+ * (data/landingSites) the height left is measured to the ground at the
+ * predicted point itself (a few damped fixed-point iterations).
  */
-export function predictTouchdownX(p, cfg) {
+export function predictTouchdownX(p, cfg, site = null) {
   const h = Math.max(0, p.alt - CONTACT_ALT);
-  return p.xPos + p.vx * timeToGo(h, -p.vy, cfg);
+  let x = p.xPos + p.vx * timeToGo(h, -p.vy, cfg);
+  if (!site || p.y == null) return x;
+  for (let i = 0; i < 5; i++) {
+    const hi = Math.max(0, p.y - site.contactGround(x) - CONTACT_ALT);
+    x = 0.5 * x + 0.5 * (p.xPos + p.vx * timeToGo(hi, -p.vy, cfg));
+  }
+  return x;
 }
 
 /**

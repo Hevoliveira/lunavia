@@ -2,6 +2,10 @@ import {
   ALT_SCALE,
   DUST,
   LM,
+  SURFACE_SCALE,
+  WORLD_X,
+  groundPlane,
+  verticalScale,
   PROBE_ALT,
   PROBE_LENGTH,
   RESULT_DELAY,
@@ -25,26 +29,36 @@ import { DIFFICULTY } from "./landingPhysics";
 
 const DEG = Math.PI / 180;
 
-describe("vertical scale near the surface", () => {
+describe("vertical scale", () => {
   test("continuous and monotonic, zero on the ground", () => {
     expect(sceneAlt(0)).toBe(0);
     let prev = 0;
     for (let a = 0.01; a < 900; a += 0.37) {
       const y = sceneAlt(a);
       expect(y).toBeGreaterThan(prev);
-      expect(y - prev).toBeLessThan(0.1); // no jumps
+      expect(y - prev).toBeLessThan(0.2); // no jumps (0.5 unit/m at most)
       prev = y;
     }
   });
 
-  test("near the ground the LM is drawn at its true 7 m height (0.25 unit/m)", () => {
-    expect(sceneAltRate(0)).toBeCloseTo(0.25, 6);
-    expect(LM.height / sceneAltRate(0)).toBeCloseTo(7, 0);
+  test("near the ground the scene is drawn in true proportion: the LM is 7 m tall and 8.6 m across its footpads", () => {
+    expect(sceneAltRate(0)).toBeCloseTo(WORLD_X, 9);
+    expect(SURFACE_SCALE).toBe(WORLD_X);
+    expect(LM.height / SURFACE_SCALE).toBeCloseTo(7, 6);
+    expect((2 * LM.padRadius) / WORLD_X).toBeCloseTo(8.64, 2);
   });
 
   test("high up it keeps the old 0.05 unit/m scale (the descent still frames as before)", () => {
     expect(sceneAltRate(400)).toBeCloseTo(ALT_SCALE, 6);
-    expect(sceneAlt(550) / (ALT_SCALE * 550)).toBeLessThan(1.12);
+    expect(sceneAlt(550) / (ALT_SCALE * 550)).toBeLessThan(1.3);
+  });
+
+  test("a site's scale is true up to its highest ground and continuous above it", () => {
+    const v = verticalScale(40);
+    expect(v.y(-12)).toBeCloseTo(-12 * SURFACE_SCALE, 9);
+    expect(v.y(40)).toBeCloseTo(40 * SURFACE_SCALE, 9);
+    expect(Math.abs(v.y(40.001) - v.y(40)) / 0.001).toBeCloseTo(SURFACE_SCALE, 2);
+    expect(v.rate(500)).toBeLessThan(0.06);
   });
 });
 
@@ -117,7 +131,7 @@ describe("regolith sheet", () => {
 
 describe("legs on the ground", () => {
   test("no pad ever goes below the surface; struts never compress past their stroke", () => {
-    for (let H = -0.2; H < 0.6; H += 0.01) {
+    for (let H = -0.4; H < 1.2; H += 0.02) {
       for (let tilt = -45; tilt <= 45; tilt += 3) {
         const { comp, lift } = legContact(H, tilt);
         const h = padHeights(H + lift, tilt);
@@ -133,6 +147,28 @@ describe("legs on the ground", () => {
     const h = padHeights(0.05, 6);
     expect(h[0]).toBeLessThan(h[2]); // +X is the low side for +tilt
     expect(h[1]).toBeCloseTo(h[3], 9);
+  });
+
+  test("on uneven ground no pad goes below its own ground either", () => {
+    const G = [0.6, -0.2, -0.5, 0.1];
+    for (let H = -0.5; H < 1.5; H += 0.02) {
+      for (let tilt = -20; tilt <= 20; tilt += 4) {
+        const { comp, lift } = legContact(H, tilt, 3, G);
+        padHeights(H + lift, tilt, 3, G).forEach((y, i) => expect(y + comp[i]).toBeGreaterThanOrEqual(-1e-9));
+      }
+    }
+  });
+
+  test("an LM resting on a slope takes the slope's attitude; the struts take up what is left", () => {
+    // ground rising 0.2 per unit towards +X and 0.1 towards +Z, plus a bump under pad 1
+    const R = LM.padRadius;
+    const G = [0.2 * R, 0.1 * R + 0.05, -0.2 * R, -0.1 * R];
+    const p = groundPlane(G);
+    expect(p.tilt).toBeCloseTo(-Math.atan(0.2) / DEG, 6); // +X side higher: banked towards -X
+    expect(p.pitch).toBeCloseTo(-Math.atan(0.1 + 0.05 / (2 * R)) / DEG, 6);
+    // resting on that plane, every pad is within the residual of its ground
+    const h = padHeights(p.mean, p.tilt, p.pitch, G);
+    h.forEach((y, i) => expect(Math.abs(y + p.res[i])).toBeLessThan(0.02 * R));
   });
 });
 
@@ -170,7 +206,7 @@ describe("settle after touchdown", () => {
     expect(-firm.s.H).toBeGreaterThan(-soft.s.H);
     expect(-firm.s.H).toBeLessThan(LM.stroke);
     const overshoot = Math.min(...firm.trace.map((r) => r.H)) - firm.s.H;
-    expect(-overshoot).toBeLessThan(0.03); // at most a small bounce past the rest point
+    expect(-overshoot).toBeLessThan(0.06); // at most a small bounce past the rest point
   });
 
   test("a hard landing bottoms the struts out", () => {
@@ -186,6 +222,19 @@ describe("settle after touchdown", () => {
     expect(s.tilt).toBeLessThan(30);
   });
 
+  test("on a slope a good landing settles onto the slope's attitude (relative tilt 0)", () => {
+    const p = { ...initialState(cfg), xPos: 0, alt: 0.5, vy: -1.4, vx: 0, tilt: 0 };
+    const result = gradeTouchdown(p, cfg);
+    const plane = { tilt: -8, pitch: 3 };
+    const plan = touchdownPlan(p, result, cfg, plane);
+    expect(plan.tilt0).toBeCloseTo(8, 9); // level LM on ground banked -8°
+    const s = settleStart(plan, sceneAlt(CONTACT_ALT));
+    for (let t = 0; t < 2; t += 1 / 60) settleStep(s, plan, 1 / 60);
+    expect(Math.abs(s.tilt)).toBeLessThan(0.3);
+    expect(Math.abs(s.pitch)).toBeLessThan(0.3);
+    expect(plane.tilt + s.tilt).toBeCloseTo(-8, 0);
+  });
+
   test("the drawing follows the grade, it never decides it", () => {
     // Same state, same grade, whatever the settle does.
     const st = { vy: -2.0, vx: 0.5, tilt: 4 };
@@ -196,10 +245,10 @@ describe("settle after touchdown", () => {
 });
 
 describe("the shot after touchdown", () => {
-  const base = [2, 0.44, 0];
+  const base = [2, 0.88, 0];
   const dir = [-11, 8, 12];
   const l = Math.hypot(...dir);
-  const from = { pos: dir.map((v, i) => base[i] + (v / l) * 7), look: [base[0], 0.9, 0] };
+  const from = { pos: dir.map((v, i) => base[i] + (v / l) * 14), look: [base[0], 1.8, 0] };
   const frames = [];
   for (let t = 0; t <= 6; t += 1 / 60) frames.push({ t, ...touchdownCamera(t, from, base) });
   const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / Math.hypot(...a) / Math.hypot(...b)))) / DEG;
@@ -218,7 +267,7 @@ describe("the shot after touchdown", () => {
       const ra = [a.pos[0] - base[0], 0, a.pos[2] - base[2]];
       const rb = [b.pos[0] - base[0], 0, b.pos[2] - base[2]];
       maxRate = Math.max(maxRate, ang(ra, rb) * 60);
-      expect(b.pos[1]).toBeGreaterThan(0.25);
+      expect(b.pos[1] - base[1]).toBeGreaterThan(0.5);
     }
     expect(Math.abs(SHOT.swing)).toBeLessThanOrEqual(15);
     expect(maxRate).toBeLessThan(10);

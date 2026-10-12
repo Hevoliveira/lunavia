@@ -1192,3 +1192,124 @@ on real terrain would need:
 
 That would change outcomes (for example, a pad on a boulder edge), so it is left for an explicit
 decision. Today the visual settle only plays out the graded result.
+
+## 30. Lunar landing sites
+
+Four landing sites for the Training Center. The full mission always lands at Mare
+Tranquillitatis (`MISSION_SITE_ID` in `data/landingSites.js`). Its orbit cinematic, captions
+and PDI are Tranquillity's, so switching the mission's site is a deliberate change, not a
+setting.
+
+| Site | Reference | Terrain | Approach | Primary LZ | Sun |
+|---|---|---|---|---|---|
+| MARE TRANQUILLITATIS | Apollo 11 | flat mare, the four marked hazards, West crater | from −x (the mission's), offset 0.3 | 6 m | 14° |
+| FRA MAURO | Apollo 14 | rolling ejecta ridges (flanks past 12°), Doublet craters, Cone crater boulders | from +x, offset 0.3 | 6 m | 13° |
+| HADLEY–APENNINE | Apollo 15 | Apennine flank under the approach, Hadley Rille beyond the LZ, mountains | from −x, steep (offset 0.18) | 5 m | 17° |
+| TYCHO REGION | Surveyor 7 | crater- and boulder-dominated ejecta; melt ponds the only safe ground | from +x, offset 0.24 | 4 m | 22° |
+
+The sites are visual and geographic references, not reconstructed topography.
+
+**One site description drives both the physics and the drawing** (`data/landingSites.js`,
+pure, 28 tests):
+- `height(x, z)`: compact analytic features (craters with rims and ejecta, hills, ridges, a
+  mountain front, a rille, swells, gentle noise) and smoothed LZ patches. Metres above the
+  primary LZ's centre.
+- `rocks`: generated once from the site seed. Boulders are ≥ 0.9 m and debris ≤ 0.35 m;
+  nothing is generated in between.
+- `zones`: the landing zones. The primary is always at x = 0, so `gradeLanding`'s accuracy
+  score is unchanged.
+- The LM flies in the plane z = 0, so its footpads stand at (x ± 4.3 m, 0) and (x, ± 4.3 m).
+
+**Physics changes (requested: "physically consistent terrain collision")**
+- `landerSim` integrates the height `y` above the site's datum. `alt` is measured to the
+  first thing the LM would meet coming down (`contactGround`): the highest ground under a
+  footpad, a boulder under a footpad, or a boulder or mound reaching the engine skirt
+  (0.88 m). Touchdown is still captured at `alt` ≤ 0.5 m. Flight dynamics, controls and the
+  `DIFFICULTY` table are unchanged.
+- At touchdown, `site.evaluate(x)` replaces the old flat hazard zones. It reports UNSAFE
+  TERRAIN, graded by `gradeLanding` with the same thresholds and scoring, when any of these is
+  under the LM's footprint (4.87 m radius):
+  - a boulder;
+  - ground sloping more than 12° across the footpads (the LM's design limit);
+  - a footpad on ground steeper than 20° (a crater wall);
+  - unevenness the struts cannot take up (0.36 m);
+  - a mound reaching the engine skirt.
+- New per-site constraints, stated, not silent:
+  - the LZ radius (6/6/5/4 m), which the STANDARD and COMMANDER objectives use;
+  - the approach side and start offset. The start's altitude, descent rate and drift are the
+    difficulty's own.
+- At Tranquillity the four hazards are where they were, now as real craters and boulders.
+  The unsafe ground around each now includes the footprint, so a pad on a boulder is a crash.
+  Outside the hazards the ground is flat at the datum, and the mission start is bit-identical
+  (tested).
+- `predictTouchdownX(p, cfg, site)` measures the height left to the ground at the predicted
+  point.
+
+**Scene scale.**
+- Near the ground the vertical scale now equals the horizontal one: 0.5 unit/m, true
+  proportion, so a 12° slope looks like 12°.
+- The LM is drawn at true size (`LM.scale` 2.4): 7 m tall, footpads 4.3 m from the axis.
+- `verticalScale(bandTop)`: true scale from the lowest crater floor to the highest ground
+  near the track, blending to 0.05 unit/m above it. It is a function of height, not of
+  height above the ground, so the LM never bobs as terrain passes under it.
+- Dust, ground marks, the touchdown shot and the camera are scaled with the LM.
+
+**Drawing** (`data/terrainMesh.js`, pure, 15 tests; `components/scenes/LunarSite.jsx`):
+- **Terrain.** One mesh, about 65k vertices: 1 m cells over ±112 × ±48 m, growing to ±2 km.
+  It is lit by the site's low Sun. Shadows of the terrain itself are baked per vertex
+  (horizon march), and a procedural regolith texture adds detail at two scales.
+- **Albedo.** Per-site palette: ejecta halos on fresh craters, brighter steep slopes,
+  highlands at Hadley, rays and dark melt ponds at Tycho.
+- **Rocks.** Two instanced meshes (boulders, debris), each drawn exactly as the physics
+  knows it: same position, top and radius (tested).
+- **Shadows.** A real-time shadow map (PCF, 2048, ±44 units) follows the LM; the LM and
+  the boulders cast into it.
+- **Sky.** Stars and the Earth travel with the camera. The Earth sits where it hangs in that
+  site's sky, and the distant mountains on the horizon are baked-shaded silhouettes.
+- **Markers** (drawn after the dust, `renderOrder` 2), laid on the terrain:
+  - The LZ rings.
+  - The **unsafe-ground strip**: exactly `hazardMap` (the touchdown evaluation), crimson
+    hatching across the footprint's width, legible from 400 m.
+  - The **landing point designator**: the LM's footprint ring at the predicted touchdown point,
+    yellow when the ground there is safe, red when it is not.
+- **Landing.** The LM's legs meet the ground under each footpad (terrain or boulder top).
+  After touchdown it settles onto the plane of that ground (bank and pitch). The
+  scour, blast zone and pad shadows are laid on the terrain.
+- **Camera.** It follows the approach direction and never goes below the terrain.
+
+**Training UI.**
+- LUNAR LANDING SIMULATOR → **LANDING SITE**: four cards, a live 3D preview (the same scene
+  with an LM on the LZ for scale and the approach path), an elevation profile along the track
+  (unsafe stretches in red, LZs, the approach side), and the site's terrain, approach, LZ and
+  Sun.
+- SELECT SITE → the scenario screen, with the site in the header (tap to change).
+- All four scenarios work at every site: starts are placed on the site's approach.
+- Records are kept per site. Tranquillity keeps the old keys, so earlier records stay; the
+  personal bests add up all four.
+
+**Validation tooling** (read-only): `window.__lvDescentScene`, and `__lvLandingPoint` (the LPD's
+x, safety and label).
+
+**Validation.**
+- **Jest:** 207 tests pass (147 before). They cover:
+  - the site catalogue and determinism;
+  - terrain contact (uphill pad first, boulder tops, slopes, crater walls, flying into a ridge);
+  - what is drawn is what is flown (mesh heights, every rock, the hazard strip);
+  - LZ placement, starts and terrain consequences;
+  - the full scenario × site × difficulty feasibility matrix with simulated pilots.
+- **In the app** (headless Chromium, 852×393, in-page autopilot from each difficulty's real
+  start): all 12 site × difficulty landings reached OBJECTIVE COMPLETE.
+- **Hazards:** a vertical touchdown on each site's hazard was graded CREW LOST with the right
+  cause: Tycho BOULDERS, Fra Mauro RIDGE FLANK · 31°, Hadley RILLE · 35°, Tranquillity
+  CRATER · 29°.
+- **Performance** (final 50 m, headless software renderer, which is not an iPhone GPU):
+
+  | Build | Frame time | Draw calls | Triangles |
+  |---|---|---|---|
+  | Before (flat ground) | 117–133 ms | 35 | 4k |
+  | Tranquillity | 267 ms | 33 | 68k |
+  | Tycho | 283 ms | 32 | 84k |
+
+  `DescentGame` steps quality down on a device that cannot hold its frame rate: pixel ratio
+  first (2 → 1.5 → 1.25), then the real-time shadows. `window.__lvQuality` pins a step for
+  validation.

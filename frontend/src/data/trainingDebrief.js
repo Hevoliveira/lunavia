@@ -6,9 +6,9 @@
  * main reason and the recommendations are chosen from what actually limited
  * the attempt.
  */
-import { PRIMARY_LZ } from "./landingPhysics";
 import { LIMITS, OUTCOME, CORRIDOR } from "./reentryPhysics";
-import { landingObjectiveMet, reentryObjectiveMet, PRECISION_RADIUS } from "./trainingScenarios";
+import { getSite, SLOPE_LIMIT } from "./landingSites";
+import { landingObjectiveMet, reentryObjectiveMet, objectiveRadius } from "./trainingScenarios";
 
 const f1 = (x) => x.toFixed(1);
 
@@ -25,10 +25,7 @@ export const liftAgrees = (bankDeg, recDeg) =>
 /* Lunar landing                                                             */
 /* ------------------------------------------------------------------------ */
 
-const objectiveRadius = (scenarioId) =>
-  scenarioId === "precision" ? PRECISION_RADIUS : scenarioId === "standard" || scenarioId === "commander" ? PRIMARY_LZ.r : null;
-
-function landingReason(r, scenarioId, cfg) {
+function landingReason(r, scenarioId, cfg, site) {
   const b = r.breakdown;
   const why = {
     "FUEL DEPLETED BEFORE TOUCHDOWN": "Fuel ran out above the surface",
@@ -38,21 +35,28 @@ function landingReason(r, scenarioId, cfg) {
     "UNSAFE TERRAIN": `Touched down on ${r.zone}`,
   };
   if (r.crashed) return why[r.failureReasons[0]] || r.failureReasons[0];
-  const rad = objectiveRadius(scenarioId);
+  const rad = objectiveRadius(scenarioId, site);
   if (rad !== null && b.accuracy.distance >= rad) return `Safe, but ${f1(b.accuracy.distance)} m from the LZ centre (objective: under ${rad} m)`;
   return `Safe touchdown at ${f1(b.vy.value)} m/s, ${f1(b.accuracy.distance)} m from the LZ centre`;
 }
 
-function landingAdvice(r, scenarioId, cfg) {
+function landingAdvice(r, scenarioId, cfg, site) {
   const b = r.breakdown;
   const reasons = r.failureReasons;
   const tips = [];
+  const t = r.terrain || {};
   if (reasons.includes("FUEL DEPLETED BEFORE TOUCHDOWN")) tips.push("Start the braking burn at the BRAKE cue and descend steadily instead of hovering high; RESERVE shows the hover time you have.");
-  if (reasons.includes("UNSAFE TERRAIN")) tips.push("Watch the ▾ projected-touchdown label and translate with RCS before 50 m.");
+  if (reasons.includes("UNSAFE TERRAIN")) {
+    tips.push(
+      t.kind === "slope"
+        ? `The ground under the footpads sloped past the LM's ${SLOPE_LIMIT}° limit: keep the yellow footprint ring off the red-marked ground.`
+        : "Watch the ▾ projected-touchdown label and keep the yellow footprint ring clear of boulders; translate with RCS before 50 m."
+    );
+  }
   if (reasons.includes("VERTICAL SPEED EXCEEDED SAFE LIMIT")) tips.push(`Below 30 m hold THR earlier so V/S is under ${f1(cfg.safeVy * 0.6)} m/s by 5 m.`);
   if (reasons.includes("EXCESSIVE HORIZONTAL SPEED")) tips.push("Null H/S with short RCS taps before 20 m, then leave it alone.");
   if (reasons.includes("TILT EXCEEDED SAFE LIMIT")) tips.push("Use RCS, not tilt, for small corrections low down, and level the LM before contact.");
-  const rad = objectiveRadius(scenarioId);
+  const rad = objectiveRadius(scenarioId, site);
   if (!r.crashed && rad !== null && b.accuracy.distance >= rad) tips.push("Translate earlier, while high, and arrive above the LZ with H/S near 0.");
   if (!r.crashed && b.fuel.pct < 8) tips.push(`Down with only ${b.fuel.pct} % fuel: one firm braking burn at the BRAKE cue beats repeated short hovers.`);
   if (tips.length < 2 && !r.crashed) {
@@ -71,13 +75,17 @@ function landingAdvice(r, scenarioId, cfg) {
 }
 
 /**
- * Debrief for a graded touchdown (gradeLanding result). startFrac: the fuel the
- * attempt started with, as a share of the tank (mid-descent scenarios < 1).
+ * Debrief for a graded touchdown (gradeLanding result) at a landing site.
+ * startFrac: the fuel the attempt started with, as a share of the tank
+ * (mid-descent scenarios < 1).
  */
-export function landingDebrief(result, scenarioId, cfg, startFrac = 1) {
+export function landingDebrief(result, scenarioId, cfg, startFrac = 1, site = getSite()) {
   const b = result.breakdown;
-  const success = landingObjectiveMet(scenarioId, result);
-  const recs = landingAdvice(result, scenarioId, cfg);
+  const success = landingObjectiveMet(scenarioId, result, site);
+  const recs = landingAdvice(result, scenarioId, cfg, site);
+  const t = result.terrain;
+  // What the footprint came down on (landingSites evaluate): the hazard, or the slope of clear ground.
+  const ground = t ? { value: t.label || `${Math.round(t.slope)}° slope · clear`, ok: !t.kind } : null;
   return {
     success,
     landed: !result.crashed,
@@ -91,9 +99,10 @@ export function landingDebrief(result, scenarioId, cfg, startFrac = 1) {
       { label: "HORIZONTAL TOUCHDOWN", value: `${f1(b.vx.value)} m/s`, limit: `limit ${cfg.safeVx}`, ok: b.vx.safe, testId: "debrief-vx" },
       { label: "FINAL ATTITUDE", value: `${Math.round(b.tilt.value)}° tilt`, limit: `limit ${cfg.safeTilt}°`, ok: b.tilt.safe, testId: "debrief-tilt" },
       { label: "DISTANCE FROM LZ CENTRE", value: `${f1(b.accuracy.distance)} m · ${b.accuracy.label}`, limit: null, ok: !result.failureReasons.includes("UNSAFE TERRAIN"), testId: "debrief-accuracy" },
+      ...(ground ? [{ label: "GROUND UNDER THE LM", value: ground.value, limit: `limit ${SLOPE_LIMIT}°`, ok: ground.ok, testId: "debrief-ground" }] : []),
       { label: "FUEL REMAINING", value: `${b.fuel.pct} %`, limit: startFrac < 1 ? `started ${Math.round(startFrac * 100)} %` : null, ok: !result.failureReasons.includes("FUEL DEPLETED BEFORE TOUCHDOWN"), testId: "debrief-fuel" },
     ],
-    reason: landingReason(result, scenarioId, cfg),
+    reason: landingReason(result, scenarioId, cfg, site),
     reasons: result.failureReasons,
     recommendations: recs,
     recommendation: recs[0],

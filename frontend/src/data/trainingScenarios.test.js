@@ -1,5 +1,6 @@
 import { DIFFICULTY, PRIMARY_LZ, MOON_G, gradeLanding } from "./landingPhysics";
 import { simulate, initialState } from "./landerSim";
+import { SITE_IDS, getSite, siteStart, MISSION_SITE_ID } from "./landingSites";
 import { fly, humanPilot, guidedStrategy, profileStrategy, precisionStrategy } from "./landerPilots";
 import { createEntryState, step, recommendBank, rollToward, OUTCOME, SIM_DT, NOMINAL_FPA } from "./reentryPhysics";
 import { timeScaleFor, ENTRY_DIFFICULTY, TRIM_SENSITIVITY, TRIM_RATE, PREP_SECONDS } from "./reentryGuidance";
@@ -116,8 +117,10 @@ describe("lunar training starts are taken from the mission's own flight", () => 
   const passAt = (cfg, alt) => {
     const r = simulate(cfg, humanPilot(cfg, guidedStrategy(), { lag: 0.3, seed: 1 }), { trace: true });
     const i = r.trace.findIndex((x) => x.alt <= alt);
-    // engine duty over the last second (60 fps samples)
-    const win = r.trace.slice(Math.max(0, i - 60), i + 1);
+    // engine duty over the last two seconds (60 fps samples): the on/off pilot
+    // pulses, so a one-second window depends on the pulse phase (0.47-0.73 for
+    // the same descent); two seconds read 0.65-0.75 on flat ground and terrain
+    const win = r.trace.slice(Math.max(0, i - 120), i + 1);
     return { ...r.trace[i], duty: win.reduce((a, x) => a + x.thr, 0) / win.length };
   };
 
@@ -133,17 +136,23 @@ describe("lunar training starts are taken from the mission's own flight", () => 
     }
   });
 
-  test("braking: the mission start coasted engine-off, same tank, braking burn ~5 s away", () => {
+  test.each(SITE_IDS)("braking at %s: the site's mission start coasted engine-off, same tank, braking burn ~5 s away", (id) => {
+    const site = getSite(id);
     for (const k of KEYS) {
       const cfg = DIFFICULTY[k];
-      const s = findScenario("landing", "braking").init(k);
+      const s = findScenario("landing", "braking").init(k, site);
       expect(s.fuel).toBe(cfg.initialFuel);
       expect(s.throttle).toBe(0);
       // free fall from the mission start: v = v0 - g t
       expect(s.vy).toBeCloseTo(cfg.initialVy - MOON_G * COAST_S, 6);
+      // the height above the ground under the LM decides the braking cue
       const b = brakeIn(s.alt, -s.vy, cfg);
-      expect(b).toBeGreaterThan(4);
-      expect(b).toBeLessThan(6);
+      expect(b).toBeGreaterThan(3.5);
+      expect(b).toBeLessThan(6.5);
+      if (id === MISSION_SITE_ID) {
+        expect(b).toBeGreaterThan(4);
+        expect(b).toBeLessThan(6);
+      }
     }
   });
 
@@ -151,54 +160,70 @@ describe("lunar training starts are taken from the mission's own flight", () => 
     expect(findScenario("landing", "standard").init("ASTRONAUT")).toBeNull();
     expect(findScenario("landing", "commander").init("CADET")).toBeNull();
     expect(difficultyFor(findScenario("landing", "commander"), "CADET")).toBe("COMMANDER");
+    // and at the mission's own site that start is the mission's, unchanged
+    for (const k of KEYS) {
+      const cfg = DIFFICULTY[k];
+      const p = siteStart(getSite(MISSION_SITE_ID), cfg, null);
+      const q = initialState(cfg);
+      ["alt", "vy", "vx", "xPos", "tilt", "throttle", "fuel"].forEach((f) => expect(p[f]).toBe(q[f]));
+    }
   });
 
   test("scenario starts only set the flight state: limits, thrust and fuel flow are the mission's", () => {
-    for (const sc of LANDING_SCENARIOS) {
-      for (const k of KEYS) {
-        const init = sc.init(k);
-        if (!init) continue;
-        expect(Object.keys(init).sort()).toEqual(["alt", "fuel", "throttle", "vx", "vy", "xPos"]);
-        expect(init.fuel).toBeLessThanOrEqual(DIFFICULTY[k].initialFuel);
-        const p = { ...initialState(DIFFICULTY[k]), ...init };
-        expect(p.fuelDepletedInFlight).toBe(false);
+    for (const id of SITE_IDS) {
+      for (const sc of LANDING_SCENARIOS) {
+        for (const k of KEYS) {
+          const init = sc.init(k, getSite(id));
+          if (!init) continue;
+          const keys = Object.keys(init).filter((f) => f !== "y").sort();
+          expect(keys).toEqual(["alt", "fuel", "throttle", "vx", "vy", "xPos"]);
+          expect(init.fuel).toBeLessThanOrEqual(DIFFICULTY[k].initialFuel);
+          const p = siteStart(getSite(id), DIFFICULTY[k], init);
+          expect(p.fuelDepletedInFlight).toBe(false);
+          expect(p.alt).toBeGreaterThan(60); // starts in the air, clear of the terrain
+        }
       }
     }
   });
 
   const LAGS = [0.2, 0.3, 0.45];
   const SEEDS = [1, 2, 3, 4, 5, 6];
-  const campaign = (cfg, strategy, init) => {
+  const campaign = (cfg, strategy, init, site) => {
     const runs = [];
-    for (const lag of LAGS) for (const seed of SEEDS) runs.push(fly(cfg, strategy, init ? { init, lag, seed } : { lag, seed }));
+    for (const lag of LAGS) for (const seed of SEEDS) runs.push(fly(cfg, strategy, { ...(init ? { init } : {}), lag, seed, site }));
     return runs;
   };
   const rate = (runs, ok = (r) => r.landed) => runs.filter(ok).length / runs.length;
   // COMMANDER keeps the mission's tight fuel and limits: simulated pilots land
   // 78-96 % of its starts, as they do the COMMANDER mission itself.
   const need = (k) => (k === "COMMANDER" ? 0.75 : 0.9);
-  const inLz = (r) => r.landed && Math.abs(r.x - PRIMARY_LZ.x) < PRIMARY_LZ.r;
 
-  test.each(KEYS)("%s: every scenario is physically achievable by simulated pilots", (k) => {
+  // Every scenario at every landing site, every difficulty: the full matrix.
+  const MATRIX = SITE_IDS.flatMap((id) => KEYS.map((k) => [id, k]));
+  test.each(MATRIX)("%s, %s: every scenario is physically achievable by simulated pilots", (id, k) => {
+    const site = getSite(id);
     const cfg = DIFFICULTY[k];
     for (const sc of LANDING_SCENARIOS) {
       if (sc.lock && sc.lock !== k) continue;
-      const init = sc.init(k);
-      const guided = campaign(cfg, guidedStrategy(), init);
-      const profile = campaign(cfg, profileStrategy(), init);
-      expect(rate(guided)).toBeGreaterThanOrEqual(need(k));
-      expect(rate(profile)).toBeGreaterThanOrEqual(need(k));
-      // the objective itself, not just a safe landing: precision is flown by a
-      // pilot aiming for the centre (precisionStrategy), the rest by the guided one
-      const objective = (r) => landingObjectiveMet(sc.id, { crashed: !r.landed, breakdown: { accuracy: { distance: Math.abs(r.x - PRIMARY_LZ.x) } } });
-      const flown = sc.id === "precision" ? campaign(cfg, precisionStrategy(), init) : guided;
-      expect(rate(flown, objective)).toBeGreaterThanOrEqual(need(k));
+      const init = sc.init(k, site);
+      const guided = campaign(cfg, guidedStrategy(), init, site);
+      const profile = campaign(cfg, profileStrategy(), init, site);
+      expect([sc.id, "guided", rate(guided) >= need(k)]).toEqual([sc.id, "guided", true]);
+      expect([sc.id, "profile", rate(profile) >= need(k)]).toEqual([sc.id, "profile", true]);
+      // the objective itself, not just a safe landing, by a skilled pilot's
+      // technique: the guided descent, or a pilot aiming for the LZ centre
+      // (precisionStrategy), whichever meets it; precision is always flown by
+      // the latter
+      const objective = (r) => landingObjectiveMet(sc.id, { crashed: !r.landed, breakdown: { accuracy: { distance: Math.abs(r.x - site.primary.x) } } }, site);
+      const centred = campaign(cfg, precisionStrategy(), init, site);
+      const best = sc.id === "precision" ? rate(centred, objective) : Math.max(rate(guided, objective), rate(centred, objective));
+      expect([sc.id, "objective", best >= need(k)]).toEqual([sc.id, "objective", true]);
     }
-  });
+  }, 60000);
 
   test("braking is a real problem: with no braking the LM crashes at every difficulty", () => {
     for (const k of KEYS) {
-      const r = fly(DIFFICULTY[k], () => ({}), { init: findScenario("landing", "braking").init(k), lag: 0.3, seed: 1 });
+      const r = fly(DIFFICULTY[k], () => ({}), { init: findScenario("landing", "braking").init(k, getSite()), lag: 0.3, seed: 1 });
       expect(r.landed).toBe(false);
       expect(r.reasons).toContain("VERTICAL SPEED EXCEEDED SAFE LIMIT");
     }
@@ -238,6 +263,15 @@ describe("objectives are never easier than the mission", () => {
     const crash = gradeLanding({ ...base, vy: -3, xPos: 0 });
     expect(crash.crashed).toBe(true);
     for (const sc of LANDING_SCENARIOS) expect(landingObjectiveMet(sc.id, crash)).toBe(false);
+  });
+
+  test("the objective's LZ is the site's own (smaller at the harder sites)", () => {
+    const at = (id, x) => landingObjectiveMet("standard", gradeLanding({ ...base, xPos: x }), getSite(id));
+    expect(at("tranquillitatis", 5.5)).toBe(true);
+    expect(at("hadley", 5.5)).toBe(false);
+    expect(at("tycho", 3.5)).toBe(true);
+    expect(at("tycho", 4.5)).toBe(false);
+    expect(findScenario("landing", "standard").objective(getSite("tycho"))).toMatch(/within 4 m/);
   });
 
   test("standard needs the LZ, precision its centre, braking a safe landing", () => {

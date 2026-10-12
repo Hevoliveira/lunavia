@@ -5,35 +5,41 @@ import LanderModel from "@/components/LanderModel";
 import {
   DUST,
   LM,
+  WORLD_X,
   dustLevel,
   dustSpeed,
+  groundPlane,
   legContact,
   padHeights,
   padOffsets,
   plumeCenter,
   probeBend,
-  sceneAlt,
   settleLegs,
   settleStart,
   settleStep,
 } from "@/data/touchdownFx";
+import { FOOT } from "@/data/landingSites";
+import { buildTerrain, skyDirection } from "@/data/terrainMesh";
 
 /*
  * The final metres of the lunar descent, drawn from the authoritative descent
- * state (physRef) through data/touchdownFx. `fx` is one mutable object shared
- * by these components and the camera; nothing here feeds back into the
+ * state (physRef) through data/touchdownFx, on the landing site's terrain
+ * (data/landingSites, data/terrainMesh). `fx` is one mutable object shared by
+ * these components and the camera; nothing here feeds back into the
  * simulation or the grading.
  *
- *   LanderRig     the LM: stretched vertical scale near the ground, legs that
- *                 meet the surface, probes, and the settle after touchdown.
+ *   LanderRig     the LM: legs that meet the terrain under each footpad,
+ *                 probes, and the settle after touchdown onto the ground's
+ *                 own slope.
  *   RegolithSheet the blown regolith: straight, flat, fast streaks (vacuum),
  *                 one instanced draw call, all motion in the vertex shader.
  *   GroundMarks   plume scour on the surface, the blast zone left behind,
- *                 and contact shadows under the LM and each footpad.
+ *                 and contact shadows under each footpad, all laid on the
+ *                 terrain. (The LM's own shadow is a real shadow: LunarSite.)
  */
 
 const DEG = Math.PI / 180;
-export const WORLD_X = 0.5; // physics metres -> scene units (horizontal)
+export { WORLD_X };
 
 /** The shared presentation state for one descent. */
 export function createTouchdownFx() {
@@ -43,10 +49,14 @@ export function createTouchdownFx() {
     probe: [0, 0, 0, 0],
     padH: [1, 1, 1, 1], // footpad heights above ground (scene units)
     padY: 0, // footpad plane height on the axis (scene units)
+    padG: [0, 0, 0, 0], // ground under each footpad (scene y)
+    groundY: 0, // ground under the LM (scene y, mean of the footpads')
     x: 0, // scene x of the LM
-    tilt: 0, // drawn attitude (deg)
+    tilt: 0, // drawn attitude (deg): bank
+    pitch: 0, // drawn attitude (deg): pitch (resting on sloping ground)
     dust: 0, // regolith sheet level 0..1 (smoothed)
     center: 0, // scene x where the plume meets the ground
+    centerY: 0, // scene y of the ground there
     cut: 1e9, // scene clock (s) when emission stopped
     plan: null, // touchdownPlan once the simulation has captured touchdown
     settle: null,
@@ -54,8 +64,18 @@ export function createTouchdownFx() {
   };
 }
 
-export function LanderRig({ physRef, fx, hidden = false }) {
+export function LanderRig({ physRef, fx, site, hidden = false }) {
   const ref = useRef();
+  const terrain = useMemo(() => buildTerrain(site), [site]);
+  const pads = useMemo(() => padOffsets(), []);
+  // The LM casts a real shadow on the terrain and rocks (the flame does not).
+  useEffect(() => {
+    const g = ref.current;
+    if (!g) return;
+    g.traverse((o) => {
+      if (o.isMesh || o.isInstancedMesh) o.castShadow = !(o.material && o.material.transparent);
+    });
+  }, []);
   useFrame((state, delta) => {
     const p = physRef.current;
     const g = ref.current;
@@ -63,47 +83,67 @@ export function LanderRig({ physRef, fx, hidden = false }) {
     window.__lvDescentFx = fx; // validation tooling (read-only)
     const now = state.clock.elapsedTime;
     const dt = Math.min(0.05, delta);
+    const sy = site.scale.y;
+    const xm = p.xPos;
+    // The drawn ground under each footpad: the terrain, or the top of a
+    // boulder under that pad (as landingSites' contact does).
+    for (let k = 0; k < 4; k++) {
+      const px = xm + pads[k][0] / WORLD_X;
+      const pz = pads[k][1] / WORLD_X;
+      let gy = terrain.lookup(px, pz);
+      for (const b of site.boulders) {
+        if (Math.abs(b.x - px) < 4 && Math.hypot(b.x - px, b.z - pz) < FOOT.padSize + b.r) gy = Math.max(gy, b.top);
+      }
+      fx.padG[k] = sy(gy);
+    }
     let H;
     let tilt;
+    let pitch = 0;
     let legs;
     let target;
     if (fx.plan) {
-      // Touchdown has been captured and graded: play out the settle.
+      // Touchdown has been captured and graded: settle onto the ground's own plane.
       if (!fx.settle) {
-        fx.settle = settleStart(fx.plan, fx.padY);
+        fx.ground = groundPlane(fx.padG);
+        fx.settle = settleStart(fx.plan, sy(p.y) - fx.ground.mean);
         fx.touchAt = now;
         fx.cut = now + 0.22; // the footpads' kick-up is the last of the dust
       }
       settleStep(fx.settle, fx.plan, dt);
-      legs = settleLegs(fx.settle, fx.plan);
-      H = fx.settle.H + legs.lift;
-      tilt = fx.settle.tilt;
+      legs = settleLegs(fx.settle, fx.plan, fx.ground.res);
+      H = fx.ground.mean + fx.settle.H + legs.lift;
+      tilt = fx.plan.plane.tilt + fx.settle.tilt;
+      pitch = fx.plan.plane.pitch + fx.settle.pitch;
       fx.thrust = Math.max(0, fx.thrust - dt / 0.08); // engine stop: the plume dies in a blink
       target = now < fx.cut ? Math.max(fx.dust, fx.plan.burst) : fx.dust;
     } else {
-      H = sceneAlt(p.alt);
+      H = sy(p.y);
       tilt = p.tilt;
-      legs = legContact(H, tilt);
+      legs = legContact(H, tilt, 0, fx.padG);
       H += legs.lift;
       fx.thrust = p.fuel > 0 ? p.throttle : 0;
       target = dustLevel(p.alt, fx.thrust);
-      fx.center = plumeCenter(p.xPos * WORLD_X, H, tilt);
+      const g0 = sy(terrain.lookup(xm, 0));
+      fx.center = plumeCenter(xm * WORLD_X, Math.max(0, H - g0), tilt);
+      fx.centerY = sy(terrain.lookup(fx.center / WORLD_X, 0));
     }
     // In vacuum nothing lingers: after the cut the grains already in flight
     // finish their straight run (the level is held), then there is nothing.
     if (now > fx.cut + DUST.life) fx.dust = 0;
     else if (now <= fx.cut) fx.dust += (target - fx.dust) * Math.min(1, dt / 0.12);
-    const hs = padHeights(H, tilt);
+    const hs = padHeights(H, tilt, pitch, fx.padG);
     for (let k = 0; k < 4; k++) {
       fx.comp[k] = legs.comp[k];
       fx.padH[k] = Math.max(0, hs[k] + legs.comp[k]);
       fx.probe[k] = probeBend(fx.padH[k]);
     }
     fx.padY = H;
-    fx.x = p.xPos * WORLD_X;
+    fx.groundY = (fx.padG[0] + fx.padG[1] + fx.padG[2] + fx.padG[3]) / 4;
+    fx.x = xm * WORLD_X;
     fx.tilt = tilt;
+    fx.pitch = pitch;
     g.position.set(fx.x, H + LM.foot, 0);
-    g.rotation.z = -tilt * DEG;
+    g.rotation.set(pitch * DEG, 0, -tilt * DEG);
     g.visible = !hidden; // from the cockpit window the LM's own deck is not in view
   });
   return (
@@ -116,7 +156,7 @@ export function LanderRig({ physRef, fx, hidden = false }) {
 /* ---- regolith sheet ---------------------------------------------------------- */
 const DUST_VERT = /* glsl */ `
   attribute vec4 aSeed; // azimuth, speed, phase, height/size (all 0..1)
-  uniform float uTime, uLife, uCut, uLevel, uSpeed, uR0, uClear, uMaxAlpha, uBias;
+  uniform float uTime, uLife, uCut, uLevel, uSpeed, uR0, uClear, uMaxAlpha, uBias, uGround;
   uniform vec2 uCenter;
   varying vec2 vUv;
   varying float vAlpha;
@@ -132,21 +172,21 @@ const DUST_VERT = /* glsl */ `
     float spd = uSpeed * (0.55 + 0.9 * aSeed.y) * (1.0 + uBias * -dir.x);
     float r = uR0 + spd * age * life;
     // flat ballistic flight: 1-3 degrees above the surface, no billowing
-    float y = 0.015 + (0.012 + 0.04 * aSeed.w) * r;
+    float y = uGround + 0.03 + (0.012 + 0.04 * aSeed.w) * r;
     vec3 c = vec3(uCenter.x + dir.x * r, y, uCenter.y + dir.y * r);
     // fewer grains when the plume is weak, all of them at full effect
     float present = step(fract(aSeed.x * 91.7 + aSeed.y * 13.3), 0.3 + 0.7 * uLevel);
     vAlpha = uLevel * uMaxAlpha * born * present
       * pow(1.0 - age, 1.4) * smoothstep(0.0, 0.07, age)
-      * smoothstep(uClear, uClear + 0.9, r) * (1.0 - smoothstep(9.0, 15.0, r));
+      * smoothstep(uClear, uClear + 1.8, r) * (1.0 - smoothstep(18.0, 30.0, r));
     vShade = 0.82 + 0.3 * aSeed.w;
     // a streak stretched along its direction of flight, as the eye sees fast grains
     vec4 v = viewMatrix * vec4(c, 1.0);
     vec3 vel = (viewMatrix * vec4(dir.x, 0.03, dir.y, 0.0)).xyz;
     vec2 ax = normalize(vel.xy + vec2(1e-5));
     vec2 pp = vec2(-ax.y, ax.x);
-    float len = 0.22 + spd * 0.075;
-    float wid = 0.06 + 0.1 * aSeed.w;
+    float len = 0.44 + spd * 0.075;
+    float wid = 0.12 + 0.2 * aSeed.w;
     v.xy += ax * position.x * len + pp * position.y * wid;
     vUv = position.xy + 0.5;
     gl_Position = projectionMatrix * v;
@@ -193,6 +233,7 @@ export function RegolithSheet({ fx }) {
         uClear: { value: DUST.clearRadius },
         uMaxAlpha: { value: DUST.maxAlpha },
         uBias: { value: 0 },
+        uGround: { value: 0 },
         uCenter: { value: new THREE.Vector2() },
         uColor: { value: new THREE.Color("#e9e2d3") },
       },
@@ -212,8 +253,9 @@ export function RegolithSheet({ fx }) {
     u.uCut.value = fx.cut;
     u.uLevel.value = fx.dust;
     u.uSpeed.value = dustSpeed(fx.dust);
-    u.uR0.value = 0.35 + 0.25 * fx.padY;
+    u.uR0.value = 0.7 + 0.25 * Math.max(0, fx.padY - fx.groundY);
     u.uBias.value = Math.max(-0.5, Math.min(0.5, fx.tilt / 30));
+    u.uGround.value = fx.centerY;
     u.uCenter.value.set(fx.center, 0);
     mesh.visible = fx.dust > 0.002;
   });
@@ -261,24 +303,48 @@ function blobTexture() {
   return t;
 }
 
-const HAZE_R = 5.5; // scene units: the moving sheet's reach on the ground
+const HAZE_R = 11; // scene units: the moving sheet's reach on the ground
+const RESIDUE_R = 4.8;
+const GRID_N = 22; // draped disc resolution
 
-// Sun direction of the descent scene's key light (position 30, 40, 20).
-const SHADOW_DX = -30 / 40;
-const SHADOW_DZ = -20 / 40;
+// A flat disc grid (XZ, uv 0..1) whose heights are re-laid on the terrain when it moves.
+function drapeDisc(radius) {
+  const g = new THREE.PlaneGeometry(radius * 2, radius * 2, GRID_N, GRID_N);
+  g.rotateX(-Math.PI / 2);
+  return g;
+}
+function layOn(mesh, site, terrain, cx, cy, lift) {
+  const pos = mesh.geometry.attributes.position;
+  const a = pos.array;
+  for (let i = 0; i < pos.count; i++) {
+    const x = (cx + a[i * 3]) / WORLD_X;
+    const z = a[i * 3 + 2] / WORLD_X;
+    a[i * 3 + 1] = site.scale.y(terrain.lookup(x, z)) - cy + lift;
+  }
+  pos.needsUpdate = true;
+  mesh.position.set(cx, cy, 0);
+}
 
-export function GroundMarks({ fx }) {
+export function GroundMarks({ fx, site }) {
   const scour = useRef();
   const residue = useRef();
-  const body = useRef();
   const pads = useRef([]);
-  const { scourMat, residueMat, blobMat, padMats, tex } = useMemo(() => {
+  const terrain = useMemo(() => buildTerrain(site), [site]);
+  // Shadow offset per unit of height, away from the site's Sun.
+  const sunOff = useMemo(() => {
+    const d = skyDirection(site.sun);
+    return [-d[0] / d[1], -d[2] / d[1]];
+  }, [site]);
+  const { scourMat, residueMat, padMats, tex, scourGeo, residueGeo } = useMemo(() => {
     const mk = (color, streaks, flow, clear) =>
       new THREE.ShaderMaterial({
         vertexShader: PLAIN_VERT,
         fragmentShader: SCOUR_FRAG,
         transparent: true,
         depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
         uniforms: {
           uLevel: { value: 0 },
           uColor: { value: new THREE.Color(color) },
@@ -294,69 +360,65 @@ export function GroundMarks({ fx }) {
       scourMat: mk("#f1ebde", 1, 1.1, DUST.clearRadius / HAZE_R),
       // the blast zone left behind: a slightly brighter, swept patch
       residueMat: mk("#e8e2d4", 0.6, 0, 0.08),
-      blobMat: new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, opacity: 0 }),
-      padMats: [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, opacity: 0 })),
+      padMats: [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })),
       tex: t,
+      scourGeo: drapeDisc(HAZE_R),
+      residueGeo: drapeDisc(RESIDUE_R),
     };
   }, []);
   useEffect(() => () => {
-    [scourMat, residueMat, blobMat, ...padMats].forEach((m) => m.dispose());
+    [scourMat, residueMat, ...padMats].forEach((m) => m.dispose());
+    [scourGeo, residueGeo].forEach((g) => g.dispose());
     tex.dispose();
-  }, [scourMat, residueMat, blobMat, padMats, tex]);
+  }, [scourMat, residueMat, padMats, tex, scourGeo, residueGeo]);
   const offsets = useMemo(() => padOffsets(), []);
+  const laid = useRef({ scour: NaN, residue: NaN });
 
   useFrame((state) => {
-    // plume scour, following the impingement point
+    // plume scour, following the impingement point, laid on the terrain
     if (scour.current) {
-      scour.current.position.set(fx.center, 0.004, 0);
       scourMat.uniforms.uLevel.value = 0.5 * fx.dust;
       scourMat.uniforms.uTime.value = state.clock.elapsedTime;
       scour.current.visible = fx.dust > 0.002;
+      if (scour.current.visible && Math.abs(fx.center - laid.current.scour) > 0.05) {
+        layOn(scour.current, site, terrain, fx.center, fx.centerY, 0.03);
+        laid.current.scour = fx.center;
+      }
     }
     // the blast zone stays where the LM came down
     if (residue.current) {
       const since = fx.touchAt == null ? -1 : state.clock.elapsedTime - fx.touchAt;
       residue.current.visible = since >= 0;
       if (since >= 0) {
-        residue.current.position.set(fx.center, 0.003, 0);
+        if (Math.abs(fx.center - laid.current.residue) > 0.05) {
+          layOn(residue.current, site, terrain, fx.center, fx.centerY, 0.025);
+          laid.current.residue = fx.center;
+        }
         residueMat.uniforms.uLevel.value = 0.16 * Math.min(1, since / 0.4);
       }
     }
-    // contact shadows: the LM's, offset away from the sun, and one under each footpad
-    const h = fx.padY;
-    if (body.current) {
-      body.current.position.set(fx.x + SHADOW_DX * (h + 0.6), 0.006, SHADOW_DZ * (h + 0.6));
-      const s = 2.2 + 0.25 * h;
-      body.current.scale.set(s, s * 0.8, 1);
-      blobMat.opacity = 0.42 * (1 - Math.min(1, h / 6));
-      body.current.visible = blobMat.opacity > 0.01; // no draw call when there is nothing to see
-    }
+    // contact shadows under each footpad, offset away from the Sun, on the ground under it
     const cos = Math.cos(fx.tilt * DEG);
     for (let k = 0; k < 4; k++) {
       const m = pads.current[k];
       if (!m) continue;
-      m.position.set(fx.x + offsets[k][0] * cos + SHADOW_DX * fx.padH[k], 0.008, offsets[k][1] + SHADOW_DZ * fx.padH[k]);
-      padMats[k].opacity = 0.6 * (1 - Math.min(1, fx.padH[k] / 0.45));
+      const h = fx.padH[k];
+      m.position.set(fx.x + offsets[k][0] * cos + sunOff[0] * h, fx.padG[k] + 0.03, offsets[k][1] + sunOff[1] * h);
+      padMats[k].opacity = 0.6 * (1 - Math.min(1, h / 0.9));
       m.visible = padMats[k].opacity > 0.01;
     }
   });
 
   return (
     <group>
-      <mesh ref={scour} rotation={[-Math.PI / 2, 0, 0]} renderOrder={0}>
-        <circleGeometry args={[HAZE_R, 64]} />
+      <mesh ref={scour} geometry={scourGeo} renderOrder={0} frustumCulled={false}>
         <primitive object={scourMat} attach="material" />
       </mesh>
-      <mesh ref={residue} rotation={[-Math.PI / 2, 0, 0]} renderOrder={0} visible={false}>
-        <circleGeometry args={[2.4, 48]} />
+      <mesh ref={residue} geometry={residueGeo} renderOrder={0} visible={false} frustumCulled={false}>
         <primitive object={residueMat} attach="material" />
       </mesh>
-      <mesh ref={body} rotation={[-Math.PI / 2, 0, 0]} renderOrder={0}>
-        <planeGeometry args={[1, 1]} />
-        <primitive object={blobMat} attach="material" />
-      </mesh>
       {[0, 1, 2, 3].map((k) => (
-        <mesh key={k} ref={(m) => (pads.current[k] = m)} rotation={[-Math.PI / 2, 0, 0]} scale={[0.42, 0.42, 1]} renderOrder={0}>
+        <mesh key={k} ref={(m) => (pads.current[k] = m)} rotation={[-Math.PI / 2, 0, 0]} scale={[0.84, 0.84, 1]} renderOrder={0}>
           <planeGeometry args={[1, 1]} />
           <primitive object={padMats[k]} attach="material" />
         </mesh>
