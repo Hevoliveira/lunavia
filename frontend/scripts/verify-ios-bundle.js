@@ -48,6 +48,7 @@ const FEATURES = [
   ["Moon-anchored lunar arrival", "anchorStart"],
   ["Touchdown fidelity (CONTACT LIGHT / ENGINE STOP lamps)", "lamp-engine-stop"],
   ["Lunar landing sites", "training-site-continue"],
+  ["Lunar module fidelity (two-stage LM)", "engineInner"],
 ];
 
 function sourceText(dir) {
