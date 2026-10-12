@@ -305,6 +305,7 @@ function blobTexture() {
 
 const HAZE_R = 11; // scene units: the moving sheet's reach on the ground
 const RESIDUE_R = 4.8;
+const AO_R = 1.7; // the occlusion under the descent stage (half-width 1.03 units)
 const GRID_N = 22; // draped disc resolution
 
 // A flat disc grid (XZ, uv 0..1) whose heights are re-laid on the terrain when it moves.
@@ -328,6 +329,7 @@ function layOn(mesh, site, terrain, cx, cy, lift) {
 export function GroundMarks({ fx, site }) {
   const scour = useRef();
   const residue = useRef();
+  const ao = useRef();
   const pads = useRef([]);
   const terrain = useMemo(() => buildTerrain(site), [site]);
   // Shadow offset per unit of height, away from the site's Sun.
@@ -335,7 +337,7 @@ export function GroundMarks({ fx, site }) {
     const d = skyDirection(site.sun);
     return [-d[0] / d[1], -d[2] / d[1]];
   }, [site]);
-  const { scourMat, residueMat, padMats, tex, scourGeo, residueGeo } = useMemo(() => {
+  const { scourMat, residueMat, padMats, aoMat, tex, scourGeo, residueGeo, aoGeo } = useMemo(() => {
     const mk = (color, streaks, flow, clear) =>
       new THREE.ShaderMaterial({
         vertexShader: PLAIN_VERT,
@@ -361,18 +363,21 @@ export function GroundMarks({ fx, site }) {
       // the blast zone left behind: a slightly brighter, swept patch
       residueMat: mk("#e8e2d4", 0.6, 0, 0.08),
       padMats: [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })),
+      // the ground darkens under the descent stage as it comes down (light the body hides from the sky and the regolith around)
+      aoMat: new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
       tex: t,
       scourGeo: drapeDisc(HAZE_R),
       residueGeo: drapeDisc(RESIDUE_R),
+      aoGeo: drapeDisc(AO_R),
     };
   }, []);
   useEffect(() => () => {
-    [scourMat, residueMat, ...padMats].forEach((m) => m.dispose());
-    [scourGeo, residueGeo].forEach((g) => g.dispose());
+    [scourMat, residueMat, aoMat, ...padMats].forEach((m) => m.dispose());
+    [scourGeo, residueGeo, aoGeo].forEach((g) => g.dispose());
     tex.dispose();
-  }, [scourMat, residueMat, padMats, tex, scourGeo, residueGeo]);
+  }, [scourMat, residueMat, aoMat, padMats, tex, scourGeo, residueGeo, aoGeo]);
   const offsets = useMemo(() => padOffsets(), []);
-  const laid = useRef({ scour: NaN, residue: NaN });
+  const laid = useRef({ scour: NaN, residue: NaN, ao: NaN });
 
   useFrame((state) => {
     // plume scour, following the impingement point, laid on the terrain
@@ -397,6 +402,17 @@ export function GroundMarks({ fx, site }) {
         residueMat.uniforms.uLevel.value = 0.16 * Math.min(1, since / 0.4);
       }
     }
+    // occlusion under the body: from about 10 m down, strongest once the LM stands on its legs
+    if (ao.current) {
+      const hb = fx.padY - fx.groundY; // footpad plane above the ground (scene units)
+      const k = Math.max(0, Math.min(1, 1 - hb / 4.5));
+      aoMat.opacity = 0.42 * k * k;
+      ao.current.visible = aoMat.opacity > 0.01;
+      if (ao.current.visible && Math.abs(fx.x - laid.current.ao) > 0.05) {
+        layOn(ao.current, site, terrain, fx.x, fx.groundY, 0.035);
+        laid.current.ao = fx.x;
+      }
+    }
     // contact shadows under each footpad, offset away from the Sun, on the ground under it
     const cos = Math.cos(fx.tilt * DEG);
     for (let k = 0; k < 4; k++) {
@@ -416,6 +432,9 @@ export function GroundMarks({ fx, site }) {
       </mesh>
       <mesh ref={residue} geometry={residueGeo} renderOrder={0} visible={false} frustumCulled={false}>
         <primitive object={residueMat} attach="material" />
+      </mesh>
+      <mesh ref={ao} geometry={aoGeo} renderOrder={0} visible={false} frustumCulled={false}>
+        <primitive object={aoMat} attach="material" />
       </mesh>
       {[0, 1, 2, 3].map((k) => (
         <mesh key={k} ref={(m) => (pads.current[k] = m)} rotation={[-Math.PI / 2, 0, 0]} scale={[0.84, 0.84, 1]} renderOrder={0}>

@@ -1363,3 +1363,80 @@ Capacitor config has a server URL, and there is no service worker.
 2. Commit the source, run `yarn ios:sync` on the clean tree, and update
    `IPHONE_VERSION.md`.
 3. Commit, then push.
+
+## 32. Lunar module visual fidelity
+
+**Why the LM looked like a placeholder** (audited on BUILD 91c520e):
+- **Shape.** About a dozen primitives:
+  - a plain box cabin with one black rectangle for a window;
+  - a smooth eight-sided gold cylinder for the descent stage;
+  - an eight-sided cone for the engine;
+  - one antenna;
+  - landing gear of uniform thin silver rods.
+
+  Nothing broke the silhouette, so from the chase camera it read as a box on a drum.
+- **Materials.** They had no texture. They were metallic, but nothing in the scene was
+  there to reflect, so the metal came out flat dark grey and the gold came out mustard.
+- **Light and shadow.** The LM did not receive shadows (no self-shadowing). The only
+  ground contact cue was the four pad shadows.
+- **Engine.** The plume was a pale cone hung under a small nozzle, with no visible
+  link to the engine.
+- **Size.** 46–62 px tall on an 852×393 phone, 15–21 % of the clear view; 11 meshes,
+  1,424 triangles.
+
+**The new LM.**
+- **Shape: `data/lmDesign.js`** (pure, core three.js, tested in `lmDesign.test.js`).
+  - *Ascent stage:*
+    - a faceted cabin with bevelled edges and a raked front with the hatch;
+    - a dark window facet with two framed triangular windows;
+    - darker side panels;
+    - side propellant pods with LUNAVIA's orange bands;
+    - an aft equipment bay with radiator ribs;
+    - four RCS quads on booms, each with four thrusters;
+    - a docking tunnel, a rendezvous radar, a steerable S-band dish and two VHF whips.
+  - *Descent stage:*
+    - an octagonal foil body with framed equipment bays (dark foil on the sides, gold
+      fore and aft);
+    - a top rim band and deck, leg outriggers, the porch with handrails and an
+      equipment box;
+    - a heat shield, the engine skirt, a gimbal ring and a real bell nozzle.
+  - *Gear (`legFrames`, built per frame in `LanderModel`):*
+    - a foil-wrapped primary sleeve, a shock-absorber collar and a piston that strokes
+      on touchdown;
+    - two secondary struts and a V downlock truss;
+    - dished footpads on ball joints;
+    - the probes, with the ladder on the front leg.
+- **Contact contract (tested).** These are unchanged: footpad bottoms, centres and
+  radius; the nozzle exit plane; the 7 m height; the probe length. They are what
+  `touchdownFx` and the physics use, so drawn = flown still holds.
+- **Materials: `components/LanderModel.jsx`.**
+  - *Paint:* matte paint with procedural panel seams, fasteners and light wear; a
+    darker anodised paint.
+  - *Foil:* crinkled gold and black foil (procedural, used as colour, roughness and
+    bump).
+  - *Other surfaces:* bare metal; a dark engine with a lining that glows from the
+    throat with thrust; dark reflective glass; matte black; LUNAVIA orange.
+  - *Environment:* a small PMREM environment (black sky over bright regolith, one
+    per renderer). It lights metal and foil from below like the sunlit ground, without
+    softening the shadows.
+- **Engine.**
+  - The plume starts at the nozzle exit with the exit's radius: an alpha-blended veil
+    that reads over bright ground, and an additive core.
+  - The bell lining glows from the throat with thrust, so the flame comes out of the
+    engine.
+- **Light and depth.**
+  - Every LM mesh casts and receives the site Sun's real-time shadow, so the parts
+    self-shadow.
+  - `GroundMarks` adds a soft occlusion patch draped on the terrain under the descent
+    stage from about 10 m down, as well as the pad shadows.
+- **Size.**
+  - `LANDER_FRAC_NEAR/FAR` go from 0.225/0.175 to 0.255/0.205 of the clear view's
+    height, about 13–17 % larger.
+  - The framing logic is unchanged: it still includes the LZ and the touchdown point
+    when the zoom budget allows, and points to them otherwise.
+
+**Not changed:** physics, thrust, fuel, difficulty, COMMANDER settings, hazards,
+touchdown, scoring, training rules, reentry.
+
+**Cost:** see Validation below. The body is one merged geometry per material, about
+15 draw calls, and the gear is two instanced meshes.

@@ -113,8 +113,8 @@ const LANDER_H = LM.height;
 const CAMERA_CLEARANCE = 1.2;
 // Share of the clear area's height the lander occupies: closest / furthest
 // (nominal, for a vertical view; the oblique chase view reads ~8 % smaller).
-const LANDER_FRAC_NEAR = 0.225;
-const LANDER_FRAC_FAR = 0.175;
+const LANDER_FRAC_NEAR = 0.255;
+const LANDER_FRAC_FAR = 0.205;
 const _q = new THREE.Vector3();
 const _c = new THREE.Vector3();
 const _v = new THREE.Vector3();
