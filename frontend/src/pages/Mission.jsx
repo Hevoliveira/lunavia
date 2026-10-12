@@ -14,12 +14,15 @@ import MissionResult from "@/components/MissionResult";
 import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import { APPROACH, goForPdi } from "@/data/lunarOrbitShot";
+import { CRUISE, CRUISE_SHOT, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, orbitShotAt } from "@/data/orbitSequence";
 
 /*
  * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
  * count → liftoff → ascent → MECO → staging → upper stage → parking orbit →
- * TLI) without any input, then the cislunar cruise runs to lunar orbit. The
- * first required input after LAUNCH is at the Moon (INITIATE DESCENT).
+ * TLI) without any input, then the cislunar cruise runs to lunar orbit, where
+ * the lunar module undocks (data/orbitSequence). The first required input
+ * after LAUNCH is the descent setup (difficulty, then BEGIN PDI) once the
+ * lunar module has separated. Every cinematic can be skipped.
  */
 const STATES = {
   CONTROL: "control",
@@ -56,9 +59,19 @@ const STATE_LABELS = {
 // Cruise picks up after the TLI burn shown in the launch cinematic.
 const CRUISE_START = 12000;
 
-// Lunar orbit: the LUNAR DESCENT prompt appears once the arrival shot has
-// mostly settled (the camera finishes its push-in at ~12 s, GO FOR PDI ~9 s).
-const PROMPT_AFTER_S = 6.5;
+// Undocking sounds, seconds after the latches release (data/orbitSequence ORBIT_SEQ.undock).
+const UNDOCK_SOUND = [
+  { t: 0, cue: "clank", vol: 0.35 },
+  { t: 0.08, cue: "hiss", dur: 1.4, vol: 0.18 },
+  { t: 4.5, cue: "hiss", dur: 0.5, vol: 0.1 },
+  { t: 13, cue: "hiss", dur: 2.6, vol: 0.16 },
+];
+
+// Shot captions (lower third), keyed by shot.
+const SHOT_CAPTIONS = {
+  cruiseClose: { kicker: "TRANSLUNAR COAST", title: CRUISE_SHOT.caption, sub: CRUISE_SHOT.sub },
+  returnClose: { kicker: "TRANS-EARTH INJECTION", title: RETURN_SHOT.caption, sub: RETURN_SHOT.sub },
+};
 
 // Loss of signal at the end of the cruise: fade to black, then open on the
 // lunar orbit (data/lunarOrbitShot APPROACH.los).
@@ -89,8 +102,12 @@ export default function Mission() {
   const orbitClockRef = useRef(0);
   const [goPdi, setGoPdi] = useState(false);
   const goPdiRef = useRef(false);
-  const [orbitPrompt, setOrbitPrompt] = useState(false); // shown once the arrival shot settles
+  const [orbitPrompt, setOrbitPrompt] = useState(false); // the undocking sequence has handed over to the descent setup
   const promptRef = useRef(false);
+  // Lower-third caption of the current shot (cruise close shot, lunar orbit, return).
+  const [caption, setCaption] = useState(null);
+  const captionRef = useRef(null);
+  const undockSoundRef = useRef(new Set());
   // Fade through black: loss of signal into lunar orbit, and orbit into the descent.
   const [fade, setFade] = useState({ o: 0, ms: 650 });
   const fadingRef = useRef(false);
@@ -122,7 +139,14 @@ export default function Mission() {
       if (s === STATES.SPACE) {
         // The cruise never shows the craft reaching the drawn Moon: at loss of
         // signal it fades to black and lunar orbit opens from black.
-        const next = Math.min(cruiseRef.current + dt * 30000, APPROACH.losEnd);
+        // Slower over the first, close shot of the docked spacecraft, then the 3-day coast at full compression.
+        const rate = cruiseRef.current < CRUISE.closeEnd ? CRUISE.slowRate : 30000;
+        const next = Math.min(cruiseRef.current + dt * rate, APPROACH.losEnd);
+        const cap = next < CRUISE.closeEnd ? "cruiseClose" : null;
+        if (cap !== captionRef.current) {
+          captionRef.current = cap;
+          setCaption(cap ? { id: cap, ...SHOT_CAPTIONS[cap] } : null);
+        }
         cruiseRef.current = next;
         setSpaceTime(next);
         if (next >= APPROACH.los && !losRef.current) {
@@ -140,13 +164,32 @@ export default function Mission() {
       } else if (s === STATES.ORBIT || s === STATES.DIFFICULTY || s === STATES.BRIEFING) {
         // The orbit keeps flying while the player reads; no React render per frame.
         orbitClockRef.current += dt;
-        if (!goPdiRef.current && goForPdi(orbitClockRef.current)) {
+        const tau = orbitClockRef.current;
+        if (!goPdiRef.current && goForPdi(tau)) {
           goPdiRef.current = true;
           setGoPdi(true);
         }
-        if (!promptRef.current && orbitClockRef.current > PROMPT_AFTER_S) {
+        // Undocking done: straight into the descent setup (no button in between).
+        if (s === STATES.ORBIT && !promptRef.current && tau >= ORBIT_SEQ.end) {
           promptRef.current = true;
           setOrbitPrompt(true);
+          setState(STATES.DIFFICULTY);
+        }
+        // Undocking sounds: the latches let go, then the RCS (the same cues as the opening).
+        if (s === STATES.ORBIT) {
+          UNDOCK_SOUND.forEach((c, i) => {
+            const at = ORBIT_SEQ.undock + c.t;
+            if (tau >= at && !undockSoundRef.current.has(i)) {
+              undockSoundRef.current.add(i);
+              if (tau - at < 0.5) (c.cue === "clank" ? audio.clank(c.vol) : audio.hiss(c.dur, c.vol));
+            }
+          });
+        }
+        const { shot } = orbitShotAt(tau);
+        const cap = s === STATES.ORBIT && shot.caption ? shot.id : null;
+        if (cap !== captionRef.current) {
+          captionRef.current = cap;
+          setCaption(cap ? { id: cap, kicker: "LUNAR ORBIT", title: shot.caption, sub: shot.sub } : null);
         }
       } else if (s === STATES.DESCENT) {
         setDescentAlt((a) => {
@@ -168,7 +211,13 @@ export default function Mission() {
         });
       } else if (s === STATES.RETURN) {
         setReturnTime((t) => {
-          const next = t + dt * 25000;
+          // Slower over the close shot of the CSM leaving the Moon.
+          const next = t + dt * (t < RETURN_CLOSE_END ? 12000 : 25000);
+          const cap = next < RETURN_CLOSE_END ? "returnClose" : null;
+          if (cap !== captionRef.current) {
+            captionRef.current = cap;
+            setCaption(cap ? { id: cap, ...SHOT_CAPTIONS[cap] } : null);
+          }
           if (next >= 695000) {
             setState(STATES.REENTRY);
             return 695000;
@@ -208,9 +257,10 @@ export default function Mission() {
     handleLaunchComplete();
   };
 
-  const handleDescend = () => {
-    audio.stopRumble();
-    setState(STATES.DIFFICULTY);
+  // SKIP in lunar orbit: to the end of the undocking (the LM separated), then the descent setup.
+  const handleSkipOrbit = () => {
+    audio.commsFlush();
+    orbitClockRef.current = Math.max(orbitClockRef.current, ORBIT_SEQ.end);
   };
 
   // Phase 2 - selecting a difficulty no longer drops the player straight into a
@@ -289,10 +339,13 @@ export default function Mission() {
     setOrbitPrompt(false);
     setReturnTime(504000);
     setDescentResult(null);
+    captionRef.current = null;
+    setCaption(null);
+    undockSoundRef.current = new Set();
   };
 
-  // GO FOR PDI: the craft has reached the powered-descent start point over the
-  // landing site (data/lunarOrbitShot). It stays lit while the player decides.
+  // GO FOR PDI: the lunar module has undocked and separated (data/lunarOrbitShot
+  // goForPdi); FLIGHT's call comes just before the descent setup opens.
   const overLandingZone = goPdi;
   const inLunarOrbit = state === STATES.ORBIT || state === STATES.DIFFICULTY || state === STATES.BRIEFING;
 
@@ -439,43 +492,33 @@ export default function Mission() {
         </div>
       )}
 
-      {/* --- Interaction gate: lunar arrival is the first required input after LAUNCH --- */}
-      {/* LUNAR DESCENT prompt: bottom-right, clear of the craft and the landing
-          site, appearing once the arrival shot has settled */}
-      {state === STATES.ORBIT && orbitPrompt && (
+      {/* Shot caption, lower third (cruise close shot, lunar orbit and undocking, return) */}
+      {caption && (state === STATES.SPACE || state === STATES.ORBIT || state === STATES.RETURN) && (
         <div
-          data-testid="prompt-descend"
-          className="absolute inset-0 pointer-events-none flex items-end justify-end pb-12 pr-8 md:pr-12 short:pb-4 short:pr-4 safe-mr safe-mb"
+          key={caption.id}
+          data-testid="mission-caption"
+          data-shot={caption.id}
+          className="absolute bottom-10 short:bottom-3 left-6 md:left-10 safe-ml safe-mb z-30 pointer-events-none scan-in bg-black/45 backdrop-blur-sm border-l-2 border-[#FF3B00] px-3 py-2 short:py-1.5 max-w-[min(30rem,62vw)]"
         >
-          <div className="pointer-events-auto text-right fade-in bg-black/35 backdrop-blur-[2px] px-5 py-4 short:px-3 short:py-2.5">
-            <div
-              className={`font-mono text-[10px] tracking-[0.4em] mb-3 ${
-                overLandingZone ? "text-[#FF3B00] blink" : "text-zinc-500"
-              }`}
-            >
-              ● {overLandingZone ? "OVER LANDING ZONE — GO FOR PDI" : "STANDBY · WAITING FOR LANDING ZONE"}
-            </div>
-            <div className="font-display font-black text-white text-4xl md:text-5xl short:text-2xl mb-2 short:mb-1">
-              LUNAR DESCENT
-            </div>
-            <div className="font-mono text-[11px] short:text-[9px] tracking-widest text-zinc-400 mb-6 short:mb-3 narrow:hidden">
-              MARE TRANQUILLITATIS · WAIT UNTIL "GO FOR PDI"
-            </div>
-            <button
-              onClick={handleDescend}
-              data-testid="btn-descend"
-              className={`inline-flex items-center gap-3 px-8 py-3 short:px-5 border-2 font-mono tracking-[0.3em] text-sm short:text-xs min-h-[44px] transition-colors duration-200 ${
-                overLandingZone
-                  ? "border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00]"
-                  : "border-zinc-600 text-zinc-500 bg-transparent"
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${overLandingZone ? "bg-[#FF3B00] blink" : "bg-zinc-600"}`} />
-              INITIATE DESCENT
-              <span className={`w-2 h-2 rounded-full ${overLandingZone ? "bg-[#FF3B00] blink" : "bg-zinc-600"}`} />
-            </button>
+          <div className="flex items-center gap-2 font-mono text-[9px] tracking-[0.4em] text-[#FF3B00]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF3B00]" /> {caption.kicker}
           </div>
+          <div className="font-display font-black text-white text-2xl md:text-3xl short:text-xl tracking-tight mt-0.5">{caption.title}</div>
+          <div className="font-mono text-[10px] short:text-[9px] tracking-[0.22em] text-zinc-300 mt-0.5">{caption.sub}</div>
         </div>
+      )}
+
+      {/* Lunar orbit plays on its own (arrival, the docked spacecraft, undocking) and hands over
+          to the descent setup; it can be skipped to the end of the undocking. */}
+      {state === STATES.ORBIT && !orbitPrompt && (
+        <button
+          type="button"
+          data-testid="skip-orbit"
+          onClick={handleSkipOrbit}
+          className="absolute bottom-6 short:bottom-2 right-6 md:right-10 safe-mr safe-mb z-30 font-mono text-[10px] tracking-[0.3em] text-zinc-400 hover:text-white px-3 py-2 touch:min-h-[44px] touch:px-4 bg-black/30 border border-white/10"
+        >
+          SKIP TO DESCENT ›
+        </button>
       )}
 
       {state === STATES.SURFACE && (

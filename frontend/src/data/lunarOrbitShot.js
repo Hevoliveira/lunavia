@@ -26,6 +26,8 @@
  * touches the descent simulation: the descent starts from its own fixed state.
  */
 
+import { ORBIT_RATE, ORBIT_SEQ } from "./orbitSequence";
+
 const DEG = Math.PI / 180;
 
 // Landing site, selenographic (texture is equirectangular, longitude 0 at its centre).
@@ -119,10 +121,18 @@ export const applyRotation = (m, v) => [
 export const LZ_SUN_ELEVATION = Math.asin(dot(LZ_UP, SUN)) / DEG;
 
 /* ---- the craft ---------------------------------------------------------- */
-/** Along-track angle from the site at time tau (s since lunar orbit began). */
+const arrivalAlpha = (t) => ORBIT.pdiAlpha + ORBIT.creep * (1 - Math.exp(-t / ORBIT.creepT)) - ORBIT.arrival * Math.exp(-t / ORBIT.arrivalT);
+
+/**
+ * Along-track angle from the site at time tau (s since lunar orbit began).
+ * Time-compressed only in the wide establishing shot; from the cut to the
+ * spacecraft on (data/orbitSequence ORBIT_SEQ.cut) it flies at its real
+ * orbital rate, so the surface under the close shots drifts as it would.
+ */
 export function craftAlpha(tau) {
   const t = Math.max(0, tau);
-  return ORBIT.pdiAlpha + ORBIT.creep * (1 - Math.exp(-t / ORBIT.creepT)) - ORBIT.arrival * Math.exp(-t / ORBIT.arrivalT);
+  if (t <= ORBIT_SEQ.cut) return arrivalAlpha(t);
+  return arrivalAlpha(ORBIT_SEQ.cut) + ORBIT_RATE * DEG * (t - ORBIT_SEQ.cut);
 }
 
 const radialAt = (alpha) => add(scale(LZ_UP, Math.cos(alpha)), scale(WEST, Math.sin(alpha)));
@@ -138,8 +148,13 @@ export function craftPose(tau, M, R) {
 /** Point on the orbit at along-track angle alpha (for drawing the orbit path). */
 export const orbitPoint = (alpha, M, R) => add(M, scale(radialAt(alpha), R * (1 + ORBIT.altitude)));
 
-/** True once the craft has reached the powered-descent start point. */
-export const goForPdi = (tau) => craftAlpha(tau) >= ORBIT.pdiAlpha - ORBIT.goMargin;
+/**
+ * GO FOR PDI: once the lunar module has undocked and separated (the
+ * undocking sequence, data/orbitSequence). The descent itself starts from its
+ * own fixed state after a cut: descent orbit insertion and the coast down to
+ * the powered-descent point are not flown on screen.
+ */
+export const goForPdi = (tau) => tau >= ORBIT_SEQ.goPdi;
 
 /** Landing site on the surface (for the marker). */
 export const landingSite = (M, R) => add(M, scale(LZ_UP, R));

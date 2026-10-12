@@ -4,6 +4,8 @@ import { useRef, useMemo, useEffect, useState } from "react";
 import * as THREE from "three";
 import { R_EARTH, CAPSULE, CHUTES, OUTCOME } from "@/data/reentryPhysics";
 import { plasmaLevel } from "@/data/reentryGuidance";
+import CsmModel, { csmMaterials } from "@/components/spacecraft/CsmModel";
+import { CM_R, PARTS as CSM_PARTS, buildCM } from "@/data/csmDesign";
 
 /*
  * ReentryScene — rendered entirely from the live reentry simulation state
@@ -69,37 +71,13 @@ function chuteInflation(s, which) {
 
 /* ------------------------------- capsule ------------------------------- */
 
-function useCapsuleGeometry() {
-  return useMemo(() => {
-    // Heat shield: shallow spherical dome + toroidal shoulder
-    const Rh = 1.2;
-    const shield = [];
-    for (let i = 0; i <= 12; i++) {
-      const r = (i / 12) * 0.5;
-      shield.push(new THREE.Vector2(Math.max(r, 0.0001), -(Rh - Math.sqrt(Rh * Rh - r * r))));
-    }
-    shield.push(new THREE.Vector2(0.512, 0.012));
-    shield.push(new THREE.Vector2(0.515, 0.035));
-    shield.push(new THREE.Vector2(0.5, 0.06));
-    const shieldGeo = new THREE.LatheGeometry(shield, 48);
-
-    // Conical afterbody + docking tunnel
-    const body = [
-      new THREE.Vector2(0.5, 0.06),
-      new THREE.Vector2(0.49, 0.075),
-      new THREE.Vector2(0.14, 0.62),
-      new THREE.Vector2(0.105, 0.64),
-      new THREE.Vector2(0.1, 0.75),
-      new THREE.Vector2(0.07, 0.765),
-      new THREE.Vector2(0.0001, 0.77),
-    ];
-    const bodyGeo = new THREE.LatheGeometry(body, 48);
-    return { shieldGeo, bodyGeo };
-  }, []);
-}
+// The expedition's own command and service module (data/csmDesign), in capsule
+// units: diameter 1 = 3.9 m. Same geometry as at launch and in lunar orbit; the
+// reentry gives the command module its own materials (heat-shield glow, fade).
+const CAPSULE_SCALE = 1 / (2 * CM_R);
 
 function CapsuleModel({ shieldMatRef, bodyOpacityRef }) {
-  const { shieldGeo, bodyGeo } = useCapsuleGeometry();
+  const geo = useMemo(() => buildCM({ probe: false }), []);
   const shieldMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
@@ -112,49 +90,35 @@ function CapsuleModel({ shieldMatRef, bodyOpacityRef }) {
       }),
     []
   );
-  const bodyMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#d9dade", roughness: 0.38, metalness: 0.55, transparent: true }),
-    []
-  );
+  // The CSM's silver skin with its panel seams, a little less metallic here: the
+  // reentry has no environment map to reflect.
+  const bodyMat = useMemo(() => {
+    const m = csmMaterials().cmSkin.clone();
+    m.metalness = 0.55;
+    m.roughness = 0.38;
+    m.transparent = true;
+    return m;
+  }, []);
+  const metalMat = useMemo(() => new THREE.MeshStandardMaterial({ color: "#c9ccd2", roughness: 0.38, metalness: 0.5, transparent: true }), []);
   const darkMat = useMemo(() => new THREE.MeshStandardMaterial({ color: "#121416", roughness: 0.4, metalness: 0.3, transparent: true }), []);
   const bandMat = useMemo(() => new THREE.MeshStandardMaterial({ color: "#FF3B00", roughness: 0.5, metalness: 0.2, transparent: true }), []);
   useEffect(() => {
     shieldMatRef.current = shieldMat;
-    bodyOpacityRef.current = [shieldMat, bodyMat, darkMat, bandMat];
-  }, [shieldMat, bodyMat, darkMat, bandMat, shieldMatRef, bodyOpacityRef]);
+    bodyOpacityRef.current = [shieldMat, bodyMat, metalMat, darkMat, bandMat];
+  }, [shieldMat, bodyMat, metalMat, darkMat, bandMat, shieldMatRef, bodyOpacityRef]);
 
+  const byPart = { shield: shieldMat, cmSkin: bodyMat, metal: metalMat, black: darkMat, glass: darkMat, accent: bandMat };
   return (
-    <group>
-      <mesh geometry={shieldGeo} material={shieldMat} />
-      <mesh geometry={bodyGeo} material={bodyMat} />
-      {/* LUNAVIA orange band just above the shoulder */}
-      <mesh position={[0, 0.12, 0]} material={bandMat}>
-        <cylinderGeometry args={[0.452, 0.467, 0.035, 48, 1, true]} />
-      </mesh>
-      {/* Crew windows */}
-      {[-0.55, 0.55].map((a, i) => (
-        <mesh key={i} position={[Math.sin(a) * 0.33, 0.34, Math.cos(a) * 0.33]} rotation={[-0.58, a, 0]} material={darkMat}>
-          <boxGeometry args={[0.075, 0.06, 0.012]} />
-        </mesh>
+    <group scale={CAPSULE_SCALE}>
+      {CSM_PARTS.filter((p) => geo[p]).map((p) => (
+        <mesh key={p} geometry={geo[p]} material={byPart[p] || bodyMat} />
       ))}
-      {/* Hatch */}
-      <mesh position={[0, 0.3, 0.355]} rotation={[-0.58, 0, 0]} material={darkMat}>
-        <boxGeometry args={[0.14, 0.16, 0.006]} />
-      </mesh>
-      {/* RCS quads */}
-      {[0, 1, 2, 3].map((i) => {
-        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-        return (
-          <mesh key={i} position={[Math.cos(a) * 0.3, 0.42, Math.sin(a) * 0.3]} material={darkMat}>
-            <boxGeometry args={[0.04, 0.04, 0.04]} />
-          </mesh>
-        );
-      })}
     </group>
   );
 }
 
-// Service module (approach only) — separated and drifts away at ENTRY PREP.
+// Service module (approach only) — the same SM as at launch and in lunar orbit;
+// separated at ENTRY PREP, it backs away along its own axis and drifts off.
 const _smOff = new THREE.Vector3();
 function ServiceModule({ viewRef, smQuatRef }) {
   const ref = useRef();
@@ -165,23 +129,14 @@ function ServiceModule({ viewRef, smQuatRef }) {
     ref.current.visible = v.phase === "APPROACH" || (v.phase === "PREP" && sep < 7.5);
     // SM keeps its approach attitude and backs away along its own axis after separation.
     ref.current.quaternion.copy(smQuatRef.current);
-    _smOff.set(0.12 * sep, -0.62 - 0.45 * sep, -0.3 * sep).applyQuaternion(smQuatRef.current);
+    _smOff.set(0.12 * sep, -0.45 * sep, -0.3 * sep).applyQuaternion(smQuatRef.current);
     ref.current.position.copy(_smOff);
   });
   return (
     <group ref={ref}>
-      <mesh position={[0, -0.25, 0]}>
-        <cylinderGeometry args={[0.48, 0.48, 0.9, 40]} />
-        <meshStandardMaterial color="#c9ccd2" metalness={0.8} roughness={0.32} />
-      </mesh>
-      <mesh position={[0, -0.25, 0]}>
-        <cylinderGeometry args={[0.485, 0.485, 0.16, 40, 1, true]} />
-        <meshStandardMaterial color="#1a2029" metalness={0.4} roughness={0.6} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[0, -0.83, 0]}>
-        <coneGeometry args={[0.2, 0.3, 24, 1, true]} />
-        <meshStandardMaterial color="#3a3b3e" metalness={0.85} roughness={0.35} side={THREE.DoubleSide} />
-      </mesh>
+      <group scale={CAPSULE_SCALE}>
+        <CsmModel cm={false} />
+      </group>
     </group>
   );
 }

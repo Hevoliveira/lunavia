@@ -1,7 +1,7 @@
 import {
   SHOTS, EVENTS, DURATION, LIFTOFF_T, MILESTONES, metAt, formatMet, trajectoryAt, padHeight,
   stage1Thrust, upperThrust, sepProgress, eventTime, shotAt, airDensity, sunAt, rollAt, stage1Visible,
-  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE,
+  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE, LES_JETTISON, lesJettison,
 } from "./launchTimeline";
 
 describe("launch timeline", () => {
@@ -177,5 +177,21 @@ describe("launch timeline", () => {
       expect(stage1Visible(s.end - 0.1)).toBe(true);
     });
     expect(stage1Visible(eventTime("orbit"))).toBe(false);
+  });
+});
+
+describe("launch escape tower", () => {
+  test("jettisoned once the upper stage burns steadily, before orbit, with its own caption", () => {
+    expect(LES_JETTISON).toBeGreaterThan(eventTime("usIgnition") + 3);
+    expect(LES_JETTISON).toBeLessThan(eventTime("orbit"));
+    expect(upperThrust(LES_JETTISON)).toBeGreaterThan(0.9);
+    expect(eventTime("lesJettison")).toBe(LES_JETTISON);
+    expect(EVENTS.find((e) => e.id === "lesJettison").caption).toMatch(/ESCAPE TOWER/);
+    expect(lesJettison(LES_JETTISON - 1)).toBe(0);
+    expect(lesJettison(LES_JETTISON + 2)).toBeCloseTo(2, 9);
+  });
+
+  test("gone from every orbit, TLI and departure shot: none of the spacecraft's hardware is left behind on it", () => {
+    SHOTS.filter((s) => s.start >= 61).forEach((s) => expect(lesJettison(s.start)).toBeGreaterThan(1.5));
   });
 });

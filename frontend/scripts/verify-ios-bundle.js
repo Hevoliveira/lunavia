@@ -52,6 +52,9 @@ const FEATURES = [
   ["Four lunar missions (mission selector)", "training-mission-start-"],
   ["Far side mission (Silent Horizon, no Earth link)", "FAR SIDE TOUCHDOWN CONFIRMED"],
   ["Far-side approach intro", "farside-intro-skip"],
+  ["One spacecraft from Earth orbit to the Moon (shared CSM, escape tower jettison)", "ESCAPE TOWER JETTISONED"],
+  ["Lunar module undocking in the mission", "SKIP TO DESCENT"],
+  ["Opening cinematic and Laju Productions credit", "A LAJU PRODUCTIONS GAME"],
 ];
 
 function sourceText(dir) {

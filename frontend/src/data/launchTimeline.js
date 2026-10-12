@@ -59,6 +59,7 @@ export const EVENTS = [
   { t: 44, id: "meco", caption: "MAIN ENGINE CUTOFF", sub: "STAGE 1 BURNOUT · 65 KM" },
   { t: 47, id: "separation", caption: "STAGE SEPARATION", sub: "SEPARATION MOTORS FIRING" },
   { t: 54.5, id: "usIgnition", caption: "UPPER STAGE IGNITION", sub: "VACUUM ENGINE · THRUST NOMINAL" },
+  { t: 59.3, id: "lesJettison", caption: "ESCAPE TOWER JETTISONED", sub: "BOOST COVER OFF · COMMAND MODULE WINDOWS CLEAR" },
   { t: 65, id: "orbit", caption: "EARTH ORBIT", sub: "UPPER STAGE CUTOFF · 185 KM PARKING ORBIT", kicker: "EARTH ORBIT · REV 1" },
   { t: 80.3, id: "finalPass", caption: "FINAL EARTH PASS", sub: "LAST SUNSET IN EARTH ORBIT · TLI ON THE NEXT REVOLUTION", kicker: "EARTH ORBIT · REV 1" },
   { t: 85.7, id: "tliPrep", caption: "TLI PREPARATION", sub: "NIGHT PASS · ROLL TO BURN ATTITUDE", kicker: "EARTH ORBIT · REV 2" },
@@ -327,6 +328,13 @@ export function sepProgress(t) {
   if (t < 58.5) return 0.42 + 0.58 * ((t - US_IGNITION) / (58.5 - US_IGNITION));
   return 1 + (t - 58.5) * 0.28;
 }
+
+/* Launch escape tower and boost protective cover: jettisoned once the upper
+ * stage is burning steadily (as on Apollo, about half a minute after it
+ * lights). Seconds since jettison, or 0 before. RocketModel moves the tower
+ * away on its own jettison motor; the command module is clear from here on. */
+export const LES_JETTISON = 59.3;
+export const lesJettison = (t) => Math.max(0, t - LES_JETTISON);
 
 // The spent stage is seen receding through the upper-stage ignition shot,
 // then is out of the picture.

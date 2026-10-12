@@ -1631,3 +1631,156 @@ each difficulty's real start; browser tests, not a physical iPhone):
 - The intro's audio (the fading last call, the static burst) is the existing voice pack and
   radio chain. It is untested on a physical iPhone.
 - Fra Mauro records from earlier builds stay in storage but are no longer shown.
+
+## 34. One spacecraft from Earth to the Moon; the opening
+
+**What was wrong** (audited on BUILD a360daf). Four different spacecraft flew one mission:
+
+| Phase | Model before |
+|---|---|
+| Launch, Earth orbit, TLI | `RocketModel`: the upper stage carried a 9.4 m service-module drum, a boost cover and the escape tower. The tower was never jettisoned, and no lunar module was modelled. |
+| Cruise, arrival, return | `SpacecraftModel`: a 14-primitive grey cone and drum with blue solar panels, drawn about 900 km long and always rolling. No lunar module; the upper stage simply gone. |
+| Lunar orbit | The same icon at 0.2 scale, matte: the small, dark spacecraft. |
+| Descent | `LanderModel`, appearing from nowhere: there was no undocking. |
+| Reentry | A 3.9 m command module with LUNAVIA's band. |
+| Main menu | The icon again. |
+
+**The canonical spacecraft.**
+- `data/csmDesign.js` (pure, tested; metres, the long axis +Y, origin at the CM/SM interface) defines the command and service module once. The proportions are Apollo-class and the finish is LUNAVIA's.
+  - *Command module:* the reentry capsule's own profile (3.9 m): dished heat shield, the orange band above the shoulder, five windows, the hatch, RCS ports, the docking tunnel and the probe.
+  - *Service module:* a 3.9 m drum with the forward fairing and six panel sectors; two radiator panels and the radiator band; four RCS quads of four thrusters; the aft bulkhead; the SPS engine on its gimbal ring; the steerable high-gain antenna on its boom; the umbilical fairing; the LUNAVIA · LV-001 marking along the axis.
+- `components/spacecraft/CsmModel.jsx` provides one merged geometry per material (about 11 draw calls) plus instanced RCS puffs. Its materials take the host scene's environment, so the model reads correctly over the Earth and over the Moon.
+- The lunar module is the approved `LanderModel`, unchanged. `lmDesign` now also exports its RCS thruster positions.
+- `components/spacecraft/SpacecraftStack.jsx`: the lunar module docks upside down, drogue ring on the docking ring, on the CSM's axis (`dockedLmPose`). Nothing passes through the command module (tested). Undocking moves the same two models apart; nothing is swapped.
+
+**Each configuration, and who draws it.**
+
+| Stage | Configuration | Where |
+|---|---|---|
+| Launch and ascent | CSM on a tapered spacecraft-LM adapter (the LM rides inside), boost cover and escape tower | `RocketModel` |
+| Upper-stage burn, T+59.3 s | The escape tower and boost cover are jettisoned on the tower's own motor (caption ESCAPE TOWER JETTISONED) | `RocketModel`, `launchTimeline.LES_JETTISON` |
+| Earth orbit, TLI | Upper stage, adapter, CSM | `RocketModel` |
+| Translunar coast | CSM and LM docked. The caption says the transposition and docking are done and the upper stage has been left behind; that manoeuvre is not shown. | `MissionScene` |
+| Lunar orbit | Docked, LM legs deployed | `MissionScene` |
+| Undocking | The LM undocks; the CSM backs away; the two separate | `MissionScene` + `data/undocking` |
+| Descent | LM alone | `DescentGame` (unchanged) |
+| Return | CSM alone | `MissionScene` |
+| Reentry | The same CM (`buildCM({ probe: false })`) and the same SM until it is jettisoned | `ReentryScene` |
+
+The rocket's spacecraft section is now the shared CSM at true size on the adapter. The launch cinematic frames on the CM's nose once the tower has gone, and its glints moved with the hardware.
+
+**True scale, by composition.** `MissionScene` renders two layers every frame, as the launch cinematic does (`data/orbitSequence` explains the frames):
+1. the planets in scene units (1 unit ≈ 1,922 km);
+2. the spacecraft in metres, over a cleared depth buffer.
+
+The planet camera stands where the spacecraft is, so the Moon below and the Earth behind are seen at the sizes they have from the spacecraft. The spacecraft is never enlarged; camera distance and composition make it read. In wide shots, where a 17 m spacecraft is far below one pixel, it is a sunlit glint on its path. Other changes:
+- From lunar orbit, the Earth is drawn at its true size in the sky.
+- In the close cruise shot, the Earth's apparent size follows an Apollo-like coast (`coastDistanceKm`), continuing from the launch cinematic's last shot.
+- Close to the surface, the Moon's 1k map is softened by about a texel and a fine regolith detail fades in. Its JPEG blocks no longer show, and the wide views are unchanged.
+
+**The mission's lunar orbit** (`data/orbitSequence` ORBIT_SHOTS, `pages/Mission.jsx`):
+
+| Seconds | Shot |
+|---|---|
+| 0–4.5 | ESTABLISHING: the whole Moon, the orbit, the landing site; the spacecraft a glint (time-compressed arrival) |
+| 4.5–11 | LV-001 IN LUNAR ORBIT: tracking shot of the docked stack above the lunar horizon |
+| 11–16 | UNDOCKING PREPARATION: close on the docking tunnel |
+| 16–26 | UNDOCKING: the latches release (clank), the CSM backs away on its RCS (hiss), the LM rolls to show its gear |
+| 26–34 | TWO SPACECRAFT: the CSM stays in orbit, the LM moves on; the separation burn; FLIGHT's "go for powered descent" |
+| 34– | The camera stays with the LM while the descent is set up |
+
+- From the cut to the spacecraft, the craft flies at its real orbital rate (0.044°/s at 278 km), so the surface drifts as it would.
+- **INITIATE DESCENT is gone.** It only started the descent setup, and the undocking now leads there by itself. The first input after LAUNCH is still the descent setup (difficulty, then BEGIN PDI), as before.
+- SKIP TO DESCENT jumps to the end of the undocking. Pause, abort and training are unchanged.
+- Descent orbit insertion and the coast down to the powered-descent point are not flown on screen. BEGIN PDI cuts, through black, to the descent's own fixed start.
+
+**Undocking** (`data/undocking`, pure, tested):
+- The latches release; the CSM's forward thrusters build 0.35 m/s over 1.6 s.
+- The LM rolls 90° at no more than 13.5°/s, with RCS pulses to start and stop.
+- A 0.8 m/s separation burn follows.
+- Speed and gap are continuous (no jolt), and both vehicles move about their common centre of mass.
+
+**The opening** (`components/opening/OpeningCinematic.jsx`, shots in `data/openingSequence.js`, about 52 s):
+
+| Seconds | Shot |
+|---|---|
+| 0–4.5 | The whole Moon in deep space; the spacecraft a glint on its orbit |
+| 4.5–10.5 | Over the lunar horizon, the spacecraft approaches |
+| 10.5–17.5 | Tracking along it: engine, service module, command module, docking, lunar module |
+| 17.5–24 | Close on the docking tunnel |
+| 24–34 | Undocking (25 s): latches, RCS, the LM's roll |
+| 34–41.5 | The two spacecraft above the Moon; FLIGHT's "go for powered descent" |
+| 41.5–52 | The camera stays with the LM: LUNAVIA, A LAJU PRODUCTIONS GAME, MASTER THE DESCENT. EXPLORE THE MOON. RETURN TO EARTH., fade to the menu |
+
+- Same Moon, Sun, spacecraft and undocking as the mission.
+- **Autoplay:** only the first time on a device (`lunavia.opening.seen`). It never replays on returning to the menu, and ABERTURA on the menu replays it. SKIP INTRO works at any time.
+- **No side effects:** no mission state, no records, no descent.
+- **Sound** (the existing synthesized pad, clank, hiss and one existing radio line; no new voices) starts on the first tap, since browsers allow audio only after a gesture.
+- **Title loop** (`TitleLoop`): the menu's backdrop is now the CSM alone in lunar orbit, the camera drifting round it. It replaces `EarthMoonHero`, which drew the old icon.
+
+**LAJU PRODUCTIONS.**
+- "A LAJU PRODUCTIONS GAME" appears in the opening's title, the menu (LUNAVIA · A LAJU PRODUCTIONS GAME) and the footer's CREDITS.
+- No logo, company history or affiliation is invented.
+
+**Removed:** `SpacecraftModel.jsx`, `EarthMoonHero.jsx`.
+
+**Not changed:** descent physics, touchdown, scoring, difficulty, training, the four missions, mission timing (only the cinematic time compression during two close shots), reentry physics.
+
+**Performance** (`components/scenes/AdaptiveResolution.jsx`, `MissionScene`):
+- The spacecraft is one merged geometry per material, its materials shared singletons (about 11 draw calls for the CSM; the LM is unchanged).
+- Shadows only in the spacecraft layer, plain PCF (not soft), one 1,024² map fitted to the stack.
+- The Moon's map is filtered at 4× anisotropy (16× cost a quarter of a frame, measured), the regolith detail at 2×.
+- The spacecraft's shaders are compiled when the scene mounts, not at the first cut to it.
+- The mission, opening and title-loop canvases use the launch cinematic's adaptive resolution: below ~45 fps the pixel ratio steps down (2 → 1.25 at most), never back up.
+
+**Validation** (headless Chromium with software rendering; browser tests, not a physical iPhone):
+- **Jest:** 253 tests pass (220 before). New tests:
+  - the CSM's profile, proportions and budget (draw calls, vertices);
+  - the docked stack (drogue on the docking ring, on the axis; the LM inverted; nothing passes through the CM);
+  - the undocking (no jolt, RCS speeds, centre of mass, slow roll);
+  - the orbit and opening shots (order, cameras outside the spacecraft, the Sun on the camera's side, captions);
+  - the cruise and return true-size distances;
+  - the escape-tower jettison.
+- **Continuity, frame by frame against BUILD a360daf** (852×393): Earth orbit (escape tower gone, the CSM on its adapter), translunar coast (CSM and LM docked, the Earth at its true size), lunar orbit, before, during and after the separation, the title over the LM.
+- **Lunar orbit in the app** at 667×375, 852×393 and 932×430, no page errors:
+  - the captions ran in order (LUNAR ORBIT, LV-001 IN LUNAR ORBIT, UNDOCKING PREPARATION, UNDOCKING, TWO SPACECRAFT);
+  - the gap opened from 0.07 m at the release to 9.4 m at the hand-over;
+  - the descent setup opened by itself at 34.6 s;
+  - captions and SKIP TO DESCENT never overlap.
+- **The opening** at 852×393 and 667×375, as the iPhone app on first launch, no page errors:
+  - it autoplayed, and the seven shots ran in order (undocking at 25 s, the title from 41.5 s);
+  - it ended in the menu with the title loop and LUNAVIA · A LAJU PRODUCTIONS GAME;
+  - it wrote only `lunavia.opening.seen`, and a stored training record was untouched;
+  - it did not autoplay on returning to the menu or on relaunch;
+  - ABERTURA replayed it, and SKIP INTRO closed it straight into the menu.
+- **Performance, back to back against BUILD a360daf** (852×393, pixel ratio 1; draw calls and triangles counted at the WebGL API):
+
+  | Scene | Frame median, a360daf → now | Draw calls | Triangles |
+  |---|---|---|---|
+  | Menu backdrop (icon → title loop) | 133 → 117 ms | 19 → 29 | 78.1k → 58.1k |
+  | Cruise | 50 → 83 ms | 16 → 7 (111 in the close shot) | 18.8k → 58.8k |
+  | Lunar arrival | 50 → 83 ms | 16 → 5 | 18.8k → 38.1k |
+  | Orbit, establishing shot | 50 → 100 ms | 17 → 6 | 19.0k → 38.3k |
+  | Orbit, close shots of the spacecraft | 67 → 167 ms | 17 → 53 | 19.0k → 74.2k |
+  | Opening (new) | — → 133 ms | 52 | 74.2k |
+  | Descent, final 50 m (reference, unchanged) | 200 ms | 34 | 75.3k |
+
+  - The close shots draw a real spacecraft close up where a 2-pixel icon was. Switching one feature off at a time, the spacecraft costs about 83 ms of the close shot, the Moon about 67 ms and the shadows about 17 ms.
+  - Measured cuts before release: Moon filtering 16× → 4×, plain PCF shadows and shader pre-compilation. Together they took the menu from 133 to 117 ms, the opening from 167 to 133 ms, the close shots from 183 to 167 ms, and the worst cruise frames (p95) from 550 to 367 ms.
+  - Every new scene costs less than the descent's final 50 m, the game's heaviest playable scene, on the same machine.
+- **Full mission**, flown end to end in the app at 1280×720:
+  - launch: all 22 calls aired;
+  - lunar orbit: the arrival call and FLIGHT's "go for powered descent" aired, and the descent setup opened by itself (no INITIATE DESCENT);
+  - descent: THE EAGLE HAS LANDED;
+  - return (the CSM alone), reentry and splashdown, with all calls aired: MISSION COMPLETE.
+
+  The only page error is the external font request the harness blocks.
+
+**Limitations:**
+- Transposition, docking and LM extraction are not flown. The translunar caption says they are done and the upper stage has been left behind.
+- Descent orbit insertion and the coast to the powered-descent point are not flown (see above).
+- The LM's legs are deployed from the translunar coast on (Apollo's stayed folded until lunar orbit). The approved LM model is unchanged.
+- In the close orbit shots the lunar surface is the existing 1k map, softened, with a fine regolith detail: no longer blocky, but soft.
+- The opening's sound starts on the first tap (iOS allows audio only after a gesture).
+- The ascent stage's rendezvous with the CSM is not shown; the return shows the CSM alone.
+- All validation ran in a browser with software rendering, not on a physical iPhone.

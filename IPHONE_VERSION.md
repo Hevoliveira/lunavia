@@ -1,14 +1,15 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD a360daf**.
+This folder installs **BUILD 11618a2**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD a360daf · 2026-10-12 16:54 UTC**
+> **LUNAVIA iOS · BUILD 11618a2 · 2026-10-12 21:51 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
-- **718ce0c** is the previous release, the lunar module fidelity pass, without the four
-  missions;
+- **a360daf** is the previous release, the four lunar missions, with the old spacecraft and
+  no opening;
+- **718ce0c** is the lunar module fidelity release, without the four missions;
 - **cb874af** is the old `claude/ios-app` download from 10 October.
 
 How to install and update: **INSTALL_ON_IPHONE.md**.
@@ -30,15 +31,17 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Lunar landing sites | #8 | 967162b |
 | Release build tooling | — | 91c520e |
 | Lunar module visual fidelity (two-stage LM, materials, legs, engine, plume, framing) | #9 | b9e4298, 0c2bd8f, 718ce0c |
-| Four lunar missions: Sea of Tranquility, Hadley–Apennine, Tycho Highlands, Silent Horizon (far side, no Earth link) | `claude/four-lunar-missions` | 5217691, 16900c0, a360daf |
+| Four lunar missions: Sea of Tranquility, Hadley–Apennine, Tycho Highlands, Silent Horizon (far side, no Earth link) | #10 | 5217691, 16900c0, a360daf |
+| One spacecraft from Earth to the Moon (shared CSM, escape tower jettison), lunar module undocking, opening cinematic, Laju Productions credit | #11 | 11618a2 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at a360daf** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **The four missions change the Training Center's lunar landing only.** Physics, difficulty, touchdown limits and scoring are unchanged, and the full mission still lands at the Sea of Tranquility.
+- **Built from the clean tree at 11618a2** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **The spacecraft release changes what you see, not how you fly.** The same CSM and LM now fly the whole mission. In lunar orbit the LM undocks and the descent setup opens by itself (INITIATE DESCENT is gone; SKIP TO DESCENT skips the undocking). The opening plays once on the first launch (SKIP INTRO; ABERTURA on the menu replays it). Descent physics, difficulty, touchdown limits, scoring, training and the four missions are unchanged.
+- **Records are kept.** The opening writes only its own `lunavia.opening.seen` flag.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the mission selector, the far side and its intro.
+  - every feature above is in the bundled game, including the escape tower jettison, the undocking and the opening with the Laju Productions credit.
