@@ -1440,3 +1440,40 @@ touchdown, scoring, training rules, reentry.
 
 **Cost:** see Validation below. The body is one merged geometry per material, about
 15 draw calls, and the gear is two instanced meshes.
+
+**Validation** (headless Chromium with software rendering, in-page autopilot from each
+difficulty's real start, BUILD 91c520e before vs this branch):
+- **Jest:** 213 tests pass (6 new in `lmDesign.test.js`).
+- **Landings:** all reached OBJECTIVE COMPLETE with no page errors:
+  - ASTRONAUT at 667×375, 852×393 and 1280×800;
+  - CADET and COMMANDER at 852×393;
+  - COMMANDER at Tycho;
+  - CADET at Hadley, 932×430.
+- **Nothing covered:** at 300, 100, 20 and 5 m and at touchdown, neither the
+  projected touchdown point nor the primary LZ fell inside the LM's screen box in
+  any run.
+- **Touch:** real multi-touch on the on-screen buttons (THR, THR + RCS together,
+  TILT) moves the LM as before, at 852×393 and 667×375.
+- **Size on an 852×393 phone:**
+
+  | | 300 m | 100 m | 20 m | 5 m | touchdown |
+  |---|---|---|---|---|---|
+  | Before | 46 px | 61 px | 55 px | 62 px | 62 px |
+  | After | 54 px | 64 px | 62 px | 71 px | 70 px |
+
+- **Cost of the LM itself:**
+
+  | | Meshes | Triangles |
+  |---|---|---|
+  | Before | 11 | 1,424 |
+  | After | 14 | 8,150 |
+
+- **Final 50 m, whole scene:**
+
+  | Site | Frame median | Draw calls (median / max) | Triangles |
+  |---|---|---|---|
+  | Tranquillity | 200 → 200 ms | 31/34 → 34/36 | 67.7k → 75.3k |
+  | Tycho | 200 → 217–233 ms (3 runs) | 30/33 → 33/35 | 83.9k → 91.5k |
+
+  The Tycho cost is the physically based shading of the LM's pixels in the
+  software renderer. On the phone, the descent's quality step-down still applies.
