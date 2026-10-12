@@ -139,7 +139,7 @@ function textures() {
 
 /* ---- lunar environment: black sky over sunlit regolith (one per renderer) -------- */
 const ENVS = new WeakMap();
-function lunarEnv(gl) {
+export function lunarEnv(gl) {
   if (ENVS.has(gl)) return ENVS.get(gl);
   const scene = new THREE.Scene();
   const mesh = new THREE.Mesh(

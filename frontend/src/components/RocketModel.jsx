@@ -2,6 +2,8 @@ import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import CsmModel from "@/components/spacecraft/CsmModel";
+import { CM_R, CM_TOP, SM_BOTTOM } from "@/data/csmDesign";
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 
@@ -15,8 +17,24 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
  *
  * Engines and staging are driven per frame through `ctrlRef.current`
  * (no React re-render): { engines: [5 thrust 0..1], glow, sep, upper,
- * showStage1, expand } — see LaunchCinematic / data/launchTimeline.
+ * showStage1, expand, les } — see LaunchCinematic / data/launchTimeline.
+ *
+ * The spacecraft on top is the expedition's own (components/spacecraft
+ * CsmModel, the same model as in lunar orbit): the command and service module
+ * at true size on a tapered spacecraft-LM adapter that houses the lunar
+ * module, under the boost cover and the launch escape tower. The tower and
+ * cover are jettisoned in flight (`les`, seconds since jettison).
  */
+
+// Spacecraft stations, model units (1 unit = 18 m at the cinematic's scale).
+export const SPACECRAFT = (() => {
+  const M = 1 / 18; // metres to model units
+  const slaBase = 4.22;
+  const slaTop = 4.84;
+  const csm = slaTop - SM_BOTTOM * M; // CSM origin (the CM / SM interface)
+  const cmTop = csm + CM_TOP * M;
+  return { M, slaBase, slaTop, slaR0: 0.302, slaR1: CM_R * M + 0.002, csm, cmTop, towerBase: cmTop + 0.012, towerTop: cmTop + 0.212, tip: cmTop + 0.55 };
+})();
 
 /* ------------------------- procedural textures ------------------------- */
 
@@ -169,21 +187,6 @@ function makeStripeBump(count) {
   return new THREE.CanvasTexture(c);
 }
 
-// Service-module radiator panels: alternating silver/white with dark gaps.
-function makeRadiator() {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 64;
-  const ctx = c.getContext("2d");
-  for (let i = 0; i < 24; i++) {
-    ctx.fillStyle = i % 6 === 0 ? "#2a2e33" : i % 2 === 0 ? "#d4d7dc" : "#b9bec5";
-    ctx.fillRect((i * 512) / 24, 0, 512 / 24 - 2, 64);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
 // Engine bell skin. flipY=false: canvas top = chamber, bottom = nozzle exit
 // (matches LatheGeometry v order). Chamber, turbine-exhaust manifold band,
 // regeneratively cooled tube section, then the smoother extension that
@@ -308,20 +311,6 @@ function bellGeometry({ throat, exit, length, segments = 20 }) {
   pts.push(new THREE.Vector2(exit * 1.035, -0.004 * length)); // rim lip
   pts.push(new THREE.Vector2(exit * 1.04, 0.02 * length));
   return new THREE.LatheGeometry(pts, segments);
-}
-
-// CM-shaped boost protective cover (slightly bulged 33° cone).
-function coverGeometry() {
-  const pts = [
-    new THREE.Vector2(0.262, 0),
-    new THREE.Vector2(0.255, 0.03),
-    new THREE.Vector2(0.19, 0.16),
-    new THREE.Vector2(0.11, 0.3),
-    new THREE.Vector2(0.06, 0.37),
-    new THREE.Vector2(0.045, 0.4),
-    new THREE.Vector2(0.0001, 0.405),
-  ];
-  return new THREE.LatheGeometry(pts, 40);
 }
 
 // Swept trapezoid fin.
@@ -545,7 +534,6 @@ function buildBatches(geo) {
   QUAD.forEach((q) => hw2.push(strut([Math.cos(q) * 0.07, 2.93, Math.sin(q) * 0.07], [Math.cos(q) * 0.29, 2.88, Math.sin(q) * 0.29], 0.008, 4)));
   const cav2 = [
     put(new THREE.CylinderGeometry(0.33, 0.12, 0.12, 32), m4([0, 2.92, 0])),
-    put(new THREE.CylinderGeometry(0.268, 0.268, 0.05, 32), m4([0, 4.37, 0])),
   ];
   const rcsBox = new THREE.BoxGeometry(0.06, 0.08, 0.06);
   const rcsCone = new THREE.ConeGeometry(0.009, 0.02, 8, 1, true);
@@ -555,45 +543,59 @@ function buildBatches(geo) {
     hw2.push(put(rcsBox, G));
     [-0.03, 0.03].forEach((y) => cav2.push(put(rcsCone, m4([0.035, y, 0], [0, 0, Math.PI / 2]), G)));
   });
-  const smRcs = new THREE.BoxGeometry(0.035, 0.05, 0.035);
-  QUAD.forEach((a) => hw2.push(put(smRcs, m4([Math.cos(a) * 0.272, 4.58, Math.sin(a) * 0.272]))));
   // Spacecraft adapter: separation-bolt fittings
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2;
     hw2.push(put(new THREE.BoxGeometry(0.014, 0.018, 0.01), m4([Math.cos(a) * 0.3, 4.235, Math.sin(a) * 0.3], [0, -a, 0])));
   }
-  const lesNozzle = new THREE.ConeGeometry(0.012, 0.03, 8, 1, true);
-  QUAD.forEach((a) => hw2.push(put(lesNozzle, m4([Math.cos(a) * 0.03, 5.39, Math.sin(a) * 0.03], [Math.sin(a) * -0.5, 0, Math.cos(a) * 0.5]))));
-  const les = [put(geo.cover, m4([0, 4.72, 0]))];
-  // Escape tower: four tapering legs with ring frames and X-bracing per bay
-  const LEG = (a, y) => {
-    const r = 0.062 - ((y - 5.1) / 0.3) * 0.03;
-    return [Math.cos(a) * r, y, Math.sin(a) * r];
+  // Spacecraft-LM adapter: tapers from the upper stage to the service module; the
+  // lunar module rides inside it. Orange LUNAVIA ring at the top, the separation
+  // line at its base.
+  const SC = SPACECRAFT;
+  const sla = [put(new THREE.CylinderGeometry(SC.slaR1, SC.slaR0, SC.slaTop - SC.slaBase, 40, 1, true), m4([0, (SC.slaBase + SC.slaTop) / 2, 0]))];
+  // Boost protective cover over the command module, and the escape tower on it.
+  const towerY = (u) => SC.towerBase + (SC.towerTop - SC.towerBase) * u;
+  const les = [
+    put(
+      new THREE.LatheGeometry(
+        [
+          [SC.slaR1 + 0.004, SC.csm + 0.004],
+          [SC.slaR1 + 0.004, SC.csm + 0.016],
+          [0.04, SC.cmTop - 0.004],
+          [0.036, SC.cmTop + 0.012],
+        ].map(([r, y]) => new THREE.Vector2(r, y)),
+        40
+      )
+    ),
+  ];
+  const LEG = (a, u) => {
+    const r = 0.05 - u * 0.02;
+    return [Math.cos(a) * r, towerY(u), Math.sin(a) * r];
   };
   const legAngles = QUAD.map((q) => q + Math.PI / 4);
-  legAngles.forEach((a) => les.push(strut(LEG(a, 5.1), LEG(a, 5.4), 0.0045, 5)));
-  [5.1, 5.2, 5.3, 5.4].forEach((y) =>
-    legAngles.forEach((a, i) => les.push(strut(LEG(a, y), LEG(legAngles[(i + 1) % 4], y), 0.0028, 4)))
-  );
-  [[5.1, 5.2], [5.2, 5.3], [5.3, 5.4]].forEach(([y0, y1]) =>
+  legAngles.forEach((a) => les.push(strut(LEG(a, 0), LEG(a, 1), 0.0045, 5)));
+  [0, 1 / 3, 2 / 3, 1].forEach((u) => legAngles.forEach((a, i) => les.push(strut(LEG(a, u), LEG(legAngles[(i + 1) % 4], u), 0.0028, 4))));
+  [[0, 1 / 3], [1 / 3, 2 / 3], [2 / 3, 1]].forEach(([u0, u1]) =>
     legAngles.forEach((a, i) => {
       const b = legAngles[(i + 1) % 4];
-      les.push(strut(LEG(a, y0), LEG(b, y1), 0.0022, 4));
-      les.push(strut(LEG(b, y0), LEG(a, y1), 0.0022, 4));
+      les.push(strut(LEG(a, u0), LEG(b, u1), 0.0022, 4));
+      les.push(strut(LEG(b, u0), LEG(a, u1), 0.0022, 4));
     })
   );
-  les.push(put(new THREE.TorusGeometry(0.034, 0.004, 6, 16), m4([0, 5.405, 0], [Math.PI / 2, 0, 0])));
-  les.push(put(new THREE.CylinderGeometry(0.028, 0.034, 0.24, 16), m4([0, 5.52, 0])));
-  les.push(put(new THREE.ConeGeometry(0.028, 0.09, 16), m4([0, 5.68, 0])));
-  [0, 1].forEach((i) => les.push(put(new THREE.BoxGeometry(0.07, 0.018, 0.003), m4([0, 5.66, 0], [0, i * Math.PI, 0]))));
+  const T = SC.towerTop;
+  les.push(put(new THREE.TorusGeometry(0.034, 0.004, 6, 16), m4([0, T + 0.005, 0], [Math.PI / 2, 0, 0])));
+  les.push(put(new THREE.CylinderGeometry(0.028, 0.034, 0.24, 16), m4([0, T + 0.12, 0])));
+  les.push(put(new THREE.ConeGeometry(0.028, 0.09, 16), m4([0, T + 0.28, 0])));
+  [0, 1].forEach((i) => les.push(put(new THREE.BoxGeometry(0.07, 0.018, 0.003), m4([0, T + 0.26, 0], [0, i * Math.PI, 0]))));
+  const lesNozzle = new THREE.ConeGeometry(0.012, 0.03, 8, 1, true);
+  QUAD.forEach((a) => les.push(put(lesNozzle, m4([Math.cos(a) * 0.03, T - 0.01, Math.sin(a) * 0.03], [Math.sin(a) * -0.5, 0, Math.cos(a) * 0.5]))));
+  const lesOrange = [put(new THREE.CylinderGeometry(0.0285, 0.0285, 0.02, 16), m4([0, T + 0.2, 0]))];
+  const lesSilver = [put(new THREE.SphereGeometry(0.012, 10, 10), m4([0, T + 0.335, 0]))];
   const orange2 = [
     put(new THREE.CylinderGeometry(0.305, 0.305, 0.07, 32), m4([0, 4.1, 0])),
-    put(new THREE.CylinderGeometry(0.0285, 0.0285, 0.02, 16), m4([0, 5.6, 0])),
+    put(new THREE.CylinderGeometry(SC.slaR1 + 0.003, SC.slaR1 + 0.006, 0.016, 32), m4([0, SC.slaTop - 0.008, 0])),
   ];
-  const silver2 = [
-    put(new THREE.CylinderGeometry(0.265, 0.3, 0.08, 32), m4([0, 4.26, 0])),
-    put(new THREE.SphereGeometry(0.012, 10, 10), m4([0, 5.735, 0])),
-  ];
+  const silver2 = [put(new THREE.CylinderGeometry(0.3, 0.302, 0.02, 40), m4([0, SC.slaBase + 0.01, 0]))];
   return {
     bells1: merge(bells1),
     inner1: merge(inner1),
@@ -605,6 +607,9 @@ function buildBatches(geo) {
     hw2: merge(hw2),
     cav2: merge(cav2),
     les: merge(les),
+    lesOrange: merge(lesOrange),
+    lesSilver: merge(lesSilver),
+    sla: merge(sla),
     orange2: merge(orange2),
     silver2: merge(silver2),
   };
@@ -628,7 +633,6 @@ function shared() {
       bell1Inner: bellGeometry({ throat: 0.03, exit: 0.1, length: 0.29 }),
       bell2: bellGeometry({ throat: 0.05, exit: 0.2, length: 0.36, segments: 28 }),
       bell2Inner: bellGeometry({ throat: 0.045, exit: 0.19, length: 0.35, segments: 28 }),
-      cover: coverGeometry(),
       fin: finGeometry(),
       pipe: new THREE.CylinderGeometry(0.008, 0.008, 1, 6),
     },
@@ -646,7 +650,6 @@ function shared() {
       hardware: new THREE.MeshStandardMaterial({ color: "#5d6269", roughness: 0.36, metalness: 0.85 }),
       bellInner: new THREE.MeshStandardMaterial({ color: "#09090a", roughness: 0.72, metalness: 0.3, side: THREE.BackSide }),
       silver: new THREE.MeshStandardMaterial({ color: "#c7cbd1", roughness: 0.3, metalness: 0.85 }),
-      radiator: new THREE.MeshStandardMaterial({ map: makeRadiator(), roughness: 0.35, metalness: 0.7 }),
       les: new THREE.MeshStandardMaterial({ color: "#e4e4e1", roughness: 0.45, metalness: 0.35 }),
     },
   };
@@ -682,6 +685,8 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
   const outerRef = useRef();
   const haloRef = useRef();
   const halo2Ref = useRef();
+  const lesRef = useRef();
+  const lesPlumeRef = useRef();
 
   const bellMat = useMemo(
     () =>
@@ -809,6 +814,19 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
       plumeMats.retro.uniforms.uGain.value = retro;
     }
 
+    // Escape tower and boost cover: its jettison motor pulls it up and away, tumbling slightly.
+    if (lesRef.current) {
+      const j = c.les || 0;
+      lesRef.current.visible = j < 3;
+      lesRef.current.position.set(0.06 * j * j, 1.6 * j * j, -0.03 * j * j);
+      lesRef.current.rotation.set(0.05 * j * j, 0, -0.12 * j * j);
+      if (lesPlumeRef.current) {
+        const b = j > 0 && j < 1.2 ? Math.min(1, j / 0.1) * (1 - Math.max(0, j - 0.9) / 0.3) : 0;
+        lesPlumeRef.current.visible = b > 0.02;
+        plumeMats.retro.uniforms.uGain.value = Math.max(plumeMats.retro.uniforms.uGain.value, b);
+      }
+    }
+
     // Upper-stage vacuum engine (ignition, cutoff and TLI restart come from the timeline)
     const ig = c.upper;
     if (plume2Ref.current) {
@@ -908,7 +926,6 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
       {/* Aft thrust cone + vacuum engine (hidden inside the interstage until separation) */}
       <mesh geometry={S.batch.hw2} material={S.mat.hardware} />
       <mesh geometry={S.batch.cav2} material={S.mat.cavity} />
-      <mesh geometry={S.batch.les} material={S.mat.les} />
       <mesh geometry={S.batch.orange2} material={S.mat.orange} />
       <mesh geometry={S.batch.silver2} material={S.mat.silver} />
       <group position={[0, 2.5, 0]}>
@@ -942,15 +959,32 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
         <cylinderGeometry args={[0.302, 0.302, 0.06, 32]} />
       </mesh>
 
-      {/* Service module — radiator panels + dark band + RCS */}
-      <mesh position={[0, 4.51, 0]} material={S.mat.radiator}>
-        <cylinderGeometry args={[0.26, 0.265, 0.42, 32]} />
-      </mesh>
-      {/* Beacon */}
-      <mesh position={[0, 5.62, 0.031]}>
-        <sphereGeometry args={[0.008, 8, 8]} />
-        <meshBasicMaterial color="#FF3B00" />
-      </mesh>
+      {/* Spacecraft-LM adapter (the lunar module rides inside) and the spacecraft itself */}
+      <mesh geometry={S.batch.sla} material={S.mat.paint2} />
+      <group position={[0, SPACECRAFT.csm, 0]} scale={SPACECRAFT.M}>
+        <CsmModel />
+      </group>
+      {/* Boost cover + escape tower, jettisoned in flight */}
+      <group ref={lesRef}>
+        <mesh geometry={S.batch.les} material={S.mat.les} />
+        <mesh geometry={S.batch.lesOrange} material={S.mat.orange} />
+        <mesh geometry={S.batch.lesSilver} material={S.mat.silver} />
+        {/* Beacon */}
+        <mesh position={[0, SPACECRAFT.tip - 0.14, 0.031]}>
+          <sphereGeometry args={[0.008, 8, 8]} />
+          <meshBasicMaterial color="#FF3B00" />
+        </mesh>
+        <group ref={lesPlumeRef} visible={false}>
+          {[0, 1, 2, 3].map((i) => {
+            const a = (i / 4) * Math.PI * 2;
+            return (
+              <mesh key={i} position={[Math.cos(a) * 0.06, SPACECRAFT.towerTop - 0.06, Math.sin(a) * 0.06]} rotation={[Math.cos(a) * 0.5, 0, -Math.sin(a) * 0.5 + Math.PI]} material={plumeMats.retro}>
+                <cylinderGeometry args={[0.01, 0.05, 0.22, 10, 1, true]} />
+              </mesh>
+            );
+          })}
+        </group>
+      </group>
     </group>
   );
 }

@@ -1,7 +1,7 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import * as THREE from "three";
-import RocketModel, { setRocketTextureAnisotropy } from "@/components/RocketModel";
+import RocketModel, { SPACECRAFT, setRocketTextureAnisotropy } from "@/components/RocketModel";
 import LaunchComplex from "@/components/scenes/LaunchComplex";
 import { framePoints, centreViewOn } from "@/lib/cameraFraming";
 import { ParticlePool } from "@/components/scenes/launch/particles";
@@ -30,7 +30,8 @@ const K_ENV = (TL.UNIT_M / 1000) / KM_PER_UNIT; // env units per vehicle unit
 const SUN_ENV = new THREE.Vector3(10, 8, 8).normalize();
 // Hardware stations in model units (RocketModel, before the 0.6 scale)
 const S1 = { bells: -0.38, aft: 0.05, lowTank: 1.4, top: 2.88 };
-const S2 = { bell: 2.12, low: 3.3, tip: 5.76 };
+// tip: the escape tower's nose until it is jettisoned, then the command module's.
+const S2 = { bell: 2.12, low: 3.3, tip: SPACECRAFT.tip, tipCsm: SPACECRAFT.cmTop };
 const FRAME = { x0: 0.04, x1: 0.96, y0: 0.15, y1: 0.86 };
 const OVER = { x0: 0.04, x1: 0.96, y0: 0.15, y1: 0.97 };
 
@@ -154,11 +155,12 @@ const DEPART_RECT = { x0: 0.1, x1: 0.9, y0: 0.14, y1: 0.56 };
 
 /* Sunlight glints: places on the spacecraft where the Sun reflects towards
  * the camera, each a band of the surface of revolution (model units): the
- * polished spacecraft adapter, the boost cover's cone (normal tilted towards
- * the nose) and the engine bell's lip (tilted aft). */
+ * spacecraft adapter's base ring, the cone of the boost cover and then of the
+ * command module itself (normal tilted towards the nose) and the engine
+ * bell's lip (tilted aft). */
 const GLINT_BANDS = [
-  { y: 4.26, r: 0.3, tilt: 0 },
-  { y: 4.86, r: 0.2, tilt: 0.54 },
+  { y: SPACECRAFT.slaBase + 0.01, r: 0.302, tilt: 0 },
+  { y: SPACECRAFT.csm + 0.09, r: 0.07, tilt: 0.55 },
   { y: 2.22, r: 0.2, tilt: -0.3 },
 ];
 
@@ -313,6 +315,7 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     c.upper = TL.upperThrust(t);
     c.showStage1 = TL.stage1Visible(t);
     c.expand = 1 - Math.sqrt(TL.airDensity(traj.altKm));
+    c.les = TL.lesJettison(t);
     const g = rocketGroupRef.current;
     let baseY = BASE_Y;
     if (g) {
@@ -402,6 +405,7 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
 
     // --- Camera ---
     const shotU = (t - shot.start) / (shot.end - shot.start);
+    const tip = t < TL.LES_JETTISON ? S2.tip : S2.tipCsm;
     const cut = S.lastShot !== shot;
     if (regime === "pad") {
       const lag = Math.max(TL.LIFTOFF_T, t - 0.35);
@@ -447,8 +451,8 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
       const rig = rigRef.current;
       if (rig && rig.root) {
         rig.root.updateWorldMatrix(true, true);
-        const mid = rig.root.localToWorld(_cam.a.set(0, (S2.bell + S2.tip) / 2, 0));
-        const nose = rig.root.localToWorld(_cam.b.set(0, S2.tip, 0)).sub(mid).normalize();
+        const mid = rig.root.localToWorld(_cam.a.set(0, (S2.bell + tip) / 2, 0));
+        const nose = rig.root.localToWorld(_cam.b.set(0, tip, 0)).sub(mid).normalize();
         const k = DEPART_CAM.d0 * Math.pow(DEPART_CAM.d1 / DEPART_CAM.d0, smooth(shotU) * 0.7 + shotU * 0.3);
         camera.position.copy(mid).addScaledVector(nose, -k);
         camera.position.z += DEPART_CAM.side * k;
@@ -481,26 +485,26 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
             pts = [pt(rig.stage1, S1.bells - 0.1, 0.32), pt(rig.stage1, S1.aft, 0.33), pt(rig.stage1, S1.lowTank, 0.3)];
             break;
           case "joint":
-            pts = [pt(rig.stage1, S1.lowTank + 0.6, 0.3), pt(rig.stage1, S1.top, 0.3), pt(rig.root, S2.bell, 0.25), pt(rig.root, S2.tip - 0.6, 0.2)];
+            pts = [pt(rig.stage1, S1.lowTank + 0.6, 0.3), pt(rig.stage1, S1.top, 0.3), pt(rig.root, S2.bell, 0.25), pt(rig.root, tip - 0.6, 0.2)];
             break;
           case "both":
-            pts = [pt(rig.stage1, S1.bells, 0.32), pt(rig.stage1, S1.top, 0.32), pt(rig.root, S2.bell, 0.24), pt(rig.root, S2.tip, 0.18)];
+            pts = [pt(rig.stage1, S1.bells, 0.32), pt(rig.stage1, S1.top, 0.32), pt(rig.root, S2.bell, 0.24), pt(rig.root, tip, 0.18)];
             break;
           case "upper":
-            pts = [pt(rig.root, S2.bell - 1.0, 0.35), pt(rig.root, S2.bell, 0.25), pt(rig.root, S2.tip, 0.18), pt(rig.stage1, S1.top, 0.3)];
+            pts = [pt(rig.root, S2.bell - 1.0, 0.35), pt(rig.root, S2.bell, 0.25), pt(rig.root, tip, 0.18), pt(rig.stage1, S1.top, 0.3)];
             break;
           case "detail":
-            pts = [pt(rig.root, S2.bell + 0.2, 0.3), pt(rig.root, S2.low + 0.9, 0.28), pt(rig.root, S2.tip - 0.9, 0.2)];
+            pts = [pt(rig.root, S2.bell + 0.2, 0.3), pt(rig.root, S2.low + 0.9, 0.28), pt(rig.root, tip - 0.9, 0.2)];
             break;
           case "aftUpper":
             pts = [pt(rig.root, S2.bell - 0.25, 0.28), pt(rig.root, S2.low + 0.2, 0.3)];
             break;
           case "upperWide":
           case "upperBurn":
-            pts = [pt(rig.root, S2.bell - (c.upper > 0.1 ? 1.2 : 0.1), 0.3), pt(rig.root, S2.tip, 0.2)];
+            pts = [pt(rig.root, S2.bell - (c.upper > 0.1 ? 1.2 : 0.1), 0.3), pt(rig.root, tip, 0.2)];
             break;
           default:
-            pts = [pt(rig.root, plumeLen + S1.bells, 0.4), pt(rig.root, S2.tip, 0.18)];
+            pts = [pt(rig.root, plumeLen + S1.bells, 0.4), pt(rig.root, tip, 0.18)];
         }
         const fov = f.fov || 45;
         if (camera.fov !== fov) {

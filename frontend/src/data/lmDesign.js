@@ -313,8 +313,29 @@ export function buildBody() {
   return Object.fromEntries(PARTS.map((k) => [k, merge(P[k])]));
 }
 
+/**
+ * The RCS thrusters the body above draws, model units: { pos, dir, roll }.
+ * dir is where the exhaust goes; roll is +1 / -1 for the fore-aft thrusters that
+ * turn the LM about its vertical axis (+1: counter-clockwise seen from above), else 0.
+ */
+export const RCS_THRUSTERS = [
+  [1, 1],
+  [-1, 1],
+  [1, -1],
+  [-1, -1],
+].flatMap(([sx, sz]) => {
+  const q = [sx * 0.41, 0.7, sz > 0 ? 0.17 : -0.21];
+  const at = (dir, off) => ({ pos: [q[0] + dir[0] * off, q[1] + dir[1] * off, q[2] + dir[2] * off], dir });
+  return [
+    { ...at([0, 1, 0], 0.06), roll: 0 },
+    { ...at([0, -1, 0], 0.06), roll: 0 },
+    { ...at([sx, 0, 0], 0.055), roll: 0 },
+    { ...at([0, 0, sz], 0.057), roll: sx * sz },
+  ];
+});
+
 /* ---- landing gear ---------------------------------------------------------------------- */
-const UPPER = { r: 0.47, y: 0.3 }; // primary strut top, at the outrigger
+const UPPER ={ r: 0.47, y: 0.3 }; // primary strut top, at the outrigger
 const SEC = { r: 0.44, y: 0.05, side: 0.17 }; // secondary struts at the descent stage's lower corners
 const LOCK = { r: 0.44, y: 0.2, side: 0.11, at: 0.38 }; // downlock V: body points, and how far down the sleeve it meets
 export const SLEEVE = 0.55; // share of the primary strut that is the (fixed) sleeve

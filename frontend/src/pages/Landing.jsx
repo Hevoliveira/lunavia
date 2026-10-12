@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, ChevronRight } from "lucide-react";
-import EarthMoonHero from "@/components/EarthMoonHero";
+import { ArrowUpRight, ChevronRight, Play } from "lucide-react";
+import TitleLoop from "@/components/opening/TitleLoop";
+import OpeningCinematic, { openingDue } from "@/components/opening/OpeningCinematic";
 import BuildBadge from "@/components/BuildBadge";
 
 const MANIFESTO_LINES = [
@@ -23,11 +25,15 @@ const PHASES_PREVIEW = [
 ];
 
 export default function Landing() {
+  // The opening plays by itself the first time only; WATCH THE OPENING replays it.
+  const [opening, setOpening] = useState(openingDue);
   return (
     <main data-testid="landing-page" className="relative bg-[#050505] text-white safe-px">
+      {opening && <OpeningCinematic onDone={() => setOpening(false)} />}
       {/* HERO */}
       <section className="relative h-screen short:h-auto short:min-h-screen w-full overflow-hidden" data-testid="hero">
-        <EarthMoonHero />
+        {/* Title loop: the expedition's spacecraft in lunar orbit (not while the opening runs) */}
+        {!opening && <TitleLoop />}
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#050505]" />
 
         {/* corner markers */}
@@ -51,8 +57,8 @@ export default function Landing() {
 
           {/* Center — title */}
           <div className="max-w-3xl">
-            <div className="font-mono text-[10px] tracking-[0.4em] text-zinc-400 mb-6 short:mb-2 scan-in">
-              LUNAVIA · FASE 0
+            <div className="font-mono text-[10px] tracking-[0.4em] text-zinc-400 mb-6 short:mb-2 scan-in" data-testid="hero-credit">
+              LUNAVIA · A LAJU PRODUCTIONS GAME
             </div>
             <h1
               className="font-display font-black text-6xl sm:text-7xl md:text-8xl short:text-4xl tracking-tight leading-[0.9]"
@@ -88,6 +94,9 @@ export default function Landing() {
               >
                 LER MANIFESTO
               </Link>
+              <button type="button" onClick={() => setOpening(true)} data-testid="hero-opening" className="btn-hud !border-white/15 !text-zinc-300">
+                <Play size={12} /> ABERTURA
+              </button>
             </div>
           </div>
 
@@ -262,6 +271,11 @@ export default function Landing() {
               THE ROAD TO THE MOON · FASE 0
             </div>
             <BuildBadge />
+          </div>
+          {/* Credits */}
+          <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500" data-testid="credits">
+            <div className="text-zinc-600">CREDITS</div>
+            <div className="text-zinc-300 mt-1">LUNAVIA · A LAJU PRODUCTIONS GAME</div>
           </div>
           <div className="font-mono text-[10px] tracking-widest text-zinc-600 max-w-md">
             "A viagem é o jogo."

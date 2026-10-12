@@ -18,6 +18,7 @@ import {
   orbitCamera,
 } from "./lunarOrbitShot";
 import { MOON_UNITS as R, craftScenePos, moonScenePos } from "./sceneTrack";
+import { ORBIT_RATE, ORBIT_SEQ } from "./orbitSequence";
 
 const DEG = Math.PI / 180;
 const M = moonScenePos(270000); // the lunar orbit is shown with the Moon where the cruise left it
@@ -79,14 +80,20 @@ describe("spacecraft in lunar orbit", () => {
     expect((craftAlpha(20.05) - craftAlpha(20)) / 0.05 / DEG).toBeLessThan(0.15);
   });
 
-  test("stays near the PDI point however long the player reads (bounded creep)", () => {
-    expect((craftAlpha(3600) - ORBIT.pdiAlpha) / DEG).toBeLessThanOrEqual(ORBIT.creep / DEG + 1e-6);
+  test("time-compressed only in the wide establishing shot; at the spacecraft, its real orbital rate", () => {
+    expect(ORBIT_RATE).toBeGreaterThan(0.04); // deg/s: 1.56 km/s at 278 km
+    expect(ORBIT_RATE).toBeLessThan(0.05);
+    for (const t of [ORBIT_SEQ.cut + 0.5, 20, 100, 600]) {
+      expect((craftAlpha(t + 0.05) - craftAlpha(t)) / 0.05 / DEG).toBeCloseTo(ORBIT_RATE, 6);
+    }
+    // continuous at the cut
+    expect(Math.abs(craftAlpha(ORBIT_SEQ.cut + 1e-6) - craftAlpha(ORBIT_SEQ.cut))).toBeLessThan(1e-6);
   });
 
-  test("GO FOR PDI lights about nine seconds in and stays lit", () => {
-    const first = [...Array(400).keys()].map((i) => i * 0.1).find((t) => goForPdi(t));
-    expect(first).toBeGreaterThan(6);
-    expect(first).toBeLessThan(13);
+  test("GO FOR PDI lights once the lunar module has undocked and separated, just before the descent setup", () => {
+    const first = [...Array(600).keys()].map((i) => i * 0.1).find((t) => goForPdi(t));
+    expect(first).toBeGreaterThan(ORBIT_SEQ.undock + 10);
+    expect(first).toBeLessThanOrEqual(ORBIT_SEQ.end);
     for (let t = first; t < 3600; t += 1) expect(goForPdi(t)).toBe(true);
   });
 
@@ -140,32 +147,32 @@ describe("orbit camera: the Moon cannot appear to turn", () => {
     expect(dot(sub(cam.pos, landingSite(M, R)), LZ_UP)).toBeGreaterThan(0);
   });
 
-  // Left and top edges of the LUNAR DESCENT prompt (bottom right), as measured in the app.
+  // Before the cut to the spacecraft: its glint on its orbit, in front of the Moon, clear of the
+  // top HUD strip and of SKIP TO DESCENT (bottom right).
   test.each([
-    ["iPhone SE", 667 / 375, 0.45, 0.6],
-    ["iPhone 15", 852 / 393, 0.57, 0.58],
-    ["iPhone Pro Max", 932 / 430, 0.6, 0.6],
-    ["desktop", 1280 / 720, 0.6, 0.7],
-  ])("settled on %s: craft upper left moving right, site ahead below it and clear of the prompt", (_, aspect, promptX, promptY) => {
-    for (const tau of [ORBIT.settleEnd + 1, 30, 120, 600]) {
+    ["iPhone SE", 667 / 375],
+    ["iPhone 15", 852 / 393],
+    ["iPhone Pro Max", 932 / 430],
+    ["desktop", 1280 / 720],
+  ])("establishing shot on %s: the spacecraft's glint is on screen, in front of the Moon, the site on the visible face", (_, aspect) => {
+    for (const tau of [0.5, 2, 4]) {
       const cam = orbitCamera(tau, M, R);
       const craft = craftPose(tau, M, R);
       const c = project(cam, craft.pos, aspect);
       expect(c[2]).toBeGreaterThan(0);
-      expect(c[0]).toBeGreaterThan(0.1);
-      expect(c[0]).toBeLessThan(0.42);
-      expect(c[1]).toBeGreaterThan(0.22); // the whole craft below the top HUD strip
-      expect(c[1]).toBeLessThan(0.4);
-      const ahead = project(cam, add(craft.pos, craft.fwd.map((x) => x * 0.05)), aspect);
-      expect(ahead[0] - c[0]).toBeGreaterThan(Math.abs(ahead[1] - c[1])); // flies left to right
-      const site = landingSite(M, R);
-      const l = project(cam, site, aspect);
-      expect(l[2]).toBeGreaterThan(0);
-      expect(dot(sub(cam.pos, site), LZ_UP)).toBeGreaterThan(0); // on the visible face
-      expect(l[0]).toBeGreaterThan(c[0]);
-      expect(l[1]).toBeGreaterThan(c[1]);
-      expect(l[1]).toBeLessThan(0.75);
-      expect(l[0] + 0.03 > promptX && l[1] + 0.03 > promptY).toBe(false); // ring clear of the LUNAR DESCENT prompt
+      expect(c[0]).toBeGreaterThan(0.08);
+      expect(c[0]).toBeLessThan(0.8);
+      expect(c[1]).toBeGreaterThan(0.18);
+      expect(c[1]).toBeLessThan(0.82);
+      // not hidden behind the Moon: the line of sight reaches the craft before any surface
+      const d = sub(craft.pos, cam.pos);
+      const dl = len(d);
+      const u = d.map((x) => x / dl);
+      const oc = sub(cam.pos, M);
+      const b = dot(oc, u);
+      const disc = b * b - (dot(oc, oc) - R * R);
+      if (disc > 0) expect(-b - Math.sqrt(disc)).toBeGreaterThan(dl);
+      expect(dot(sub(cam.pos, landingSite(M, R)), LZ_UP)).toBeGreaterThan(0);
     }
   });
 });

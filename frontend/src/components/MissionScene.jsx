@@ -1,15 +1,35 @@
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, createPortal, useFrame, useThree } from "@react-three/fiber";
 import { Stars, OrbitControls, useTexture } from "@react-three/drei";
 import { useRef, useMemo, Suspense, useEffect } from "react";
 import * as THREE from "three";
-import { trajectoryPosition } from "@/data/missionPhases";
+import { EARTH_RADIUS_KM, MOON_RADIUS_KM, trajectoryPosition } from "@/data/missionPhases";
 import { EARTH_UNITS, MOON_UNITS, SCENE_SCALE, craftScenePos } from "@/data/sceneTrack";
-import SpacecraftModel from "@/components/SpacecraftModel";
+import SpacecraftStack from "@/components/spacecraft/SpacecraftStack";
+import { lunarEnv } from "@/components/LanderModel";
+import { undocking } from "@/data/undocking";
+import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
+import {
+  CRUISE,
+  M_PER_UNIT,
+  ORBIT_SEQ,
+  RETURN_CLOSE_END,
+  STACK_ROTATION,
+  cruiseCamera,
+  orbitShotAt,
+  coastDistanceKm,
+  radialFrame,
+  returnDistanceKm,
+  trueSizeDistance,
+  returnCamera,
+  toVehicle,
+  toWorld,
+  undockTime,
+  vehicleFrame,
+} from "@/data/orbitSequence";
 import {
   APPROACH,
   LZ_UP,
   MOON_ROTATION,
-  ORBIT,
   approachCamera,
   craftPose,
   landingSite,
@@ -18,6 +38,16 @@ import {
   smoother,
 } from "@/data/lunarOrbitShot";
 
+/*
+ * The cruise, lunar orbit and return, in two layers composited every frame:
+ * the planets in scene units, then the spacecraft at true size in metres
+ * (data/orbitSequence explains the frames). The spacecraft is the expedition's
+ * own (components/spacecraft): CSM and LM docked on the way out and in lunar
+ * orbit, the LM undocking before the descent, the CSM alone on the way home.
+ * Wide shots, where a 17 m spacecraft is far below a pixel, show it as a
+ * sunlit glint on its path.
+ */
+
 // Public-domain planet textures hosted by three.js examples.
 const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
 const EARTH_NORMAL = process.env.PUBLIC_URL + "/textures/planets/earth_normal_2048.jpg";
@@ -25,29 +55,17 @@ const EARTH_SPEC = process.env.PUBLIC_URL + "/textures/planets/earth_specular_20
 const EARTH_CLOUDS = process.env.PUBLIC_URL + "/textures/planets/earth_clouds_1024.png";
 const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
 
+const SUN_POS = [30, 10, -20];
+const SUN_DIR = new THREE.Vector3(...SUN_POS).normalize();
+const SUN_W = [SUN_DIR.x, SUN_DIR.y, SUN_DIR.z];
+
 const smooth01 = (x) => {
   const c = Math.min(1, Math.max(0, x));
   return c * c * (3 - 2 * c);
 };
 
-const _craft = [0, 0, 0];
-
-// Main-engine burn windows (TLI / LOI / TEI) — cruise is coast + barbecue roll
-function isBurning(t) {
-  return (
-    (t >= 9840 && t < 12000) ||
-    (t >= 270000 && t < 290000) ||
-    (t >= 504000 && t < 506000)
-  );
-}
-
-function Earth() {
-  const [colorMap, normalMap, specMap, cloudMap] = useTexture([
-    EARTH_MAP,
-    EARTH_NORMAL,
-    EARTH_SPEC,
-    EARTH_CLOUDS,
-  ]);
+export function Earth({ small }) {
+  const [colorMap, normalMap, specMap, cloudMap] = useTexture([EARTH_MAP, EARTH_NORMAL, EARTH_SPEC, EARTH_CLOUDS]);
   const surfaceRef = useRef();
   const cloudRef = useRef();
 
@@ -56,31 +74,17 @@ function Earth() {
     if (cloudRef.current) cloudRef.current.rotation.y += delta * 0.025;
   });
 
+  // Drawn 10x oversized in the Earth-Moon views; seen from lunar orbit, at its true size in the sky.
   return (
-    <group position={[0, 0, 0]}>
-      {/* Surface */}
+    <group position={[0, 0, 0]} scale={small ? 0.1 : 1}>
       <mesh ref={surfaceRef}>
         <sphereGeometry args={[EARTH_UNITS, 128, 128]} />
-        <meshPhongMaterial
-          map={colorMap}
-          normalMap={normalMap}
-          specularMap={specMap}
-          shininess={22}
-          specular={new THREE.Color("#557799")}
-        />
+        <meshPhongMaterial map={colorMap} normalMap={normalMap} specularMap={specMap} shininess={22} specular={new THREE.Color("#557799")} />
       </mesh>
-
-      {/* Clouds */}
       <mesh ref={cloudRef}>
         <sphereGeometry args={[EARTH_UNITS * 1.012, 96, 96]} />
-        <meshPhongMaterial
-          map={cloudMap}
-          transparent
-          opacity={0.75}
-          depthWrite={false}
-        />
+        <meshPhongMaterial map={cloudMap} transparent opacity={0.75} depthWrite={false} />
       </mesh>
-
       {/* Atmosphere fresnel — sharp limb glow, dramatic terminator */}
       <mesh>
         <sphereGeometry args={[EARTH_UNITS * 1.055, 64, 64]} />
@@ -121,76 +125,161 @@ const MOON_QUATERNION = (() => {
 // The landing-site ring lies flat on the surface (ringGeometry faces +Z).
 const RING_QUATERNION = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...LZ_UP));
 
-function Moon({ position }) {
-  const [map] = useTexture([MOON_MAP]);
+const _mc = new THREE.Vector3();
+
+/*
+ * Close to the surface (the spacecraft shots in lunar orbit) the 1k map is
+ * magnified many times, and its JPEG blocks would show. Two cheap remedies,
+ * invisible in the wide views: the map is softened by about a texel when it
+ * loads, and a fine tiling regolith detail fades in as the camera nears the
+ * surface (moonDetailTexture).
+ */
+const MOON_SOFT = new WeakMap();
+function softMoonMap(raw) {
+  if (MOON_SOFT.has(raw)) return MOON_SOFT.get(raw);
+  const img = raw.image;
+  let out = raw;
+  try {
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    const g = c.getContext("2d");
+    g.filter = "blur(1.1px)";
+    g.drawImage(img, 0, 0);
+    out = new THREE.CanvasTexture(c);
+    out.colorSpace = raw.colorSpace;
+    out.wrapS = raw.wrapS;
+    out.wrapT = raw.wrapT;
+  } catch {
+    // keep the original map
+  }
+  MOON_SOFT.set(raw, out);
+  return out;
+}
+let DETAIL_TEX = null;
+function moonDetailTexture() {
+  if (DETAIL_TEX) return DETAIL_TEX;
+  const N = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = N;
+  const g = c.getContext("2d");
+  g.fillStyle = "rgb(128,128,128)";
+  g.fillRect(0, 0, N, N);
+  let s = 19;
+  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  // Small craters (a dark floor, a bright sunward rim) and speckle, wrapping at the edges.
+  for (let i = 0; i < 260; i++) {
+    const x = r() * N;
+    const y = r() * N;
+    const rad = 1.5 + Math.pow(r(), 3) * 14;
+    for (const [ox, oy] of [[0, 0], [N, 0], [-N, 0], [0, N], [0, -N]]) {
+      const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+      gr.addColorStop(0, "rgba(70,70,70,0.55)");
+      gr.addColorStop(0.75, "rgba(110,110,110,0.25)");
+      gr.addColorStop(0.92, "rgba(190,190,190,0.45)");
+      gr.addColorStop(1, "rgba(128,128,128,0)");
+      g.fillStyle = gr;
+      g.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2);
+    }
+  }
+  for (let i = 0; i < 9000; i++) {
+    const v = 100 + Math.floor(r() * 60);
+    g.fillStyle = `rgba(${v},${v},${v},0.35)`;
+    g.fillRect(r() * N, r() * N, 1, 1);
+  }
+  DETAIL_TEX = new THREE.CanvasTexture(c);
+  DETAIL_TEX.wrapS = DETAIL_TEX.wrapT = THREE.RepeatWrapping;
+  return DETAIL_TEX;
+}
+
+export function Moon({ position }) {
+  const [raw] = useTexture([MOON_MAP]);
+  const map = useMemo(() => softMoonMap(raw), [raw]);
+  const gl = useThree((st) => st.gl);
+  const mat = useRef();
+  const detail = useMemo(() => ({ value: 0 }), []);
+  useEffect(() => {
+    // The close shots look across the surface at grazing angles: keep its detail there.
+    // 4x is most of the gain; 16x cost a quarter of the frame in fill (measured).
+    const n = gl.capabilities.getMaxAnisotropy();
+    map.anisotropy = Math.min(4, n);
+    map.needsUpdate = true;
+    const d = moonDetailTexture();
+    d.anisotropy = Math.min(2, n);
+    d.needsUpdate = true;
+  }, [map, gl]);
+  const onBeforeCompile = useMemo(
+    () => (shader) => {
+      shader.uniforms.uDetail = detail;
+      shader.uniforms.uDetailMap = { value: moonDetailTexture() };
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nuniform sampler2D uDetailMap;\nuniform float uDetail;")
+        .replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>
+          #ifdef USE_MAP
+            float dA = texture2D(uDetailMap, vMapUv * vec2(360.0, 180.0)).r;
+            float dB = texture2D(uDetailMap, vMapUv * vec2(1500.0, 750.0)).r;
+            diffuseColor.rgb *= mix(1.0, 0.55 + 0.9 * (dA * 0.6 + dB * 0.4), uDetail);
+          #endif`
+        );
+    },
+    [detail]
+  );
+  useFrame(({ camera }) => {
+    // Relief from the bump map at a distance; close to the surface the bumps of a
+    // magnified 1k map turn blocky, so they fade out as the regolith detail fades in.
+    if (!mat.current) return;
+    const d = camera.position.distanceTo(_mc.set(position[0], position[1], position[2])) / MOON_UNITS;
+    mat.current.bumpScale = 0.05 * Math.min(1, Math.max(0.06, (d - 1.2) / 0.8));
+    detail.value = 1 - Math.min(1, Math.max(0, (d - 1.25) / 0.45));
+  });
   return (
     <mesh position={position} quaternion={MOON_QUATERNION}>
-      <sphereGeometry args={[MOON_UNITS, 96, 96]} />
-      <meshStandardMaterial
-        map={map}
-        roughness={1}
-        metalness={0}
-        bumpMap={map}
-        bumpScale={0.05}
-      />
+      <sphereGeometry args={[MOON_UNITS, 160, 120]} />
+      <meshStandardMaterial ref={mat} map={map} roughness={1} metalness={0} bumpMap={map} bumpScale={0.05} onBeforeCompile={onBeforeCompile} />
     </mesh>
   );
 }
 
-function Spacecraft({ missionTime, cinematic }) {
+/* ---- the spacecraft in wide shots: a sunlit point on its path ------------------------------- */
+let GLINT_TEX = null;
+function glintTexture() {
+  if (GLINT_TEX) return GLINT_TEX;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d");
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, "rgba(255,255,255,1)");
+  r.addColorStop(0.12, "rgba(255,246,228,0.85)");
+  r.addColorStop(0.4, "rgba(255,200,150,0.18)");
+  r.addColorStop(1, "rgba(255,180,120,0)");
+  g.fillStyle = r;
+  g.fillRect(0, 0, 64, 64);
+  GLINT_TEX = new THREE.CanvasTexture(c);
+  return GLINT_TEX;
+}
+export function Glint({ viewRef }) {
   const ref = useRef();
-  useFrame(() => {
-    if (ref.current) {
-      craftScenePos(missionTime, _craft);
-      ref.current.position.set(_craft[0], _craft[1], _craft[2]);
-    }
-  });
-  return (
-    <group ref={ref}>
-      <SpacecraftModel scale={cinematic ? 1.3 : 1.2} glow={isBurning(missionTime)} />
-    </group>
+  const mat = useMemo(
+    () => new THREE.SpriteMaterial({ map: glintTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, sizeAttenuation: false }),
+    []
   );
+  useFrame((state) => {
+    const v = viewRef.current;
+    const s = ref.current;
+    if (!s) return;
+    s.visible = !!v.glint;
+    if (!v.glint) return;
+    s.position.set(v.origin[0], v.origin[1], v.origin[2]);
+    const k = 0.016 * (1 + 0.12 * Math.sin(state.clock.elapsedTime * 2.1));
+    s.scale.set(k, k, 1);
+  });
+  return <sprite ref={ref} material={mat} renderOrder={5} />;
 }
 
-/*
- * Lunar orbit before the descent: the craft flies its orbit over the fixed
- * Moon, nose along its flight path, with a slow roll. (The orbit opens from
- * black after loss of signal, so it starts directly on its path.)
- */
-const _q = new THREE.Quaternion();
-const _basis = new THREE.Matrix4();
-const _bx = new THREE.Vector3();
-const _by = new THREE.Vector3();
-const _bz = new THREE.Vector3();
-function OrbitingCraft({ clock, moonPos }) {
-  const ref = useRef();
-  const spin = useRef(null);
-  useFrame(() => {
-    const g = ref.current;
-    if (!g) return;
-    const tau = clock.current;
-    const p = craftPose(tau, moonPos, MOON_UNITS);
-    g.position.set(p.pos[0], p.pos[1], p.pos[2]);
-    _bx.set(p.fwd[0], p.fwd[1], p.fwd[2]);
-    _by.set(p.up[0], p.up[1], p.up[2]);
-    _bz.crossVectors(_bx, _by);
-    _basis.makeBasis(_bx, _by, _bz);
-    _q.setFromRotationMatrix(_basis);
-    g.quaternion.copy(_q);
-    if (spin.current) spin.current.rotation.x = tau * 0.08; // slow thermal roll about the long axis
-  });
-  return (
-    <group ref={ref}>
-      <group ref={spin}>
-        <SpacecraftModel scale={0.2} glow={false} roll={0} matte />
-      </group>
-    </group>
-  );
-}
-
-/** Landing site on the surface and the orbit path; both fade back as the camera settles. */
+/** Landing site on the surface and the orbit path, during the establishing shot. */
 function OrbitGuides({ clock, moonPos }) {
-  const ring = useRef();
   const orbitMat = useRef();
   const ringMat = useRef();
   const site = useMemo(() => landingSite(moonPos, MOON_UNITS), [moonPos]);
@@ -205,21 +294,16 @@ function OrbitGuides({ clock, moonPos }) {
   useEffect(() => () => orbitLine.dispose(), [orbitLine]);
   useFrame((state) => {
     const tau = clock.current;
-    const settle = smoother((tau - ORBIT.settleStart) / (ORBIT.settleEnd - ORBIT.settleStart));
-    if (orbitMat.current) orbitMat.current.opacity = 0.28 * (1 - settle) * smoother(tau / 1.5);
-    if (ringMat.current) ringMat.current.opacity = (0.55 + 0.25 * Math.sin(state.clock.elapsedTime * 2.2)) * smoother((tau - 1) / 2);
-    if (ring.current) ring.current.scale.setScalar(1 - 0.35 * settle);
+    const on = tau < ORBIT_SEQ.cut ? 1 : 0;
+    if (orbitMat.current) orbitMat.current.opacity = 0.3 * on * smoother(tau / 1.5);
+    if (ringMat.current) ringMat.current.opacity = on * (0.55 + 0.25 * Math.sin(state.clock.elapsedTime * 2.2)) * smoother((tau - 1) / 2);
   });
   return (
     <group>
       <line geometry={orbitLine}>
         <lineBasicMaterial ref={orbitMat} color="#FF3B00" transparent opacity={0} depthWrite={false} />
       </line>
-      <mesh
-        ref={ring}
-        position={[site[0] + LZ_UP[0] * 0.002, site[1] + LZ_UP[1] * 0.002, site[2] + LZ_UP[2] * 0.002]}
-        quaternion={RING_QUATERNION}
-      >
+      <mesh position={[site[0] + LZ_UP[0] * 0.002, site[1] + LZ_UP[1] * 0.002, site[2] + LZ_UP[2] * 0.002]} quaternion={RING_QUATERNION}>
         <ringGeometry args={[0.035, 0.045, 48]} />
         <meshBasicMaterial ref={ringMat} color="#FF3B00" transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
@@ -238,13 +322,15 @@ function buildLeg(t0, t1, steps) {
 }
 
 // Outbound + return legs only — the dense lunar-orbit loops would read as scribble
-function TrajectoryPath() {
-  const [outbound, inbound] = useMemo(
-    () => [buildLeg(0, 270000, 220), buildLeg(504000, 702000, 140)],
-    []
-  );
+function TrajectoryPath({ viewRef }) {
+  const group = useRef();
+  const [outbound, inbound] = useMemo(() => [buildLeg(0, 270000, 220), buildLeg(504000, 702000, 140)], []);
+  useFrame(() => {
+    // Not while the camera rides with the spacecraft: the path would run through the lens.
+    if (group.current) group.current.visible = !viewRef.current.vehicle;
+  });
   return (
-    <group>
+    <group ref={group}>
       <line geometry={outbound}>
         <lineBasicMaterial color="#FF3B00" transparent opacity={0.3} />
       </line>
@@ -255,6 +341,133 @@ function TrajectoryPath() {
   );
 }
 
+/* ---- the spacecraft layer (metres, vehicle frame) ----------------------------------------- */
+const _sunV = new THREE.Vector3();
+/**
+ * Lights and the spacecraft, for a scene rendered with its own camera over the
+ * planets (see Composite). viewRef.current carries the shot: { vehicle, sunV,
+ * focus, stack }. Shared with the opening (components/OpeningCinematic).
+ */
+export function VehicleLayer({ viewRef, lm = true }) {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const sun = useRef();
+  const target = useRef();
+  const group = useRef();
+  const stackState = useRef(undocking(-1));
+  useEffect(() => {
+    scene.environment = lunarEnv(gl);
+  }, [gl, scene]);
+  useEffect(() => {
+    if (sun.current && target.current) sun.current.target = target.current;
+  }, []);
+  useEffect(() => {
+    // Compile the spacecraft's shaders now, not at the first cut to it (a visible hitch).
+    const g = group.current;
+    if (!g) return;
+    const was = g.visible;
+    g.visible = true;
+    try {
+      gl.compile(scene, camera);
+    } catch {
+      // compiled on first draw instead
+    }
+    g.visible = was;
+  }, [gl, scene, camera]);
+  useFrame(() => {
+    const v = viewRef.current;
+    if (group.current) group.current.visible = !!v.vehicle;
+    if (!v.vehicle) return;
+    Object.assign(stackState.current, v.stack);
+    _sunV.set(v.sunV[0], v.sunV[1], v.sunV[2]);
+    if (target.current) target.current.position.set(v.focus[0], v.focus[1], v.focus[2]);
+    if (sun.current && target.current) sun.current.position.copy(_sunV).multiplyScalar(60).add(target.current.position);
+  });
+  return (
+    <>
+      <ambientLight intensity={0.03} />
+      {/* The sunlit body below (local vertical +Y): a soft grey fill from underneath. */}
+      <hemisphereLight args={["#0a0c12", "#5d5b57", 0.55]} />
+      <directionalLight
+        ref={sun}
+        intensity={3.2}
+        color="#fff8ef"
+        castShadow
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-camera-left={-14}
+        shadow-camera-right={14}
+        shadow-camera-top={14}
+        shadow-camera-bottom={-14}
+        shadow-camera-near={1}
+        shadow-camera-far={140}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.04}
+      />
+      <object3D ref={target} />
+      <group ref={group} rotation={STACK_ROTATION}>
+        <SpacecraftStack stateRef={stackState} lm={lm} shadows />
+      </group>
+    </>
+  );
+}
+
+/** Composite every frame: planets, then (when a shot needs it) the spacecraft over a cleared depth buffer. */
+export function Composite({ vScene, vCam, viewRef }) {
+  useFrame(({ gl, scene, camera, size }) => {
+    gl.autoClear = false;
+    gl.clear(true, true, true);
+    gl.render(scene, camera);
+    // Validation tooling (read-only): draw calls and triangles of both layers.
+    const stats = typeof window !== "undefined" ? window.__lvSceneStats || (window.__lvSceneStats = {}) : {};
+    stats.calls = gl.info.render.calls;
+    stats.tris = gl.info.render.triangles;
+    const v = viewRef.current;
+    if (v.vehicle) {
+      vCam.fov = camera.fov;
+      vCam.aspect = size.width / size.height;
+      vCam.near = 0.1;
+      vCam.far = 4000;
+      vCam.updateProjectionMatrix();
+      vCam.position.set(v.vcam.pos[0], v.vcam.pos[1], v.vcam.pos[2]);
+      vCam.up.set(0, 1, 0);
+      vCam.lookAt(v.vcam.look[0], v.vcam.look[1], v.vcam.look[2]);
+      vCam.updateMatrixWorld();
+      gl.clearDepth();
+      gl.render(vScene, vCam);
+      stats.calls += gl.info.render.calls;
+      stats.tris += gl.info.render.triangles;
+    }
+    stats.vehicle = !!v.vehicle;
+  }, 1);
+  return null;
+}
+
+/**
+ * Point both cameras for a spacecraft shot: the vehicle camera at vcam
+ * (metres, vehicle frame), the planet camera where the spacecraft is (origin,
+ * scene units) plus that same offset, looking the same way.
+ */
+export function vehicleView(v, frame, origin, vcam, camera) {
+  v.vehicle = true;
+  v.glint = false;
+  v.frame = frame;
+  v.origin = origin;
+  v.vcam = vcam;
+  v.sunV = toVehicle(frame, SUN_W);
+  const off = toWorld(frame, vcam.pos);
+  camera.position.set(origin[0] + off[0] / M_PER_UNIT, origin[1] + off[1] / M_PER_UNIT, origin[2] + off[2] / M_PER_UNIT);
+  const d = toWorld(frame, [vcam.look[0] - vcam.pos[0], vcam.look[1] - vcam.pos[1], vcam.look[2] - vcam.pos[2]]);
+  const up = toWorld(frame, [0, 1, 0]);
+  camera.up.set(up[0], up[1], up[2]);
+  camera.lookAt(camera.position.x + d[0], camera.position.y + d[1], camera.position.z + d[2]);
+  camera.near = 0.002;
+  camera.far = 2000;
+  camera.updateProjectionMatrix();
+}
+
+/* ---- the director: which shot, and where both cameras are --------------------------------- */
 const _dp = new THREE.Vector3();
 const _dl = new THREE.Vector3();
 const _S = new THREE.Vector3();
@@ -263,32 +476,94 @@ const _dir = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 const _origin = new THREE.Vector3(0, 0, 0);
 
-function CinematicCamera({ missionTime, cinematic, scPos, moonPos, orbitClock }) {
+// The docked LM's centre along the stack (vehicle +X, metres), for shots that follow it.
+export const LM_CENTRE_X = 7.0;
+
+function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef }) {
   const { camera } = useThree();
   const pos = useRef(new THREE.Vector3(0, 12, 28));
   const look = useRef(new THREE.Vector3(0, 0, 0));
   const snap = useRef(true);
 
   useFrame((state, delta) => {
+    const v = viewRef.current;
+    v.vehicle = false;
+    v.glint = false;
     if (!cinematic) return;
+    camera.up.set(0, 1, 0);
+    camera.near = 0.1;
+    camera.far = 2000;
+
     if (orbitClock) {
-      // Lunar orbit: the shot is fully defined by data/lunarOrbitShot (it opens
-      // from black, and the camera never leaves its ray from the Moon's centre).
-      const shot = orbitCamera(orbitClock.current, moonPos, MOON_UNITS);
-      pos.current.set(...shot.pos);
-      look.current.set(...shot.look);
-      snap.current = false;
-      camera.up.set(0, 1, 0);
-      camera.position.copy(pos.current);
-      camera.lookAt(look.current);
+      // ---- Lunar orbit: data/orbitSequence ----
+      const tau = orbitClock.current;
+      const pose = craftPose(tau, moonPos, MOON_UNITS);
+      const { shot, u } = orbitShotAt(tau);
+      v.shot = shot.id;
+      v.stack = undocking(undockTime(tau));
+      if (shot.wide) {
+        const cam = orbitCamera(tau, moonPos, MOON_UNITS);
+        camera.position.set(...cam.pos);
+        camera.lookAt(...cam.look);
+        camera.updateProjectionMatrix();
+        v.glint = true;
+        v.origin = pose.pos;
+      } else {
+        const frame = vehicleFrame(pose.fwd, pose.up);
+        let cam = shot.cam(u);
+        let focus = [2, 0, 0];
+        if (shot.follow === "lm") {
+          const x = LM_CENTRE_X + v.stack.lmY;
+          cam = { pos: [cam.pos[0] + x, cam.pos[1], cam.pos[2]], look: [cam.look[0] + x, cam.look[1], cam.look[2]] };
+          focus = [x, 0, 0];
+        }
+        v.focus = focus;
+        vehicleView(v, frame, pose.pos, cam, camera);
+      }
+      snap.current = true;
       return;
     }
+
     const t = missionTime;
     _S.set(scPos[0], scPos[1], scPos[2]);
     _M.set(moonPos[0], moonPos[1], moonPos[2]);
+    v.origin = scPos;
 
+    // ---- Close shots on the spacecraft: leaving the Earth, and heading home ----
+    const outboundClose = t < CRUISE.closeEnd;
+    const returnClose = t >= 504000 && t < RETURN_CLOSE_END;
+    if (outboundClose || returnClose) {
+      // Close on the spacecraft, the planet behind it at its true apparent size
+      // (the planets are drawn 10x oversized for the Earth-Moon views, so the
+      // planet camera stands back by the same factor).
+      let frame;
+      let origin;
+      let cam;
+      if (outboundClose) {
+        const away = [scPos[0], scPos[1], scPos[2]];
+        frame = radialFrame(away);
+        const d = trueSizeDistance(EARTH_UNITS, coastDistanceKm(t), EARTH_RADIUS_KM);
+        origin = [frame.z[0] * d, 0, frame.z[2] * d];
+        cam = cruiseCamera(smooth01((t - 12000) / (CRUISE.closeEnd - 12000)));
+        v.shot = "cruiseClose";
+      } else {
+        const away = [scPos[0] - moonPos[0], 0, scPos[2] - moonPos[2]];
+        frame = radialFrame(away);
+        const d = trueSizeDistance(MOON_UNITS, returnDistanceKm(t), MOON_RADIUS_KM);
+        origin = [moonPos[0] + frame.z[0] * d, 0, moonPos[2] + frame.z[2] * d];
+        cam = returnCamera(smooth01((t - 504000) / (RETURN_CLOSE_END - 504000)));
+        v.shot = "returnClose";
+      }
+      v.stack = undocking(-1);
+      v.focus = [0, 0, 0];
+      vehicleView(v, frame, origin, cam, camera);
+      snap.current = true;
+      return;
+    }
+
+    v.glint = true;
+    v.shot = "wide";
     if (t < 9840) {
-      // LEO: close over the limb
       _dp.copy(_S).multiplyScalar(1.25).add(_tmp.set(0.4, 0.6, 0.5));
       _dl.copy(_S);
     } else if (t < 55000) {
@@ -301,11 +576,7 @@ function CinematicCamera({ missionTime, cinematic, scPos, moonPos, orbitClock })
     } else if (t < 130000) {
       // Deep cruise: off-shoulder shot, Earth shrinking in black space
       const a = (t - 55000) * 0.00004;
-      _dp.set(
-        _S.x + Math.cos(a) * 0.85,
-        _S.y + 0.4,
-        _S.z + Math.sin(a) * 0.85
-      );
+      _dp.set(_S.x + Math.cos(a) * 0.85, _S.y + 0.4, _S.z + Math.sin(a) * 0.85);
       _dl.copy(_origin);
     } else if (t < 200000) {
       // Solitude pan: look slowly swings from Earth to the distant Moon
@@ -317,11 +588,6 @@ function CinematicCamera({ missionTime, cinematic, scPos, moonPos, orbitClock })
       _dir.copy(_M).sub(_S).normalize();
       _dp.copy(_S).addScaledVector(_dir, -1.1).add(_tmp.set(0, 0.45, 0));
       _dl.copy(_M);
-    } else if (t < 504000) {
-      // Lunar orbit: slow drift around the Moon
-      const a = t * 0.015;
-      _dp.set(_M.x + Math.sin(a) * 2.9, 1.2, _M.z + Math.cos(a) * 2.9);
-      _dl.copy(_M).lerp(_S, 0.25);
     } else if (t < 620000) {
       // Return: looking back at the receding Moon, then home
       const u = smooth01((t - 504000) / 90000);
@@ -366,7 +632,7 @@ function CinematicCamera({ missionTime, cinematic, scPos, moonPos, orbitClock })
     camera.updateProjectionMatrix();
   });
 
-  // Camera and Moon each frame, for the validation tooling (apparent-rotation measurements).
+  // Camera, Moon and shot each frame, for the validation tooling.
   useFrame(() => {
     const w = window.__lvMissionView || (window.__lvMissionView = { cam: [0, 0, 0], moon: [0, 0, 0] });
     camera.position.toArray(w.cam);
@@ -375,6 +641,10 @@ function CinematicCamera({ missionTime, cinematic, scPos, moonPos, orbitClock })
     w.moon[2] = moonPos[2];
     w.t = missionTime;
     w.tau = orbitClock ? orbitClock.current : null;
+    const v = viewRef.current;
+    w.shot = v.shot;
+    w.vehicle = v.vehicle;
+    w.stack = v.stack ? { gap: +v.stack.gap.toFixed(3), lmRoll: +v.stack.lmRoll.toFixed(3), phase: v.stack.phase } : null;
   });
 
   useEffect(() => {
@@ -399,52 +669,31 @@ function Scene({ missionTime, cinematic, orbitClock }) {
   const scPos = craftScenePos(t, [0, 0, 0]);
   const p = trajectoryPosition(t);
   const moonPos = useMemo(() => [p.moonX * SCENE_SCALE, 0, p.moonZ * SCENE_SCALE], [p.moonX, p.moonZ]);
+  const viewRef = useRef({ vehicle: false, glint: false, origin: [0, 0, 0], stack: undocking(-1), focus: [0, 0, 0], sunV: [0, 1, 0] });
+  const vScene = useMemo(() => new THREE.Scene(), []);
+  const vCam = useMemo(() => new THREE.PerspectiveCamera(45, 1, 0.1, 4000), []);
+  // The lunar module flies out docked and stays on the Moon: the way home is the CSM alone.
+  const lmAboard = !!orbitClock || missionTime < 504000;
 
   return (
     <>
       {/* Deep space ambient — near zero for a hard terminator */}
       <ambientLight intensity={0.02} />
-      {/* Faint starlight fill so the hull never turns into a void */}
+      {/* Faint starlight fill so nothing turns into a void */}
       <hemisphereLight args={["#24344c", "#050505", 0.3]} />
       {/* Sun — positioned so departure shows a receding gibbous Earth and the
           approach a growing crescent Moon (Apollo-style phase language) */}
-      <directionalLight
-        position={[30, 10, -20]}
-        intensity={3.4}
-        color="#ffffff"
-        castShadow={false}
-      />
+      <directionalLight position={SUN_POS} intensity={3.4} color="#ffffff" castShadow={false} />
       {/* Faint cool fill on the night side */}
       <directionalLight position={[-20, -5, 25]} intensity={0.1} color="#3a5a8a" />
-      <Earth />
+      <Earth small={!!orbitClock} />
       <Moon position={moonPos} />
-      {orbitClock ? (
-        <>
-          <OrbitingCraft clock={orbitClock} moonPos={moonPos} />
-          <OrbitGuides clock={orbitClock} moonPos={moonPos} />
-        </>
-      ) : (
-        <>
-          <Spacecraft missionTime={missionTime} cinematic={cinematic} />
-          <TrajectoryPath />
-        </>
-      )}
-      {!cinematic && (
-        <OrbitControls
-          enablePan={false}
-          enableZoom={true}
-          minDistance={2}
-          maxDistance={60}
-          dampingFactor={0.06}
-        />
-      )}
-      <CinematicCamera
-        missionTime={missionTime}
-        cinematic={cinematic}
-        scPos={scPos}
-        moonPos={moonPos}
-        orbitClock={orbitClock}
-      />
+      <Glint viewRef={viewRef} />
+      {orbitClock ? <OrbitGuides clock={orbitClock} moonPos={moonPos} /> : <TrajectoryPath viewRef={viewRef} />}
+      {!cinematic && <OrbitControls enablePan={false} enableZoom={true} minDistance={2} maxDistance={60} dampingFactor={0.06} />}
+      <Director missionTime={missionTime} cinematic={cinematic} scPos={scPos} moonPos={moonPos} orbitClock={orbitClock} viewRef={viewRef} />
+      {createPortal(<VehicleLayer viewRef={viewRef} lm={lmAboard} />, vScene)}
+      <Composite vScene={vScene} vCam={vCam} viewRef={viewRef} />
     </>
   );
 }
@@ -465,6 +714,7 @@ export default function MissionScene({ missionTime, cinematic = false, orbitCloc
       <Canvas
         camera={{ position: [0, 12, 28], fov: 45 }}
         dpr={[1, 2]}
+        shadows="percentage"
         gl={{
           antialias: true,
           alpha: false,
@@ -479,6 +729,7 @@ export default function MissionScene({ missionTime, cinematic = false, orbitCloc
         </Suspense>
         {/* Stars outside the texture suspense so deep space never goes blank */}
         <Stars radius={100} depth={50} count={8000} factor={3.5} saturation={0} fade speed={0.1} />
+        <AdaptiveResolution />
       </Canvas>
     </div>
   );
