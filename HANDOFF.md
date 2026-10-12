@@ -1563,3 +1563,71 @@ radio link.
 
 **Not changed:** gravity, thrust, fuel, RCS, tilt, the COMMANDER rebalance, touchdown limits,
 scoring, training objectives, the full mission, reentry.
+
+**Validation** (headless Chromium with software rendering, an in-page pilot flying from
+each difficulty's real start; browser tests, not a physical iPhone):
+- **Jest:** 220 tests pass (213 before). New tests cover:
+  - the catalogue (ids, names, kinds, levels, radii, briefings);
+  - the far side has no Earth and no link;
+  - the environments are distinct (relief, boulders, unsafe ground, gaps around the LZ);
+  - Silent Horizon's hazards crash and its zones are safe;
+  - every landing zone is in sunlight;
+  - far-side comms: a replayed descent airs only onboard lines, and `setEarthLink` blocks
+    and restores Houston.
+- **All 12 site × difficulty landings at 852×393 reached OBJECTIVE COMPLETE**, with no page
+  errors:
+
+  | | Tranquility | Hadley | Tycho | Far side | Fuel left |
+  |---|---|---|---|---|---|
+  | CADET | 2.8 m/s · 0.0 m | 2.9 m/s · 0.2 m | 2.6 m/s · 0.2 m | 2.6 m/s · 0.1 m | 83 % |
+  | ASTRONAUT | 1.6 m/s · 0.2 m | 1.6 m/s · 0.0 m | 1.1 m/s · 0.1 m | 1.5 m/s · 0.0 m | 43–44 % |
+  | COMMANDER | 1.2 m/s · 0.1 m | 1.2 m/s · 0.1 m | 1.3 m/s · 0.1 m | 1.1 m/s · 0.1 m | 12 % |
+
+  Each cell is the touchdown rate and the distance from the LZ centre. RETRY restarted every
+  run, with no far-side intro the second time.
+- **Simulated pilots** (18 per cell: three reaction lags × six seeds):
+  - CADET and ASTRONAUT land 100 % at every site, in every scenario.
+  - COMMANDER meets its objectives 78–100 % of the time; on the far side, 78–89 %, which is
+    Tycho's range.
+- **Hazards:** a vertical touchdown at 1 m/s gave CREW LOST with the right cause on:
+  - Tranquility: BOULDERS, CRATER · 29°;
+  - Hadley: HADLEY RILLE · 33°, TALUS BOULDERS, APENNINE FLANK · 29°;
+  - Tycho: FRESH CRATER, BOULDERS;
+  - far side: SECONDARY CRATER, BOULDER FIELD, WRINKLE RIDGE, CRATER WALL · 15°.
+
+  The same touchdown on each primary LZ gave OBJECTIVE COMPLETE.
+- **Diversions** from the mission's own start to an alternate LZ landed safely, graded
+  LANDED · OBJECTIVE NOT MET because STANDARD asks for the primary:
+  - far side, WALL FOOT (ASTRONAUT) and BEYOND RIDGE (COMMANDER);
+  - Tycho, NORTH POND (ASTRONAUT);
+  - Hadley, BENCH (CADET);
+  - Tranquility, ALT LZ WEST (COMMANDER).
+- **Far-side comms in the app:**
+  - At every difficulty, only two lines aired: Houston's last call in the intro, cut at
+    loss of signal, and CREW "Contact light."
+  - The blackout dropped 8 Houston calls per descent, the touchdown congratulation among
+    them.
+  - EARTH LINK UNAVAILABLE shows throughout, and FAR SIDE TOUCHDOWN CONFIRMED on landing.
+  - A full far-side RETRY at COMMANDER aired only "Contact light" (10 calls dropped).
+  - The other sites air Houston's full sequence.
+- **Selector and intro:**
+  - At 852×393, 667×375 and 1280×800 the cards fit with their images, and the desktop
+    preview panel shows at 1280×800.
+  - The intro's captions run in order. SKIP works, and the hold banner shows the briefing.
+- **Performance, final 50 m, back to back against BUILD 718ce0c** (two runs each):
+
+  | Site | Frame median, 718ce0c → this branch | Draw calls | Triangles |
+  |---|---|---|---|
+  | Tranquility | 217–233 → 217–233 ms | 34 → 34 | 75.3k → 75.3k |
+  | Hadley | 200–217 → 217 ms | 31 → 31 | 78.4k → 80.1k (horizon ridges) |
+  | Tycho | 233 → 233–250 ms | 33 → 33 | 91.5k → 91.5k |
+  | Far side | — → 217–233 ms | 33 | 83.6k |
+
+- **Full mission** (the canonical Tranquility mission, flown end to end in the app):
+  THE EAGLE HAS LANDED, return, reentry, splashdown, MISSION COMPLETE.
+
+**Limitations:**
+- The far side is training-only; the reason is given above.
+- The intro's audio (the fading last call, the static burst) is the existing voice pack and
+  radio chain. It is untested on a physical iPhone.
+- Fra Mauro records from earlier builds stay in storage but are no longer shown.
