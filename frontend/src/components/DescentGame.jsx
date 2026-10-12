@@ -489,10 +489,34 @@ function Lamps({ contact, engineStop, small = false }) {
   );
 }
 
+/**
+ * Far side: no line of sight to the Earth, so no direct radio link. A steady
+ * status line, not an alarm: telemetry, guidance and every warning still work.
+ */
+function EarthLinkChip({ className = "" }) {
+  return (
+    <div data-testid="earth-link" className={`font-mono tracking-widest text-[#9fb6cc] whitespace-nowrap ${className}`}>
+      ◌ EARTH LINK UNAVAILABLE
+    </div>
+  );
+}
+
+/** Far side: the touchdown is confirmed on board (Houston cannot hear it). */
+function FarSideTouchdown() {
+  return (
+    <div
+      data-testid="farside-touchdown"
+      className="absolute top-[5.3rem] short:top-[5.6rem] left-1/2 -translate-x-1/2 z-40 pointer-events-none font-mono text-[10px] short:text-[9px] tracking-[0.3em] whitespace-nowrap border px-3 py-1 lamp-on bg-[#06223d]/85 border-[#6cc0ff]/80 text-[#d6eeff] shadow-[0_0_14px_rgba(108,192,255,0.45)]"
+    >
+      FAR SIDE TOUCHDOWN CONFIRMED
+    </div>
+  );
+}
+
 function CompactDescentHud({
   cfg, alt, vy, vx, tilt, fuel, fuelPct, throttle, throttleCmd, setThrottleCmd, inputRef,
   view, setView, paused, setPaused, setShowAbort, chip, guidance, distanceToLZ,
-  projectedZoneLabel, projectedHazard, contactLight, engineStop = false, hudFade = false, flags, readouts, tip,
+  projectedZoneLabel, projectedHazard, contactLight, engineStop = false, hudFade = false, flags, readouts, tip, earthLink = true,
 }) {
   const { warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt } = flags;
   const chipTone = chip.level === DANGER ? "text-[#FF3B00]" : chip.level === CAUTION ? "text-amber-400" : "text-emerald-400";
@@ -517,6 +541,7 @@ function CompactDescentHud({
           <div className="font-mono text-[8px] tracking-widest h-3 truncate" data-testid="descent-guidance">
             {guidance && <span className={guidanceTone(guidance)}>{guidance.text}</span>}
           </div>
+          {!earthLink && <EarthLinkChip className="text-[8px] mt-px" />}
         </div>
         <div className="pointer-events-auto bg-black/45 backdrop-blur-sm border border-white/10 flex" data-testid="view-selector">
           {["EXTERNAL", "COCKPIT", "NAV"].map((v) => (
@@ -649,6 +674,8 @@ function CompactDescentHud({
 export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess, onCrash, onAbort, init = null, site: siteId = MISSION_SITE_ID, coach = null, holdSeconds = 0 }) {
   const cfg = DIFFICULTY[difficulty] || DIFFICULTY.ASTRONAUT;
   const site = useMemo(() => getSite(siteId), [siteId]);
+  // The far side has no line of sight to the Earth: no direct link to Houston.
+  const farSide = site.earthLink === false;
   // Projected touchdown point over the site's terrain (descentProfile).
   const predict = useCallback((p) => predictTouchdownX(p, cfg, site), [cfg, site]);
   // Physics state, created once: the site's mission start or a training start.
@@ -912,6 +939,14 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Far side: only onboard voices and cabin calls (no Houston), for the whole descent.
+  useEffect(() => {
+    if (!farSide || !audio || !audio.setEarthLink) return undefined;
+    audio.setEarthLink(false);
+    return () => audio.setEarthLink(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [farSide]);
+
   // Comms verbosity follows the difficulty (COMMANDER: no coaching). Pausing
   // or the abort dialog silences the loop; stale calls are not kept.
   useEffect(() => {
@@ -1047,9 +1082,14 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         hint="RETICLE ALIGNED WITH DESCENT VECTOR"
       />
 
+      {farSide && ended && !ended.crashed && <FarSideTouchdown />}
+
       {holdLeft > 0 && (
-        <div className="absolute top-[4.6rem] short:top-[5.1rem] left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-black/60 border border-[#FF3B00]/50 px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-white" data-testid="training-hold">
-          {site.name} · STARTS IN <span className="text-[#FF3B00] tabular">{holdLeft}</span>
+        <div className="absolute top-[4.6rem] short:top-[5.1rem] left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-black/60 border border-[#FF3B00]/50 px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-white text-center max-w-[min(560px,80vw)]" data-testid="training-hold">
+          <div>{site.name} · STARTS IN <span className="text-[#FF3B00] tabular">{holdLeft}</span></div>
+          {site.briefing && (
+            <div className="font-sans normal-case tracking-normal text-[11px] short:text-[10px] text-zinc-300 mt-0.5" data-testid="mission-briefing">{site.briefing}</div>
+          )}
         </div>
       )}
 
@@ -1079,7 +1119,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           view={view} setView={setView} paused={paused} setPaused={setPaused} setShowAbort={setShowAbort}
           chip={chip} guidance={guidance} distanceToLZ={distanceToLZ}
           projectedZoneLabel={projectedZoneLabel} projectedHazard={projectedHazard} contactLight={contactLight}
-          engineStop={!!ended} hudFade={hudFade}
+          engineStop={!!ended} hudFade={hudFade} earthLink={!farSide}
           flags={{ warnFuelLow, dangerFuelCritical, warnVy, dangerVy, warnVx, dangerVx, warnTilt, dangerTilt }}
           readouts={readouts}
           tip={tip}
@@ -1124,6 +1164,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
 
       {/* Warnings strip (top center-ish) */}
       <div className="absolute top-36 short:top-[7.5rem] left-1/2 -translate-x-1/2 flex gap-2 short:flex-col short:items-center short:gap-1 short:whitespace-nowrap z-40">
+        {farSide && <EarthLinkChip className="hud-panel px-3 py-1 text-[10px]" />}
         {warnFuelLow && (
           <div className={`hud-panel px-3 py-1 font-mono text-[10px] tracking-widest ${dangerFuelCritical ? "text-[#FF3B00] blink" : "text-amber-400"}`} data-testid="warn-fuel">
             ● FUEL LOW

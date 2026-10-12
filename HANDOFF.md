@@ -1477,3 +1477,157 @@ difficulty's real start, BUILD 91c520e before vs this branch):
 
   The Tycho cost is the physically based shading of the LM's pixels in the
   software renderer. On the phone, the descent's quality step-down still applies.
+
+## 33. Four lunar landing missions
+
+The Training Center's lunar landing now offers four missions, each with its own terrain,
+piloting problem and briefing. The full mission still lands at the Sea of Tranquility
+(`MISSION_SITE_ID`).
+
+| Mission | Kind · level | Reference | Terrain | Approach | Primary LZ | Sun | Earth |
+|---|---|---|---|---|---|---|---|
+| SEA OF TRANQUILITY | WIDE PLAIN · 1 BEGINNER | Mare Tranquillitatis · Apollo 11 | broad mare with gentle swells off the track, sparse old craters, the four marked hazards | from −x, offset 0.3 (the mission's) | 6 m | 14° | 62° up |
+| HADLEY–APENNINE | MOUNTAIN VALLEY · 2 INTERMEDIATE | Apennine Mountains · Apollo 15 | the Apennine flank under the approach, Hadley Rille beyond the clearing, mountains on every side | from −x, steep (0.18) | 5 m | 17° | 64° up |
+| TYCHO HIGHLANDS | CRATER REGION · 3 ADVANCED | Tycho ejecta · Surveyor 7 | fresh craters and boulders everywhere; melt ponds the only safe ground | from +x, 0.24 | 4 m | 22° | 46° up |
+| SILENT HORIZON | FAR SIDE · 4 EXPERT | South Pole–Aitken basin · far side | ancient crater floor: crater wall and talus under the approach, wrinkle ridges, boulder fields, a secondary crater, basin-ring massifs | from +x over the crater wall, 0.26 | 4 m | 11° | below the horizon |
+
+Fra Mauro (§30) is retired to keep four distinct environments. A stored choice of it falls
+back to Tranquility, and its old records stay in storage, unused.
+
+**One mission definition** (`data/landingSites.js`, the §30 model) still drives collision,
+the touchdown evaluation, the hazard strip, the 3D scene, the preview and the profile. It now
+also carries the mission's identity:
+- `name`, `short`, `kind`, `ref`, `level`, `rating`;
+- `blurb`, `challenge` (the card), and `briefing` (the descent briefing, word for word from
+  the brief);
+- `earthLink: false` (far side only).
+
+`earth: null` means the Earth is below the horizon: none is drawn, and there is no direct
+radio link.
+
+**Silent Horizon: the far side.**
+- *Terrain.* The crater wall (a front 16 m high with talus boulders) lies under the
+  approach. Wrinkle ridges cross the track west of the LZ, with a boulder field just short of
+  it and a 5 m secondary crater just past it. The ancient crater, the broken ridge and the
+  basin-ring massifs rise behind.
+- *Landing zones.* The primary is a 4 m clearing with hazards about 4.3 m beyond its edge on
+  both sides. The alternates are WALL FOOT (+42 m) and BEYOND RIDGE (−52 m). All of them are
+  in sunlight (tested). It is daylight on the far side, with the Sun at 11° throwing long
+  shadows.
+- *Radio: no line of sight to the Earth.*
+  - `comms.setEarthLink(false)` uses the reentry blackout's director mode: only onboard
+    voices (COMPUTER) and `throughBlackout` lines get through. It has no static burst.
+  - CREW's `descent.contact` ("Contact light") is now `throughBlackout`; it is the crew
+    in the cabin.
+  - `DescentGame` sets the link down for the whole far-side descent and restores it on
+    unmount.
+  - Houston's calls (CAPCOM, FLIGHT, GUIDANCE) are dropped, including the touchdown
+    congratulation. Onboard warnings, telemetry, guidance and hazard indicators are
+    unchanged.
+  - No relay satellite is invented.
+- *HUD.* "◌ EARTH LINK UNAVAILABLE" (`earth-link`) sits under the status in the compact HUD
+  and first in the desktop warnings strip. On a safe landing, "FAR SIDE TOUCHDOWN CONFIRMED"
+  (`farside-touchdown`) shows under the CONTACT LIGHT / ENGINE STOP lamps, with no
+  congratulation.
+- *Instructor.* The Training coach's text says "No Earth link: onboard guidance only" once,
+  at the start. Its spoken lines are CAPCOM's, so the blackout silences them too.
+- *Intro* (`components/training/FarSideIntro.jsx`, about 12.5 s, SKIP at any time; on the
+  first far-side start after opening the Training Center):
+  1. low over the limb, the Earth sets behind the Moon;
+  2. Houston's last transmission, the existing `cruise.ambient` clip ("Everything looks good
+     from here. Enjoy the view."), fades as the radio link degrades;
+  3. loss of signal brings the static burst, then silence;
+  4. "ONBOARD TELEMETRY NOMINAL · GUIDANCE ACTIVE";
+  5. the view tips down to the surface, and the descent briefing follows.
+
+  It uses existing voice clips and textures only.
+- *Full mission.* The far side is training-only. The mission's orbit cinematic, captions and
+  PDI are Tranquility's, and a far-side mission would need its own orbit, LOS and comms
+  continuity rather than a teleport.
+
+**Mission selector** (`pages/Training.jsx`).
+- LUNAR LANDING SIMULATOR → LUNAR MISSIONS · CHOOSE A DESTINATION shows four cards, one row
+  on a landscape phone. Each card has:
+  - the terrain image;
+  - the level badge (and NO EARTH LINK on the far side);
+  - kind, title, reference, description and PILOTING CHALLENGE;
+  - TERRAIN pips;
+  - START MISSION, which goes straight to the descent briefing.
+- Tapping a card selects it. On wider screens, the live 3D preview, the profile and the
+  mission's approach, LZ, Sun and EARTH LINK show below the cards.
+- The scenario briefing and the descent's hold banner show the mission briefing.
+- Difficulty, the four scenarios, retry, the debrief, the instructor and per-mission records
+  are unchanged.
+- The card images (`public/missions/<id>.jpg`, about 20 KB each) are crops of the live
+  preview. Regenerate them if a site's terrain changes.
+
+**Not changed:** gravity, thrust, fuel, RCS, tilt, the COMMANDER rebalance, touchdown limits,
+scoring, training objectives, the full mission, reentry.
+
+**Validation** (headless Chromium with software rendering, an in-page pilot flying from
+each difficulty's real start; browser tests, not a physical iPhone):
+- **Jest:** 220 tests pass (213 before). New tests cover:
+  - the catalogue (ids, names, kinds, levels, radii, briefings);
+  - the far side has no Earth and no link;
+  - the environments are distinct (relief, boulders, unsafe ground, gaps around the LZ);
+  - Silent Horizon's hazards crash and its zones are safe;
+  - every landing zone is in sunlight;
+  - far-side comms: a replayed descent airs only onboard lines, and `setEarthLink` blocks
+    and restores Houston.
+- **All 12 site × difficulty landings at 852×393 reached OBJECTIVE COMPLETE**, with no page
+  errors:
+
+  | | Tranquility | Hadley | Tycho | Far side | Fuel left |
+  |---|---|---|---|---|---|
+  | CADET | 2.8 m/s · 0.0 m | 2.9 m/s · 0.2 m | 2.6 m/s · 0.2 m | 2.6 m/s · 0.1 m | 83 % |
+  | ASTRONAUT | 1.6 m/s · 0.2 m | 1.6 m/s · 0.0 m | 1.1 m/s · 0.1 m | 1.5 m/s · 0.0 m | 43–44 % |
+  | COMMANDER | 1.2 m/s · 0.1 m | 1.2 m/s · 0.1 m | 1.3 m/s · 0.1 m | 1.1 m/s · 0.1 m | 12 % |
+
+  Each cell is the touchdown rate and the distance from the LZ centre. RETRY restarted every
+  run, with no far-side intro the second time.
+- **Simulated pilots** (18 per cell: three reaction lags × six seeds):
+  - CADET and ASTRONAUT land 100 % at every site, in every scenario.
+  - COMMANDER meets its objectives 78–100 % of the time; on the far side, 78–89 %, which is
+    Tycho's range.
+- **Hazards:** a vertical touchdown at 1 m/s gave CREW LOST with the right cause on:
+  - Tranquility: BOULDERS, CRATER · 29°;
+  - Hadley: HADLEY RILLE · 33°, TALUS BOULDERS, APENNINE FLANK · 29°;
+  - Tycho: FRESH CRATER, BOULDERS;
+  - far side: SECONDARY CRATER, BOULDER FIELD, WRINKLE RIDGE, CRATER WALL · 15°.
+
+  The same touchdown on each primary LZ gave OBJECTIVE COMPLETE.
+- **Diversions** from the mission's own start to an alternate LZ landed safely, graded
+  LANDED · OBJECTIVE NOT MET because STANDARD asks for the primary:
+  - far side, WALL FOOT (ASTRONAUT) and BEYOND RIDGE (COMMANDER);
+  - Tycho, NORTH POND (ASTRONAUT);
+  - Hadley, BENCH (CADET);
+  - Tranquility, ALT LZ WEST (COMMANDER).
+- **Far-side comms in the app:**
+  - At every difficulty, only two lines aired: Houston's last call in the intro, cut at
+    loss of signal, and CREW "Contact light."
+  - The blackout dropped 8 Houston calls per descent, the touchdown congratulation among
+    them.
+  - EARTH LINK UNAVAILABLE shows throughout, and FAR SIDE TOUCHDOWN CONFIRMED on landing.
+  - A full far-side RETRY at COMMANDER aired only "Contact light" (10 calls dropped).
+  - The other sites air Houston's full sequence.
+- **Selector and intro:**
+  - At 852×393, 667×375 and 1280×800 the cards fit with their images, and the desktop
+    preview panel shows at 1280×800.
+  - The intro's captions run in order. SKIP works, and the hold banner shows the briefing.
+- **Performance, final 50 m, back to back against BUILD 718ce0c** (two runs each):
+
+  | Site | Frame median, 718ce0c → this branch | Draw calls | Triangles |
+  |---|---|---|---|
+  | Tranquility | 217–233 → 217–233 ms | 34 → 34 | 75.3k → 75.3k |
+  | Hadley | 200–217 → 217 ms | 31 → 31 | 78.4k → 80.1k (horizon ridges) |
+  | Tycho | 233 → 233–250 ms | 33 → 33 | 91.5k → 91.5k |
+  | Far side | — → 217–233 ms | 33 | 83.6k |
+
+- **Full mission** (the canonical Tranquility mission, flown end to end in the app):
+  THE EAGLE HAS LANDED, return, reentry, splashdown, MISSION COMPLETE.
+
+**Limitations:**
+- The far side is training-only; the reason is given above.
+- The intro's audio (the fading last call, the static burst) is the existing voice pack and
+  radio chain. It is untested on a physical iPhone.
+- Fra Mauro records from earlier builds stay in storage but are no longer shown.

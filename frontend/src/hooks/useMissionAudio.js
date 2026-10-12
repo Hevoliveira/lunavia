@@ -15,7 +15,7 @@ import { getAudioSettings, subscribeAudioSettings } from "@/audio/audioSettings"
  *  - init()          initialize AudioContext on first user gesture
  *  - say(id, opts)   mission-control call from src/audio/commsLines.json
  *  - commsFlush() / commsReset()   drop pending calls (abort, retry)
- *  - setBlackout(on) / setRadioLink(q) / setVerbosity(level)
+ *  - setBlackout(on) / setEarthLink(on) / setRadioLink(q) / setVerbosity(level)
  *  - beep()          countdown blip
  *  - squelch()       radio squelch click
  *  - startRumble(intensity)  low-frequency engine rumble loop
@@ -571,6 +571,7 @@ export default function useMissionAudio() {
   const commsFlush = useCallback(() => comms.flush(), []);
   const commsReset = useCallback(() => comms.reset(), []);
   const setBlackout = useCallback((on) => comms.setBlackout(on), []);
+  const setEarthLink = useCallback((on) => comms.setEarthLink(on), []);
   const setRadioLink = useCallback((q) => comms.setLink(q), []);
   const setVerbosity = useCallback((v) => comms.setVerbosity(v), []);
 
@@ -657,6 +658,7 @@ export default function useMissionAudio() {
     commsFlush,
     commsReset,
     setBlackout,
+    setEarthLink,
     setRadioLink,
     setVerbosity,
     roarStart,

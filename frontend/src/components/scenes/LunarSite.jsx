@@ -15,8 +15,8 @@ import { buildTerrain, hazardStrip, rockInstances, skyDirection } from "@/data/t
  *                 baked per vertex, and a fine regolith texture;
  *   SiteRocks     every boulder and debris stone of site.rocks (two
  *                 instanced meshes); boulders cast real-time shadows;
- *   SiteSky       stars, the Earth where it hangs in that site's sky, and
- *                 the distant mountains on its horizon;
+ *   SiteSky       stars, the Earth where it hangs in that site's sky (none
+ *                 on the far side), and the distant mountains on its horizon;
  *   SiteSun       the Sun (direction per site) and the soft fill light, with
  *                 a shadow map that follows the LM;
  *   SiteMarkers   the landing zones and the unsafe ground, laid on the
@@ -329,7 +329,8 @@ function Earth({ dir }) {
 export function SiteSky({ site }) {
   const { camera } = useThree();
   const sky = useRef();
-  const earthDir = useMemo(() => skyDirection(site.earth), [site]);
+  // On the far side the Earth is below the horizon: there is none to draw.
+  const earthDir = useMemo(() => (site.earth ? skyDirection(site.earth) : null), [site]);
   useFrame(() => {
     if (sky.current) sky.current.position.copy(camera.position);
   });
@@ -337,7 +338,7 @@ export function SiteSky({ site }) {
     <>
       <group ref={sky}>
         <Stars radius={SKY_R} depth={200} count={4000} factor={40} saturation={0} fade speed={0.05} />
-        <Earth dir={earthDir} />
+        {earthDir && <Earth dir={earthDir} />}
       </group>
       <Horizon site={site} />
     </>

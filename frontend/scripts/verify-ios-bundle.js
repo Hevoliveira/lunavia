@@ -49,6 +49,9 @@ const FEATURES = [
   ["Touchdown fidelity (CONTACT LIGHT / ENGINE STOP lamps)", "lamp-engine-stop"],
   ["Lunar landing sites", "training-site-continue"],
   ["Lunar module fidelity (two-stage LM)", "engineInner"],
+  ["Four lunar missions (mission selector)", "training-mission-start-"],
+  ["Far side mission (Silent Horizon, no Earth link)", "FAR SIDE TOUCHDOWN CONFIRMED"],
+  ["Far-side approach intro", "farside-intro-skip"],
 ];
 
 function sourceText(dir) {

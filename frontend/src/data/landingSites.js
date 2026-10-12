@@ -1,5 +1,5 @@
 /*
- * LUNAVIA — lunar landing sites (pure, unit-tested).
+ * LUNAVIA — the four lunar landing missions' sites (pure, unit-tested).
  *
  * One description per site drives BOTH the physics and the drawing:
  *   height(x, z)  the terrain, metres above the site's datum (the centre of
@@ -634,18 +634,24 @@ export function siteStart(site, cfg, init = null) {
  * is the direction of flight (+1: towards +x), approach.offset the start's
  * distance from the LZ per metre of start altitude (the mission's is 0.3).
  * Sun and Earth: elevation and azimuth (deg; azimuth 0 = +x, 90 = -z, the far
- * side of the track from the chase camera).
+ * side of the track from the chase camera). earth null: below the horizon
+ * (the far side), which also means no direct radio link (earthLink false).
+ * Mission identity for the selector and briefings: name, kind, ref, blurb,
+ * challenge, briefing; level 1–4 is the environment's difficulty.
  */
 const TRANQUILLITATIS = {
   id: "tranquillitatis",
-  name: "MARE TRANQUILLITATIS",
-  short: "TRANQUILLITY",
-  ref: "APOLLO 11 · JULY 1969",
+  name: "SEA OF TRANQUILITY",
+  short: "TRANQUILITY",
+  kind: "WIDE PLAIN",
+  ref: "MARE TRANQUILLITATIS · APOLLO 11",
   coords: "0.67°N 23.47°E",
   level: 1,
   rating: "BEGINNER",
-  blurb: "A flat basalt plain. Four marked hazards on the track: a blocky crater, a boulder field, a fresh crater and a rough patch.",
-  terrainText: "Flat mare basalt · scattered craters · few boulders",
+  blurb: "A broad basalt plain under a wide horizon: gentle swells, sparse old craters, scattered stones. Four marked hazards on the track: a blocky crater, a boulder field, a fresh crater and a rough patch.",
+  challenge: "Throttle, descent rate and drift: the spacecraft is the challenge, not the ground",
+  briefing: "Open landing terrain. Maintain a stable descent and aim for a precise touchdown.",
+  terrainText: "Open mare plain · sparse craters · few boulders",
   approach: { dir: 1, offset: 0.3, text: "FROM THE EAST" },
   sun: { el: 14, az: -152 },
   earth: { el: 62, az: 168 },
@@ -675,6 +681,8 @@ const TRANQUILLITATIS = {
       zMin: 9, keepOut: [{ x: -112, z: -58, r: 30 }, { x: 62, z: -40, r: 14 }],
     },
     { type: "noise", amp: 0.5, scale: 60, oct: 2, seed: 5, corridor: 14 },
+    // the plain's long, low swells (off the track: the mission's flight path is unchanged)
+    { type: "swells", label: "MARE SWELL", corridor: 16, waves: [{ a: 1.1, l: 170, ang: 20, ph: 0.6 }, { a: 0.6, l: 95, ang: -35, ph: 2.2 }] },
   ],
   rockFields: [
     { x: -20, z: 0, r: 3.4, n: 7, h: [1.1, 2.0], label: "BOULDERS" },
@@ -687,82 +695,19 @@ const TRANQUILLITATIS = {
   horizon: [],
 };
 
-const FRA_MAURO = {
-  id: "fra-mauro",
-  name: "FRA MAURO",
-  short: "FRA MAURO",
-  ref: "APOLLO 14 · FEBRUARY 1971",
-  coords: "3.65°S 17.47°W",
-  level: 2,
-  rating: "INTERMEDIATE",
-  blurb: "Rolling ridges of Imbrium ejecta. The LZ sits on a smooth crest; the swells either side slope past the LM's limit, and Cone crater's boulders lie beyond.",
-  terrainText: "Rolling ejecta ridges · moderate slopes · Cone crater boulders",
-  approach: { dir: -1, offset: 0.3, text: "FROM THE WEST" },
-  sun: { el: 13, az: 30 },
-  earth: { el: 72, az: -15 },
-  palette: { base: "#9a9184", dark: "#7b7468", bright: "#b4ab9b", rock: "#8f877b", ray: 0 },
-  seed: 23,
-  range: [-260, 260],
-  zones: [
-    { x: 0, r: 6, primary: true, label: "PRIMARY LZ" },
-    { x: -62, r: 4, label: "ALT LZ SOUTH CREST" },
-    { x: 66, r: 4, label: "ALT LZ NORTH CREST" },
-  ],
-  levels: [
-    { x: 0, r: 14, edge: 22 },
-    { x: -62, r: 9, edge: 14 },
-    { x: 66, r: 9, edge: 14 },
-  ],
-  terrain: [
-    {
-      type: "swells",
-      label: "RIDGE FLANK",
-      waves: [
-        { a: 3.4, l: 118, ang: 6, ph: 1.1 },
-        { a: 2.0, l: 64, ang: -22, ph: 2.6 },
-        { a: 0.9, l: 37, ang: 58, ph: 0.4 },
-      ],
-    },
-    // Doublet crater, on the approach side
-    { type: "crater", x: 31, z: -0.5, r: 4.6, d: 1.4, rim: 0.35, label: "DOUBLET CRATER" },
-    { type: "crater", x: 40.5, z: 2, r: 3.4, d: 1.0, rim: 0.28, label: "DOUBLET CRATER" },
-    // Cone crater on its ridge (landmark), boulders spread towards the track
-    { type: "ridge", x0: -240, z0: -150, x1: 140, z1: -95, w: 70, h: 22, label: "CONE RIDGE" },
-    { type: "crater", x: -70, z: -118, r: 46, d: 14, rim: 4, reach: 1.9, label: "CONE CRATER" },
-    // Triplet crater
-    { type: "crater", x: 92, z: 46, r: 7, d: 1.8, rim: 0.4, label: "TRIPLET CRATER" },
-    { type: "crater", x: 104, z: 52, r: 6, d: 1.5, rim: 0.35, label: "TRIPLET CRATER" },
-    { type: "crater", x: 98, z: 64, r: 5.5, d: 1.3, rim: 0.3, label: "TRIPLET CRATER" },
-    {
-      type: "craterField", n: 60, x: [-420, 420], z: [-300, 300], r: [2, 16], depth: [0.06, 0.13], rim: 0.2, soft: 0.6,
-      zMin: 8, keepOut: [{ x: -70, z: -118, r: 46 }],
-    },
-    { type: "noise", amp: 0.35, scale: 40, oct: 2, seed: 9, corridor: 8 },
-  ],
-  rockFields: [
-    { x: -36, z: 0, r: 5, n: 9, h: [1.0, 2.1], label: "CONE EJECTA BOULDERS" },
-    { x: -36, z: -12, r: 8, n: 8, h: [1.0, 2.2], label: "CONE EJECTA BOULDERS" },
-    { x: -96, z: 1, r: 6, n: 8, h: [1.1, 2.4], label: "CONE EJECTA BOULDERS" },
-    { x: -70, z: -118, r: 70, n: 60, h: [1.3, 2.6], label: "CONE EJECTA BOULDERS" },
-    { x: -40, z: -60, r: 30, n: 22, h: [1.0, 2.2], label: "CONE EJECTA BOULDERS" },
-  ],
-  debris: { n: 1000, x: [-130, 130], z: [-45, 45], h: [0.06, 0.28] },
-  horizon: [
-    { az: 60, el: 1.2, w: 80, kind: "ridge" },
-    { az: 140, el: 0.9, w: 70, kind: "ridge" },
-  ],
-};
-
 const HADLEY = {
   id: "hadley",
   name: "HADLEY–APENNINE",
   short: "HADLEY",
-  ref: "APOLLO 15 · JULY 1971",
+  kind: "MOUNTAIN VALLEY",
+  ref: "APENNINE MOUNTAINS · APOLLO 15",
   coords: "26.13°N 3.63°E",
-  level: 3,
-  rating: "ADVANCED",
-  blurb: "A narrow mare bench under the Apennine front, Hadley Rille just beyond. A steep approach over the mountain flank: overshoot and you are on the rille wall.",
-  terrainText: "Mountain front · rille · steep approach · small LZ",
+  level: 2,
+  rating: "INTERMEDIATE",
+  blurb: "A valley floor between Mons Hadley and Hadley Delta, under the Apennine front, with Hadley Rille just beyond the clearing. A steep approach over the mountain flank: overshoot and you are on the rille wall.",
+  challenge: "A steep approach corridor over the mountain flank, into a small clearing short of the rille",
+  briefing: "Mountainous landing region. Monitor your approach corridor and terrain clearance.",
+  terrainText: "Mountain valley · rille · steep approach · small LZ",
   approach: { dir: 1, offset: 0.18, text: "STEEP, OVER THE APENNINES" },
   sun: { el: 17, az: -140 },
   earth: { el: 64, az: 95 },
@@ -806,18 +751,24 @@ const HADLEY = {
     { az: 90, el: 5, w: 70, kind: "front" },
     { az: 160, el: 11, w: 50, kind: "massif", label: "APENNINES" },
     { az: -110, el: 6, w: 60, kind: "massif", label: "HADLEY DELTA" },
+    { az: 62, el: 3.2, w: 80, kind: "ridge" },
+    { az: 125, el: 4.2, w: 60, kind: "ridge" },
+    { az: -60, el: 3.5, w: 70, kind: "ridge" },
   ],
 };
 
 const TYCHO = {
   id: "tycho",
-  name: "TYCHO REGION",
+  name: "TYCHO HIGHLANDS",
   short: "TYCHO",
-  ref: "SURVEYOR 7 · JANUARY 1968",
+  kind: "CRATER REGION",
+  ref: "TYCHO EJECTA · SURVEYOR 7",
   coords: "40.98°S 11.51°W",
-  level: 4,
-  rating: "EXPERT",
+  level: 3,
+  rating: "ADVANCED",
   blurb: "Fresh, blocky ejecta north of Tycho's rim. Craters and boulders everywhere; the only safe ground is a few small impact-melt ponds.",
+  challenge: "Pick a safe pond early, then divert and brake at the same time onto a 4 m zone",
+  briefing: "Crater-rich terrain ahead. Identify a safe touchdown area and prepare for diversion.",
   terrainText: "Crater-dominated · boulder-strewn · melt-pond LZs",
   approach: { dir: -1, offset: 0.24, text: "FROM THE SOUTH, OVER EJECTA" },
   sun: { el: 22, az: -95 },
@@ -868,7 +819,85 @@ const TYCHO = {
   ],
 };
 
-export const SITE_DEFS = [TRANQUILLITATIS, FRA_MAURO, HADLEY, TYCHO];
+
+/*
+ * Silent Horizon: the floor of an ancient crater inside the South Pole–Aitken
+ * basin on the far side (inspired by the region of Von Kármán crater; the
+ * layout is stylised). The Earth is always below the horizon here, so there
+ * is no direct radio link: earthLink false (DescentGame, comms).
+ */
+const FAR_SIDE = {
+  id: "far-side",
+  name: "SILENT HORIZON",
+  short: "FAR SIDE",
+  kind: "FAR SIDE",
+  ref: "SOUTH POLE–AITKEN BASIN · FAR SIDE",
+  coords: "45.4°S 177.6°E",
+  level: 4,
+  rating: "EXPERT",
+  blurb: "The floor of an ancient crater in the South Pole–Aitken basin, ringed by broken massifs. In over the crater wall, a wrinkle ridge and a boulder field beyond the clearing. No line of sight to the Earth: no Houston.",
+  challenge: "No Earth link: read the rugged ground yourself and land on a 4 m clearing with onboard guidance only",
+  briefing: "Far-side approach. Direct Earth communications will be unavailable during descent.",
+  terrainText: "Ancient basin · crater wall · broken ridges · boulder fields",
+  approach: { dir: -1, offset: 0.26, text: "OVER THE CRATER WALL" },
+  sun: { el: 11, az: 28 },
+  earth: null, // below the horizon
+  earthLink: false,
+  palette: { base: "#7d7e83", dark: "#5e5f65", bright: "#a5a6ac", rock: "#76777c", ray: 0, highland: "#a9a9ad" },
+  seed: 71,
+  range: [-260, 260],
+  zones: [
+    { x: 0, r: 4, primary: true, label: "PRIMARY LZ" },
+    { x: 42, r: 3.5, label: "ALT LZ · WALL FOOT" },
+    { x: -52, r: 3.5, label: "ALT LZ · BEYOND RIDGE" },
+  ],
+  levels: [
+    { x: 0, r: 10, edge: 12, h: 0 },
+    { x: 42, r: 7.5, edge: 7 },
+    { x: -52, r: 7.5, edge: 7 },
+  ],
+  terrain: [
+    // the crater wall the approach comes in over
+    { type: "front", x0: 60, x1: 150, h: 16, zw: 320, wobble: 6, label: "CRATER WALL" },
+    // a broken wrinkle ridge across the floor beyond the clearing
+    { type: "ridge", x0: -36, z0: -82, x1: -29, z1: 16, w: 7, h: 2.8, label: "WRINKLE RIDGE" },
+    { type: "ridge", x0: -25, z0: 28, x1: -40, z1: 96, w: 6, h: 2.4, label: "WRINKLE RIDGE" },
+    // a blocky secondary crater on the approach side
+    { type: "crater", x: 20, z: 1, r: 5, d: 1.5, rim: 0.4, label: "SECONDARY CRATER", blocks: 8 },
+    // ancient crater formations and the rugged basin ring (landmarks)
+    { type: "crater", x: -70, z: -160, r: 72, d: 15, rim: 3, floor: 0.45, soft: 0.6, reach: 1.7, label: "ANCIENT CRATER" },
+    { type: "crater", x: 120, z: -64, r: 30, d: 6.5, rim: 1.4, soft: 0.6, label: "CRATER" },
+    { type: "crater", x: -150, z: 70, r: 24, d: 5, rim: 1.2, soft: 0.7, label: "CRATER" },
+    { type: "hill", x: -190, z: -290, rx: 230, rz: 170, h: 75, label: "BASIN RING MASSIF" },
+    { type: "ridge", x0: -330, z0: -70, x1: -120, z1: -250, w: 60, h: 30, label: "BROKEN RIDGE" },
+    { type: "hill", x: 90, z: 280, rx: 210, rz: 140, h: 50, label: "BASIN RING MASSIF" },
+    {
+      type: "craterField", n: 110, x: [-420, 420], z: [-300, 300], r: [2, 20], depth: [0.08, 0.15], rim: 0.2, soft: 0.5,
+      zMin: 9, blocks: 0.35, blocksMinR: 6, label: "CRATER",
+      keepOut: [{ x: -70, z: -160, r: 72 }, { x: 120, z: -64, r: 30 }, { x: -150, z: 70, r: 24 }],
+    },
+    { type: "noise", amp: 0.6, scale: 50, oct: 2, seed: 21, corridor: 9 },
+  ],
+  rockFields: [
+    { x: -16, z: 0, r: 2.6, n: 6, h: [1.0, 2.0], label: "BOULDER FIELD" },
+    { x: -16, z: 14, r: 7, n: 8, h: [1.0, 2.2], label: "BOULDER FIELD" },
+    { x: 34, z: -24, r: 13, n: 14, h: [1.0, 2.4], label: "BOULDER FIELD" },
+    { x: -30, z: -40, r: 12, n: 10, h: [1.0, 2.2], label: "BOULDER FIELD" },
+    { x: -70, z: -160, r: 95, n: 44, h: [1.2, 2.6], label: "ANCIENT CRATER BLOCKS" },
+    { x: 100, z: 0, r: 30, n: 18, h: [1.0, 2.4], label: "TALUS BOULDERS" },
+  ],
+  debris: { n: 1000, x: [-130, 130], z: [-45, 45], h: [0.06, 0.28] },
+  horizon: [
+    { az: 35, el: 5.5, w: 55, kind: "massif", label: "BASIN RING" },
+    { az: 95, el: 8.5, w: 42, kind: "massif", label: "BASIN RING" },
+    { az: 128, el: 4.5, w: 70, kind: "ridge" },
+    { az: 165, el: 7, w: 46, kind: "massif" },
+    { az: -150, el: 3.5, w: 80, kind: "ridge" },
+    { az: -70, el: 6, w: 50, kind: "massif" },
+  ],
+};
+
+export const SITE_DEFS = [TRANQUILLITATIS, HADLEY, TYCHO, FAR_SIDE];
 export const SITE_IDS = SITE_DEFS.map((s) => s.id);
 /** The full mission always lands here (its orbit cinematic, captions and PDI are Tranquillity's). */
 export const MISSION_SITE_ID = "tranquillitatis";
