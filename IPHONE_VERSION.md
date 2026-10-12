@@ -1,12 +1,12 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 91c520e**.
+This folder installs **BUILD 718ce0c**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 91c520e · 2026-10-12 11:05 UTC**
+> **LUNAVIA iOS · BUILD 718ce0c · 2026-10-12 12:31 UTC**
 
-If your iPhone shows any other BUILD, it is not running this download. For example, **cb874af** is the old `claude/ios-app` download from 10 October. How to install and update: **INSTALL_ON_IPHONE.md**.
+If your iPhone shows any other BUILD, it is not running this download. For example, **91c520e** is the previous release, before the lunar module fidelity pass, and **cb874af** is the old `claude/ios-app` download from 10 October. How to install and update: **INSTALL_ON_IPHONE.md**.
 
 ## What is in it
 
@@ -23,13 +23,13 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Lunar orbit: no spinning Moon, Moon-anchored arrival | #6 | 82a32ff, 22cef22 |
 | Lunar touchdown fidelity (final 50 m, legs, dust, CONTACT LIGHT / ENGINE STOP) | #7 | d5e31db |
 | Lunar landing sites (Tranquillitatis, Fra Mauro, Hadley–Apennine, Tycho) | #8 | 967162b |
-| Release build tooling (this branch) | — | 91c520e |
+| Release build tooling | — | 91c520e |
+| Lunar module visual fidelity (two-stage LM, materials, legs, engine, plume, framing) | `claude/lunar-module-fidelity` | b9e4298, 0c2bd8f, 718ce0c |
 
 ## How this bundle was made and checked
 
-- **Built from a clean checkout of 91c520e**, with dependencies installed from the lockfile (`yarn install --frozen-lockfile`).
-- **Reproducible.** A second clean build gave byte-identical files (239 of them).
-- **No game changes.** Apart from the BUILD label, the game code is exactly that of #8.
+- **Built from the clean tree at 718ce0c** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **The lunar module fidelity pass changes only how the module looks and how large it is on screen.** Physics, difficulty, hazards, scoring and training are unchanged.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
