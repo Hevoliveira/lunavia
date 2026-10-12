@@ -1313,3 +1313,167 @@ x, safety and label).
   `DescentGame` steps quality down on a device that cannot hold its frame rate: pixel ratio
   first (2 → 1.5 → 1.25), then the real-time shadows. `window.__lvQuality` pins a step for
   validation.
+
+## 31. iPhone release branch
+
+**Symptom.** The iPhone kept running an old game after a fresh ZIP, Clean Build Folder and
+install.
+
+**Cause.** The wrong branch was downloaded; nothing on the Mac or the phone was at fault. The
+work was delivered as a stack of branches, each with its own correct bundle:
+
+| Branch (PR) | Adds | Bundle BUILD |
+|---|---|---|
+| `claude/ios-app` (#3) | iOS app, COMMANDER rebalance, Flight IV, Earth-orbit finale | cb874af |
+| `claude/flight-training-center` (#4) | Training Center | 4bdfab9 |
+| `claude/mission-control-voice` (#5) | Mission Control voice | 8e64f2a |
+| `claude/lunar-orbit-fix` (#6) | lunar orbit rotation fix | 22cef22 |
+| `claude/lunar-touchdown-fidelity` (#7) | touchdown fidelity | d5e31db |
+| `claude/lunar-landing-sites` (#8) | landing sites | 967162b |
+
+`INSTALL_ON_IPHONE.md` told the reader to download `claude/ios-app` every time, and every
+later branch inherited that line. That download is a consistent, working build from
+10 October, without any later feature. PR #2 (playable reentry) is already contained in
+`claude/ios-app`. There is one Xcode project and one bundle identifier on every branch. No
+Capacitor config has a server URL, and there is no service worker.
+
+**Fix.**
+- **The release branch.** `claude/ios-release` is the tip of the stack, with no merges,
+  plus:
+  - this release tooling;
+  - its own bundle;
+  - `IPHONE_VERSION.md` at the top, naming the BUILD and its features.
+- **The guide.** `INSTALL_ON_IPHONE.md` now names `claude/ios-release` and gives the direct
+  ZIP link.
+- **Reproducible builds.** The build identity uses the source commit's time, so rebuilding
+  a commit gives byte-identical files.
+- **The verifier.** `yarn ios:verify` (`scripts/verify-ios-bundle.js`, also run by
+  `yarn ios:sync`) checks that:
+  - `public/build-info.json` and the compiled label name the same build;
+  - `index.html` loads a bundle that exists, with no leftovers;
+  - no Capacitor server URL is set;
+  - Xcode's Resources phase copies `public/`, and there is a single bundle identifier;
+  - no web source changed since the bundle was built;
+  - every feature marker in the source is in the bundle.
+
+  It also runs on an unpacked GitHub ZIP: `node scripts/verify-ios-bundle.js <folder>`.
+
+**Releasing a new iPhone build.**
+1. Bring `claude/ios-release` up to the newest finished branch (fast-forward or merge).
+2. Commit the source, run `yarn ios:sync` on the clean tree, and update
+   `IPHONE_VERSION.md`.
+3. Commit, then push.
+
+## 32. Lunar module visual fidelity
+
+**Why the LM looked like a placeholder** (audited on BUILD 91c520e):
+- **Shape.** About a dozen primitives:
+  - a plain box cabin with one black rectangle for a window;
+  - a smooth eight-sided gold cylinder for the descent stage;
+  - an eight-sided cone for the engine;
+  - one antenna;
+  - landing gear of uniform thin silver rods.
+
+  Nothing broke the silhouette, so from the chase camera it read as a box on a drum.
+- **Materials.** They had no texture. They were metallic, but nothing in the scene was
+  there to reflect, so the metal came out flat dark grey and the gold came out mustard.
+- **Light and shadow.** The LM did not receive shadows (no self-shadowing). The only
+  ground contact cue was the four pad shadows.
+- **Engine.** The plume was a pale cone hung under a small nozzle, with no visible
+  link to the engine.
+- **Size.** 46–62 px tall on an 852×393 phone, 15–21 % of the clear view; 11 meshes,
+  1,424 triangles.
+
+**The new LM.**
+- **Shape: `data/lmDesign.js`** (pure, core three.js, tested in `lmDesign.test.js`).
+  - *Ascent stage:*
+    - a faceted cabin with bevelled edges and a raked front with the hatch;
+    - a dark window facet with two framed triangular windows;
+    - darker side panels;
+    - side propellant pods with LUNAVIA's orange bands;
+    - an aft equipment bay with radiator ribs;
+    - four RCS quads on booms, each with four thrusters;
+    - a docking tunnel, a rendezvous radar, a steerable S-band dish and two VHF whips.
+  - *Descent stage:*
+    - an octagonal foil body with framed equipment bays (dark foil on the sides, gold
+      fore and aft);
+    - a top rim band and deck, leg outriggers, the porch with handrails and an
+      equipment box;
+    - a heat shield, the engine skirt, a gimbal ring and a real bell nozzle.
+  - *Gear (`legFrames`, built per frame in `LanderModel`):*
+    - a foil-wrapped primary sleeve, a shock-absorber collar and a piston that strokes
+      on touchdown;
+    - two secondary struts and a V downlock truss;
+    - dished footpads on ball joints;
+    - the probes, with the ladder on the front leg.
+- **Contact contract (tested).** These are unchanged: footpad bottoms, centres and
+  radius; the nozzle exit plane; the 7 m height; the probe length. They are what
+  `touchdownFx` and the physics use, so drawn = flown still holds.
+- **Materials: `components/LanderModel.jsx`.**
+  - *Paint:* matte paint with procedural panel seams, fasteners and light wear; a
+    darker anodised paint.
+  - *Foil:* crinkled gold and black foil (procedural, used as colour, roughness and
+    bump).
+  - *Other surfaces:* bare metal; a dark engine with a lining that glows from the
+    throat with thrust; dark reflective glass; matte black; LUNAVIA orange.
+  - *Environment:* a small PMREM environment (black sky over bright regolith, one
+    per renderer). It lights metal and foil from below like the sunlit ground, without
+    softening the shadows.
+- **Engine.**
+  - The plume starts at the nozzle exit with the exit's radius: an alpha-blended veil
+    that reads over bright ground, and an additive core.
+  - The bell lining glows from the throat with thrust, so the flame comes out of the
+    engine.
+- **Light and depth.**
+  - Every LM mesh casts and receives the site Sun's real-time shadow, so the parts
+    self-shadow.
+  - `GroundMarks` adds a soft occlusion patch draped on the terrain under the descent
+    stage from about 10 m down, as well as the pad shadows.
+- **Size.**
+  - `LANDER_FRAC_NEAR/FAR` go from 0.225/0.175 to 0.255/0.205 of the clear view's
+    height, about 13–17 % larger.
+  - The framing logic is unchanged: it still includes the LZ and the touchdown point
+    when the zoom budget allows, and points to them otherwise.
+
+**Not changed:** physics, thrust, fuel, difficulty, COMMANDER settings, hazards,
+touchdown, scoring, training rules, reentry.
+
+**Cost:** see Validation below. The body is one merged geometry per material, about
+15 draw calls, and the gear is two instanced meshes.
+
+**Validation** (headless Chromium with software rendering, in-page autopilot from each
+difficulty's real start, BUILD 91c520e before vs this branch):
+- **Jest:** 213 tests pass (6 new in `lmDesign.test.js`).
+- **Landings:** all reached OBJECTIVE COMPLETE with no page errors:
+  - ASTRONAUT at 667×375, 852×393 and 1280×800;
+  - CADET and COMMANDER at 852×393;
+  - COMMANDER at Tycho;
+  - CADET at Hadley, 932×430.
+- **Nothing covered:** at 300, 100, 20 and 5 m and at touchdown, neither the
+  projected touchdown point nor the primary LZ fell inside the LM's screen box in
+  any run.
+- **Touch:** real multi-touch on the on-screen buttons (THR, THR + RCS together,
+  TILT) moves the LM as before, at 852×393 and 667×375.
+- **Size on an 852×393 phone:**
+
+  | | 300 m | 100 m | 20 m | 5 m | touchdown |
+  |---|---|---|---|---|---|
+  | Before | 46 px | 61 px | 55 px | 62 px | 62 px |
+  | After | 54 px | 64 px | 62 px | 71 px | 70 px |
+
+- **Cost of the LM itself:**
+
+  | | Meshes | Triangles |
+  |---|---|---|
+  | Before | 11 | 1,424 |
+  | After | 14 | 8,150 |
+
+- **Final 50 m, whole scene:**
+
+  | Site | Frame median | Draw calls (median / max) | Triangles |
+  |---|---|---|---|
+  | Tranquillity | 200 → 200 ms | 31/34 → 34/36 | 67.7k → 75.3k |
+  | Tycho | 200 → 217–233 ms (3 runs) | 30/33 → 33/35 | 83.9k → 91.5k |
+
+  The Tycho cost is the physically based shading of the LM's pixels in the
+  software renderer. On the phone, the descent's quality step-down still applies.

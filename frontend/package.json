@@ -72,7 +72,8 @@
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
-    "ios:sync": "GENERATE_SOURCEMAP=false craco build && rm -rf build/_dbg && cap sync ios",
+    "ios:sync": "GENERATE_SOURCEMAP=false craco build && rm -rf build/_dbg && cap sync ios && node scripts/verify-ios-bundle.js",
+    "ios:verify": "node scripts/verify-ios-bundle.js",
     "ios:open": "cap open ios"
   },
   "browserslist": {

@@ -53,7 +53,8 @@ instead. The remaining overrides (`prefersStatusBarHidden`, `supportedInterfaceO
 
 | Command | What it does |
 |---|---|
-| `yarn ios:sync` | Production build without source maps (stamped with the build identity), drop `build/_dbg`, copy into the iOS project (`cap sync ios`). Run after committing any change to the web game, then commit `ios/App/App/public`. The Mac needs neither: the committed bundle is complete. |
+| `yarn ios:sync` | Production build without source maps (stamped with the build identity), drop `build/_dbg`, copy into the iOS project (`cap sync ios`), then `yarn ios:verify`. Run after committing any change to the web game, then commit `ios/App/App/public`. The Mac needs neither: the committed bundle is complete. |
+| `yarn ios:verify` | `scripts/verify-ios-bundle.js`: checks that `ios/App/App/public` is the build of the source next to it and that Xcode packages exactly that (below). `node scripts/verify-ios-bundle.js <unpacked ZIP folder>` checks a GitHub download the same way. |
 | `yarn ios:open` | Open the project in Xcode (macOS only). |
 
 ## Build identity and stale installs
@@ -61,9 +62,11 @@ instead. The remaining overrides (`prefersStatusBarHidden`, `supportedInterfaceO
 Every production build carries the commit and time it was built from:
 
 - `craco.config.js` reads `git rev-parse --short=7 HEAD` (plus `+` if `src/`, `public/` or the
-  build config had uncommitted changes) and the UTC time, inlines them as
-  `REACT_APP_BUILD_COMMIT` / `REACT_APP_BUILD_TIME`, and writes `build/build-info.json`.
-  `yarn ios:sync` copies both into `ios/App/App/public`.
+  build config had uncommitted changes) and that commit's time (UTC), inlines them as
+  `REACT_APP_BUILD_COMMIT` / `REACT_APP_BUILD_TIME`, and writes `build/build-info.json`
+  (also with the full `source` hash). `yarn ios:sync` copies both into `ios/App/App/public`.
+  Using the commit's time rather than the clock makes the build reproducible: building the
+  same commit again gives byte-identical files. Only a `+` build carries the clock time.
 - The home screen shows `LUNAVIA iOS · BUILD <commit> · <time>` (`components/BuildBadge.jsx`,
   `lib/buildInfo.js`; `WEB` instead of `iOS` in a browser). Tapping it adds the bundle
   fingerprint (`main.<hash>.js`), the viewport, whether the phone layout is on, and
@@ -86,9 +89,17 @@ The app is iPhone-only and landscape-only, so this is the layout it gets anyway.
 variant forms carry one `html` of specificity, so they still beat `sm`/`md`/`lg` as the
 screen did, and lose to `hover:`/`focus:`.
 
-When an iPhone shows an older UI than the repository holds, the repository bundle is not
-the cause if `ios/App/App/public/static/js/main.*.js` contains the new UI. The causes left
-are on the Mac or the phone:
+When an iPhone shows an older UI than expected, first check **which branch was downloaded**.
+The features were delivered as a stack of branches, each containing the ones before it
+(`claude/ios-app` → `flight-training-center` → `mission-control-voice` → `lunar-orbit-fix` →
+`lunar-touchdown-fidelity` → `lunar-landing-sites`). Each branch's bundle is correct for that
+branch, so a download of an early branch (until `claude/ios-release`, the install guide named `claude/ios-app`) installs
+an early game without any error. The iPhone release is the branch **`claude/ios-release`**:
+the tip of the stack plus its own bundle, with `IPHONE_VERSION.md` at the top naming the
+BUILD and its features. `yarn ios:verify` lists the features a bundle contains.
+
+If the right branch was downloaded, the repository bundle is not the cause when
+`yarn ios:verify` passes on it. The causes left are on the Mac or the phone:
 
 - an old project folder opened from Xcode's recent-projects list;
 - an incremental build reusing DerivedData, since the same ZIP folder name gives the same
