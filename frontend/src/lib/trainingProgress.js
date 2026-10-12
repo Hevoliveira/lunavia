@@ -8,7 +8,11 @@
  */
 const KEY = "lunavia.training.v2";
 
-export const progressKey = (discipline, scenarioId, difficulty) => `${discipline}.${scenarioId}.${difficulty}`;
+// Lunar landing records are kept per landing site. The mission's own site
+// (Mare Tranquillitatis) keeps the original keys, so earlier records stay.
+const MISSION_SITE = "tranquillitatis";
+export const progressKey = (discipline, scenarioId, difficulty, site = MISSION_SITE) =>
+  discipline === "landing" && site && site !== MISSION_SITE ? `landing@${site}.${scenarioId}.${difficulty}` : `${discipline}.${scenarioId}.${difficulty}`;
 
 export function loadProgress() {
   try {
@@ -30,9 +34,9 @@ const min = (a, b) => (a === null || a === undefined ? b : b === null || b === u
  * { success, landed, rank, label, grade?, fuelPct?, accuracy?, peakG? }.
  * Personal bests count safe landings / survived entries only.
  */
-export function recordAttempt(discipline, scenarioId, difficulty, rec) {
+export function recordAttempt(discipline, scenarioId, difficulty, rec, site = MISSION_SITE) {
   const p = loadProgress();
-  const k = progressKey(discipline, scenarioId, difficulty);
+  const k = progressKey(discipline, scenarioId, difficulty, site);
   const e = p[k] || { attempts: 0, successes: 0, best: null };
   e.attempts += 1;
   if (rec.success) {
@@ -67,11 +71,12 @@ export function totals(p) {
   return { attempts, successes, completed };
 }
 
-/** Personal bests for one discipline and difficulty, across its scenarios. */
-export function bestsFor(p, discipline, difficulty, scenarioIds) {
+/** Personal bests for one discipline and difficulty, across its scenarios (and landing sites). */
+export function bestsFor(p, discipline, difficulty, scenarioIds, sites = [MISSION_SITE]) {
   const out = { attempts: 0, successes: 0, bestGrade: null, bestFuel: null, bestAccuracy: null, bestPeakG: null, passed: [] };
-  scenarioIds.forEach((id) => {
-    const e = p[progressKey(discipline, id, difficulty)];
+  const keys = scenarioIds.flatMap((id) => sites.map((site) => [id, progressKey(discipline, id, difficulty, site)]));
+  keys.forEach(([id, key]) => {
+    const e = p[key];
     if (!e) return;
     out.attempts += e.attempts || 0;
     out.successes += e.successes || 0;
@@ -79,7 +84,7 @@ export function bestsFor(p, discipline, difficulty, scenarioIds) {
     out.bestFuel = max(out.bestFuel, e.bestFuel);
     out.bestAccuracy = min(out.bestAccuracy, e.bestAccuracy);
     out.bestPeakG = min(out.bestPeakG, e.bestPeakG);
-    if (e.successes > 0) out.passed.push(id);
+    if (e.successes > 0 && !out.passed.includes(id)) out.passed.push(id);
   });
   return out;
 }

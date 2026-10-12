@@ -1,19 +1,17 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Stars, useTexture } from "@react-three/drei";
-import { useRef, useState, useEffect, useMemo, Suspense } from "react";
+import { PerformanceMonitor } from "@react-three/drei";
+import { useRef, useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import * as THREE from "three";
 import { LanderRig, RegolithSheet, GroundMarks, createTouchdownFx } from "@/components/scenes/TouchdownFx";
+import { SiteTerrain, SiteRocks, SiteSky, SiteSun, SiteMarkers, LandingPoint } from "@/components/scenes/LunarSite";
 import HoldButton from "@/components/HoldButton";
 import { useCompact } from "@/hooks/useMediaQuery";
 import { solveDistance } from "@/lib/cameraFraming";
 import CockpitOverlay from "@/components/CockpitOverlay";
 import AbortModal from "@/components/AbortModal";
-import {
-  DIFFICULTY,
-  HAZARDS,
-  SAFE_ZONES,
-  evaluateGround,
-} from "@/data/landingPhysics";
+import { DIFFICULTY } from "@/data/landingPhysics";
+import { getSite, siteStart, MISSION_SITE_ID } from "@/data/landingSites";
+import { buildTerrain } from "@/data/terrainMesh";
 import {
   assessDescent,
   profileLabel,
@@ -24,8 +22,8 @@ import {
   CAUTION,
   DANGER,
 } from "@/data/descentProfile";
-import { initialState, stepFrame, gradeTouchdown, CONTACT_ALT } from "@/data/landerSim";
-import { LM, RESULT_DELAY, contactLit, sceneAlt, touchdownCamera, touchdownPlan } from "@/data/touchdownFx";
+import { stepFrame, gradeTouchdown, CONTACT_ALT } from "@/data/landerSim";
+import { LM, RESULT_DELAY, SHOT, WORLD_X, contactLit, touchdownCamera, touchdownPlan } from "@/data/touchdownFx";
 import CoachCard from "@/components/training/CoachCard";
 import { createDescentMonitor } from "@/audio/descentComms";
 import { VERBOSITY } from "@/audio/commsDirector";
@@ -34,190 +32,20 @@ import {
   Pause, Play, X,
 } from "lucide-react";
 
-const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
-const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
-
 /* ============================================================
  * 3D scene layer
- * ============================================================ */
-
-/*
- * drei's useTexture caches a texture for the whole session and every Canvas
- * that uses it registers a "dispose" listener on it, which keeps that renderer,
- * its canvas and the HUD around it alive after the Canvas unmounts (one per
- * descent retry). Disposing on unmount releases them; the next Canvas simply
- * re-uploads the cached image.
+ * ============================================================
+ * The landing site itself (terrain, rocks, sky, Sun, landing zones, unsafe
+ * ground and the landing point designator) is drawn by scenes/LunarSite from
+ * the same site data the physics flies (data/landingSites). Physics metres
+ * map to scene units at WORLD_X horizontally and through the site's vertical
+ * scale (true proportion near the ground).
  */
-const useReleaseOnUnmount = (tex) => useEffect(() => () => tex.dispose(), [tex]);
-
-function MoonSurface() {
-  const [tex] = useTexture([MOON_MAP]);
-  useReleaseOnUnmount(tex);
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-      <planeGeometry args={[300, 300, 1, 1]} />
-      <meshStandardMaterial
-        map={tex}
-        bumpMap={tex}
-        bumpScale={0.2}
-        color="#c8c2b3"
-        roughness={1}
-      />
-    </mesh>
-  );
-}
-
-// Physics metres → scene units. The lander, the LPD and every surface marker
-// must share this mapping, or the drawn zones and hazards disagree with the
-// ground the touchdown is actually graded against.
-const WORLD_X = 0.5;
-
-function LandingSiteMarkers({ physRef }) {
-  // Progressive reveal: the guidance computer shows only the PROJECTED LANDING AREA
-  // at high altitude. As the LM descends the terrain visual detail — including
-  // hazards and alternative sites — becomes readable to the pilot.
-  const primaryRef = useRef();
-  const altRefs = useRef([]);
-  const hazardRefs = useRef([]);
-
-  useFrame(() => {
-    if (!physRef.current) return;
-    const alt = physRef.current.alt;
-    // Reveal curves (based on real Apollo LM landing timeline where landmarks
-    // become distinguishable in the last few hundred meters).
-    const altReveal = Math.max(0, Math.min(1, (500 - alt) / 300));   // alt LZs fade in 500 → 200m
-    const hazardReveal = Math.max(0, Math.min(1, (400 - alt) / 250)); // hazards fade in 400 → 150m
-    if (primaryRef.current) primaryRef.current.material.opacity = 0.9;
-    altRefs.current.forEach((m) => {
-      if (m && m.material) m.material.opacity = 0.85 * altReveal;
-    });
-    hazardRefs.current.forEach((entry) => {
-      if (!entry) return;
-      entry.forEach((m) => {
-        if (m && m.material) {
-          m.material.opacity = 0.55 * hazardReveal;
-          m.material.transparent = true;
-        }
-        if (m && m.visible !== undefined) m.visible = hazardReveal > 0.02;
-      });
-    });
-  });
-
-  // renderOrder 2: drawn after the regolith sheet, so the dust can never hide
-  // the landing zones, the hazards or the LPD (the landing stays fair).
-  return (
-    <group renderOrder={2}>
-      {SAFE_ZONES.map((z, i) => (
-        <mesh
-          key={i}
-          ref={(el) => {
-            if (z.primary) primaryRef.current = el;
-            else altRefs.current[i] = el;
-          }}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[z.x * WORLD_X, 0.02, 0]}
-        >
-          <ringGeometry args={[z.r * WORLD_X - 0.3, z.r * WORLD_X, 40]} />
-          <meshBasicMaterial
-            color={z.primary ? "#FF3B00" : "#4a90e2"}
-            transparent
-            opacity={z.primary ? 0.9 : 0}
-          />
-        </mesh>
-      ))}
-      {HAZARDS.map((h, i) => {
-        const hazardMeshes = [];
-        return (
-          <group key={"h" + i} ref={(el) => (hazardRefs.current[i] = hazardMeshes)}>
-            <mesh
-              ref={(el) => el && hazardMeshes.push(el)}
-              rotation={[-Math.PI / 2, 0, 0]}
-              position={[h.x * WORLD_X, 0.02, 0]}
-            >
-              <circleGeometry args={[h.r * WORLD_X, 32]} />
-              <meshBasicMaterial color="#3a1a0a" transparent opacity={0} />
-            </mesh>
-            {h.kind === "crater" && (
-              <mesh
-                ref={(el) => el && hazardMeshes.push(el)}
-                rotation={[-Math.PI / 2, 0, 0]}
-                position={[h.x * WORLD_X, 0.03, 0]}
-              >
-                <ringGeometry args={[h.r * WORLD_X - 0.2, h.r * WORLD_X, 32]} />
-                <meshBasicMaterial color="#1a0a05" transparent opacity={0} />
-              </mesh>
-            )}
-            {h.kind === "boulders" &&
-              Array.from({ length: 6 }).map((_, k) => {
-                const a = (k / 6) * Math.PI * 2;
-                return (
-                  <mesh
-                    key={k}
-                    ref={(el) => el && hazardMeshes.push(el)}
-                    position={[
-                      (h.x + Math.cos(a) * (h.r * 0.6)) * WORLD_X,
-                      0.35,
-                      Math.sin(a) * (h.r * 0.6) * WORLD_X,
-                    ]}
-                  >
-                    <dodecahedronGeometry args={[0.55, 0]} />
-                    <meshStandardMaterial
-                      color="#7a736a"
-                      roughness={1}
-                      transparent
-                      opacity={0}
-                    />
-                  </mesh>
-                );
-              })}
-          </group>
-        );
-      })}
-    </group>
-  );
-}
-
-/** Landing Point Designator — a small crosshair on the surface indicating
- * the extrapolated touchdown location from current vx and altitude. */
-function LPD({ physRef, cfg }) {
-  const ref = useRef();
-  const materialRef = useRef();
-  useFrame(() => {
-    if (!ref.current || !physRef.current) return;
-    const p = physRef.current;
-    // Where the vehicle comes down if the drift is left alone and the descent
-    // follows the recommended rate schedule (descentProfile).
-    const targetX = predictTouchdownX(p, cfg);
-    ref.current.position.set(targetX * WORLD_X, 0.06, 0);
-    // Fade LPD in as we get below 800m
-    if (materialRef.current) {
-      materialRef.current.opacity = Math.max(0, Math.min(0.9, (800 - p.alt) / 400));
-    }
-    ref.current.visible = p.alt > 3;
-  });
-  return (
-    <group ref={ref} renderOrder={2}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.6, 1.0, 32]} />
-        <meshBasicMaterial ref={materialRef} color="#FFDD00" transparent opacity={0} />
-      </mesh>
-      {/* cross */}
-      <mesh position={[0, 0.01, 0]}>
-        <boxGeometry args={[2.4, 0.02, 0.08]} />
-        <meshBasicMaterial color="#FFDD00" transparent opacity={0.7} />
-      </mesh>
-      <mesh position={[0, 0.01, 0]}>
-        <boxGeometry args={[0.08, 0.02, 2.4]} />
-        <meshBasicMaterial color="#FFDD00" transparent opacity={0.7} />
-      </mesh>
-    </group>
-  );
-}
 
 /** Projected path to the LPD along the recommended descent: a faint dashed
  * arc from the lander to the touchdown point, so the trajectory stays readable
  * when the close chase camera cannot hold the LPD itself in frame. */
-function TouchdownPath({ physRef, view, cfg }) {
+function TouchdownPath({ physRef, view, cfg, site, predict }) {
   const N = 40;
   const line = useMemo(() => {
     const g = new THREE.BufferGeometry();
@@ -237,12 +65,14 @@ function TouchdownPath({ physRef, view, cfg }) {
     if (!p) return;
     line.visible = view !== "COCKPIT" && p.alt > 3;
     if (!line.visible) return;
-    const path = nominalDescent(Math.max(0, p.alt - CONTACT_ALT), -p.vy, cfg, N - 1);
+    // down to the ground at the predicted touchdown point (landingSites contact)
+    const g = site.contactGround(predict(p));
+    const path = nominalDescent(Math.max(0, p.y - g - CONTACT_ALT), -p.vy, cfg, N - 1);
     const a = line.geometry.attributes.position.array;
     for (let i = 0; i < N; i++) {
       const [t, h] = path[i];
       a[i * 3] = (p.xPos + p.vx * t) * WORLD_X;
-      a[i * 3 + 1] = sceneAlt(h + (i < N - 1 ? CONTACT_ALT : 0));
+      a[i * 3 + 1] = site.scale.y(g + h + (i < N - 1 ? CONTACT_ALT : 0));
       a[i * 3 + 2] = 0;
     }
     line.geometry.attributes.position.needsUpdate = true;
@@ -250,21 +80,6 @@ function TouchdownPath({ physRef, view, cfg }) {
     line.material.opacity = Math.max(0, Math.min(0.5, (800 - p.alt) / 400));
   });
   return <primitive object={line} />;
-}
-
-function DistantEarth() {
-  const [tex] = useTexture([EARTH_MAP]);
-  useReleaseOnUnmount(tex);
-  const ref = useRef();
-  useFrame((_, dt) => {
-    if (ref.current) ref.current.rotation.y += dt * 0.02;
-  });
-  return (
-    <mesh ref={ref} position={[-40, 45, -100]}>
-      <sphereGeometry args={[10, 64, 64]} />
-      <meshStandardMaterial map={tex} emissive="#0a1830" emissiveIntensity={0.15} />
-    </mesh>
-  );
 }
 
 // LanderModel origin to footpad bottom: the pads, not the descent stage, meet
@@ -286,13 +101,16 @@ const LANDER_FOOT = LM.foot;
  * the camera back; the edge indicator points to it instead.
  * NAV is the top-down map and frames the lander, LPD and LZ together.
  * ------------------------------------------------------------------ */
-const EXT_DIR = new THREE.Vector3(-11, 8, 12).normalize(); // chase: behind-left, looking down
+// chase: behind the LM along its direction of flight (dir +1: flying towards +x), to the left, looking down
+const extDirFor = (dir) => new THREE.Vector3(-11 * dir, 8, 12).normalize();
 const NAV_DIR = new THREE.Vector3(0, 1, 0.0001).normalize(); // top-down map
 const NAV_MIN = 30;
 const NAV_MAX = 120;
 const FRAME_MARGIN = 0.82;
-// Lander height in scene units (LanderModel at scale 1.2: footpads to antenna).
-const LANDER_H = 1.75;
+// Lander height in scene units (footpads to antenna, 7 m at true scale).
+const LANDER_H = LM.height;
+// The camera never goes closer than this to the terrain (scene units).
+const CAMERA_CLEARANCE = 1.2;
 // Share of the clear area's height the lander occupies: closest / furthest
 // (nominal, for a vertical view; the oblique chase view reads ~8 % smaller).
 const LANDER_FRAC_NEAR = 0.225;
@@ -324,8 +142,15 @@ function placeEdgeChip(el, s, cr, halfW) {
 
 const insideRect = (s, cr, pad) => s.z < 1 && s.x > cr.x0 + pad && s.x < cr.x1 - pad && s.y > cr.y0 + pad && s.y < cr.y1 - pad;
 
-function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndicatorRef, fx }) {
+function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndicatorRef, fx, site, predict }) {
   const { camera, size } = useThree();
+  const EXT_DIR = useMemo(() => extDirFor(site.approach.dir), [site]);
+  const terrain = useMemo(() => buildTerrain(site), [site]);
+  // keep the camera above the drawn ground
+  const clampToGround = () => {
+    const gy = site.scale.y(terrain.lookup(camera.position.x / WORLD_X, camera.position.z / WORLD_X)) + CAMERA_CLEARANCE;
+    if (camera.position.y < gy) camera.position.y = gy;
+  };
   const pos = useRef(null);
   const shot = useRef(null); // the post-touchdown shot, once started
   const lastCentre = useRef(null); // principal point last used (CSS px)
@@ -334,10 +159,10 @@ function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndica
   const keepLz = useRef(true);
   const pts = useMemo(
     () => ({
-      lander: { pos: new THREE.Vector3(), rad: 1.4 },
-      lpd: { pos: new THREE.Vector3(), rad: 1.6 },
-      lean: { pos: new THREE.Vector3(), rad: 1.6 },
-      lz: { pos: new THREE.Vector3(0, 0, 0), rad: 3.2 },
+      lander: { pos: new THREE.Vector3(), rad: 2.8 },
+      lpd: { pos: new THREE.Vector3(), rad: 2.6 },
+      lean: { pos: new THREE.Vector3(), rad: 2.6 },
+      lz: { pos: new THREE.Vector3(0, 0, 0), rad: 3.6 },
       sol: { ctr: new THREE.Vector3(), dist: 0 },
     }),
     []
@@ -351,8 +176,8 @@ function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndica
     const c = clearRef.current;
     const cr = c && c.x1 - c.x0 > 80 && c.y1 - c.y0 > 80 ? c : { x0: 0, y0: 0, x1: W, y1: H };
     const lx = p.xPos * WORLD_X;
-    // The LM as drawn (stretched vertical scale near the ground, settle after touchdown).
-    const ly = Math.max(0, fx.padY);
+    // The LM as drawn (the site's vertical scale, settle after touchdown).
+    const ly = fx.padY;
     const k = 1 - Math.exp(-delta * 2.2);
 
     // After a landing (EXTERNAL view): one slow crane down and in to a low
@@ -362,10 +187,11 @@ function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndica
         const lc = lastCentre.current || { x: W / 2, y: H / 2 };
         shot.current = { from: { pos: pos.current.toArray(), look: look.current.toArray() }, cx: lc.x, cy: lc.y };
       }
-      const sh = touchdownCamera(state.clock.elapsedTime - fx.touchAt, shot.current.from, [fx.x, 0, 0]);
+      const sh = touchdownCamera(state.clock.elapsedTime - fx.touchAt, shot.current.from, [fx.x, fx.groundY, 0], SHOT.swing * site.approach.dir);
       pos.current.set(sh.pos[0], sh.pos[1], sh.pos[2]);
       look.current.set(sh.look[0], sh.look[1], sh.look[2]);
       camera.position.copy(pos.current);
+      clampToGround();
       camera.lookAt(look.current);
       // The HUD fades away during the shot, so the picture recentres with it.
       const cx = shot.current.cx + (W / 2 - shot.current.cx) * sh.k;
@@ -380,10 +206,10 @@ function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndica
 
     if (view === "COCKPIT") {
       camera.clearViewOffset();
-      _v.set(lx, ly + LANDER_FOOT + 0.7, 0);
+      _v.set(lx, ly + LANDER_FOOT + 1.5, 0);
       if (!pos.current) pos.current = _v.clone();
       pos.current.lerp(_v, Math.min(1, delta * 3));
-      look.current.lerp(_c.set(lx + 6, Math.max(0, ly - 8), 0), Math.min(1, delta * 3));
+      look.current.lerp(_c.set(lx + 6 * site.approach.dir, Math.max(fx.groundY, ly - 8), 0), Math.min(1, delta * 3));
       camera.position.copy(pos.current);
       camera.lookAt(look.current);
       if (lzIndicatorRef.current) lzIndicatorRef.current.style.display = "none";
@@ -394,7 +220,8 @@ function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndica
 
     // Points of interest
     pts.lander.pos.set(lx, ly + LANDER_H / 2, 0);
-    pts.lpd.pos.set(predictTouchdownX(p, cfg) * WORLD_X, 0, 0);
+    const xPred = predict(p);
+    pts.lpd.pos.set(xPred * WORLD_X, site.scale.y(site.contactGround(xPred)), 0);
     const nav = view === "NAV";
     const dir = nav ? NAV_DIR : EXT_DIR;
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
@@ -464,11 +291,12 @@ function DescentCamera({ physRef, cfg, view, clearRef, lzIndicatorRef, lpdIndica
       look.current.lerp(sol.ctr, k);
     }
     camera.position.copy(pos.current);
+    clampToGround();
     camera.lookAt(look.current);
     // A failed landing: one short, restrained jolt of the camera.
     if (fx.touchAt != null && fx.plan && fx.plan.crashed) {
       const t = state.clock.elapsedTime - fx.touchAt;
-      const a = 0.07 * Math.exp(-t / 0.18) * (t >= 0 ? 1 : 0);
+      const a = 0.14 * Math.exp(-t / 0.18) * (t >= 0 ? 1 : 0);
       camera.position.x += a * Math.sin(t * 61);
       camera.position.y += a * Math.sin(t * 47 + 1.3);
     }
@@ -814,15 +642,22 @@ function CompactDescentHud({
  *  - onSuccess(result), onCrash(result), onAbort()
  *  - init: optional flight-state override for the Training Center (alt, vy,
  *    vx, xPos, fuel). The vehicle, limits and grading stay the difficulty's.
+ *  - site: landing site id (data/landingSites); the mission's own by default.
  *  - coach(d): optional Training Center instructor; returns a line or null.
  *  - holdSeconds: optional "starts in" hold before the physics runs (training).
  */
-export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess, onCrash, onAbort, init = null, coach = null, holdSeconds = 0 }) {
+export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess, onCrash, onAbort, init = null, site: siteId = MISSION_SITE_ID, coach = null, holdSeconds = 0 }) {
   const cfg = DIFFICULTY[difficulty] || DIFFICULTY.ASTRONAUT;
-  // Physics state, created once: the mission's start or a training start.
+  const site = useMemo(() => getSite(siteId), [siteId]);
+  // Projected touchdown point over the site's terrain (descentProfile).
+  const predict = useCallback((p) => predictTouchdownX(p, cfg, site), [cfg, site]);
+  // Physics state, created once: the site's mission start or a training start.
   const startRef = useRef(null);
   // window.__lvDescentInit: validation tooling only (start the final approach at a set state).
-  if (!startRef.current) startRef.current = { ...initialState(cfg), ...(init || {}), ...((typeof window !== "undefined" && window.__lvDescentInit) || {}) };
+  if (!startRef.current) {
+    const tool = (typeof window !== "undefined" && window.__lvDescentInit) || null;
+    startRef.current = siteStart(site, cfg, init || tool ? { ...(init || {}), ...(tool || {}) } : null);
+  }
   const start = startRef.current;
 
   const [alt, setAlt] = useState(start.alt);
@@ -846,6 +681,17 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const [projectedHazard, setProjectedHazard] = useState(false);
   const [projectedZoneLabel, setProjectedZoneLabel] = useState("PRIMARY LZ");
   const compact = useCompact();
+  // Rendering quality steps down if the device cannot hold its frame rate:
+  // pixel ratio first (2 → 1.5 → 1.25), then the real-time shadows. Never back up
+  // during a descent (no flip-flopping in the final metres).
+  // window.__lvQuality: validation tooling only (pin a quality step for screenshots and measurements).
+  const pinned = typeof window !== "undefined" && Number.isInteger(window.__lvQuality) ? window.__lvQuality : null;
+  const [quality, setQuality] = useState(pinned ?? 0);
+  const baseDpr = Math.min(2, (typeof window !== "undefined" && window.devicePixelRatio) || 1);
+  const dpr = [baseDpr, Math.min(baseDpr, 1.5), Math.min(baseDpr, 1.25), Math.min(baseDpr, 1.25)][quality];
+  useEffect(() => {
+    window.__lvDescentQualityNow = quality; // validation tooling (read-only)
+  }, [quality]);
   const gameRef = useRef(null);
   const sabProbeRef = useRef(null);
   const clearRef = useRef(null); // unobstructed screen rectangle (CSS px)
@@ -969,8 +815,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       const inp = inputRef.current;
       const p = phys.current;
 
-      // Sub-stepped integration (landerSim), shared with the balance tests.
-      stepFrame(p, inp, cfg, rawDt);
+      // Sub-stepped integration (landerSim) over the site's terrain, shared with the balance tests.
+      stepFrame(p, inp, cfg, rawDt, site);
 
       // Throttle state sync to ~15 Hz to avoid 7 setStates per frame
       stateSyncAccum += totalDt;
@@ -997,7 +843,8 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
 
       // Projected touchdown assessment (drives TERRAIN AHEAD warning + LPD label)
       if (shouldSync) {
-        const g = evaluateGround(predictTouchdownX(p, cfg));
+        // the ground under the LM's footprint at the projected touchdown point
+        const g = site.evaluate(predict(p));
         // Mission control reads the same assessment the HUD shows.
         if (audio && audio.say && p.alt > CONTACT_ALT) {
           const profile = assessDescent({ ...p, throttle: p.fuel > 0 ? p.throttle : 0, cfg });
@@ -1018,9 +865,12 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       if (!endedRef.current && p.alt <= CONTACT_ALT) {
         const finalTilt = p.tilt;
         const finalFuel = p.fuel;
-        const result = gradeTouchdown(p, cfg);
-        // The drawing plays out the graded touchdown (it does not decide it).
-        fxRef.current.plan = touchdownPlan({ vy: p.vy, vx: p.vx, tilt: p.tilt }, result, cfg);
+        const result = gradeTouchdown(p, cfg, site);
+        // The drawing plays out the graded touchdown (it does not decide it),
+        // settling onto the plane of the ground under the footpads.
+        const tr = result.terrain;
+        const plane = { tilt: (-Math.atan(tr.sx) * 180) / Math.PI, pitch: (-Math.atan(tr.sz) * 180) / Math.PI };
+        fxRef.current.plan = touchdownPlan({ vy: p.vy, vx: p.vx, tilt: p.tilt }, result, cfg, plane);
         const impact = Math.min(1, Math.abs(p.vy) / cfg.safeVy);
         contactRef.current = true;
         setContactLight(true);
@@ -1160,29 +1010,32 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
       {/* 3D scene */}
       <div className="absolute inset-0 canvas-host">
         <Canvas
-          camera={{ position: [-8, 20, 14], fov: 45 }}
-          dpr={[1, 2]}
+          camera={{ position: [-8, 20, 14], fov: 45, near: 0.1, far: 5000 }}
+          dpr={dpr}
+          shadows={quality < 3 ? { type: THREE.PCFShadowMap } : false}
           gl={{ antialias: true, alpha: false, toneMapping: THREE.ACESFilmicToneMapping, outputColorSpace: THREE.SRGBColorSpace }}
-          onCreated={({ gl }) => {
+          onCreated={({ gl, scene }) => {
             gl.setClearColor("#050505");
             window.__lvDescentGl = gl; // validation tooling: renderer.info draw calls
+            window.__lvDescentScene = scene; // validation tooling (read-only)
           }}
         >
+          {pinned === null && (
+            <PerformanceMonitor bounds={(hz) => [Math.min(45, hz * 0.75), hz]} flipflops={1} onDecline={() => setQuality((q) => Math.min(3, q + 1))} />
+          )}
           <Suspense fallback={null}>
             <color attach="background" args={["#050505"]} />
-            <Stars radius={100} depth={50} count={4000} factor={2.5} saturation={0} fade speed={0.05} />
-            <ambientLight intensity={0.18} />
-            <directionalLight position={[30, 40, 20]} intensity={2.6} color="#ffffff" />
-            <directionalLight position={[-10, 6, -20]} intensity={0.2} color="#3a5a8a" />
-            <MoonSurface />
-            <LandingSiteMarkers physRef={phys} />
-            <LPD physRef={phys} cfg={cfg} />
-            <TouchdownPath physRef={phys} view={view} cfg={cfg} />
-            <DistantEarth />
-            <LanderRig physRef={phys} fx={fxRef.current} hidden={view === "COCKPIT"} />
-            <GroundMarks fx={fxRef.current} />
+            <SiteSky site={site} />
+            <SiteSun site={site} focus={() => [fxRef.current.x, fxRef.current.groundY, 0]} />
+            <SiteTerrain site={site} />
+            <SiteRocks site={site} />
+            <SiteMarkers site={site} physRef={phys} />
+            <LandingPoint site={site} physRef={phys} predict={predict} />
+            <TouchdownPath physRef={phys} view={view} cfg={cfg} site={site} predict={predict} />
+            <LanderRig physRef={phys} fx={fxRef.current} site={site} hidden={view === "COCKPIT"} />
+            <GroundMarks fx={fxRef.current} site={site} />
             <RegolithSheet fx={fxRef.current} />
-            <DescentCamera physRef={phys} cfg={cfg} view={view} clearRef={clearRef} lzIndicatorRef={lzIndicatorRef} lpdIndicatorRef={lpdIndicatorRef} fx={fxRef.current} />
+            <DescentCamera physRef={phys} cfg={cfg} view={view} clearRef={clearRef} lzIndicatorRef={lzIndicatorRef} lpdIndicatorRef={lpdIndicatorRef} fx={fxRef.current} site={site} predict={predict} />
           </Suspense>
         </Canvas>
       </div>
@@ -1196,7 +1049,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
 
       {holdLeft > 0 && (
         <div className="absolute top-[4.6rem] short:top-[5.1rem] left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-black/60 border border-[#FF3B00]/50 px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-white" data-testid="training-hold">
-          ● STARTS IN <span className="text-[#FF3B00] tabular">{holdLeft}</span>
+          {site.name} · STARTS IN <span className="text-[#FF3B00] tabular">{holdLeft}</span>
         </div>
       )}
 

@@ -70,36 +70,12 @@ export const DIFFICULTY = {
   },
 };
 
-export const HAZARDS = [
-  { x: -55, r: 10, kind: "crater", label: "CRATER · ROUGH" },
-  { x: -20, r: 6, kind: "boulders", label: "BOULDERS" },
-  { x: 25, r: 8, kind: "crater", label: "CRATER" },
-  { x: 60, r: 12, kind: "boulders", label: "ROUGH TERRAIN" },
-];
-
-export const SAFE_ZONES = [
-  { x: 0, r: 6, primary: true, label: "PRIMARY LZ" },
-  { x: -38, r: 5, label: "ALT LZ WEST" },
-  { x: 42, r: 4, label: "ALT LZ EAST" },
-  { x: 75, r: 6, label: "ALT LZ FAR EAST" },
-];
-
-export const PRIMARY_LZ = SAFE_ZONES.find((z) => z.primary);
-
-/** Returns { safeZone, hazard } for touchdown at x. */
-export function evaluateGround(x) {
-  for (const h of HAZARDS) {
-    if (Math.abs(x - h.x) < h.r) {
-      return { hazard: h, safeZone: null };
-    }
-  }
-  for (const z of SAFE_ZONES) {
-    if (Math.abs(x - z.x) < z.r) {
-      return { hazard: null, safeZone: z };
-    }
-  }
-  return { hazard: null, safeZone: null };
-}
+/*
+ * The primary landing zone: the datum of every landing site (x = 0). Where the
+ * ground is safe, what is hazardous and the other landing zones are each
+ * site's own terrain (data/landingSites); the mission's site keeps this LZ.
+ */
+export const PRIMARY_LZ = { x: 0, r: 6, primary: true, label: "PRIMARY LZ" };
 
 /** Distance band label for a given metric distance (m). */
 export function accuracyLabel(distance) {
@@ -127,7 +103,7 @@ export function accuracyLabel(distance) {
  *   - |vy| > safeVy
  *   - |vx| > safeVx
  *   - |tilt| > safeTilt
- *   - hazard at touchdown x
+ *   - unsafe terrain under the LM's footprint (data/landingSites evaluate)
  *   - fuel depleted before touchdown (fuelDepletedInFlight === true)
  *
  * Crash and score are decoupled: fatal outcomes still show the earned

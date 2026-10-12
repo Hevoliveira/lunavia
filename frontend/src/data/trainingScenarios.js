@@ -11,9 +11,15 @@
  *
  * Every start state below is derived from the physics, and
  * trainingScenarios.test.js re-derives it.
+ *
+ * Lunar landing training is flown at a chosen landing site (landingSites):
+ * a scenario's start is placed on the site's approach (its side and offset),
+ * and "the primary landing zone" is the site's. The full mission always flies
+ * its own site (MISSION_SITE_ID).
  */
-import { DIFFICULTY, PRIMARY_LZ } from "./landingPhysics";
-import { initialState, stepLander } from "./landerSim";
+import { DIFFICULTY } from "./landingPhysics";
+import { stepLander } from "./landerSim";
+import { getSite, siteStart } from "./landingSites";
 import { NOMINAL_FPA, OUTCOME } from "./reentryPhysics";
 
 export const DIFFICULTY_KEYS = ["CADET", "ASTRONAUT", "COMMANDER"];
@@ -35,29 +41,38 @@ export const REFERENCE_STATE = {
 };
 
 /*
- * BRAKING starts from the mission's own start state after the LM has coasted
+ * BRAKING starts from the site's mission start state after the LM has coasted
  * engine-off for COAST_S seconds: same integrator, same full tank, nothing
- * changed but the braking burn is now about 5 s away (CADET 279 m at
- * −20 m/s, ASTRONAUT 389 m at −24 m/s, COMMANDER 529 m at −30 m/s).
+ * changed but the braking burn is now about 5 s away (at Tranquillity: CADET
+ * 279 m at −20 m/s, ASTRONAUT 389 m at −24 m/s, COMMANDER 529 m at −30 m/s).
  */
 export const COAST_S = 10;
-export function coastedStart(cfg, seconds = COAST_S) {
-  const p = initialState(cfg);
+export function coastedStart(cfg, site = getSite(), seconds = COAST_S) {
+  const p = siteStart(site, cfg);
   const dt = 1 / 120;
-  for (let t = 0; t < seconds - 1e-9; t += dt) stepLander(p, {}, cfg, dt);
-  return { alt: p.alt, vy: p.vy, vx: p.vx, xPos: p.xPos, fuel: p.fuel, throttle: 0 };
+  for (let t = 0; t < seconds - 1e-9; t += dt) stepLander(p, {}, cfg, dt, site.contactGround);
+  return { alt: p.alt, y: p.y, vy: p.vy, vx: p.vx, xPos: p.xPos, fuel: p.fuel, throttle: 0 };
 }
 
 // "Near the centre" for the precision objective: the EXCELLENT accuracy band.
 export const PRECISION_RADIUS = 3;
 
+// Precision: where the attempt starts, past the LZ (m, along the approach).
+export const PRECISION_PAST = 35;
+
+/*
+ * `objective(site)` is the scenario's objective at a landing site, and
+ * `init(key, site)` its start (null: the site's mission start). Starts are
+ * placed on the site's approach: past the LZ means beyond it in the direction
+ * of flight.
+ */
 export const LANDING_SCENARIOS = [
   {
     id: "standard",
     title: "STANDARD LANDING",
     tag: "FUNDAMENTALS",
     summary: "The full powered descent from the difficulty's mission start state.",
-    objective: `Land safely inside the primary landing zone (within ${PRIMARY_LZ.r} m of its centre).`,
+    objective: (site = getSite()) => `Land safely inside the primary landing zone (within ${site.primary.r} m of its centre).`,
     teaches: ["Throttle against the TGT V/S band", "Braking countdown", "Steering to the LZ"],
     init: () => null,
   },
@@ -65,13 +80,14 @@ export const LANDING_SCENARIOS = [
     id: "precision",
     title: "PRECISION LANDING",
     tag: "ACCURACY",
-    summary: "120 m and already braking, 35 m past the primary LZ on the far side of a crater.",
-    objective: `Land safely within ${PRECISION_RADIUS} m of the LZ centre.`,
+    summary: `120 m and already braking, ${PRECISION_PAST} m past the primary LZ: translate back over the terrain.`,
+    objective: () => `Land safely within ${PRECISION_RADIUS} m of the LZ centre.`,
     teaches: ["RCS translation back over hazards", "Arriving with no drift", "Touchdown accuracy"],
-    init: (key) => {
+    init: (key, site = getSite()) => {
       const cfg = DIFFICULTY[key];
       const r = REFERENCE_STATE.precision[key];
-      return { alt: 120, vy: r.vy, vx: -2, xPos: 35, fuel: cfg.initialFuel * r.fuelFrac, throttle: r.throttle };
+      const d = site.approach.dir;
+      return { alt: 120, vy: r.vy, vx: -2 * d, xPos: PRECISION_PAST * d, fuel: cfg.initialFuel * r.fuelFrac, throttle: r.throttle };
     },
   },
   {
@@ -79,29 +95,31 @@ export const LANDING_SCENARIOS = [
     title: "BRAKING PRACTICE",
     tag: "THROTTLE MANAGEMENT",
     summary: `The mission start after ${COAST_S} s of coasting engine-off: falling fast, full tank, braking burn due in about 5 s.`,
-    objective: "Brake in time and land safely, keeping a fuel reserve.",
+    objective: () => "Brake in time and land safely, keeping a fuel reserve.",
     teaches: ["Braking altitude", "Vertical-speed target band", "Fuel reserve"],
-    init: (key) => coastedStart(DIFFICULTY[key]),
+    init: (key, site = getSite()) => coastedStart(DIFFICULTY[key], site),
   },
   {
     id: "commander",
     title: "COMMANDER CHALLENGE",
     tag: "QUALIFICATION",
     summary: "The full COMMANDER descent: 750 m, −14 m/s, tight fuel and touchdown limits.",
-    objective: `Land safely inside the primary landing zone on COMMANDER limits, with minimal guidance.`,
+    objective: () => "Land safely inside the primary landing zone on COMMANDER limits, with minimal guidance.",
     teaches: ["Everything, with no coaching"],
     lock: "COMMANDER",
     init: () => null,
   },
 ];
 
-/** Did a graded touchdown meet the scenario's objective? (result = gradeLanding output) */
-export function landingObjectiveMet(scenarioId, result) {
+/** The objective's distance limit at a site, m (null: any safe landing). */
+export const objectiveRadius = (scenarioId, site = getSite()) =>
+  scenarioId === "precision" ? PRECISION_RADIUS : scenarioId === "standard" || scenarioId === "commander" ? site.primary.r : null;
+
+/** Did a graded touchdown meet the scenario's objective at the site? (result = gradeLanding output) */
+export function landingObjectiveMet(scenarioId, result, site = getSite()) {
   if (!result || result.crashed) return false;
-  const d = result.breakdown.accuracy.distance;
-  if (scenarioId === "precision") return d < PRECISION_RADIUS;
-  if (scenarioId === "standard" || scenarioId === "commander") return d < PRIMARY_LZ.r;
-  return true;
+  const rad = objectiveRadius(scenarioId, site);
+  return rad === null || result.breakdown.accuracy.distance < rad;
 }
 
 /*

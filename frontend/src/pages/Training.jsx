@@ -3,10 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, ChevronRight, Lock, Play, RotateCcw, Trophy, Volume2, VolumeX } from "lucide-react";
 import DescentGame from "@/components/DescentGame";
 import ReentryGame from "@/components/ReentryGame";
+import SitePreview, { SiteProfile } from "@/components/training/SitePreview";
 import BuildBadge from "@/components/BuildBadge";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import comms from "@/audio/comms";
 import { DIFFICULTY } from "@/data/landingPhysics";
+import { SITE_DEFS, SITE_IDS, MISSION_SITE_ID, getSite } from "@/data/landingSites";
 import {
   DIFFICULTY_KEYS,
   LANDING_SCENARIOS,
@@ -47,11 +49,21 @@ const GUIDANCE_NOTE = {
 };
 
 const VOICE_KEY = "lunavia.training.voice";
+const SITE_KEY = "lunavia.training.site";
 
+// Every landing scenario at every landing site, plus the reentry scenarios.
 const TOTAL_SLOTS =
-  (LANDING_SCENARIOS.filter((s) => !s.lock).length + REENTRY_SCENARIOS.filter((s) => !s.lock).length) * DIFFICULTY_KEYS.length +
-  LANDING_SCENARIOS.filter((s) => s.lock).length +
+  (LANDING_SCENARIOS.filter((s) => !s.lock).length * DIFFICULTY_KEYS.length + LANDING_SCENARIOS.filter((s) => s.lock).length) * SITE_IDS.length +
+  REENTRY_SCENARIOS.filter((s) => !s.lock).length * DIFFICULTY_KEYS.length +
   REENTRY_SCENARIOS.filter((s) => s.lock).length;
+
+const RATING_TONE = {
+  BEGINNER: "border-emerald-400/60 text-emerald-300",
+  INTERMEDIATE: "border-sky-400/60 text-sky-300",
+  ADVANCED: "border-amber-400/60 text-amber-300",
+  EXPERT: "border-[#FF3B00]/70 text-[#FF7A4D]",
+};
+const objectiveText = (scenario, siteId) => (typeof scenario.objective === "function" ? scenario.objective(getSite(siteId)) : scenario.objective);
 
 function Backdrop() {
   return (
@@ -111,7 +123,7 @@ function RecordsPanel({ progress }) {
           </thead>
           <tbody>
             {DIFFICULTY_KEYS.map((k) => {
-              const b = bestsFor(progress, "landing", k, landingIds);
+              const b = bestsFor(progress, "landing", k, landingIds, SITE_IDS);
               return (
                 <tr key={k} data-testid={`records-landing-${k}`}>
                   <td className={td}>{k}</td>
@@ -148,7 +160,7 @@ function RecordsPanel({ progress }) {
         </table>
       </div>
       <p className="md:col-span-2 short:col-span-2 font-mono text-[9px] tracking-wider text-zinc-500">
-        Kept on this device only, separate from the full mission. Removed if the app is deleted.
+        All four landing sites together. Kept on this device only, separate from the full mission. Removed if the app is deleted.
       </p>
     </div>
   );
@@ -158,6 +170,23 @@ export default function Training() {
   const navigate = useNavigate();
   const audio = useMissionAudio();
   const [discipline, setDiscipline] = useState(null);
+  const [siteStep, setSiteStep] = useState(false);
+  const [siteId, setSiteIdState] = useState(() => {
+    try {
+      const v = window.localStorage.getItem(SITE_KEY);
+      return SITE_IDS.includes(v) ? v : MISSION_SITE_ID;
+    } catch {
+      return MISSION_SITE_ID;
+    }
+  });
+  const setSiteId = (id) => {
+    setSiteIdState(id);
+    try {
+      window.localStorage.setItem(SITE_KEY, id);
+    } catch {
+      // not kept; the choice still applies to this session
+    }
+  };
   const [showRecords, setShowRecords] = useState(false);
   const [scenarioId, setScenarioId] = useState("standard");
   const [chosenDiff, setChosenDiff] = useState("CADET");
@@ -222,12 +251,14 @@ export default function Training() {
     setDiscipline(d);
     setShowRecords(false);
     setScenarioId(DISCIPLINES[d].scenarios[0].id);
+    // lunar landing: choose the landing site first (with its preview)
+    setSiteStep(d === "landing");
   };
 
   const start = () => {
     audio.init();
     audio.commsReset();
-    runRef.current = { discipline, scenarioId: scenario.id, difficulty };
+    runRef.current = { discipline, scenarioId: scenario.id, difficulty, site: discipline === "landing" ? siteId : null };
     setDebrief(null);
     setRunKey((k) => k + 1);
     setView("run");
@@ -235,7 +266,7 @@ export default function Training() {
 
   const finish = useCallback((db) => {
     const r = runRef.current;
-    setProgress(recordAttempt(r.discipline, r.scenarioId, r.difficulty, db.record));
+    setProgress(recordAttempt(r.discipline, r.scenarioId, r.difficulty, db.record, r.site || undefined));
     setDebrief(db);
     setView("debrief");
   }, []);
@@ -244,8 +275,9 @@ export default function Training() {
     (result) => {
       const r = runRef.current;
       const cfg = DIFFICULTY[r.difficulty];
-      const init = findScenario("landing", r.scenarioId).init(r.difficulty);
-      finish(landingDebrief(result, r.scenarioId, cfg, init ? init.fuel / cfg.initialFuel : 1));
+      const site = getSite(r.site);
+      const init = findScenario("landing", r.scenarioId).init(r.difficulty, site);
+      finish(landingDebrief(result, r.scenarioId, cfg, init ? init.fuel / cfg.initialFuel : 1, site));
     },
     [finish]
   );
@@ -265,6 +297,7 @@ export default function Training() {
   const toCenter = () => {
     toScenarios();
     setDiscipline(null);
+    setSiteStep(false);
   };
   const toMenu = () => {
     stopSounds();
@@ -287,7 +320,8 @@ export default function Training() {
   // verbosity set by the difficulty), so the card and the voice never compete.
   const coach = useMemo(() => {
     if (!run) return null;
-    return run.discipline === "reentry" ? createReentryCoach(run.scenarioId, run.difficulty) : (d) => landingCoach(d, run.scenarioId, run.difficulty);
+    const site = getSite(run.site);
+    return run.discipline === "reentry" ? createReentryCoach(run.scenarioId, run.difficulty) : (d) => landingCoach(d, run.scenarioId, run.difficulty, site);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runKey]);
 
@@ -365,7 +399,71 @@ export default function Training() {
                 </>
               )}
 
-              {discipline && (
+              {discipline === "landing" && siteStep && (() => {
+                const site = getSite(siteId);
+                const stat = (label, value, testId) => (
+                  <div data-testid={testId} className="min-w-0">
+                    <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500">{label}</div>
+                    <div className="font-mono text-[10px] short:text-[9px] text-white truncate">{value}</div>
+                  </div>
+                );
+                return (
+                  <div className="grid md:grid-cols-[0.85fr_1.4fr] short:grid-cols-[190px_1fr] gap-5 short:gap-2.5 mt-6 short:mt-1.5" data-testid="training-sites">
+                    <div>
+                      <div className="flex items-center justify-between mb-2 short:mb-1">
+                        <button type="button" onClick={() => setDiscipline(null)} className="touch-ctrl font-mono text-[10px] tracking-[0.3em] text-zinc-400 hover:text-white flex items-center gap-1.5 py-2 short:py-1" data-testid="training-back">
+                          <ArrowLeft size={12} /> TRAINING CENTER
+                        </button>
+                      </div>
+                      <div className="font-mono text-[9px] tracking-[0.3em] text-[#FF3B00] mb-1.5 short:mb-1">LANDING SITE</div>
+                      <div className="space-y-1.5 short:space-y-1" role="listbox" aria-label="Landing site">
+                        {SITE_DEFS.map((s) => {
+                          const active = s.id === siteId;
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              role="option"
+                              aria-selected={active}
+                              onClick={() => setSiteId(s.id)}
+                              data-testid={`training-site-${s.id}`}
+                              className={`w-full text-left border px-3 py-2 short:px-2 short:py-1.5 min-h-[44px] transition-colors ${
+                                active ? "border-[#FF3B00] bg-[#FF3B00]/10" : "border-white/10 bg-black/50 hover:border-white/30"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="font-display font-bold text-white text-sm short:text-[12px] leading-tight min-w-0">{s.name}</div>
+                                <span className={`shrink-0 border px-1 font-mono text-[7px] tracking-wider ${RATING_TONE[s.rating]}`}>{s.rating}</span>
+                              </div>
+                              <div className="font-mono text-[8px] tracking-[0.2em] text-zinc-500 mt-0.5 truncate">{s.ref}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="hud-panel corners relative bg-black/60 border border-white/10 grid md:grid-rows-[auto_1fr] short:grid-cols-[1.05fr_1fr] overflow-hidden" data-testid="training-site-briefing">
+                      <SitePreview siteId={siteId} className="h-[230px] short:h-full short:min-h-[200px] w-full" />
+                      <div className="p-4 short:p-2.5 flex flex-col min-w-0">
+                        <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500 truncate">{site.coords} · {site.ref}</div>
+                        <div className="font-display font-black text-white text-xl short:text-[15px] leading-tight mt-0.5" data-testid="training-site-name">{site.name}</div>
+                        <p className="text-[12px] short:text-[10px] text-zinc-300 leading-snug mt-1">{site.blurb}</p>
+                        <SiteProfile siteId={siteId} className="w-full mt-2 short:mt-1" />
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 short:mt-1">
+                          {stat("TERRAIN", site.terrainText.split(" · ")[0], "site-terrain")}
+                          {stat("APPROACH", site.approach.text, "site-approach")}
+                          {stat("PRIMARY LZ", `${site.primary.r} m radius`, "site-lz")}
+                          {stat("SUN", `${site.sun.el}° above the horizon`, "site-sun")}
+                        </div>
+                        <button type="button" onClick={() => setSiteStep(false)} className="btn-hud btn-hud-primary justify-center min-h-[44px] mt-auto pt-0 short:mt-2" data-testid="training-site-continue">
+                          <Play size={13} /> SELECT SITE
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {discipline && !(discipline === "landing" && siteStep) && (
                 <div className="grid md:grid-cols-[1.1fr_1fr] short:grid-cols-[1.05fr_1fr] gap-6 short:gap-3 mt-6 short:mt-1.5">
                   {/* Scenario list */}
                   <div>
@@ -373,12 +471,26 @@ export default function Training() {
                       <button type="button" onClick={() => setDiscipline(null)} className="touch-ctrl font-mono text-[10px] tracking-[0.3em] text-zinc-400 hover:text-white flex items-center gap-1.5 py-2" data-testid="training-back">
                         <ArrowLeft size={12} /> TRAINING CENTER
                       </button>
-                      <span className="font-mono text-[10px] tracking-[0.3em] text-[#FF3B00]">{DISCIPLINES[discipline].title}</span>
+                      {discipline === "landing" ? (
+                        <button
+                          type="button"
+                          onClick={() => setSiteStep(true)}
+                          className="touch-ctrl py-2 font-mono text-[10px] tracking-[0.25em] text-[#FF3B00] flex items-center gap-1 min-w-0"
+                          data-testid="training-site-change"
+                          title="Change landing site"
+                        >
+                          <span className="text-zinc-500">SITE</span>
+                          <span className="text-white truncate" data-testid="training-site-current">{getSite(siteId).short}</span>
+                          <ChevronRight size={11} />
+                        </button>
+                      ) : (
+                        <span className="font-mono text-[10px] tracking-[0.3em] text-[#FF3B00]">{DISCIPLINES[discipline].title}</span>
+                      )}
                     </div>
                     <div className="space-y-2 short:space-y-1.5" role="listbox" aria-label="Scenario">
                       {DISCIPLINES[discipline].scenarios.map((sc) => {
                         const diffs = sc.lock ? [sc.lock] : DIFFICULTY_KEYS;
-                        const done = diffs.filter((k) => (progress[progressKey(discipline, sc.id, k)] || {}).successes > 0);
+                        const done = diffs.filter((k) => (progress[progressKey(discipline, sc.id, k, discipline === "landing" ? siteId : undefined)] || {}).successes > 0);
                         const active = sc.id === scenarioId;
                         return (
                           <button
@@ -422,7 +534,7 @@ export default function Training() {
                     <div className="font-display font-black text-white text-2xl short:text-base mt-1" data-testid="training-scenario-title">{scenario.title}</div>
                     <p className="text-sm short:text-[11px] text-zinc-300 mt-2 short:mt-1 leading-snug">{scenario.summary}</p>
                     <p className="font-mono text-[10px] short:text-[9px] tracking-wider text-[#FF3B00] mt-2 short:mt-1" data-testid="training-objective">
-                      OBJECTIVE · {scenario.objective}
+                      OBJECTIVE · {objectiveText(scenario, siteId)}
                     </p>
                     <div className="font-mono text-[9px] tracking-widest text-zinc-500 mt-2 short:mt-1 short:hidden">
                       PRACTISES · {scenario.teaches.join(" · ")}
@@ -457,7 +569,7 @@ export default function Training() {
                         {GUIDANCE_NOTE[COACH_LEVEL[difficulty]]}
                       </div>
                       {(() => {
-                        const e = progress[progressKey(discipline, scenario.id, difficulty)];
+                        const e = progress[progressKey(discipline, scenario.id, difficulty, discipline === "landing" ? siteId : undefined)];
                         return e ? (
                           <div className="font-mono text-[9px] tracking-wider text-zinc-400 mt-1" data-testid="training-best">
                             {e.attempts} ATTEMPTS · {e.successes} SUCCESSFUL{e.best ? ` · BEST ${e.best.label}` : ""}
@@ -495,7 +607,8 @@ export default function Training() {
           key={runKey}
           difficulty={run.difficulty}
           audio={audio}
-          init={findScenario("landing", run.scenarioId).init(run.difficulty)}
+          site={run.site}
+          init={findScenario("landing", run.scenarioId).init(run.difficulty, getSite(run.site))}
           coach={coach}
           holdSeconds={3}
           onSuccess={onLanding}
@@ -522,7 +635,8 @@ export default function Training() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="font-mono text-[9px] tracking-[0.3em] text-zinc-500 truncate">
-                  TRAINING DEBRIEF · {findScenario(run.discipline, run.scenarioId).title} · {run.difficulty}
+                  TRAINING DEBRIEF · {findScenario(run.discipline, run.scenarioId).title}
+                  {run.site ? ` · ${getSite(run.site).short}` : ""} · {run.difficulty}
                 </div>
                 <div
                   className={`font-display font-black text-3xl short:text-xl mt-1 ${debrief.success ? "text-emerald-400" : debrief.landed ? "text-amber-400" : "text-[#FF3B00]"}`}

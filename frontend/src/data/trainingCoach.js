@@ -13,6 +13,7 @@
  * is the short phrase the optional instructor voice speaks.
  */
 import { DANGER, CAUTION } from "./descentProfile";
+import { getSite } from "./landingSites";
 import { LIMITS, CHUTES, CORRIDOR } from "./reentryPhysics";
 import { TARGET_FPA } from "./reentryGuidance";
 
@@ -31,13 +32,15 @@ const f1 = (x) => x.toFixed(1);
 /* Lunar landing                                                             */
 /* ------------------------------------------------------------------------ */
 
-const LANDING_INTRO = {
+// The precision start is past the LZ along the approach, so the way back is
+// against the direction of flight: ◄ RCS when flying towards +x, RCS ► otherwise.
+const LANDING_INTRO = (site) => ({
   standard: {
     full: info("STANDARD LANDING", "Hold THR to brake. Keep V/S inside the TGT V/S band; steer to the LZ."),
     key: info("STANDARD LANDING", "Land safely inside the primary LZ."),
   },
   precision: {
-    full: info("LZ 35 M WEST", "Translate with ◄ RCS; arrive over the centre with H/S near 0."),
+    full: info("LZ 35 M BEHIND", `Translate with ${site.approach.dir > 0 ? "◄ RCS" : "RCS ►"}; arrive over the centre with H/S near 0.`),
     key: info("PRECISION LANDING", "Touch down within 3 m of the LZ centre."),
   },
   braking: {
@@ -47,27 +50,32 @@ const LANDING_INTRO = {
   commander: {
     minimal: info("COMMANDER CHALLENGE", "Land safely inside the primary LZ. No coaching."),
   },
-};
+});
 
 /**
  * Lunar callout. `d` carries what the descent HUD shows:
  * { t, alt, vy, vx, tilt, cfg, profile, projectedHazard, projectedZone,
  *   distanceToLZ, outcome: null | "landed" | "crashed" }.
  */
-export function landingCoach(d, scenarioId, difficulty) {
+export function landingCoach(d, scenarioId, difficulty, site = getSite()) {
   if (!d) return null;
   const level = COACH_LEVEL[difficulty] || "full";
   if (d.outcome === "landed") return good("SAFE TOUCHDOWN", "Contact light. Engine stop.", "Safe touchdown.");
   if (d.outcome === "crashed") return warn("HARD CONTACT", "Touchdown outside the vehicle's limits.");
   const { t, alt, vy, vx, cfg, profile: a } = d;
-  const intro = LANDING_INTRO[scenarioId] || LANDING_INTRO.standard;
+  const intros = LANDING_INTRO(site);
+  const intro = intros[scenarioId] || intros.standard;
   if (t < INTRO_S) return intro[level] || intro.key || intro.full || intro.minimal;
   if (level === "minimal") return null;
   const full = level === "full";
   const env = a.envelope || { lo: 0, hi: 0 };
 
   if (d.projectedHazard && alt > 5) {
-    return warn("HAZARD AT TOUCHDOWN POINT", full ? "Projected touchdown is on rough ground. Translate toward the LZ." : "Translate clear.", "Hazard ahead. Translate.");
+    return warn(
+      "HAZARD AT TOUCHDOWN POINT",
+      full ? `Projected touchdown: ${d.projectedZone}. Translate until the footprint ring is clear.` : "Translate clear.",
+      "Hazard ahead. Translate."
+    );
   }
   if (a.vyState >= DANGER || (a.vyState >= CAUTION && a.brakeTime < 1.5) || a.brakeTime < 0.5) {
     return warn(
@@ -93,7 +101,7 @@ export function landingCoach(d, scenarioId, difficulty) {
   if (Number.isFinite(a.brakeTime) && a.brakeTime < 8) {
     return info("BRAKING ALTITUDE", full ? `Braking burn due in ${Math.ceil(a.brakeTime)} s. Hold THR when BRAKE reaches 0.` : `Burn in ${Math.ceil(a.brakeTime)} s.`);
   }
-  if (d.projectedZone === "PRIMARY LZ" && alt > 15 && alt < 150 && d.distanceToLZ < 40) {
+  if (/^PRIMARY LZ/.test(d.projectedZone || "") && alt > 15 && alt < 150 && d.distanceToLZ < 40) {
     return good("LANDING ZONE AHEAD", full ? "Projected touchdown is on the primary LZ. Keep H/S near 0." : "On the primary LZ.", "Landing zone ahead.");
   }
   if (alt < 40) return info("FINAL APPROACH", `V/S < ${cfg.safeVy} · H/S < ${cfg.safeVx} · TILT < ${cfg.safeTilt}°`);

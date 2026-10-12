@@ -6,7 +6,8 @@ import { createDescentMonitor } from "./descentComms";
 import { createReentryMonitor } from "./reentryComms";
 import { createVoicePack } from "./voicePack";
 import comms from "./comms";
-import { DIFFICULTY, evaluateGround } from "../data/landingPhysics";
+import { DIFFICULTY } from "../data/landingPhysics";
+import { getSite, siteStart } from "../data/landingSites";
 import { initialState, stepFrame, gradeTouchdown, CONTACT_ALT } from "../data/landerSim";
 import { humanPilot, guidedStrategy } from "../data/landerPilots";
 import { assessDescent, predictTouchdownX } from "../data/descentProfile";
@@ -274,7 +275,8 @@ describe("comms director", () => {
 
 function flyDescent(difficulty, strategy, { init, maxTime = 200 } = {}) {
   const cfg = DIFFICULTY[difficulty];
-  const p = { ...initialState(cfg), ...(init || {}) };
+  const site = getSite();
+  const p = siteStart(site, cfg, init || null);
   const pilot = strategy ? humanPilot(cfg, strategy, { lag: 0.3, seed: 2 }) : () => ({});
   const mon = createDescentMonitor();
   const req = [];
@@ -282,7 +284,7 @@ function flyDescent(difficulty, strategy, { init, maxTime = 200 } = {}) {
   const frame = 1 / 60;
   const feed = (outcome) => {
     const profile = assessDescent({ ...p, cfg });
-    const hazard = !!evaluateGround(predictTouchdownX(p, cfg)).hazard;
+    const hazard = !!site.evaluate(predictTouchdownX(p, cfg, site)).hazard;
     mon({ t: p.t, alt: p.alt, vx: p.vx, xPos: p.xPos, profile, hazard, distanceToLZ: Math.abs(p.xPos), outcome }).forEach((r) => req.push({ ...r, t: p.t }));
   };
   while (p.t < maxTime) {

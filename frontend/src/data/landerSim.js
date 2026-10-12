@@ -1,13 +1,16 @@
-import {
-  MOON_G,
-  evaluateGround,
-  gradeLanding,
-} from "./landingPhysics";
+import { MOON_G, gradeLanding } from "./landingPhysics";
+import { getSite, siteStart } from "./landingSites";
 
 /**
  * Lunar descent integrator, shared by the game loop (DescentGame) and the
  * deterministic simulations in landerSim.test.js. One implementation, so a
  * test result is a statement about the game the player actually flies.
+ *
+ * Over a landing site (data/landingSites) the vehicle's height `y` (m above
+ * the site's datum) is integrated and `alt` is measured from it to the ground
+ * the footpads would meet first (the landing radar's view); touchdown is
+ * captured when that reaches CONTACT_ALT, as it always was. Without a site
+ * (`ground` omitted) the ground is flat at altitude 0, as before.
  */
 
 // Throttle spool rates (1/s). Rising is quicker than falling so a correction
@@ -60,8 +63,10 @@ export const rcsAccelFor = (cfg, held) => ramped(cfg.rcsFine, cfg.rcsAccel || RC
 /**
  * Advance the lander by dt seconds. Mutates p.
  * inp: { throttle, left, right, strafeLeft, strafeRight: bool }
+ * ground(x): height (m) of the first contact under the LM at x (a site's
+ * contactGround); omitted, the ground is flat at altitude 0.
  */
-export function stepLander(p, inp, cfg, dt) {
+export function stepLander(p, inp, cfg, dt, ground = null) {
   // How long each attitude / RCS input has been held (for fine control).
   const held = p.held || (p.held = { l: 0, r: 0, sl: 0, sr: 0 });
   held.l = inp.left ? held.l + dt : 0;
@@ -98,30 +103,43 @@ export function stepLander(p, inp, cfg, dt) {
   const rad = p.tilt * (Math.PI / 180);
   p.vy += (thrustAcc * Math.cos(rad) - MOON_G) * dt;
   p.vx += thrustAcc * Math.sin(rad) * dt;
-  p.alt += p.vy * dt;
-  p.xPos += p.vx * dt;
+  if (ground) {
+    p.y += p.vy * dt;
+    p.xPos += p.vx * dt;
+    p.alt = p.y - ground(p.xPos);
+  } else {
+    p.alt += p.vy * dt;
+    p.xPos += p.vx * dt;
+  }
   p.t = (p.t || 0) + dt;
 }
 
 /**
- * Advance one rendered frame: sub-steps of at most MAX_STEP, stopping at
- * contact. Returns true once the lander has reached CONTACT_ALT.
+ * Advance one rendered frame over a landing site: sub-steps of at most
+ * MAX_STEP, stopping at contact. Returns true once the lander has reached
+ * CONTACT_ALT above the ground under it.
  */
-export function stepFrame(p, inp, cfg, frameDt) {
+export function stepFrame(p, inp, cfg, frameDt, site = getSite()) {
+  const ground = site.contactGround;
+  if (p.y == null) p.y = p.alt + ground(p.xPos);
   const totalDt = Math.min(0.25, frameDt);
   const subSteps = Math.max(1, Math.ceil(totalDt / MAX_STEP));
   const dt = totalDt / subSteps;
   for (let s = 0; s < subSteps; s++) {
-    stepLander(p, inp, cfg, dt);
+    stepLander(p, inp, cfg, dt, ground);
     if (p.alt <= CONTACT_ALT) return true;
   }
   return false;
 }
 
-/** Grade the touchdown state exactly as the game does. */
-export function gradeTouchdown(p, cfg) {
-  const g = evaluateGround(p.xPos);
-  return gradeLanding({
+/**
+ * Grade the touchdown state exactly as the game does: the ground under the
+ * LM's footprint at the site (landingSites evaluate) decides UNSAFE TERRAIN,
+ * landingPhysics grades and scores. `terrain` reports what the LM came down on.
+ */
+export function gradeTouchdown(p, cfg, site = getSite()) {
+  const g = site.evaluate(p.xPos);
+  const result = gradeLanding({
     vy: p.vy,
     vx: p.vx,
     tilt: p.tilt,
@@ -135,6 +153,16 @@ export function gradeTouchdown(p, cfg) {
     safeTilt: cfg.safeTilt,
     fuelDepletedInFlight: p.fuelDepletedInFlight,
   });
+  result.terrain = {
+    site: site.id,
+    slope: g.slope,
+    footSlope: g.footSlope,
+    sx: g.sx,
+    sz: g.sz,
+    kind: g.hazard ? g.hazard.kind : null,
+    label: g.hazard ? g.hazard.label : null,
+  };
+  return result;
 }
 
 /**
@@ -142,15 +170,15 @@ export function gradeTouchdown(p, cfg) {
  * pilot(view, t) -> input object; `view` is a copy of the state the pilot can
  * see. Returns { result, state, t, trace }.
  */
-export function simulate(cfg, pilot, { fps = 60, maxTime = 300, init, trace = false } = {}) {
-  const p = { ...initialState(cfg), ...(init || {}) };
+export function simulate(cfg, pilot, { fps = 60, maxTime = 300, init, trace = false, site = getSite() } = {}) {
+  const p = siteStart(site, cfg, init);
   const frame = 1 / fps;
   const samples = [];
   let inp = {};
   while (p.t < maxTime) {
     inp = pilot({ ...p }, p.t) || {};
-    if (trace) samples.push({ t: p.t, alt: p.alt, vy: p.vy, vx: p.vx, x: p.xPos, tilt: p.tilt, thr: p.throttle, fuel: p.fuel });
-    if (stepFrame(p, inp, cfg, frame)) break;
+    if (trace) samples.push({ t: p.t, alt: p.alt, y: p.y, vy: p.vy, vx: p.vx, x: p.xPos, tilt: p.tilt, thr: p.throttle, fuel: p.fuel });
+    if (stepFrame(p, inp, cfg, frame, site)) break;
   }
-  return { result: gradeTouchdown(p, cfg), state: p, t: p.t, trace: samples };
+  return { result: gradeTouchdown(p, cfg, site), state: p, t: p.t, trace: samples };
 }

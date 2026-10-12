@@ -305,15 +305,16 @@ export function idealBurn(cfg, init = {}) {
   };
 }
 
-/** Run a pilot over a difficulty and return a compact outcome record. */
+/** Run a pilot over a difficulty (at a landing site; default the mission's) and return a compact outcome record. */
 export function fly(cfg, strategy, opts = {}) {
-  const { init, fps = 60, ...pilotOpts } = opts;
+  const { init, fps = 60, site, ...pilotOpts } = opts;
   const pilot = humanPilot(cfg, strategy, pilotOpts);
-  const r = simulate(cfg, pilot, { fps, init });
+  const r = simulate(cfg, pilot, site ? { fps, init, site } : { fps, init });
   const s = r.state;
   return {
     landed: !r.result.crashed,
     reasons: r.result.failureReasons,
+    zone: r.result.zone,
     vy: s.vy, vx: s.vx, tilt: s.tilt, x: s.xPos,
     fuelPct: (s.fuel / cfg.initialFuel) * 100,
     t: r.t,
