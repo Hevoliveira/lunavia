@@ -4,6 +4,7 @@ import { ArrowLeft, Check, ChevronRight, Lock, Play, RotateCcw, Trophy, Volume2,
 import DescentGame from "@/components/DescentGame";
 import ReentryGame from "@/components/ReentryGame";
 import SitePreview, { SiteProfile } from "@/components/training/SitePreview";
+import FarSideIntro from "@/components/training/FarSideIntro";
 import BuildBadge from "@/components/BuildBadge";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import comms from "@/audio/comms";
@@ -160,8 +161,68 @@ function RecordsPanel({ progress }) {
         </table>
       </div>
       <p className="md:col-span-2 short:col-span-2 font-mono text-[9px] tracking-wider text-zinc-500">
-        All four landing sites together. Kept on this device only, separate from the full mission. Removed if the app is deleted.
+        All four lunar missions together. Kept on this device only, separate from the full mission. Removed if the app is deleted.
       </p>
+    </div>
+  );
+}
+
+/** One lunar destination: terrain preview, identity, piloting challenge, environment difficulty, START MISSION. */
+function MissionCard({ site, active, onSelect, onStart }) {
+  const [img, setImg] = useState(true);
+  return (
+    <div
+      role="option"
+      aria-selected={active}
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onSelect()}
+      data-testid={`training-site-${site.id}`}
+      className={`group flex flex-col min-w-0 cursor-pointer border bg-black/55 transition-colors ${active ? "border-[#FF3B00] bg-[#FF3B00]/[0.07]" : "border-white/10 hover:border-white/30"}`}
+    >
+      <div className="relative w-full aspect-[2.1/1] short:aspect-[2.3/1] bg-[#0b0b0d] overflow-hidden">
+        {img && (
+          <img
+            src={`${process.env.PUBLIC_URL}/missions/${site.id}.jpg`}
+            alt={`${site.name}: the landing area`}
+            onError={() => setImg(false)}
+            className="absolute inset-0 w-full h-full object-cover"
+            draggable={false}
+          />
+        )}
+        <span className={`absolute top-1.5 left-1.5 border bg-black/60 px-1 font-mono text-[7px] tracking-wider ${RATING_TONE[site.rating]}`}>{site.rating}</span>
+        {site.earthLink === false && (
+          <span className="absolute top-1.5 right-1.5 border border-[#9fb6cc]/50 bg-black/60 px-1 font-mono text-[7px] tracking-wider text-[#9fb6cc]" data-testid="mission-no-link">NO EARTH LINK</span>
+        )}
+      </div>
+      <div className="p-2.5 short:p-2 flex flex-col flex-1 min-w-0">
+        <div className="font-mono text-[8px] tracking-[0.3em] text-[#FF3B00]">{site.kind}</div>
+        <div className="font-display font-black text-white text-[15px] short:text-[12px] leading-tight mt-0.5" data-testid="mission-title">{site.name}</div>
+        <div className="font-mono text-[7.5px] tracking-[0.18em] text-zinc-500 mt-0.5 truncate">{site.ref}</div>
+        <p className="text-[11px] short:text-[9.5px] text-zinc-300 leading-snug mt-1 line-clamp-3 short:line-clamp-2">{site.blurb}</p>
+        <div className="mt-1.5 short:mt-1">
+          <div className="font-mono text-[7.5px] tracking-[0.25em] text-zinc-500">PILOTING CHALLENGE</div>
+          <div className="text-[10.5px] short:text-[9px] text-white leading-snug line-clamp-2" data-testid="mission-challenge">{site.challenge}</div>
+        </div>
+        <div className="flex items-center gap-1.5 mt-1.5 short:mt-1" data-testid="mission-difficulty" aria-label={`Environment difficulty ${site.level} of 4`}>
+          <span className="font-mono text-[7.5px] tracking-[0.25em] text-zinc-500">TERRAIN</span>
+          {[1, 2, 3, 4].map((k) => (
+            <i key={k} className={`inline-block w-3 h-1.5 ${k <= site.level ? (site.level >= 4 ? "bg-[#FF3B00]" : "bg-white/80") : "bg-white/15"}`} />
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStart();
+          }}
+          className={`btn-hud justify-center min-h-[40px] mt-auto pt-0 short:min-h-[36px] ${active ? "btn-hud-primary" : ""}`}
+          data-testid={active ? "training-site-continue" : `training-mission-start-${site.id}`}
+          style={{ marginTop: "0.6rem" }}
+        >
+          <Play size={12} /> START MISSION
+        </button>
+      </div>
     </div>
   );
 }
@@ -190,7 +251,9 @@ export default function Training() {
   const [showRecords, setShowRecords] = useState(false);
   const [scenarioId, setScenarioId] = useState("standard");
   const [chosenDiff, setChosenDiff] = useState("CADET");
-  const [view, setView] = useState("center"); // center | run | debrief
+  const [view, setView] = useState("center"); // center | intro | run | debrief
+  // The far-side approach (loss of signal) plays once per visit, never on a retry.
+  const farIntroSeen = useRef(false);
   const [runKey, setRunKey] = useState(0);
   const [debrief, setDebrief] = useState(null);
   const [progress, setProgress] = useState(() => loadProgress());
@@ -261,6 +324,11 @@ export default function Training() {
     runRef.current = { discipline, scenarioId: scenario.id, difficulty, site: discipline === "landing" ? siteId : null };
     setDebrief(null);
     setRunKey((k) => k + 1);
+    const farSide = discipline === "landing" && getSite(siteId).earthLink === false;
+    setView(farSide && !farIntroSeen.current ? "intro" : "run");
+  };
+  const introDone = () => {
+    farIntroSeen.current = true;
     setView("run");
   };
 
@@ -399,69 +467,57 @@ export default function Training() {
                 </>
               )}
 
-              {discipline === "landing" && siteStep && (() => {
-                const site = getSite(siteId);
-                const stat = (label, value, testId) => (
-                  <div data-testid={testId} className="min-w-0">
-                    <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500">{label}</div>
-                    <div className="font-mono text-[10px] short:text-[9px] text-white truncate">{value}</div>
+              {discipline === "landing" && siteStep && (
+                <div className="mt-6 short:mt-1" data-testid="training-sites">
+                  <div className="flex items-center justify-between gap-3 mb-2 short:mb-1">
+                    <button type="button" onClick={() => setDiscipline(null)} className="touch-ctrl font-mono text-[10px] tracking-[0.3em] text-zinc-400 hover:text-white flex items-center gap-1.5 py-2 short:py-1" data-testid="training-back">
+                      <ArrowLeft size={12} /> TRAINING CENTER
+                    </button>
+                    <div className="font-mono text-[9px] tracking-[0.3em] text-[#FF3B00] truncate">LUNAR MISSIONS · CHOOSE A DESTINATION</div>
                   </div>
-                );
-                return (
-                  <div className="grid md:grid-cols-[0.85fr_1.4fr] short:grid-cols-[190px_1fr] gap-5 short:gap-2.5 mt-6 short:mt-1.5" data-testid="training-sites">
-                    <div>
-                      <div className="flex items-center justify-between mb-2 short:mb-1">
-                        <button type="button" onClick={() => setDiscipline(null)} className="touch-ctrl font-mono text-[10px] tracking-[0.3em] text-zinc-400 hover:text-white flex items-center gap-1.5 py-2 short:py-1" data-testid="training-back">
-                          <ArrowLeft size={12} /> TRAINING CENTER
-                        </button>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 short:grid-cols-4 gap-3 short:gap-2" role="listbox" aria-label="Lunar mission">
+                    {SITE_DEFS.map((s) => (
+                      <MissionCard
+                        key={s.id}
+                        site={s}
+                        active={s.id === siteId}
+                        onSelect={() => setSiteId(s.id)}
+                        onStart={() => {
+                          setSiteId(s.id);
+                          setSiteStep(false);
+                        }}
+                      />
+                    ))}
+                  </div>
+                  {/* Larger screens: the selected destination, live, as the descent draws it */}
+                  {(() => {
+                    const site = getSite(siteId);
+                    const stat = (label, value, testId) => (
+                      <div data-testid={testId} className="min-w-0">
+                        <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500">{label}</div>
+                        <div className="font-mono text-[10px] text-white truncate">{value}</div>
                       </div>
-                      <div className="font-mono text-[9px] tracking-[0.3em] text-[#FF3B00] mb-1.5 short:mb-1">LANDING SITE</div>
-                      <div className="space-y-1.5 short:space-y-1" role="listbox" aria-label="Landing site">
-                        {SITE_DEFS.map((s) => {
-                          const active = s.id === siteId;
-                          return (
-                            <button
-                              key={s.id}
-                              type="button"
-                              role="option"
-                              aria-selected={active}
-                              onClick={() => setSiteId(s.id)}
-                              data-testid={`training-site-${s.id}`}
-                              className={`w-full text-left border px-3 py-2 short:px-2 short:py-1.5 min-h-[44px] transition-colors ${
-                                active ? "border-[#FF3B00] bg-[#FF3B00]/10" : "border-white/10 bg-black/50 hover:border-white/30"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="font-display font-bold text-white text-sm short:text-[12px] leading-tight min-w-0">{s.name}</div>
-                                <span className={`shrink-0 border px-1 font-mono text-[7px] tracking-wider ${RATING_TONE[s.rating]}`}>{s.rating}</span>
-                              </div>
-                              <div className="font-mono text-[8px] tracking-[0.2em] text-zinc-500 mt-0.5 truncate">{s.ref}</div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="hud-panel corners relative bg-black/60 border border-white/10 grid md:grid-rows-[auto_1fr] short:grid-cols-[1.05fr_1fr] overflow-hidden" data-testid="training-site-briefing">
-                      <SitePreview siteId={siteId} className="h-[230px] short:h-full short:min-h-[200px] w-full" />
-                      <div className="p-4 short:p-2.5 flex flex-col min-w-0">
-                        <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500 truncate">{site.coords} · {site.ref}</div>
-                        <div className="font-display font-black text-white text-xl short:text-[15px] leading-tight mt-0.5" data-testid="training-site-name">{site.name}</div>
-                        <p className="text-[12px] short:text-[10px] text-zinc-300 leading-snug mt-1">{site.blurb}</p>
-                        <SiteProfile siteId={siteId} className="w-full mt-2 short:mt-1" />
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 short:mt-1">
-                          {stat("TERRAIN", site.terrainText.split(" · ")[0], "site-terrain")}
-                          {stat("APPROACH", site.approach.text, "site-approach")}
-                          {stat("PRIMARY LZ", `${site.primary.r} m radius`, "site-lz")}
-                          {stat("SUN", `${site.sun.el}° above the horizon`, "site-sun")}
+                    );
+                    return (
+                      <div className="hidden md:grid short:hidden grid-cols-[1.4fr_1fr] mt-4 hud-panel corners relative bg-black/60 border border-white/10 overflow-hidden" data-testid="training-site-briefing">
+                        <SitePreview siteId={siteId} className="h-[260px] w-full" />
+                        <div className="p-4 flex flex-col min-w-0">
+                          <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500 truncate">{site.coords} · {site.ref}</div>
+                          <div className="font-display font-black text-white text-xl leading-tight mt-0.5" data-testid="training-site-name">{site.name}</div>
+                          <p className="text-[12px] text-zinc-300 leading-snug mt-1">{site.briefing}</p>
+                          <SiteProfile siteId={siteId} className="w-full mt-2" />
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2">
+                            {stat("APPROACH", site.approach.text, "site-approach")}
+                            {stat("PRIMARY LZ", `${site.primary.r} m radius`, "site-lz")}
+                            {stat("SUN", `${site.sun.el}° above the horizon`, "site-sun")}
+                            {stat("EARTH LINK", site.earthLink === false ? "UNAVAILABLE (FAR SIDE)" : "DIRECT", "site-link")}
+                          </div>
                         </div>
-                        <button type="button" onClick={() => setSiteStep(false)} className="btn-hud btn-hud-primary justify-center min-h-[44px] mt-auto pt-0 short:mt-2" data-testid="training-site-continue">
-                          <Play size={13} /> SELECT SITE
-                        </button>
                       </div>
-                    </div>
-                  </div>
-                );
-              })()}
+                    );
+                  })()}
+                </div>
+              )}
 
               {discipline && !(discipline === "landing" && siteStep) && (
                 <div className="grid md:grid-cols-[1.1fr_1fr] short:grid-cols-[1.05fr_1fr] gap-6 short:gap-3 mt-6 short:mt-1.5">
@@ -533,6 +589,12 @@ export default function Training() {
                     <div className="font-mono text-[9px] tracking-[0.3em] text-zinc-500">BRIEFING · {scenario.tag}</div>
                     <div className="font-display font-black text-white text-2xl short:text-base mt-1" data-testid="training-scenario-title">{scenario.title}</div>
                     <p className="text-sm short:text-[11px] text-zinc-300 mt-2 short:mt-1 leading-snug">{scenario.summary}</p>
+                    {discipline === "landing" && (
+                      <p className="text-[12px] short:text-[10px] text-[#c9d6e2] mt-1.5 short:mt-1 leading-snug border-l-2 border-[#9fb6cc]/50 pl-2" data-testid="training-mission-briefing">
+                        <span className="font-mono text-[8px] tracking-[0.25em] text-zinc-500">{getSite(siteId).name} · </span>
+                        {getSite(siteId).briefing}
+                      </p>
+                    )}
                     <p className="font-mono text-[10px] short:text-[9px] tracking-wider text-[#FF3B00] mt-2 short:mt-1" data-testid="training-objective">
                       OBJECTIVE · {objectiveText(scenario, siteId)}
                     </p>
@@ -602,7 +664,11 @@ export default function Training() {
         </>
       )}
 
-      {view !== "center" && run && run.discipline === "landing" && (
+      {view === "intro" && run && (
+        <FarSideIntro audio={audio} briefing={getSite(run.site).briefing} onDone={introDone} />
+      )}
+
+      {(view === "run" || view === "debrief") && run && run.discipline === "landing" && (
         <DescentGame
           key={runKey}
           difficulty={run.difficulty}
@@ -616,7 +682,7 @@ export default function Training() {
           onAbort={toScenarios}
         />
       )}
-      {view !== "center" && run && run.discipline === "reentry" && (
+      {(view === "run" || view === "debrief") && run && run.discipline === "reentry" && (
         <ReentryGame
           key={runKey}
           difficulty={run.difficulty}

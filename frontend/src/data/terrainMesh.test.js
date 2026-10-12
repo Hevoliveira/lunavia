@@ -100,4 +100,12 @@ describe("light", () => {
     // the flat melt pond is in full sunlight
     expect(sunVisAt(t, 0, 0)).toBeGreaterThan(0.95);
   });
+
+  test.each(SITE_IDS)("%s: every landing zone is in sunlight (the low Sun's long shadows never cover a place to land)", (id) => {
+    const s = getSite(id);
+    const t = buildTerrain(s);
+    s.zones.forEach((z) => {
+      for (const dx of [-z.r, 0, z.r]) expect([z.label, dx, sunVisAt(t, z.x + dx, 0) > 0.9]).toEqual([z.label, dx, true]);
+    });
+  });
 });

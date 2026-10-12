@@ -43,18 +43,33 @@ const dropAt = (site, x, { vx = 0, vy = -1.2, alt = 20, tilt = 0 } = {}) => {
   return simulate(cfg, hold, { init, site, fps: 120 });
 };
 
-describe("the four landing sites", () => {
-  test("catalogue: four sites from beginner to expert, primary LZ at the datum, LZs no larger as they get harder", () => {
-    expect(SITE_IDS).toEqual(["tranquillitatis", "fra-mauro", "hadley", "tycho"]);
+describe("the four lunar missions", () => {
+  test("catalogue: wide plain, mountain valley, crater region, far side; primary LZ at the datum, LZs no larger as they get harder", () => {
+    expect(SITE_IDS).toEqual(["tranquillitatis", "hadley", "tycho", "far-side"]);
+    expect(SITES.map((s) => s.name)).toEqual(["SEA OF TRANQUILITY", "HADLEY–APENNINE", "TYCHO HIGHLANDS", "SILENT HORIZON"]);
+    expect(SITES.map((s) => s.kind)).toEqual(["WIDE PLAIN", "MOUNTAIN VALLEY", "CRATER REGION", "FAR SIDE"]);
     expect(SITES.map((s) => s.level)).toEqual([1, 2, 3, 4]);
     expect(MISSION_SITE_ID).toBe("tranquillitatis");
     const radii = SITES.map((s) => s.primary.r);
-    expect(radii).toEqual([6, 6, 5, 4]);
+    expect(radii).toEqual([6, 5, 4, 4]);
     SITES.forEach((s) => {
       expect(s.primary.x).toBe(0);
       expect(Math.abs(s.height(0, 0))).toBeLessThan(1e-9);
-      expect(s.name).toBeTruthy();
       expect(s.ref).toBeTruthy();
+      expect(s.briefing).toBeTruthy();
+      expect(s.challenge).toBeTruthy();
+    });
+  });
+
+  test("the Earth: in the sky over the near-side sites, below the horizon (and out of radio reach) on the far side", () => {
+    SITES.forEach((s) => {
+      if (s.id === "far-side") {
+        expect(s.earth).toBeNull();
+        expect(s.earthLink).toBe(false);
+      } else {
+        expect(s.earth.el).toBeGreaterThan(20);
+        expect(s.earthLink).not.toBe(false);
+      }
     });
   });
 
@@ -79,13 +94,28 @@ describe("the four landing sites", () => {
       }
       return hi - lo;
     });
-    // flat mare < rolling ejecta; the Apennine front and the rille give Hadley the most relief
-    expect(relief[0]).toBeLessThan(relief[1]);
-    expect(relief[2]).toBeGreaterThan(relief[1]);
+    // the open plain has the least relief; the Apennine front and the rille give Hadley the most;
+    // the far side's crater wall and ridges are in between
+    expect(relief[0]).toBe(Math.min(...relief));
+    expect(relief[1]).toBe(Math.max(...relief));
+    expect(relief[3]).toBeGreaterThan(2 * relief[0]);
     const density = SITES.map((s) => s.boulders.filter((b) => Math.abs(b.x) < 150 && Math.abs(b.z) < 60).length);
-    expect(density[3]).toBe(Math.max(...density)); // Tycho: boulders everywhere
+    expect(density[2]).toBe(Math.max(...density)); // Tycho: boulders everywhere
     const unsafe = SITES.map((s) => hazardMap(s, 0.5).filter((h) => h.x1 > -60 && h.x0 < 60).reduce((a, h) => a + Math.min(60, h.x1) - Math.max(-60, h.x0), 0));
-    expect(unsafe[3]).toBeGreaterThan(unsafe[0]); // limited safe ground at Tycho
+    expect(unsafe[2]).toBe(Math.max(...unsafe)); // limited safe ground at Tycho
+    // the far side's clearing is hemmed in: hazards on both sides within 5 m of its edge,
+    // closer than anything near the plain's LZ
+    const gaps = (s) => {
+      const z = s.primary;
+      const hm = hazardMap(s, 0.25);
+      const before = Math.min(...hm.filter((h) => h.x1 < z.x).map((h) => z.x - z.r - h.x1));
+      const after = Math.min(...hm.filter((h) => h.x0 > z.x).map((h) => h.x0 - z.x - z.r));
+      return [before, after];
+    };
+    gaps(SITES[3]).forEach((g) => expect(g).toBeLessThan(5));
+    expect(Math.max(...gaps(SITES[3]))).toBeLessThan(Math.min(...gaps(SITES[0])));
+    // and its approach comes in over a crater wall steeper than the LM's limit
+    expect(hazardMap(SITES[3], 0.5).some((h) => h.name === "CRATER WALL" && h.kind === "slope")).toBe(true);
     expect(new Set(SITES.map((s) => s.approach.dir)).size).toBe(2); // approaches from both sides
     expect(getSite("hadley").approach.offset).toBeLessThan(0.3); // Apollo 15's steep approach
   });
@@ -316,11 +346,23 @@ describe("terrain changes the outcome where it should", () => {
     }
   });
 
-  test("Fra Mauro: the ridge flanks either side of the crest slope past the LM's limit", () => {
-    const s = getSite("fra-mauro");
-    const steep = hazardMap(s, 0.25).filter((h) => h.kind === "slope" && h.x1 > -60 && h.x0 < 60);
-    expect(steep.length).toBeGreaterThan(1);
-    expect(steep.some((h) => h.x0 > 0)).toBe(true);
-    expect(steep.some((h) => h.x1 < 0)).toBe(true);
+  test("Silent Horizon: short of the clearing the secondary crater, past it the boulder field and the wrinkle ridge, behind it the crater wall", () => {
+    const s = getSite("far-side");
+    const cfg = DIFFICULTY.ASTRONAUT;
+    const at = (x) => gradeTouchdown(siteStart(s, cfg, { xPos: x, alt: 0.5, vy: -1, vx: 0 }), cfg, s);
+    const cases = [
+      [17, "SECONDARY CRATER"],
+      [-16, "BOULDER FIELD"],
+      [-32, "WRINKLE RIDGE"],
+      [125, "CRATER WALL"],
+    ];
+    for (const [x, name] of cases) {
+      const r = at(x);
+      expect([x, r.crashed]).toEqual([x, true]);
+      expect(r.failureReasons).toContain("UNSAFE TERRAIN");
+      expect(s.evaluate(x).hazard.name).toBe(name);
+    }
+    // the clearing itself, and both alternates, are safe
+    s.zones.forEach((z) => expect([z.label, at(z.x).crashed]).toEqual([z.label, false]));
   });
 });

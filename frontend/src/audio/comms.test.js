@@ -273,9 +273,9 @@ describe("comms director", () => {
 /* ---------------------------------------------------------------------- */
 /* Descent: fly the real lander physics and feed the monitor at 15 Hz     */
 
-function flyDescent(difficulty, strategy, { init, maxTime = 200 } = {}) {
+function flyDescent(difficulty, strategy, { init, maxTime = 200, siteId } = {}) {
   const cfg = DIFFICULTY[difficulty];
-  const site = getSite();
+  const site = getSite(siteId);
   const p = siteStart(site, cfg, init || null);
   const pilot = strategy ? humanPilot(cfg, strategy, { lag: 0.3, seed: 2 }) : () => ({});
   const mon = createDescentMonitor();
@@ -289,7 +289,7 @@ function flyDescent(difficulty, strategy, { init, maxTime = 200 } = {}) {
   };
   while (p.t < maxTime) {
     const inp = pilot({ ...p }, p.t) || {};
-    stepFrame(p, inp, cfg, frame);
+    stepFrame(p, inp, cfg, frame, site);
     acc += frame;
     if (acc >= 1 / 15) {
       acc = 0;
@@ -297,10 +297,51 @@ function flyDescent(difficulty, strategy, { init, maxTime = 200 } = {}) {
     }
     if (p.alt <= CONTACT_ALT) break;
   }
-  const result = gradeTouchdown(p, cfg);
+  const result = gradeTouchdown(p, cfg, site);
   feed(result.crashed ? "crashed" : "landed");
   return { req, result, ids: req.map((r) => r.id) };
 }
+
+describe("far side: no line of sight to the Earth", () => {
+  const replay = (req, setup) => {
+    const r = rig();
+    setup(r.dir);
+    let last = 0;
+    req.forEach((q) => {
+      r.clock.advance(Math.max(0, (q.t - last) * 1000));
+      last = q.t;
+      r.dir.request(q.id, q);
+    });
+    r.clock.advance(20000);
+    return r.aired.map((a) => a.id);
+  };
+  const ground = (id) => catalog.roles[LINE[id].role].radio !== "onboard" && !LINE[id].throughBlackout;
+
+  test("a whole far-side descent is heard from on board only: no Houston, no Flight, no Guidance; CONTACT LIGHT is still called", () => {
+    const { req, result } = flyDescent("ASTRONAUT", guidedStrategy(), { siteId: "far-side" });
+    expect(result.crashed).toBe(false);
+    // the same telemetry with a link would have had Houston on the loop...
+    expect(replay(req, () => {}).some(ground)).toBe(true);
+    // ...without one, only the cabin call gets through
+    const heard = replay(req, (dir) => dir.setBlackout(true));
+    expect(heard).toContain("descent.contact");
+    expect(heard.filter(ground)).toEqual([]);
+    expect(heard).not.toContain("descent.touchdown");
+    expect(heard).not.toContain("descent.touchdownFlight");
+  });
+
+  test("the onboard computer still warns, and the link comes back for the next near-side flight", () => {
+    comms.reset();
+    comms.setEarthLink(false);
+    expect(comms.say("descent.touchdown")).toBe(false);
+    expect(comms.say("descent.goLanding")).toBe(false);
+    expect(comms.say("descent.attitude")).toBe(true);
+    comms.flush();
+    comms.setEarthLink(true);
+    expect(comms.say("descent.goLanding")).toBe(true);
+    comms.reset();
+  });
+});
 
 describe("descent monitor (real lander physics)", () => {
   test("a good guided landing gets the milestone calls in order and no warnings spam", () => {

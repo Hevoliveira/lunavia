@@ -3,6 +3,9 @@
  *
  *   say(id, { delay, relevant })   request a line from commsLines.json
  *   setBlackout(on) / setLink(q)   entry plasma: radio cut-off and link quality
+ *   setEarthLink(on)               false on the far side: no line of sight to the
+ *                                  Earth, so only onboard voices and cabin calls
+ *                                  (as in the blackout), without the static burst
  *   setVerbosity(level)            "full" | "standard" | "minimal"
  *   setMuted(on)                   page-level mute (Training "MUTE INSTRUCTOR")
  *   flush() / reset()              drop pending calls (new attempt, abort)
@@ -168,6 +171,10 @@ const comms = {
     blackout = !!on;
     director.setBlackout(blackout);
     if (blackout && !was && engine && getAudioSettings().radioFx && getAudioSettings().voice && !muted) staticBurst(engine.ctx, engine.out);
+  },
+  setEarthLink(on) {
+    blackout = !on;
+    director.setBlackout(blackout);
   },
   setLink(q) {
     link = Math.min(1, Math.max(0, q));

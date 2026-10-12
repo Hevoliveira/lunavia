@@ -34,10 +34,11 @@ const f1 = (x) => x.toFixed(1);
 
 // The precision start is past the LZ along the approach, so the way back is
 // against the direction of flight: ◄ RCS when flying towards +x, RCS ► otherwise.
+// On the far side there is no Earth link: the instructor says so, once, at the start.
 const LANDING_INTRO = (site) => ({
   standard: {
-    full: info("STANDARD LANDING", "Hold THR to brake. Keep V/S inside the TGT V/S band; steer to the LZ."),
-    key: info("STANDARD LANDING", "Land safely inside the primary LZ."),
+    full: info("STANDARD LANDING", `Hold THR to brake. Keep V/S inside the TGT V/S band; steer to the LZ.${site.earthLink === false ? " No Earth link: onboard guidance only." : ""}`),
+    key: info("STANDARD LANDING", `Land safely inside the primary LZ.${site.earthLink === false ? " Onboard guidance only." : ""}`),
   },
   precision: {
     full: info("LZ 35 M BEHIND", `Translate with ${site.approach.dir > 0 ? "◄ RCS" : "RCS ►"}; arrive over the centre with H/S near 0.`),
@@ -48,7 +49,7 @@ const LANDING_INTRO = (site) => ({
     key: info("BRAKING PRACTICE", "Brake in time and keep a reserve."),
   },
   commander: {
-    minimal: info("COMMANDER CHALLENGE", "Land safely inside the primary LZ. No coaching."),
+    minimal: info("COMMANDER CHALLENGE", `Land safely inside the primary LZ. No coaching${site.earthLink === false ? ", no Earth link" : ""}.`),
   },
 });
 
