@@ -3,6 +3,8 @@
  *
  * One choreography, used by the mission's lunar orbit and by the opening:
  *
+ *  0. The lunar module's landing gear is readied: its contact probes, folded
+ *     since launch (data/payloadDesign), swing down (PROBES, before release).
  *  1. Docked. Tunnel cleared, the twelve latches armed; nothing moves.
  *  2. Release (t = latch). The latches open and the command and service
  *     module backs away on its service-module RCS: the forward-facing
@@ -20,7 +22,11 @@
  * nothing jumps when the latches let go.
  */
 
+import { PROBE_DEPLOYED, PROBE_STOWED } from "./payloadDesign";
+
 export const MASS = { csm: 28.8, lm: 15.1 }; // tonnes (Apollo-class)
+// The contact probes swing down from their launch position, seconds relative to release.
+export const PROBES = [-9, -6];
 export const UNDOCK = {
   latch: 0, // release, seconds from the start of the choreography
   ramp: 1.6, // s of RCS to build the separation speed
@@ -67,6 +73,9 @@ const pulse = (t, t0, len) => (t < t0 || t > t0 + len ? 0 : Math.min(1, (t - t0)
  * csmRcs: level of the command and service module's forward-facing thrusters.
  * lmRollRcs: +1..-1, the lunar module's roll thrusters (start and stop pulses).
  */
+/** The docked stack in the translunar coast: as extracted from the rocket, probes still folded. */
+export const COAST = -60;
+
 export function undocking(t) {
   const gap = gapAt(t);
   const share = MASS.csm / (MASS.csm + MASS.lm);
@@ -76,6 +85,7 @@ export function undocking(t) {
   const phase = t < UNDOCK.latch ? "docked" : t < UNDOCK.ramp ? "release" : t < UNDOCK.burn ? "stationkeeping" : "separating";
   return {
     gap,
+    lmProbe: PROBE_STOWED + (PROBE_DEPLOYED - PROBE_STOWED) * smooth((t - PROBES[0]) / (PROBES[1] - PROBES[0])),
     csmY: -gap * (1 - share),
     lmY: gap * share,
     lmRoll: rollAt(t),

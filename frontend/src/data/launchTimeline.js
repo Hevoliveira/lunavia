@@ -17,12 +17,15 @@
 
 export const UNIT_M = 30; // metres per pad-scale scene unit
 export const LIFTOFF_T = 15; // countdown starts at T-15
-export const DURATION = 108;
+export const DURATION = 147.5;
+// Transposition, docking and extraction (data/transposition): tau = t - TD_START.
+export const TD_START = 103.5;
 
 // Camera shots, in order. Hard cuts between shots, smooth motion within.
 export const SHOTS = [
   { id: "wide", start: 0, end: 4, regime: "pad", name: "LAUNCH COMPLEX 39" },
-  { id: "lowAngle", start: 4, end: 7.5, regime: "pad", name: "LV-001 ON THE PAD" },
+  // The payload: the spacecraft on top, and (seen through the adapter) the lunar module inside it.
+  { id: "payload", start: 4, end: 7.5, regime: "pad", name: "LV-001 · LUNAR PAYLOAD" },
   { id: "engines", start: 7.5, end: 14.2, regime: "pad", name: "ENGINE SECTION" },
   { id: "trench", start: 14.2, end: 19, regime: "pad", name: "FLAME TRENCH" },
   { id: "tower", start: 19, end: 25, regime: "pad", name: "TOWER CLEARANCE" },
@@ -44,12 +47,18 @@ export const SHOTS = [
   { id: "tliCount", start: 89.5, end: 92.5, regime: "flight", name: "GO FOR TLI" },
   { id: "tli", start: 92.5, end: 99, regime: "flight", name: "TRANSLUNAR INJECTION" },
   { id: "departure", start: 99, end: 103.5, regime: "flight", name: "LEAVING EARTH ORBIT" },
-  { id: "farewell", start: 103.5, end: DURATION, regime: "flight", name: "LUNAR TRANSFER" },
+  // Transposition and docking, twenty minutes after the burn: the payload comes out of the rocket.
+  { id: "tdSep", start: 103.5, end: 108.5, regime: "flight", name: "SPACECRAFT SEPARATION" },
+  { id: "tdTurn", start: 108.5, end: 120.5, regime: "flight", name: "TRANSPOSITION" },
+  { id: "tdDock", start: 120.5, end: 135, regime: "flight", name: "DOCKING" },
+  { id: "tdExtract", start: 135, end: 141.5, regime: "flight", name: "LUNAR MODULE EXTRACTION" },
+  { id: "farewell", start: 141.5, end: DURATION, regime: "flight", name: "TRANSLUNAR COAST" },
 ];
 
 // Mission events. Captions describe what happens; none of them waits for input.
 export const EVENTS = [
   { t: 1.0, id: "venting" },
+  { t: 4.4, id: "payload", caption: "LUNAR PAYLOAD", sub: "COMMAND AND SERVICE MODULE ON TOP · LUNAR MODULE INSIDE THE ADAPTER", kicker: "LV-001" },
   { t: 7.4, id: "sparklers" },
   { t: 8.5, id: "engineStart", caption: "MAIN ENGINE START", sub: "FIVE-ENGINE CLUSTER · STAGGERED START" },
   { t: 11.6, id: "fullThrust" },
@@ -67,6 +76,16 @@ export const EVENTS = [
   { t: 92.6, id: "tli", caption: "TRANSLUNAR INJECTION", sub: "UPPER STAGE RESTART AT SUNRISE · Δv 3.1 KM/S", kicker: "DEPARTURE FOR THE MOON" },
   { t: 100, id: "tliCutoff" },
   { t: 100.3, id: "lunarTransfer", caption: "LUNAR TRANSFER", sub: "TLI CUTOFF · ON COURSE FOR THE MOON · 3-DAY COAST", kicker: "DEPARTURE FOR THE MOON" },
+  // Transposition and docking (tau = t - TD_START; data/transposition TD).
+  { t: 103.8, id: "tdSep", caption: "SPACECRAFT SEPARATION", sub: "ADAPTER PANELS OPEN · THE LUNAR MODULE RODE INSIDE", kicker: "TRANSPOSITION AND DOCKING" },
+  { t: 107.1, id: "panelsJettison" },
+  { t: 108.8, id: "tdTurn", caption: "TRANSPOSITION", sub: "THE CSM TURNS ROUND TO FACE THE LUNAR MODULE", kicker: "TRANSPOSITION AND DOCKING" },
+  { t: 121.0, id: "tdDock", caption: "DOCKING", sub: "THE CSM'S PROBE INTO THE LUNAR MODULE'S DROGUE", kicker: "TRANSPOSITION AND DOCKING" },
+  { t: 132.0, id: "capture" },
+  { t: 134.3, id: "hardDock", caption: "DOCKED", sub: "CAPTURE LATCHES · PROBE RETRACTED · TWELVE LATCHES CLOSED", kicker: "TRANSPOSITION AND DOCKING" },
+  { t: 135.1, id: "tdExtract", caption: "LUNAR MODULE EXTRACTED", sub: "MOUNTS RELEASED · THE CSM PULLS IT OUT OF THE ADAPTER", kicker: "TRANSPOSITION AND DOCKING" },
+  { t: 138.2, id: "hga", caption: "HIGH-GAIN ANTENNA DEPLOYED", sub: "CSM AND LM DOCKED · BOTH VEHICLES FROM THE LAUNCH", kicker: "TRANSLUNAR COAST" },
+  { t: 141.8, id: "farewell", caption: "UPPER STAGE LEFT BEHIND", sub: "CSM AND LM ON COURSE FOR THE MOON · 3-DAY COAST", kicker: "TRANSLUNAR COAST" },
 ];
 
 export const eventTime = (id) => EVENTS.find((e) => e.id === id).t;
@@ -126,17 +145,19 @@ const ALT_ASCENT = monotone([
   [32, 9], [35, 14], [43, 58], [47, 68], [54.5, 84], [57, 95], [61, 125], [65, 185],
   [92.6, 185], [96, 230], [99, 320], [100, 340], [103.5, 370],
 ]);
-// The last cut jumps ~20 min ahead: the spacecraft is already 6 000 km out
-// and the Earth recedes to a half-lit globe as the shot runs.
-const FAREWELL = 103.5;
-const ALT_KM = (t) => (t < FAREWELL ? ALT_ASCENT(t) : 6000 * Math.exp(0.317 * (t - FAREWELL)));
+// The cut to transposition jumps ~20 min ahead: the spacecraft is already
+// 6 000 km out, climbing slowly through the docking; the coast after it runs
+// the clock fast and the Earth recedes to a half-lit globe.
+const TD_ALT = monotone([[103.5, 6000], [141.5, 7600]]);
+const FAREWELL = 141.5;
+const ALT_KM = (t) => (t < TD_START ? ALT_ASCENT(t) : t < FAREWELL ? TD_ALT(t) : 7600 * Math.exp(0.2 * (t - FAREWELL)));
 // Leaving orbit the trajectory climbs away from the Earth, so the vehicle,
 // following its velocity, pitches up from the local horizontal.
 const PITCH_DEG = monotone([[32, 24], [43, 58], [47, 62], [54.5, 66], [65, 88], [85, 90], [99, 92]]);
 const pitchDeg = (t) => (t < 99 ? PITCH_DEG(t) : 78);
 const SPEED_KMPS = monotone([
   [32, 0.35], [35, 0.45], [43, 2.1], [44, 2.3], [54.5, 2.4], [65, 7.8], [92.6, 7.8],
-  [100, 10.8], [103.5, 10.2], [105, 8.4], [108, 5.4],
+  [100, 10.8], [103.4, 10.2], [103.5, 8.0], [141.5, 7.6], [147.5, 5.0],
 ]);
 
 /*
@@ -163,7 +184,9 @@ const ORBIT_ARC = [
   // beneath it and the Earth ahead lights up while the engine runs.
   { t: 92.5, a: 665.25, rate: 2.0, met: 10260, metRate: 50 },
   { t: 99, a: 678.6, rate: 0.4, met: 10600, metRate: 30 },
-  { t: 103.5, a: 690, rate: 0.6, met: 11000, metRate: 220 },
+  // Transposition and docking at 20x, then the coast at 40x up to the cruise (MET 12 000 s).
+  { t: 103.5, a: 690, rate: 0.03, met: 11000, metRate: 20 },
+  { t: 141.5, a: 691.1, rate: 0.6, met: 11760, metRate: 40 },
 ];
 function orbitSeg(t) {
   let seg = ORBIT_ARC[0];
@@ -361,5 +384,16 @@ export function sunAt(t) {
   return { elev, dip, lit: smooth((above + 0.4) / 0.8), red: 1 - smooth((above - 0.3) / 4) };
 }
 
+/*
+ * The pad's payload shot: the adapter turns translucent for a moment (0..1) so
+ * the lunar module can be seen standing inside it, under the CSM. Only in that
+ * shot; the rest of the launch shows the vehicle as it is.
+ */
+export function payloadReveal(t) {
+  const s = SHOTS.find((x) => x.id === "payload");
+  if (t < s.start || t >= s.end) return 0;
+  return smooth((t - s.start - 0.7) / 0.6) * (1 - smooth((t - (s.end - 0.55)) / 0.45));
+}
+
 /* Validation helper: the order of required mission milestones. */
-export const MILESTONES = ["engineStart", "liftoff", "towerClear", "maxQ", "meco", "separation", "usIgnition", "orbit", "finalPass", "tliPrep", "tli", "lunarTransfer"];
+export const MILESTONES = ["engineStart", "liftoff", "towerClear", "maxQ", "meco", "separation", "usIgnition", "orbit", "finalPass", "tliPrep", "tli", "lunarTransfer", "tdSep", "tdTurn", "tdDock", "hardDock", "tdExtract", "farewell"];

@@ -246,10 +246,24 @@ export function buildSM() {
   SCIMITAR_A.forEach((a) => {
     P.metal.push(onSurface(new THREE.BoxGeometry(0.05, 0.9, 0.5), CM_R + 0.3, -2.9, a));
   });
-  // High-gain antenna: boom, yoke, a cluster of four dishes around a wide-beam horn.
-  P.metal.push(rod(HGA.root, HGA.head, 0.06, 8));
+  // High-gain antenna mount on the aft bulkhead (the antenna itself: buildHGA, on its hinge).
   P.metal.push(rod([HGA.root[0] * 0.85, SM_BOTTOM + 0.04, HGA.root[2] * 0.85], [HGA.root[0] * 1.12, SM_BOTTOM - 0.25, HGA.root[2] * 1.12], 0.1, 8));
-  const head = new THREE.Vector3(...HGA.head);
+  return Object.fromEntries(PARTS.map((k) => [k, P[k].length ? merge(P[k]) : null]));
+}
+
+/**
+ * The high-gain antenna: boom, a cluster of four dishes round a wide-beam horn,
+ * and its electronics box, in a frame whose origin is the boom's hinge
+ * (HGA.root). CsmModel turns it on the hinge: folded down beside the engine
+ * bell for launch (inside the spacecraft adapter), swung out once the lunar
+ * module has been extracted (hgaRotation).
+ */
+export function buildHGA() {
+  const P = { metal: [], white: [], black: [] };
+  const o = new THREE.Vector3(...HGA.root);
+  const rel = (v) => [v[0] - o.x, v[1] - o.y, v[2] - o.z];
+  P.metal.push(rod([0, 0, 0], rel(HGA.head), 0.06, 8));
+  const head = new THREE.Vector3(...rel(HGA.head));
   const look = new THREE.Vector3(Math.sin(HGA_A) * 0.35, -1, Math.cos(HGA_A) * 0.35).normalize(); // the dishes face aft and out
   const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), look);
   const across = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
@@ -266,7 +280,26 @@ export function buildSM() {
   });
   P.metal.push(new THREE.CylinderGeometry(0.13, 0.2, 0.42, 12).applyQuaternion(q).translate(head.x, head.y, head.z));
   P.black.push(new THREE.BoxGeometry(0.34, 0.34, 0.2).applyQuaternion(q).translate(head.x - look.x * 0.2, head.y - look.y * 0.2, head.z - look.z * 0.2));
-  return Object.fromEntries(PARTS.map((k) => [k, P[k].length ? merge(P[k]) : null]));
+  return { metal: merge(P.metal), white: merge(P.white), black: merge(P.black) };
+}
+
+/**
+ * The antenna's fold for launch: down on a hinge tangent to the drum at the
+ * boom's root (47.5°), the head turned 30° about the boom, so the boom hangs
+ * beside the engine bell with the dish cluster between the bell and the
+ * adapter wall (data/payloadDesign checks the clearances). Deployed, it stands
+ * out to the side as drawn by buildHGA.
+ */
+const BOOM = new THREE.Vector3(HGA.head[0] - HGA.root[0], HGA.head[1] - HGA.root[1], HGA.head[2] - HGA.root[2]).normalize();
+export const HGA_FOLD = { hinge: [Math.cos(HGA_A), 0, -Math.sin(HGA_A)], hingeDeg: 47.5, boom: BOOM.toArray(), spinDeg: 30 };
+const Q_STOWED = new THREE.Quaternion()
+  .setFromAxisAngle(new THREE.Vector3(...HGA_FOLD.hinge), (HGA_FOLD.hingeDeg * Math.PI) / 180)
+  .multiply(new THREE.Quaternion().setFromAxisAngle(BOOM, (HGA_FOLD.spinDeg * Math.PI) / 180));
+/** The antenna's rotation about its root for deploy 0 (stowed) .. 1 (deployed), as a quaternion [x, y, z, w]. */
+export function hgaRotation(deploy) {
+  const k = Math.min(1, Math.max(0, deploy));
+  const q = Q_STOWED.clone().slerp(new THREE.Quaternion(), k * k * (3 - 2 * k));
+  return [q.x, q.y, q.z, q.w];
 }
 
 /* ---- the docked stack ---------------------------------------------------------------- */

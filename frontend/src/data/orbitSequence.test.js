@@ -1,4 +1,7 @@
 import {
+  APPROACH_CLOSE,
+  approachCloseCamera,
+  approachDistanceKm,
   CRUISE,
   M_PER_UNIT,
   ORBIT_SEQ,
@@ -120,13 +123,29 @@ describe("cruise and return: close on the spacecraft, the planet at its true siz
 
   test("the close cameras stay outside the spacecraft, on the far side from the planet", () => {
     for (let u = 0; u <= 1; u += 0.05) {
-      [cruiseCamera(u), returnCamera(u)].forEach((c) => {
+      [cruiseCamera(u), approachCloseCamera(u), returnCamera(u)].forEach((c) => {
         expect(clearance(c.pos)).toBeGreaterThan(10);
         expect(c.pos[2]).toBeGreaterThan(0); // the planet is at -Z, beyond the stack
         expect(c.look[2]).toBeLessThanOrEqual(0.0001);
       });
     }
   });
+});
+
+test("lunar approach: the docked stack closes on the Moon, which grows to fill the frame by loss of signal", () => {
+  const los = 207000;
+  let prev = Infinity;
+  for (let t = APPROACH_CLOSE.start; t <= los; t += 500) {
+    const d = approachDistanceKm(t, los);
+    expect(d).toBeLessThanOrEqual(prev);
+    expect(d).toBeGreaterThan(1737);
+    prev = d;
+  }
+  const deg = (d) => (Math.asin(1737 / d) * 180) / Math.PI;
+  expect(deg(approachDistanceKm(APPROACH_CLOSE.start, los))).toBeGreaterThan(4);
+  expect(deg(approachDistanceKm(los - 1000, los))).toBeGreaterThan(20);
+  // a few seconds on screen
+  expect((los - APPROACH_CLOSE.start) / APPROACH_CLOSE.rate).toBeGreaterThan(3);
 });
 
 describe("the main-menu opening", () => {

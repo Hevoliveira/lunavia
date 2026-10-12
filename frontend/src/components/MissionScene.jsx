@@ -6,7 +6,7 @@ import { EARTH_RADIUS_KM, MOON_RADIUS_KM, trajectoryPosition } from "@/data/miss
 import { EARTH_UNITS, MOON_UNITS, SCENE_SCALE, craftScenePos } from "@/data/sceneTrack";
 import SpacecraftStack from "@/components/spacecraft/SpacecraftStack";
 import { lunarEnv } from "@/components/LanderModel";
-import { undocking } from "@/data/undocking";
+import { COAST, undocking } from "@/data/undocking";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
 import {
   CRUISE,
@@ -18,6 +18,9 @@ import {
   orbitShotAt,
   coastDistanceKm,
   radialFrame,
+  APPROACH_CLOSE,
+  approachCloseCamera,
+  approachDistanceKm,
   returnDistanceKm,
   trueSizeDistance,
   returnCamera,
@@ -355,7 +358,7 @@ export function VehicleLayer({ viewRef, lm = true }) {
   const sun = useRef();
   const target = useRef();
   const group = useRef();
-  const stackState = useRef(undocking(-1));
+  const stackState = useRef(undocking(COAST));
   useEffect(() => {
     scene.environment = lunarEnv(gl);
   }, [gl, scene]);
@@ -531,8 +534,9 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
 
     // ---- Close shots on the spacecraft: leaving the Earth, and heading home ----
     const outboundClose = t < CRUISE.closeEnd;
+    const approachClose = t >= APPROACH_CLOSE.start && t < APPROACH.los;
     const returnClose = t >= 504000 && t < RETURN_CLOSE_END;
-    if (outboundClose || returnClose) {
+    if (outboundClose || approachClose || returnClose) {
       // Close on the spacecraft, the planet behind it at its true apparent size
       // (the planets are drawn 10x oversized for the Earth-Moon views, so the
       // planet camera stands back by the same factor).
@@ -546,6 +550,14 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
         origin = [frame.z[0] * d, 0, frame.z[2] * d];
         cam = cruiseCamera(smooth01((t - 12000) / (CRUISE.closeEnd - 12000)));
         v.shot = "cruiseClose";
+      } else if (approachClose) {
+        // The same docked stack closing on the Moon, which is behind it at its true size.
+        const away = [scPos[0] - moonPos[0], 0, scPos[2] - moonPos[2]];
+        frame = radialFrame(away);
+        const d = trueSizeDistance(MOON_UNITS, approachDistanceKm(t, APPROACH.los), MOON_RADIUS_KM);
+        origin = [moonPos[0] + frame.z[0] * d, 0, moonPos[2] + frame.z[2] * d];
+        cam = approachCloseCamera(smooth01((t - APPROACH_CLOSE.start) / (APPROACH.los - APPROACH_CLOSE.start)));
+        v.shot = "approachClose";
       } else {
         const away = [scPos[0] - moonPos[0], 0, scPos[2] - moonPos[2]];
         frame = radialFrame(away);
@@ -554,7 +566,7 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
         cam = returnCamera(smooth01((t - 504000) / (RETURN_CLOSE_END - 504000)));
         v.shot = "returnClose";
       }
-      v.stack = undocking(-1);
+      v.stack = undocking(COAST);
       v.focus = [0, 0, 0];
       vehicleView(v, frame, origin, cam, camera);
       snap.current = true;
@@ -669,7 +681,7 @@ function Scene({ missionTime, cinematic, orbitClock }) {
   const scPos = craftScenePos(t, [0, 0, 0]);
   const p = trajectoryPosition(t);
   const moonPos = useMemo(() => [p.moonX * SCENE_SCALE, 0, p.moonZ * SCENE_SCALE], [p.moonX, p.moonZ]);
-  const viewRef = useRef({ vehicle: false, glint: false, origin: [0, 0, 0], stack: undocking(-1), focus: [0, 0, 0], sunV: [0, 1, 0] });
+  const viewRef = useRef({ vehicle: false, glint: false, origin: [0, 0, 0], stack: undocking(COAST), focus: [0, 0, 0], sunV: [0, 1, 0] });
   const vScene = useMemo(() => new THREE.Scene(), []);
   const vCam = useMemo(() => new THREE.PerspectiveCamera(45, 1, 0.1, 4000), []);
   // The lunar module flies out docked and stays on the Moon: the way home is the CSM alone.

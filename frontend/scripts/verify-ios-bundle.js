@@ -55,6 +55,9 @@ const FEATURES = [
   ["One spacecraft from Earth orbit to the Moon (shared CSM, escape tower jettison)", "ESCAPE TOWER JETTISONED"],
   ["Lunar module undocking in the mission", "SKIP TO DESCENT"],
   ["Opening cinematic and Laju Productions credit", "A LAJU PRODUCTIONS GAME"],
+  ["Lunar module inside the launch vehicle (payload shot)", "LUNAR MODULE INSIDE THE ADAPTER"],
+  ["Transposition, docking and lunar module extraction", "LUNAR MODULE EXTRACTED"],
+  ["Lunar approach with the docked spacecraft", "LUNAR APPROACH"],
 ];
 
 function sourceText(dir) {

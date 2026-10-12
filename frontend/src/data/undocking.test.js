@@ -1,4 +1,5 @@
-import { MASS, ROLL_RATE, UNDOCK, gapAt, relSpeed, rollAt, undocking } from "./undocking";
+import { COAST, MASS, PROBES, ROLL_RATE, UNDOCK, gapAt, relSpeed, rollAt, undocking } from "./undocking";
+import { PROBE_DEPLOYED, PROBE_STOWED } from "./payloadDesign";
 
 const DEG = Math.PI / 180;
 const steps = (t0, t1, dt = 0.02) => {
@@ -78,5 +79,20 @@ describe("lunar module undocking: gentle, controlled, physically consistent", ()
   test("a clear separation within the scene: over 8 m apart 18 s after release, still opening", () => {
     expect(gapAt(18)).toBeGreaterThan(8);
     expect(relSpeed(30)).toBeGreaterThan(0.8);
+  });
+
+  test("the lunar module arrives with its probes folded as launched, and deploys them before it undocks", () => {
+    expect(undocking(COAST).lmProbe).toBe(PROBE_STOWED);
+    expect(undocking(COAST).gap).toBe(0);
+    expect(undocking(PROBES[0] - 0.01).lmProbe).toBe(PROBE_STOWED);
+    expect(undocking(PROBES[1]).lmProbe).toBe(PROBE_DEPLOYED);
+    expect(PROBES[1]).toBeLessThan(UNDOCK.latch);
+    // a smooth swing: no jump between frames
+    let prev = undocking(PROBES[0] - 1).lmProbe;
+    steps(PROBES[0] - 1, PROBES[1] + 1).forEach((t) => {
+      const b = undocking(t).lmProbe;
+      expect(Math.abs(b - prev)).toBeLessThan(0.05);
+      prev = b;
+    });
   });
 });
