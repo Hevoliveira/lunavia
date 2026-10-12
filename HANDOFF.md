@@ -1313,3 +1313,53 @@ x, safety and label).
   `DescentGame` steps quality down on a device that cannot hold its frame rate: pixel ratio
   first (2 → 1.5 → 1.25), then the real-time shadows. `window.__lvQuality` pins a step for
   validation.
+
+## 31. iPhone release branch
+
+**Symptom.** The iPhone kept running an old game after a fresh ZIP, Clean Build Folder and
+install.
+
+**Cause.** The wrong branch was downloaded; nothing on the Mac or the phone was at fault. The
+work was delivered as a stack of branches, each with its own correct bundle:
+
+| Branch (PR) | Adds | Bundle BUILD |
+|---|---|---|
+| `claude/ios-app` (#3) | iOS app, COMMANDER rebalance, Flight IV, Earth-orbit finale | cb874af |
+| `claude/flight-training-center` (#4) | Training Center | 4bdfab9 |
+| `claude/mission-control-voice` (#5) | Mission Control voice | 8e64f2a |
+| `claude/lunar-orbit-fix` (#6) | lunar orbit rotation fix | 22cef22 |
+| `claude/lunar-touchdown-fidelity` (#7) | touchdown fidelity | d5e31db |
+| `claude/lunar-landing-sites` (#8) | landing sites | 967162b |
+
+`INSTALL_ON_IPHONE.md` told the reader to download `claude/ios-app` every time, and every
+later branch inherited that line. That download is a consistent, working build from
+10 October, without any later feature. PR #2 (playable reentry) is already contained in
+`claude/ios-app`. There is one Xcode project and one bundle identifier on every branch. No
+Capacitor config has a server URL, and there is no service worker.
+
+**Fix.**
+- **The release branch.** `claude/ios-release` is the tip of the stack, with no merges,
+  plus:
+  - this release tooling;
+  - its own bundle;
+  - `IPHONE_VERSION.md` at the top, naming the BUILD and its features.
+- **The guide.** `INSTALL_ON_IPHONE.md` now names `claude/ios-release` and gives the direct
+  ZIP link.
+- **Reproducible builds.** The build identity uses the source commit's time, so rebuilding
+  a commit gives byte-identical files.
+- **The verifier.** `yarn ios:verify` (`scripts/verify-ios-bundle.js`, also run by
+  `yarn ios:sync`) checks that:
+  - `public/build-info.json` and the compiled label name the same build;
+  - `index.html` loads a bundle that exists, with no leftovers;
+  - no Capacitor server URL is set;
+  - Xcode's Resources phase copies `public/`, and there is a single bundle identifier;
+  - no web source changed since the bundle was built;
+  - every feature marker in the source is in the bundle.
+
+  It also runs on an unpacked GitHub ZIP: `node scripts/verify-ios-bundle.js <folder>`.
+
+**Releasing a new iPhone build.**
+1. Bring `claude/ios-release` up to the newest finished branch (fast-forward or merge).
+2. Commit the source, run `yarn ios:sync` on the clean tree, and update
+   `IPHONE_VERSION.md`.
+3. Commit, then push.

@@ -19,11 +19,13 @@ This guide assumes no programming experience. You need:
 
 ## Part 2 — Download LUNAVIA
 
-1. On your Mac, open the LUNAVIA page on GitHub: `https://github.com/Hevoliveira/lunavia`
-2. Above the file list there is a button showing the branch name (it usually says **main**). Click it and choose **claude/ios-app**.
-   *(Once the iPhone version has been merged, you can stay on **main**.)*
-3. Click the green **Code** button, then **Download ZIP**.
-4. Open your **Downloads** folder and **double-click the ZIP file** to unpack it. You now have a folder called something like `lunavia-claude-ios-app`.
+The iPhone version with every finished feature is on the branch **claude/ios-release**. Download that branch, and no other: each of the other `claude/…` branches holds only the features up to its own step, and `main` has no iPhone project yet.
+
+1. On your Mac, open this link. It downloads the ZIP of **claude/ios-release** directly:
+   `https://github.com/Hevoliveira/lunavia/archive/refs/heads/claude/ios-release.zip`
+   *(Or, on `https://github.com/Hevoliveira/lunavia`: click the branch button above the file list (it usually says **main**), choose **claude/ios-release**, then the green **Code** button → **Download ZIP**.)*
+2. Open your **Downloads** folder and **double-click the ZIP file** to unpack it. You now have a folder called `lunavia-claude-ios-release`.
+3. Open **IPHONE_VERSION.md** in that folder: it names the **BUILD** this download installs and the features in it.
 
 ## Part 3 — Open the project in Xcode
 
@@ -88,7 +90,8 @@ Open LUNAVIA. On the first screen, at the **top left**, under *LAT 28.5°N · LO
 
 > **LUNAVIA iOS · BUILD 1a2b3c4 · 2026-10-09 03:10 UTC**
 
-- **BUILD** is the version of the game inside the app, and the date is when it was built. Compare them with the latest version named on GitHub (the description of the iPhone pull request lists the expected **BUILD** code).
+- **BUILD** is the version of the game inside the app (the source commit it was built from), and the date is that commit's time. It must match the **BUILD** in **IPHONE_VERSION.md** in the folder you downloaded.
+- If it shows an older BUILD (for example **cb874af**, from the old `claude/ios-app` download), the iPhone is running a different download: check that the folder you opened is `lunavia-claude-ios-release`.
 - If this line is **missing**, the iPhone is still running an old copy. Do the update below again, without skipping the steps marked **Important**.
 - Tap the line to show more details (screen size and **PHONE LAYOUT ON**). Send a photo of it if something still looks wrong.
 
@@ -98,8 +101,8 @@ You do **not** need to run any script or install anything extra: the downloaded 
 
 1. **Close Xcode** (menu **Xcode → Quit Xcode**).
 2. **Important — delete the old app from the iPhone.** On the iPhone, touch and hold the **LUNAVIA** icon, tap **Remove App**, then **Delete App**, then **Delete**. *(This removes every old file. Your 7-day signing is renewed by the new install anyway.)*
-3. **Important — throw away the old folder.** In **Finder**, open **Downloads** and drag **every** old LUNAVIA folder (`lunavia-claude-ios-app`, `lunavia-claude-ios-app 2`, …) and old LUNAVIA ZIP files to the **Trash**. Then right-click the Trash and choose **Empty Trash**. This way you cannot open an old copy by mistake.
-4. Download the new version exactly as in **Part 2** (branch **claude/ios-app**, green **Code** button, **Download ZIP**, then double-click the ZIP).
+3. **Important — throw away the old folder.** In **Finder**, open **Downloads** and drag **every** old LUNAVIA folder (`lunavia-claude-ios-app`, `lunavia-claude-ios-release`, `lunavia-claude-ios-release 2`, …) and old LUNAVIA ZIP files to the **Trash**. Then right-click the Trash and choose **Empty Trash**. This way you cannot open an old copy by mistake.
+4. Download the new version exactly as in **Part 2** (branch **claude/ios-release**, then double-click the ZIP).
 5. **Important — open the new project from Finder, not from Xcode's list of recent projects.** Open the new folder → **frontend → ios → App** → double-click **App.xcodeproj**. Wait for the package messages at the top of Xcode to finish.
 6. Check **Signing & Capabilities** again (**Part 5**): your **Team** must be selected. If you had changed the **Bundle Identifier** last time (for example to `com.yourname.lunavia`), type that **same** identifier again.
 7. **Important — clean the old build.** In the menu bar choose **Product → Clean Build Folder** (or press **Shift ⇧ + Command ⌘ + K**). Wait a few seconds until the top of Xcode says *Clean Finished*.

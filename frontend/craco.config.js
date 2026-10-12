@@ -18,11 +18,16 @@ function git(args) {
     return "";
   }
 }
+// The time is the source commit's, so building the same commit twice gives the
+// same bytes (scripts/verify-ios-bundle.js checks the bundle against the source).
+// Only a build with uncommitted changes ("+") carries the time it was built.
+const DIRTY = !!git("status --porcelain -- src public package.json yarn.lock craco.config.js tailwind.config.js");
+const utcMinute = (d) => d.toISOString().slice(0, 16).replace("T", " ") + " UTC";
+const commitTime = git("log -1 --format=%cI HEAD");
 const BUILD_INFO = {
-  commit:
-    (git("rev-parse --short=7 HEAD") || "unknown") +
-    (git("status --porcelain -- src public package.json yarn.lock craco.config.js tailwind.config.js") ? "+" : ""),
-  time: new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC",
+  commit: (git("rev-parse --short=7 HEAD") || "unknown") + (DIRTY ? "+" : ""),
+  source: git("rev-parse HEAD") || "unknown",
+  time: utcMinute(DIRTY || !commitTime ? new Date() : new Date(commitTime)),
 };
 process.env.REACT_APP_BUILD_COMMIT = BUILD_INFO.commit;
 process.env.REACT_APP_BUILD_TIME = BUILD_INFO.time;
