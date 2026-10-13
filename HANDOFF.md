@@ -1901,7 +1901,7 @@ Clearances (measured; the tests hold the minimums): lunar module to adapter wall
 | 0–5.6 | LUNAR ORBIT INSERTION (`loi`, new) | The stack engine first over the lunar horizon (lit terrain, the Sun from behind and above); the SPS fires retrograde (0.9–4.7 s, a soft start and shutdown); caption BEHIND THE MOON · SPS ENGINE · RETROGRADE BURN · OUT OF CONTACT WITH EARTH; a low rumble aboard |
 | 5.6–10.1 | establishing (wide) | Unchanged, shifted: the whole Moon, the orbit, the site; "Lunar orbit insertion looks good. Welcome to the Moon." once the signal is back |
 | 10.1–31.6 | stack, tunnel, undock | Unchanged (§34–35); latches release at 21.6 |
-| 31.6–36 | TWO SPACECRAFT | FLIGHT: "Capcom, we're go for powered descent." at 34.8 |
+| 31.6–36 | TWO SPACECRAFT | Ends closer (32 m) and low in the frame, so FLIGHT's subtitle sits above the two spacecraft. FLIGHT: "Capcom, we're go for powered descent." at 34.8 |
 | 36–46.4 | title (new) | No cut: from where the two-spacecraft shot stops, the camera eases in behind the LM as it moves away, the CSM receding; LUNAVIA at 38.6, A LAJU PRODUCTIONS GAME at 41, both gone by 45.8 |
 | 46.4– | followLm | The descent setup (difficulty) fades in over the same, still-moving shot |
 
@@ -1911,9 +1911,46 @@ Clearances (measured; the tests hold the minimums): lunar module to adapter wall
 **The title, inside the mission** (`data/titleReveal.js`, `components/MissionTitle.jsx`):
 - It belongs to the orbit clock, so it plays once per full mission: SKIP TO DESCENT jumps past it with everything else, a restarted landing (back to DIFFICULTY) and BRIEFING → back never replay it, and the Training Center (which never flies the orbit) never shows it. A new mission (RELAUNCH, or LAUNCH after an abort) plays it again.
 - The overlay sets its opacities from the orbit clock in its own requestAnimationFrame loop: no React render per frame.
+- LUNAVIA is sized to its column (`.title-reveal-name`: min(3rem, 7.5vw − 0.4rem) on phones, min(6rem, 6vw − 0.4rem) from md), measured to fit from 667×375 to 1920×1080 while letter-spaced in the fade.
 - Music: the space pad swells in under it (from τ 35.4) and fades as the descent setup opens. All sound in the mission starts after the LAUNCH tap (iOS gesture rule); if the audio context is suspended the title simply plays silent.
 
 **The home screen** opens as it is, every time: the title loop (CSM alone in lunar orbit) and the static LUNAVIA · A LAJU PRODUCTIONS GAME credit. Removed: `OpeningCinematic`, `OpeningScene`'s opening mode, `data/openingSequence.js`, the ABERTURA button and the `lunavia.opening.seen` flag (no longer read or written; an old copy on a device is ignored). The title loop is now one component (`components/opening/TitleLoop.jsx`, `data/titleLoop.js`).
 
 **Descent preparation:** unchanged. The difficulty selection still opens after the orbit (now after the title), as an overlay over the moving LM shot (`veil-in`, 0.9 s), then BRIEFING and BEGIN PDI. Destination (the mission's site) and difficulty are kept through SKIP, BRIEFING → back and restarts.
+
+**Validation** (headless Chromium with software rendering; browser tests, not a physical iPhone):
+- **Jest:** 292 tests pass (281 before). New or rewritten:
+  - `orbitSequence`: the coast clock; the Earth only shrinking and the Moon only growing at a steady rate, with no jump at the departure → deep-space cut; the planet in frame and the Sun on the camera's side on three iPhone aspects; the turn and its RCS; LOI (engine first, SPS on/off); the title shot continuing the two-spacecraft shot exactly and settling where the descent setup holds;
+  - `titleReveal`: the title after the go for powered descent and before the descent setup, absent after SKIP or while the orbit flies on behind the descent setup; the LM clear of the title on three aspects; source checks that the home screen plays nothing and nothing records it;
+  - `lunarOrbitShot`: the shifted orbit clock, the approach ray matching the orbit camera's lit face.
+- **The 2:38–2:54 window**, recorded on the device timeline (fake clock stepped at 30 fps, 852×393) from SKIP CINEMATIC on BUILD 532885b and on this branch, with the planet's apparent size and the picture's brightness per frame:
+  - Before: the Earth jumps 6.3° → 65° at a cut, then about 4 s at brightness 6–7, and 17 frames below 4 (the fade to black).
+  - After: the sizes are continuous and no frame falls below 9. The cuts hold scale, orientation and lighting, and the two-spacecraft → title move has no cut.
+- **A/B:** first and second launch on a fresh device. The home screen is shown, nothing autoplays, and no flag is written.
+- **F:** a Training lunar landing starts normally, with no title.
+- **G**, each path back to a clean state:
+  - SKIP CINEMATIC, then ABORT in the coast;
+  - SKIP TO DESCENT during the burn (no title) and during the title (gone at once), each straight to the descent setup, the orbit not restarted;
+  - BRIEFING → back; pause and resume; ABORT from the descent;
+  - a restarted landing with no second title;
+  - back to the menu and back; relaunch on /mission.
+
+  A–G were also run against the bundled iOS files.
+- **C/E: two full missions** in the app at 960×540, no page errors (the harness blocks one external font):
+  - Mission 1, the whole film: launch with transposition → coast → LOI → undocking → go for PDI → title → descent setup → THE EAGLE HAS LANDED → reentry → MISSION COMPLETE.
+  - Mission 2, after RELAUNCH: launch skipped → title → a hard landing → restarted landing (no second title) → landed → MISSION COMPLETE.
+  - Exactly one title per mission, 4.9 s after the go-for-PDI subtitle.
+- **H:** stills at 667×375, 852×393 and 932×430 (captions, subtitles, SKIP, safe areas). The title was measured at 8 sizes from 667×375 to 1920×1080, during the fade and settled. A first version clipped the title's first letter at 960×540 and up; it was fixed before release.
+- **iOS bundle:** BUILD 8224e36, built with `yarn ios:sync` from the clean commit; `ios:verify` passes with three new markers (true-scale coast, insertion burn, title in the mission).
+
+**Limitations:**
+- The difficulty selection still opens after the orbit (now after the title); it is unchanged apart from a 0.9 s fade over the moving shot.
+- The insertion burn is condensed: about 4 s of a 6-minute burn.
+- The stack turns back to LM first during the establishing shot, where it is a glint.
+- The SPS plume is faint at the distance shown.
+- The go for powered descent call is the existing FLIGHT line; no new voice lines.
+- The return to Earth after the landing is unchanged (it still uses its wide shots).
+- An old `lunavia.opening.seen` value on a device is ignored, not deleted.
+- In headless captures CSS fades do not follow the fake clock, so stills catch the descent setup mid-fade; in real time it is fully in after 0.9 s (checked at 667×375).
+- Not tested on a physical iPhone.
 
