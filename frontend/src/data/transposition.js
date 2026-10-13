@@ -1,19 +1,24 @@
 /*
- * Transposition, docking and extraction (pure, unit-tested): what happens to
- * LV-001's payload after the TLI burn, as Apollo flew it, condensed.
+ * Transposition, docking and extraction (pure, unit-tested): how the CSM takes
+ * the lunar module out of LV-001's adapter, condensed.
  *
- * Time tau is seconds since the sequence starts (the launch cinematic's tdSep
- * shot). Positions are in the payload frame (data/payloadDesign, metres): the
- * upper stage stays put, the spacecraft move.
+ * LUNAVIA flies it in lunar orbit, after the lunar transfer carrier's
+ * insertion burn (data/carrier, data/orbitSequence ORBIT_SEQ.deploy), never
+ * near the Earth: the lunar module and the CSM stay in the outbound assembly
+ * all the way to the Moon.
+ *
+ * Time tau is seconds since the sequence starts. Positions are in the payload
+ * frame (data/payloadDesign, metres): the carrier stays put, the spacecraft
+ * move.
  *
  *  0.3 s   pyros: the CSM is free of the adapter, which opens on its hinges
  *  ...     the CSM backs off on its RCS; the four panels swing out and are
- *          jettisoned, uncovering the lunar module standing on the stage
+ *          jettisoned, uncovering the lunar module standing on the carrier
  *  5-17    the CSM turns round (180°, about +Z) to face the LM
  *  17.5-   it closes in, nose first, until its probe touches the LM's drogue
  *  28.5    capture latches; the probe retracts and pulls the two together
  *  30.8    hard dock: twelve latches
- *  31.5    the LM's mounts release; the docked pair backs away from the stage
+ *  31.5    the LM's mounts release; the docked pair backs away from the carrier
  *  34.5-38 the CSM's high-gain antenna swings out
  *
  * Speeds and turn rates are continuous (no jolt). Each RCS level is set by the
@@ -25,7 +30,8 @@ import { PROBE_L } from "./csmDesign";
 
 export const TD = {
   sep: 0.3,
-  panels: { open: [0.4, 3.4], release: 3.6, v: 0.35, rise: 0.1, spinDeg: 8 },
+  // Spring-jettisoned panels (Apollo's left at ~2.4 m/s): they clear the scene well before the docking.
+  panels: { open: [0.4, 3.4], release: 3.6, v: 1.6, rise: 0.25, spinDeg: 8 },
   out: { t0: 0.3, t1: 6.0, d: 4.6 },
   pitch: { t0: 5.0, t1: 17.0 },
   approach: { t0: 17.5, t1: 28.5 },
@@ -33,10 +39,9 @@ export const TD = {
   extract: { t0: 31.5, ramp: 3.0, v: 0.9 },
   hga: { t0: 34.5, t1: 38.0 },
   end: 38.0,
-  // After the sequence the coast is shown time-compressed (the launch cinematic's
-  // farewell runs the mission clock 40x): the stage falls behind at the real
-  // 0.9 m/s, 40x faster on screen.
-  coastCompression: 40,
+  // After the sequence the docked pair keeps backing away at the real 0.9 m/s; a
+  // caller showing that time-compressed passes its compression.
+  coastCompression: 1,
 };
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -50,15 +55,15 @@ const smoothInt = (x) => {
   return c * c * c - (c * c * c * c) / 2;
 };
 
-/** How far the docked pair has backed away from the upper stage (m). */
-export function extractionOffset(t) {
+/** How far the docked pair has backed away from the carrier (m). */
+export function extractionOffset(t, k = TD.coastCompression) {
   const { t0, ramp, v } = TD.extract;
   if (t <= t0) return 0;
   const x = (t - t0) / ramp;
   if (x < 1) return v * ramp * smoothInt(x);
   const atEnd = v * ramp * 0.5 + v * (Math.min(t, TD.end) - t0 - ramp);
   if (t <= TD.end) return atEnd;
-  return atEnd + v * TD.coastCompression * (t - TD.end);
+  return atEnd + v * k * (t - TD.end);
 }
 
 /** Height of the CSM's origin (payload frame, m). */

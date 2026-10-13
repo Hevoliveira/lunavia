@@ -1,12 +1,21 @@
 import {
   APPROACH_RAY,
+  ASSEMBLY_ROTATION,
+  ASSEMBLY_X,
   CISLUNAR,
+  COAST_ASSEMBLY,
+  ORBIT_ANCHOR,
   LM_CENTRE_X,
   M_PER_UNIT,
   ORBIT_SEQ,
   ORBIT_SHOTS,
   STACK,
+  STACK_ROTATION,
   TITLE_HOLD,
+  assemblyPoint,
+  carrierDrift,
+  deployState,
+  loiBurnLevel,
   approachCloseCamera,
   approachMoonKm,
   approachYaw,
@@ -20,7 +29,6 @@ import {
   radialFrame,
   returnCamera,
   returnDistanceKm,
-  spsLevel,
   toVehicle,
   toWorld,
   trueSizeDistance,
@@ -31,6 +39,10 @@ import { LOOP_TAU, loopCamera } from "./titleLoop";
 import { craftPose } from "./lunarOrbitShot";
 import { MOON_UNITS, craftScenePos, moonScenePos } from "./sceneTrack";
 import { undocking } from "./undocking";
+import { ASSEMBLY, CARRIER } from "./carrier";
+import { TD } from "./transposition";
+import { dockedLmPose } from "./csmDesign";
+import { ADAPTER } from "./payloadDesign";
 
 const DEG = Math.PI / 180;
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -58,6 +70,25 @@ function clearance(pos, lmY = 0, yaw = 0) {
   return Math.min(dCsm, dLm);
 }
 
+/**
+ * Distance from a camera (vehicle frame, m) to the outbound assembly, as a cylinder of the adapter's
+ * radius along its axis; in lunar orbit (anchor ORBIT_ANCHOR, engines first) or in the coast (on its
+ * centre of mass, yaw π + turn: the nose along +X at yaw 0).
+ */
+function asmClearance(pos, coastYaw = null) {
+  let p = pos;
+  let x0 = Math.min(ASSEMBLY_X.nose, ASSEMBLY_X.aft) - 15; // the CSM backs out and turns round up to ~15 m beyond the nose
+  let x1 = Math.max(ASSEMBLY_X.nose, ASSEMBLY_X.aft);
+  if (coastYaw != null) {
+    const a = -(Math.PI + coastYaw); // into the assembly's own (unyawed, engines along +X) frame
+    p = [pos[0] * Math.cos(a) + pos[2] * Math.sin(a), pos[1], -pos[0] * Math.sin(a) + pos[2] * Math.cos(a)];
+    x0 = ASSEMBLY.com - ASSEMBLY.nose;
+    x1 = ASSEMBLY.com - ASSEMBLY.aft;
+  }
+  const x = Math.min(x1, Math.max(x0, p[0]));
+  return Math.hypot(p[0] - x, p[1], p[2]) - ADAPTER.R0;
+}
+
 describe("two layers, one view: the vehicle frame", () => {
   test("planets are drawn at 1 unit ≈ 1,922 km; the spacecraft in metres", () => {
     expect(M_PER_UNIT / 1000).toBeGreaterThan(1900);
@@ -83,9 +114,11 @@ describe("two layers, one view: the vehicle frame", () => {
   });
 });
 
-describe("lunar orbit: insertion, the docked spacecraft, the undocking, the title", () => {
+describe("lunar orbit: insertion, the deployment, the undocking, the title", () => {
   test("the shots run in order without gaps: the insertion burn first, the LM held at the end", () => {
-    expect(ORBIT_SHOTS.map((x) => x.id)).toEqual(["loi", "establish", "stack", "tunnel", "undock", "pair", "title", "followLm"]);
+    expect(ORBIT_SHOTS.map((x) => x.id)).toEqual([
+      "loi", "establish", "assembly", "deploySep", "deployTurn", "deployDock", "deployExtract", "leave", "tunnel", "undock", "pair", "title", "titleScreen",
+    ]);
     expect(ORBIT_SHOTS[0].start).toBe(0);
     for (let i = 1; i < ORBIT_SHOTS.length; i++) {
       const a = ORBIT_SHOTS[i - 1];
@@ -95,11 +128,75 @@ describe("lunar orbit: insertion, the docked spacecraft, the undocking, the titl
     expect(ORBIT_SHOTS[1].start).toBe(ORBIT_SEQ.arrive);
     expect(ORBIT_SHOTS[ORBIT_SHOTS.length - 1].follow).toBe("lm");
     expect(orbitShotAt(ORBIT_SEQ.undock + 0.1).shot.id).toBe("undock");
-    // go for powered descent during the two-spacecraft shot, then the title, then the descent setup
+    // go for powered descent during the two-spacecraft shot, then the title, then the title screen
     expect(orbitShotAt(ORBIT_SEQ.goPdi).shot.id).toBe("pair");
     expect(ORBIT_SEQ.goPdi).toBeGreaterThan(ORBIT_SEQ.undock + 10);
     expect(ORBIT_SEQ.title).toBeGreaterThan(ORBIT_SEQ.goPdi);
-    expect(ORBIT_SEQ.end).toBeGreaterThan(ORBIT_SEQ.title);
+    expect(ORBIT_SEQ.titleScreen).toBeGreaterThan(ORBIT_SEQ.title);
+    expect(ORBIT_SEQ.end).toBeGreaterThan(ORBIT_SEQ.titleScreen);
+  });
+
+  test("the deployment happens only in lunar orbit, after the insertion burn and a steady shot of the integrated assembly", () => {
+    // integrated (adapter closed, the LM inside, the CSM on top) through the burn and the arrival
+    for (let tau = 0; tau < ORBIT_SEQ.deploy + TD.sep; tau += 0.05) {
+      const d = deployState(tau);
+      expect(d.td.phase).toBe("mated");
+      expect(d.craft).toBe(true);
+      expect(d.on).toBe(true);
+    }
+    expect(ORBIT_SEQ.deploy).toBeGreaterThan(ORBIT_SEQ.cutoff + 5);
+    const asm = ORBIT_SHOTS.find((x) => x.id === "assembly");
+    expect(asm.start).toBe(ORBIT_SEQ.cut);
+    expect(asm.len).toBeGreaterThanOrEqual(4);
+    // then, in order and each in its own shot: the adapter opens, transposition, docking, extraction
+    const at = (phase) => {
+      for (let tau = 0; tau < 120; tau += 0.05) if (deployState(tau).td.phase === phase) return tau;
+      return null;
+    };
+    expect(orbitShotAt(at("separation") + 0.01).shot.id).toBe("deploySep");
+    expect(orbitShotAt(at("transposition") + 0.01).shot.id).toBe("deploySep"); // the turn starts as the CSM clears the adapter
+    expect(orbitShotAt(at("approach") + 0.01).shot.id).toBe("deployDock");
+    expect(orbitShotAt(at("docked") + 0.01).shot.id).toBe("deployDock");
+    expect(orbitShotAt(at("extraction") + 0.01).shot.id).toBe("deployExtract");
+    expect(at("extraction")).toBeLessThan(ORBIT_SEQ.swap);
+    // the docked pair is handed to SpacecraftStack at a cut, before the undocking
+    expect(ORBIT_SHOTS.find((x) => x.id === "leave").start).toBe(ORBIT_SEQ.swap);
+    expect(ORBIT_SEQ.undock).toBeGreaterThan(ORBIT_SEQ.swap + 5);
+    expect(deployState(ORBIT_SEQ.swap - 0.01).craft).toBe(true);
+    expect(deployState(ORBIT_SEQ.swap).craft).toBe(false);
+  });
+
+  test("no swap and no jump: the docked pair the deployment ends with is exactly the stack that undocks", () => {
+    const s = deployState(ORBIT_SEQ.swap).td;
+    expect(s.docked).toBe(true);
+    expect(s.hga).toBe(1);
+    // the CSM's origin at the vehicle origin, turned as SpacecraftStack turns it (+Y along +X)
+    assemblyPoint(s.csm.pos).forEach((x) => expect(x).toBeCloseTo(0, 9));
+    const turn = s.csm.pitch + ASSEMBLY_ROTATION[2];
+    expect(Math.cos(turn - STACK_ROTATION[2])).toBeCloseTo(1, 9);
+    // the LM where the stack docks it (data/csmDesign dockedLmPose, turned onto +X)
+    const lm = assemblyPoint(s.lm.pos);
+    const docked = dockedLmPose(0).position;
+    expect(lm[0]).toBeCloseTo(docked[1], 9);
+    expect(lm[1]).toBeCloseTo(-docked[0], 9);
+    expect(lm[2]).toBeCloseTo(docked[2], 9);
+    // and the undocking starts from that docked stack
+    expect(undocking(undockTime(ORBIT_SEQ.swap)).phase).not.toBe("separating");
+    expect(undocking(undockTime(ORBIT_SEQ.swap)).gap).toBe(0);
+  });
+
+  test("the carrier backs away from the docked pair, then is no longer drawn; it never comes back", () => {
+    let prev = 0;
+    for (let dt = 0; dt < 20; dt += 0.05) {
+      const d = carrierDrift(dt);
+      expect(d.x).toBeGreaterThanOrEqual(prev);
+      prev = d.x;
+    }
+    expect(carrierDrift(0.3).x).toBeCloseTo(TD.extract.v * 0.3, 9); // the extraction's 0.9 m/s carries on
+    expect(carrierDrift(ORBIT_SEQ.tunnel - ORBIT_SEQ.swap).x).toBeGreaterThan(8);
+    expect(carrierDrift(1.5).retro).toBe(1);
+    expect(carrierDrift(0.2).retro).toBe(0);
+    for (let tau = ORBIT_SEQ.tunnel; tau < 400; tau += 0.5) expect(deployState(tau).on).toBe(false);
   });
 
   test("every close shot sees the spacecraft from outside it, from above (its sunlit side), looking down at the horizon", () => {
@@ -108,8 +205,10 @@ describe("lunar orbit: insertion, the docked spacecraft, the undocking, the titl
       const { shot, u } = orbitShotAt(tau);
       if (shot.wide) continue;
       const s = undocking(undockTime(tau));
-      const cam = orbitShotCamera(shot, u, s.lmY);
-      expect(clearance(cam.pos, s.lmY, shot.yaw || 0)).toBeGreaterThan(6);
+      const d = deployState(tau);
+      const cam = orbitShotCamera(shot, u, s.lmY, d.e);
+      if (d.on) expect(asmClearance(cam.pos)).toBeGreaterThan(6);
+      if (!d.craft) expect(clearance(cam.pos, s.lmY, 0)).toBeGreaterThan(6);
       expect(cam.pos[1]).toBeGreaterThan(0);
       expect(cam.look[1]).toBeLessThan(cam.pos[1]);
       const pose = craftPose(tau, M, MOON_UNITS);
@@ -118,26 +217,30 @@ describe("lunar orbit: insertion, the docked spacecraft, the undocking, the titl
     }
   });
 
-  test("lunar orbit insertion: engine first, the SPS fires retrograde, then shuts down before the establishing shot", () => {
-    const loi = ORBIT_SHOTS[0];
-    expect(loi.yaw).toBeCloseTo(Math.PI, 9);
-    // turned about its middle, the service module's engine end leads along the flight path (+X)
-    const aft = 2 * STACK.mid - STACK.aft;
-    expect(aft).toBeGreaterThan(STACK.lmFar - 1);
-    expect(spsLevel(0)).toBe(0);
-    expect(spsLevel(ORBIT_SEQ.ignition - 0.01)).toBe(0);
-    expect(spsLevel((ORBIT_SEQ.ignition + ORBIT_SEQ.cutoff) / 2)).toBe(1);
-    expect(spsLevel(ORBIT_SEQ.cutoff + 0.5)).toBe(0);
+  test("lunar orbit insertion: engines first, the carrier fires retrograde, then shuts down before the establishing shot", () => {
+    // the carrier's engine exits lead along the flight path (+X), the CSM's nose trails
+    expect(ASSEMBLY_X.aft).toBeGreaterThan(ASSEMBLY_X.nose);
+    expect(assemblyPoint([0, CARRIER.engines.exitY, 0])[0]).toBeCloseTo(ASSEMBLY_X.aft, 9);
+    expect(loiBurnLevel(0)).toBe(0);
+    expect(loiBurnLevel(ORBIT_SEQ.ignition - 0.01)).toBe(0);
+    expect(loiBurnLevel((ORBIT_SEQ.ignition + ORBIT_SEQ.cutoff) / 2)).toBe(1);
+    expect(loiBurnLevel(ORBIT_SEQ.cutoff + 0.5)).toBe(0);
     expect(ORBIT_SEQ.cutoff + 0.5).toBeLessThanOrEqual(ORBIT_SEQ.arrive);
-    // the other shots fly the stack LM first
-    ORBIT_SHOTS.slice(1).forEach((x) => expect(x.yaw || 0).toBe(0));
+    for (let tau = ORBIT_SEQ.arrive; tau < 400; tau += 0.5) expect(deployState(tau).engines).toBe(0);
+    expect(deployState(2).engines).toBe(1);
+    // the burn is shot on the integrated assembly; the stack (SpacecraftStack) is not drawn yet
+    expect(ORBIT_SHOTS[0].asm).toBe(true);
+    expect(deployState(2).craft).toBe(true);
+    // nothing in lunar orbit turns the stack (the assembly turned engines first on the approach)
+    ORBIT_SHOTS.forEach((x) => expect(x.yaw || 0).toBe(0));
+    expect(ORBIT_ANCHOR).toBeGreaterThan(ASSEMBLY.com);
   });
 
   test("the title shot continues the two-spacecraft shot with no cut, and settles where the descent setup holds", () => {
     const lmY = undocking(undockTime(ORBIT_SEQ.title)).lmY;
     const pair = ORBIT_SHOTS.find((x) => x.id === "pair");
     const title = ORBIT_SHOTS.find((x) => x.id === "title");
-    const hold = ORBIT_SHOTS.find((x) => x.id === "followLm");
+    const hold = ORBIT_SHOTS.find((x) => x.id === "titleScreen");
     const a = orbitShotCamera(pair, 1, lmY);
     const b = orbitShotCamera(title, 0, lmY);
     a.pos.forEach((x, i) => expect(b.pos[i]).toBeCloseTo(x, 9));
@@ -163,9 +266,14 @@ describe("lunar orbit: insertion, the docked spacecraft, the undocking, the titl
     }
   });
 
-  test("captions name what happens: insertion, orbit, docked, preparation, undocking, two spacecraft", () => {
+  test("captions name what happens: insertion, orbit, the integrated assembly, the deployment, preparation, undocking, two spacecraft", () => {
     const ids = ORBIT_SHOTS.filter((s) => s.caption).map((s) => s.caption);
-    expect(ids).toEqual(["LUNAR ORBIT INSERTION", "LUNAR ORBIT", "LV-001 IN LUNAR ORBIT", "UNDOCKING PREPARATION", "UNDOCKING", "TWO SPACECRAFT"]);
+    expect(ids).toEqual([
+      "LUNAR ORBIT INSERTION", "LUNAR ORBIT", "LV-001 IN LUNAR ORBIT", "ADAPTER OPENS", "TRANSPOSITION", "DOCKING", "LUNAR MODULE EXTRACTED",
+      "CARRIER LEFT BEHIND", "UNDOCKING PREPARATION", "UNDOCKING", "TWO SPACECRAFT",
+    ]);
+    // until the deployment the captions say the LM and the CSM are still integrated
+    expect(ORBIT_SHOTS.find((x) => x.id === "establish").sub).toMatch(/STILL INTEGRATED/);
   });
 });
 
@@ -217,7 +325,7 @@ describe("the cislunar coast: departure, deep space, approach, all close on the 
     expect(deg(1737, approachMoonKm(1))).toBeLessThan(70);
   });
 
-  test("the stack turns engine first during the approach, smoothly, its RCS firing only to start and stop the turn", () => {
+  test("the assembly turns engines first during the approach, smoothly, its RCS firing only to start and stop the turn", () => {
     expect(approachYaw(0).yaw).toBe(0);
     expect(approachYaw(CISLUNAR.turn[0]).yaw).toBe(0);
     expect(approachYaw(CISLUNAR.turn[1]).yaw).toBeCloseTo(Math.PI, 9);
@@ -236,14 +344,21 @@ describe("the cislunar coast: departure, deep space, approach, all close on the 
 
   test("the close cameras stay outside the spacecraft, on the far side from the planet", () => {
     for (let u = 0; u <= 1; u += 0.05) {
-      [cruiseCamera(u), deepCamera(u), returnCamera(u)].forEach((c) => {
-        expect(clearance(c.pos)).toBeGreaterThan(10);
-        expect(c.pos[2]).toBeGreaterThan(0); // the planet is at -Z, beyond the stack
+      // the outbound assembly on the way out (nose first, then turning engines first)
+      [cruiseCamera(u), deepCamera(u)].forEach((c) => {
+        expect(asmClearance(c.pos, 0)).toBeGreaterThan(10);
+        expect(c.pos[2]).toBeGreaterThan(0); // the planet is at -Z, beyond the assembly
       });
       const c = approachCloseCamera(u);
-      expect(clearance(c.pos, 0, approachYaw(u).yaw)).toBeGreaterThan(10);
+      expect(asmClearance(c.pos, approachYaw(u).yaw)).toBeGreaterThan(10);
       expect(c.pos[2]).toBeGreaterThan(0);
+      // the CSM alone on the way home
+      expect(clearance(returnCamera(u).pos)).toBeGreaterThan(10);
+      expect(returnCamera(u).pos[2]).toBeGreaterThan(0);
     }
+    // the coast frames the assembly about its middle
+    expect(COAST_ASSEMBLY.nose).toBeGreaterThan(0);
+    expect(COAST_ASSEMBLY.aft).toBeLessThan(0);
   });
 
   // The planet in frame (the Earth behind the departing stack, the Moon behind the approaching one)

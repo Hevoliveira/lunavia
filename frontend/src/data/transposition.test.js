@@ -119,14 +119,15 @@ describe("transposition, docking and extraction", () => {
     expect(LM_HEIGHTS.pads + extractionOffset(TD.end)).toBeGreaterThan(ADAPTER.ring + 3);
   });
 
-  test("the upper stage is left behind: the gap only grows, quickly once the coast is time-compressed", () => {
+  test("the carrier is left behind: the gap only grows, at the real 0.9 m/s after the sequence (faster only if time-compressed)", () => {
     let prev = 0;
     steps(TD.extract.t0, TD.end + 6, 0.1).forEach((t) => {
       const e = extractionOffset(t);
       expect(e).toBeGreaterThanOrEqual(prev);
       prev = e;
     });
-    expect(extractionOffset(TD.end + 6) - extractionOffset(TD.end)).toBeGreaterThan(150);
+    expect(extractionOffset(TD.end + 6) - extractionOffset(TD.end)).toBeCloseTo(TD.extract.v * 6, 9);
+    expect(extractionOffset(TD.end + 6, 40) - extractionOffset(TD.end, 40)).toBeGreaterThan(150);
   });
 
   test("the adapter panels swing open, are jettisoned and drift away; they never close again", () => {

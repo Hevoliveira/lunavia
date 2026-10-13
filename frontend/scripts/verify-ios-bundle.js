@@ -52,14 +52,18 @@ const FEATURES = [
   ["Far side mission (Silent Horizon, no Earth link)", "FAR SIDE TOUCHDOWN CONFIRMED"],
   ["Far-side approach intro", "farside-intro-skip"],
   ["One spacecraft from Earth orbit to the Moon (shared CSM, escape tower jettison)", "ESCAPE TOWER JETTISONED"],
-  ["Lunar module undocking in the mission", "SKIP TO DESCENT"],
+  ["Lunar module undocking in the mission", "UNDOCKING PREPARATION"],
   ["Laju Productions credit", "A LAJU PRODUCTIONS GAME"],
   ["Lunar module inside the launch vehicle (payload shot)", "LUNAR MODULE INSIDE THE ADAPTER"],
-  ["Transposition, docking and lunar module extraction", "LUNAR MODULE EXTRACTED"],
-  ["Lunar approach with the docked spacecraft", "LUNAR APPROACH"],
-  ["Cislunar coast at true scale (departure, deep space, approach turning engine first)", "TURNING ENGINE FIRST"],
+  ["Lunar approach with the outbound assembly", "LUNAR APPROACH"],
+  ["Cislunar coast at true scale (departure, deep space, approach turning engines first)", "TURNING ENGINES FIRST"],
   ["Lunar orbit insertion burn", "RETROGRADE BURN"],
   ["Title reveal inside the mission, after the go for powered descent", "title-reveal-credit"],
+  ["Only the upper stage separates after TLI; LM and CSM stay integrated", "LM AND CSM STAY INTEGRATED"],
+  ["Lunar orbit insertion by the transfer carrier", "TRANSFER CARRIER ENGINES"],
+  ["Deployment in lunar orbit: transposition, docking, extraction", "LUNAR MODULE EXTRACTED"],
+  ["Carrier left behind in lunar orbit", "CARRIER LEFT BEHIND"],
+  ["Persistent title screen with START MISSIONS", "btn-start-missions"],
 ];
 
 function sourceText(dir) {

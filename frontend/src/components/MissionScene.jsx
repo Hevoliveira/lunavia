@@ -5,14 +5,21 @@ import * as THREE from "three";
 import { EARTH_RADIUS_KM, MOON_RADIUS_KM, trajectoryPosition } from "@/data/missionPhases";
 import { EARTH_UNITS, MOON_UNITS, SCENE_SCALE, craftScenePos } from "@/data/sceneTrack";
 import SpacecraftStack from "@/components/spacecraft/SpacecraftStack";
+import PayloadSection from "@/components/spacecraft/PayloadSection";
+import { payloadMaterials } from "@/components/RocketModel";
+import { ASSEMBLY } from "@/data/carrier";
 import { lunarEnv } from "@/components/LanderModel";
 import { COAST, undocking } from "@/data/undocking";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
 import {
   APPROACH_RAY,
+  ASSEMBLY_ROTATION,
+  ASSEMBLY_X,
   CISLUNAR,
+  COAST_ASSEMBLY,
   LM_CENTRE_X,
   M_PER_UNIT,
+  ORBIT_ANCHOR,
   ORBIT_SEQ,
   RETURN_CLOSE_END,
   STACK,
@@ -24,12 +31,12 @@ import {
   coastShotAt,
   cruiseCamera,
   deepCamera,
+  deployState,
   orbitShotAt,
   orbitShotCamera,
   radialFrame,
   returnCamera,
   returnDistanceKm,
-  spsLevel,
   toVehicle,
   toWorld,
   trueSizeDistance,
@@ -42,10 +49,12 @@ import { LZ_UP, MOON_ROTATION, craftPose, landingSite, orbitCamera, orbitPoint, 
  * The cruise, lunar orbit and return, in two layers composited every frame:
  * the planets in scene units, then the spacecraft at true size in metres
  * (data/orbitSequence explains the frames). The spacecraft is the expedition's
- * own (components/spacecraft): CSM and LM docked on the way out and in lunar
- * orbit, the LM undocking before the descent, the CSM alone on the way home.
- * Wide shots, where a 17 m spacecraft is far below a pixel, show it as a
- * sunlit glint on its path.
+ * own (components/spacecraft): on the way out, LV-001's outbound assembly
+ * (PayloadSection: the transfer carrier, the closed adapter with the LM inside,
+ * the CSM on top), which fires into lunar orbit and deploys there; then CSM and
+ * LM docked (SpacecraftStack), the LM undocking before the descent, the CSM
+ * alone on the way home. Wide shots, where the spacecraft is far below a
+ * pixel, show it as a sunlit glint on its path.
  */
 
 // Public-domain planet textures hosted by three.js examples.
@@ -346,9 +355,12 @@ const _sunV = new THREE.Vector3();
 /**
  * Lights and the spacecraft, for a scene rendered with its own camera over the
  * planets (see Composite). viewRef.current carries the shot: { vehicle, sunV,
- * focus, stack, yaw, yawRcs, sps }. Shared with the title loop (components/opening/TitleLoop).
+ * focus, shadowR, stack, stackOn, yaw, yawRcs, asm }. asm (or null): the outbound
+ * assembly { yaw (rad about the vertical), anchor (payload height at the origin),
+ * x (shift along +X), td, craft, engines, retro, yawRcs }. Shared with the title
+ * loop (components/opening/TitleLoop), which draws the CSM alone (assembly false).
  */
-export function VehicleLayer({ viewRef, lm = true }) {
+export function VehicleLayer({ viewRef, lm = true, assembly = false }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
@@ -356,6 +368,12 @@ export function VehicleLayer({ viewRef, lm = true }) {
   const target = useRef();
   const group = useRef();
   const yawGroup = useRef();
+  const stackRoot = useRef();
+  const asmYaw = useRef();
+  const asmInner = useRef();
+  const asmCtrl = useRef({ td: null, ghost: 0, yawRcs: 0, hideCraft: false, carrier: { engines: 0, rcs: 0, retro: 0, inside: true } });
+  const asmMats = useMemo(() => (assembly ? payloadMaterials() : null), [assembly]);
+  const shadowR = useRef(14);
   const stackState = useRef(undocking(COAST));
   useEffect(() => {
     scene.environment = lunarEnv(gl);
@@ -388,12 +406,39 @@ export function VehicleLayer({ viewRef, lm = true }) {
     if (!v.vehicle) return;
     Object.assign(stackState.current, v.stack);
     stackState.current.yawRcs = v.yawRcs || 0;
-    stackState.current.sps = v.sps || 0;
-    // The stack turned about the local vertical through its middle (engine first for the burn).
+    stackState.current.sps = 0;
+    // The stack turned about the local vertical through its middle.
     if (yawGroup.current) yawGroup.current.rotation.y = v.yaw || 0;
+    if (stackRoot.current) stackRoot.current.visible = v.stackOn !== false;
+    // The outbound assembly: turned about the vertical, its payload frame laid along X.
+    const a = v.asm;
+    if (asmYaw.current) {
+      asmYaw.current.visible = !!a;
+      if (a) {
+        asmYaw.current.rotation.y = a.yaw || 0;
+        asmInner.current.position.x = a.anchor + (a.x || 0);
+        const c = asmCtrl.current;
+        c.td = a.td || null;
+        c.yawRcs = a.yawRcs || 0;
+        c.hideCraft = a.craft === false;
+        c.carrier.engines = a.engines || 0;
+        c.carrier.retro = a.retro || 0;
+      }
+    }
     _sunV.set(v.sunV[0], v.sunV[1], v.sunV[2]);
     if (target.current) target.current.position.set(v.focus[0], v.focus[1], v.focus[2]);
     if (sun.current && target.current) sun.current.position.copy(_sunV).multiplyScalar(60).add(target.current.position);
+    // The shadow camera covers the subject: the docked pair, or the larger assembly.
+    const r = v.shadowR || 14;
+    if (sun.current && r !== shadowR.current) {
+      shadowR.current = r;
+      const cam = sun.current.shadow.camera;
+      cam.left = -r;
+      cam.right = r;
+      cam.top = r;
+      cam.bottom = -r;
+      cam.updateProjectionMatrix();
+    }
   });
   return (
     <>
@@ -418,11 +463,20 @@ export function VehicleLayer({ viewRef, lm = true }) {
       />
       <object3D ref={target} />
       <group ref={group}>
-        <group ref={yawGroup} position={[STACK.mid, 0, 0]}>
-          <group position={[-STACK.mid, 0, 0]} rotation={STACK_ROTATION}>
-            <SpacecraftStack stateRef={stackState} lm={lm} shadows />
+        <group ref={stackRoot}>
+          <group ref={yawGroup} position={[STACK.mid, 0, 0]}>
+            <group position={[-STACK.mid, 0, 0]} rotation={STACK_ROTATION}>
+              <SpacecraftStack stateRef={stackState} lm={lm} shadows />
+            </group>
           </group>
         </group>
+        {assembly && (
+          <group ref={asmYaw} visible={false}>
+            <group ref={asmInner} rotation={ASSEMBLY_ROTATION}>
+              <PayloadSection ctrlRef={asmCtrl} materials={asmMats} shadows />
+            </group>
+          </group>
+        )}
       </group>
     </>
   );
@@ -503,7 +557,7 @@ const _origin = new THREE.Vector3(0, 0, 0);
 
 export { LM_CENTRE_X };
 
-function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef }) {
+function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitReal, viewRef }) {
   const { camera } = useThree();
   const pos = useRef(new THREE.Vector3(0, 12, 28));
   const look = useRef(new THREE.Vector3(0, 0, 0));
@@ -520,16 +574,23 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
 
     v.yaw = 0;
     v.yawRcs = 0;
-    v.sps = 0;
     v.only = null;
+    v.asm = null;
+    v.stackOn = true;
+    v.shadowR = 14;
 
     if (orbitClock) {
       // ---- Lunar orbit: data/orbitSequence (insertion burn, the docked stack, undocking, title) ----
       const tau = orbitClock.current;
       const pose = craftPose(tau, moonPos, MOON_UNITS);
-      const { shot, u } = orbitShotAt(tau);
+      const { shot, u } = orbitShotAt(tau, orbitReal ? orbitReal.current : null);
       v.shot = shot.id;
       v.stack = undocking(undockTime(tau));
+      // The outbound assembly until the deployment hands the docked pair to SpacecraftStack,
+      // then the carrier backing away; engines first since the approach (no yaw).
+      const d = deployState(tau);
+      v.asm = d.on ? { yaw: 0, anchor: ORBIT_ANCHOR, x: d.x, td: d.td, craft: d.craft, engines: d.engines, retro: d.retro, yawRcs: 0 } : null;
+      v.stackOn = !d.craft;
       if (shot.wide) {
         const cam = orbitCamera(tau, moonPos, MOON_UNITS);
         camera.position.set(...cam.pos);
@@ -539,10 +600,20 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
         v.origin = pose.pos;
       } else {
         const frame = vehicleFrame(pose.fwd, pose.up);
-        v.yaw = shot.yaw || 0;
-        if (shot.id === "loi") v.sps = spsLevel(tau);
-        v.focus = shot.follow === "lm" ? [LM_CENTRE_X + v.stack.lmY, 0, 0] : [2, 0, 0];
-        vehicleView(v, frame, pose.pos, orbitShotCamera(shot, u, v.stack.lmY), camera);
+        if (shot.asm) {
+          v.focus = [(ASSEMBLY_X.nose + ASSEMBLY_X.aft) / 2, 0, 0];
+          v.shadowR = 22;
+        } else if (shot.id === "leave") {
+          v.focus = [6, 0, 0];
+          v.shadowR = 20;
+        } else v.focus = shot.follow === "lm" ? [LM_CENTRE_X + v.stack.lmY, 0, 0] : [2, 0, 0];
+        const cam = orbitShotCamera(shot, u, v.stack.lmY, d.e);
+        if (shot.id === "titleScreen") {
+          // The title screen: the shot held, breathing very slowly (real time; the orbit clock is all but stopped).
+          const t = state.clock.elapsedTime;
+          cam.pos = [cam.pos[0] + 0.7 * Math.sin(t * 0.153), cam.pos[1] + 0.35 * Math.sin(t * 0.217 + 1), cam.pos[2] + 0.5 * Math.sin(t * 0.119 + 2)];
+        }
+        vehicleView(v, frame, pose.pos, cam, camera);
       }
       snap.current = true;
       return;
@@ -575,8 +646,7 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
           // Earth, drawn 10x oversized, must not appear beside it).
           v.only = "moon";
           const turn = approachYaw(u);
-          v.yaw = turn.yaw;
-          v.yawRcs = turn.rcs;
+          v.asm = { yaw: Math.PI + turn.yaw, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: 0, retro: 0, yawRcs: turn.rcs };
           v.shot = "approachClose";
         } else {
           frame = radialFrame([scPos[0], scPos[1], scPos[2]]);
@@ -585,7 +655,11 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
           cam = id === "depart" ? cruiseCamera(smooth01(u)) : deepCamera(u);
           v.only = "earth"; // the Moon is ahead, out of this view
           v.shot = id === "depart" ? "cruiseClose" : "deepSpace";
+          // Nose first (yaw π: the payload's +Y along +X), pivoted on the centre of mass.
+          v.asm = { yaw: Math.PI, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: 0, retro: 0, yawRcs: 0 };
         }
+        v.stackOn = false;
+        v.shadowR = 20;
       } else {
         const away = [scPos[0] - moonPos[0], 0, scPos[2] - moonPos[2]];
         frame = radialFrame(away);
@@ -595,7 +669,7 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
         v.shot = "returnClose";
       }
       v.stack = undocking(COAST);
-      v.focus = [0, 0, 0];
+      v.focus = outbound ? [COAST_ASSEMBLY.mid, 0, 0] : [0, 0, 0];
       vehicleView(v, frame, origin, cam, camera);
       snap.current = true;
       return;
@@ -642,12 +716,14 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
     w.moon[2] = moonPos[2];
     w.t = missionTime;
     w.tau = orbitClock ? orbitClock.current : null;
+    w.real = orbitReal ? orbitReal.current : null;
     const v = viewRef.current;
     w.shot = v.shot;
     w.vehicle = v.vehicle;
     w.stack = v.stack ? { gap: +v.stack.gap.toFixed(3), lmRoll: +v.stack.lmRoll.toFixed(3), phase: v.stack.phase } : null;
     w.yaw = v.yaw || 0;
-    w.sps = v.sps || 0;
+    w.stackOn = v.vehicle ? v.stackOn !== false : null;
+    w.asm = v.vehicle && v.asm ? { yaw: +v.asm.yaw.toFixed(4), craft: v.asm.craft, phase: v.asm.td ? v.asm.td.phase : "mated", x: +(v.asm.x || 0).toFixed(3), engines: +(v.asm.engines || 0).toFixed(3), retro: +(v.asm.retro || 0).toFixed(3), yawRcs: +(v.asm.yawRcs || 0).toFixed(3) } : null;
   });
 
   useEffect(() => {
@@ -667,7 +743,7 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, viewRef 
 // the end of the cruise, so nothing drifts while the player reads.
 const ORBIT_EPOCH = 270000;
 
-function Scene({ missionTime, cinematic, orbitClock }) {
+function Scene({ missionTime, cinematic, orbitClock, orbitReal }) {
   const t = orbitClock ? ORBIT_EPOCH : missionTime;
   const scPos = craftScenePos(t, [0, 0, 0]);
   const p = trajectoryPosition(t);
@@ -700,10 +776,10 @@ function Scene({ missionTime, cinematic, orbitClock }) {
       <Glint viewRef={viewRef} />
       {orbitClock ? <OrbitGuides clock={orbitClock} moonPos={moonPos} /> : <TrajectoryPath viewRef={viewRef} />}
       {!cinematic && <OrbitControls enablePan={false} enableZoom={true} minDistance={2} maxDistance={60} dampingFactor={0.06} />}
-      <Director missionTime={missionTime} cinematic={cinematic} scPos={scPos} moonPos={moonPos} orbitClock={orbitClock} viewRef={viewRef} />
+      <Director missionTime={missionTime} cinematic={cinematic} scPos={scPos} moonPos={moonPos} orbitClock={orbitClock} orbitReal={orbitReal} viewRef={viewRef} />
       {/* after the Director: this frame's shot decides which planets are drawn */}
       <PlanetFilter viewRef={viewRef} earth={earthGroup} moon={moonGroup} />
-      {createPortal(<VehicleLayer viewRef={viewRef} lm={lmAboard} />, vScene)}
+      {createPortal(<VehicleLayer viewRef={viewRef} lm={lmAboard} assembly />, vScene)}
       <Composite vScene={vScene} vCam={vCam} viewRef={viewRef} />
     </>
   );
@@ -715,11 +791,12 @@ function LoadingFallback() {
 
 /**
  * missionTime drives the cruise and return shots. orbitClock (a ref holding
- * seconds since lunar orbit began) switches to the lunar-orbit presentation
- * used before the descent; keep the same element mounted across the switch
- * so the camera hands over without a cut.
+ * the orbit clock, data/orbitSequence orbitClockAt) switches to the lunar-orbit
+ * presentation used before the descent; orbitReal (optional, a ref holding real
+ * seconds since lunar orbit began) paces the title screen's slow drift. Keep the
+ * same element mounted across the switch so the camera hands over without a cut.
  */
-export default function MissionScene({ missionTime, cinematic = false, orbitClock = null }) {
+export default function MissionScene({ missionTime, cinematic = false, orbitClock = null, orbitReal = null }) {
   return (
     <div className="absolute inset-0 canvas-host" data-testid="mission-canvas">
       <Canvas
@@ -736,7 +813,7 @@ export default function MissionScene({ missionTime, cinematic = false, orbitCloc
         onCreated={({ gl }) => gl.setClearColor("#050505")}
       >
         <Suspense fallback={<LoadingFallback />}>
-          <Scene missionTime={missionTime} cinematic={cinematic} orbitClock={orbitClock} />
+          <Scene missionTime={missionTime} cinematic={cinematic} orbitClock={orbitClock} orbitReal={orbitReal} />
         </Suspense>
         {/* Stars outside the texture suspense so deep space never goes blank */}
         <Stars radius={100} depth={50} count={8000} factor={3.5} saturation={0} fade speed={0.1} />

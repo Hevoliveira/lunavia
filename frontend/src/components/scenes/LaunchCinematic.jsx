@@ -7,8 +7,8 @@ import { framePoints, centreViewOn } from "@/lib/cameraFraming";
 import { ParticlePool } from "@/components/scenes/launch/particles";
 import { createEnvironment, R as ENV_R, KM_PER_UNIT } from "@/components/scenes/launch/environment";
 import * as TL from "@/data/launchTimeline";
-import { transposition, TD, extractionOffset } from "@/data/transposition";
-import { DOCK, toRocketUnits } from "@/data/payloadDesign";
+import { ASSEMBLY, stageGap, stageSepRcs } from "@/data/carrier";
+import { toRocketUnits } from "@/data/payloadDesign";
 
 /*
  * LaunchCinematic — automatic Earth departure of LV-001, from T-15 on the pad
@@ -157,26 +157,21 @@ const DEPART_CAM = { d0: 3.2, d1: 28, side: -0.3, up: 0.34, fov: 46 };
 const DEPART_RECT = { x0: 0.1, x1: 0.9, y0: 0.14, y1: 0.56 };
 
 /*
- * Transposition, docking and extraction (data/transposition): cameras in the
- * payload frame (metres; +Y up the vehicle, which in this attitude points
- * along the orbit; +X is local up; the Sun is ahead and to the -Z side). The
- * spacecraft are close enough to read their hardware, never enlarged. u is
- * the shot's progress, s the transposition state, e the docked pair's offset.
+ * After TLI: the spent upper stage separates from the lunar transfer carrier
+ * (data/carrier). Cameras in the payload frame (metres; +Y up the vehicle,
+ * which in this attitude points along the orbit; +X is local up; the Sun is
+ * ahead and to the -Z side), riding with the outbound assembly: g is the gap
+ * opened between the carrier and the stage. Nothing comes out of the adapter:
+ * the lunar module stays inside it, the CSM on top, all the way to the Moon.
  */
-const TD_CAMS = {
-  // The adapter opens, the panels fall away, the CSM backs out. Seen between two panels,
-  // from above (the Earth below), so the LM is uncovered rather than hidden by a panel.
-  tdSep: (u) => ({ pos: [17, 8 + 3 * u, -19], look: [0, 10.5 + 1.5 * u, 0], fov: 44 }),
-  // The CSM turns round above the LM.
-  tdTurn: (u) => ({ pos: [20, 13 + 2 * u, -26], look: [-1.5, 14, 0], fov: 50 }),
-  // Closing in: the probe, the drogue, then the rings meeting.
-  tdDock: (u) => ({ pos: [12 - 2 * u, 7.5 - 1 * u, -13 + 2 * u], look: [0, 9 - 1 * u, 0], fov: 42 }),
-  // The docked pair rises out of the adapter; the stage stays.
-  tdExtract: (u, s, e) => ({ pos: [17, 6 + 0.5 * e, -19], look: [0, 9 + 0.7 * e, 0], fov: 44 }),
-  // Looking down past the docked spacecraft at the Earth, the spent stage falling behind.
-  farewell: (u, s, e) => {
-    const mid = DOCK.hardY - 1.5 + e;
-    return { pos: [21 + 4 * u, mid + 9, -11 - 3 * u], look: [-14, mid - 3, 2], fov: 46 };
+const SEP_CAMS = {
+  // The whole assembly over the top of the stage: the joint opens, the carrier's engines
+  // come out of the stage's forward skirt, its RCS pushing the assembly ahead.
+  carrierSep: (u, g) => ({ pos: [21 - 2 * u, -2.5 + 0.5 * u + 0.5 * g, -27 + 2 * u], look: [0, 5 + 0.5 * g, 0], fov: 44 }),
+  // Looking down past the outbound assembly at the Earth, the spent stage falling behind.
+  farewell: (u, g) => {
+    const mid = ASSEMBLY.com + g;
+    return { pos: [31 + 5 * u, mid + 9, -18 - 4 * u], look: [-14, mid - 3, 2], fov: 46 };
   },
 };
 const _tdA = new THREE.Vector3();
@@ -345,7 +340,14 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     c.showStage1 = TL.stage1Visible(t);
     c.expand = 1 - Math.sqrt(TL.airDensity(traj.altKm));
     c.les = TL.lesJettison(t);
-    c.td = transposition(t - TL.TD_START);
+    // The adapter stays closed (c.td null: mated); after TLI the stage drops away from the carrier.
+    c.td = null;
+    const sepTau = t - TL.STAGE_SEP_START;
+    c.stageGap = sepTau > 0 ? stageGap(sepTau) : 0;
+    c.carrier = c.carrier || {};
+    c.carrier.inside = c.stageGap > 0.001;
+    c.carrier.rcs = sepTau > 0 ? stageSepRcs(sepTau) : 0;
+    c.carrier.engines = 0;
     c.ghost = TL.payloadReveal(t);
     const g = rocketGroupRef.current;
     let baseY = BASE_Y;
@@ -425,6 +427,15 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     });
     pools.smoke.material.uniforms.uAmbient.value.setRGB(1, 1, 1).multiplyScalar(regime === "pad" ? 1 : 0.9);
     S.frame = { t, shot, regime, traj, thrust, baseY, theta, dt };
+    // Validation tooling (read-only): the payload's state through the launch.
+    if (typeof window !== "undefined") {
+      const w = window.__lvLaunchView || (window.__lvLaunchView = { adapterOpened: false });
+      w.t = t;
+      w.shot = shot.id;
+      w.stageGap = c.stageGap;
+      w.payload = c.td ? c.td.phase : "mated";
+      if (c.td && c.td.phase !== "mated") w.adapterOpened = true;
+    }
   }, -1);
 
   // Post-pass (after RocketModel moved the stages): camera, environment, composite.
@@ -476,13 +487,12 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
         camera.clearViewOffset();
         S.roll = 0;
       }
-    } else if (TD_CAMS[shot.id]) {
-      // Transposition and docking, and the coast: framed in the payload frame.
+    } else if (SEP_CAMS[shot.id]) {
+      // The upper stage's separation, and the coast: framed in the payload frame.
       const rig = rigRef.current;
       if (rig && rig.root) {
         rig.root.updateWorldMatrix(true, true);
-        const e = extractionOffset(t - TL.TD_START);
-        const def = TD_CAMS[shot.id](smooth(shotU) * 0.6 + shotU * 0.4, c.td, e);
+        const def = SEP_CAMS[shot.id](smooth(shotU) * 0.6 + shotU * 0.4, c.stageGap || 0);
         camera.position.copy(rig.root.localToWorld(_tdA.set(...toRocketUnits(def.pos))));
         camera.up.set(0, 1, 0);
         camera.lookAt(rig.root.localToWorld(_tdB.set(...toRocketUnits(def.look))));
@@ -583,8 +593,8 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     }
     camera.updateMatrixWorld();
     S.lastShot = shot;
-    // Glints mark the spacecraft on the rocket; once it comes apart the cameras are close anyway.
-    updateGlints(glints, t < TL.TD_START ? rigRef.current : null, camera, S.sunW, regime === "flight" && t >= 61 ? TL.sunAt(t) : null);
+    // Glints mark the spacecraft on the rocket; once the stage separates the cameras are close anyway.
+    updateGlints(glints, t < TL.STAGE_SEP_START ? rigRef.current : null, camera, S.sunW, regime === "flight" && t >= 61 ? TL.sunAt(t) : null);
 
     // --- Environment camera (true scale) ---
     let altKm;
@@ -1077,29 +1087,12 @@ function useAudioDirector(audio) {
         case "lunarTransfer":
           say("launch.lunarTransfer", 900);
           break;
-        // Transposition and docking: pyros, RCS, latches, felt through the structure.
-        case "tdSep":
+        // Upper-stage separation: the pyros, felt through the structure, then the
+        // carrier's RCS pushing the assembly clear.
+        case "carrierSep":
           audio.thud?.(0.3);
           audio.clank?.(0.22);
-          audio.hiss?.(1.2, 0.07);
-          break;
-        case "panelsJettison":
-          audio.thud?.(0.18);
-          break;
-        case "tdTurn":
-          audio.hiss?.(0.7, 0.06);
-          setTimeout(() => audio.hiss?.(0.7, 0.06), (TD.pitch.t1 - TD.pitch.t0 - 1.2) * 1000);
-          break;
-        case "capture":
-          audio.clank?.(0.32);
-          break;
-        case "hardDock":
-          audio.clank?.(0.45);
-          setTimeout(() => audio.clank?.(0.25), 180);
-          break;
-        case "tdExtract":
-          audio.thud?.(0.24);
-          audio.hiss?.(1.6, 0.07);
+          audio.hiss?.(2.2, 0.07);
           break;
         default:
       }
@@ -1133,7 +1126,7 @@ function useAudioDirector(audio) {
       }
       // Cameras outside the vehicle in vacuum hear nothing: the spent stage's,
       // and the one left on the parking orbit as the vehicle leaves.
-      if (shot.id === "stage1Cam" || shot.id === "departure" || t >= TL.TD_START) level = 0;
+      if (shot.id === "stage1Cam" || shot.id === "departure" || t >= TL.STAGE_SEP_START) level = 0;
       audio.roarSet(level, muffle);
     },
   };

@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import PayloadSection from "@/components/spacecraft/PayloadSection";
+import { CARRIER, STAGE_FORWARD } from "@/data/carrier";
 import { CM_TOP } from "@/data/csmDesign";
 import { ADAPTER, CSM_MATED, ROCKET_M_PER_UNIT, UPPER_STAGE } from "@/data/payloadDesign";
 
@@ -25,8 +26,11 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
  * same CsmModel as in lunar orbit) at true size on the spacecraft adapter, and
  * inside the adapter the lunar module (the same LanderModel that lands),
  * under the boost cover and the launch escape tower. The tower and cover are
- * jettisoned in flight (`les`, seconds since jettison); after TLI the adapter
- * opens and the spacecraft come out (`td`, data/transposition).
+ * jettisoned in flight (`les`, seconds since jettison). The top 1.35 m of the
+ * upper stage's cylinder (its black band and the white just below) is the lunar transfer carrier
+ * (data/carrier): after TLI the whole payload leaves the upper stage on it
+ * (`stageGap`, metres) and the stage is left behind near Earth. The adapter
+ * opens only in lunar orbit (MissionScene).
  */
 
 // Spacecraft stations, model units (1 unit = 18 m at the cinematic's scale), from data/payloadDesign.
@@ -393,7 +397,7 @@ function haloTexture() {
   return HALO_TEX;
 }
 
-const DEFAULT_CTRL = { engines: [0, 0, 0, 0, 0], glow: 0, sep: 0, upper: 0, showStage1: true, expand: 0, td: null, ghost: 0 };
+const DEFAULT_CTRL = { engines: [0, 0, 0, 0, 0], glow: 0, sep: 0, upper: 0, showStage1: true, expand: 0, td: null, ghost: 0, stageGap: 0 };
 
 /* ---- batching: static parts sharing a material are merged into one draw call ---- */
 
@@ -546,14 +550,29 @@ function buildBatches(geo) {
     hw2.push(put(rcsBox, G));
     [-0.03, 0.03].forEach((y) => cav2.push(put(rcsCone, m4([0.035, y, 0], [0, 0, Math.PI / 2]), G)));
   });
-  // Spacecraft adapter: separation-bolt fittings
+  const SC = SPACECRAFT;
+  // Spacecraft adapter: separation-bolt fittings (on the carrier, with the payload)
+  const hwFwd = [];
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2;
-    hw2.push(put(new THREE.BoxGeometry(0.014, 0.018, 0.01), m4([Math.cos(a) * 0.3, 4.235, Math.sin(a) * 0.3], [0, -a, 0])));
+    hwFwd.push(put(new THREE.BoxGeometry(0.014, 0.018, 0.01), m4([Math.cos(a) * 0.3, 4.235, Math.sin(a) * 0.3], [0, -a, 0])));
   }
-  // The spacecraft adapter itself (ring, panels, LM mounts) is PayloadSection's; the
-  // separation line at its base stays with the stage.
-  const SC = SPACECRAFT;
+  // The upper stage's forward bulkhead: a shallow dome inside its forward skirt, seen once
+  // the carrier has separated (data/carrier STAGE_FORWARD).
+  const sfRim = SC.slaBase + STAGE_FORWARD.rimY / ROCKET_M_PER_UNIT;
+  const sfApex = SC.slaBase + STAGE_FORWARD.apexY / ROCKET_M_PER_UNIT;
+  const sfR = STAGE_FORWARD.R / ROCKET_M_PER_UNIT;
+  const sfTop = SC.slaBase - CARRIER.H / ROCKET_M_PER_UNIT;
+  const domePts = [];
+  for (let i = 0; i <= 12; i++) {
+    const u = i / 12;
+    domePts.push(new THREE.Vector2(sfR * 0.995 * Math.sin((u * Math.PI) / 2), sfRim + (sfApex - sfRim) * Math.cos((u * Math.PI) / 2)));
+  }
+  const stageDome = [put(new THREE.LatheGeometry(domePts.reverse(), 40))];
+  // ...and the skirt's inner wall above it, and the separation ring on its rim.
+  const stageSkirt = [put(new THREE.CylinderGeometry(sfR * 0.985, sfR * 0.985, sfTop - sfRim, 40, 1, true), m4([0, (sfTop + sfRim) / 2, 0]))];
+  hw2.push(put(new THREE.TorusGeometry(sfR * 0.99, 0.004, 6, 48), m4([0, sfTop - 0.002, 0], [Math.PI / 2, 0, 0])));
+  // The spacecraft adapter itself (ring, panels, LM mounts) is PayloadSection's.
   // Boost protective cover over the command module, and the escape tower on it.
   const towerY = (u) => SC.towerBase + (SC.towerTop - SC.towerBase) * u;
   const les = [
@@ -592,7 +611,8 @@ function buildBatches(geo) {
   QUAD.forEach((a) => les.push(put(lesNozzle, m4([Math.cos(a) * 0.03, T - 0.01, Math.sin(a) * 0.03], [Math.sin(a) * -0.5, 0, Math.cos(a) * 0.5]))));
   const lesOrange = [put(new THREE.CylinderGeometry(0.0285, 0.0285, 0.02, 16), m4([0, T + 0.2, 0]))];
   const lesSilver = [put(new THREE.SphereGeometry(0.012, 10, 10), m4([0, T + 0.335, 0]))];
-  const orange2 = [put(new THREE.CylinderGeometry(0.305, 0.305, 0.07, 32), m4([0, 4.1, 0]))];
+  // (open: once the carrier has separated, the stage's forward skirt is seen from above)
+  const orange2 = [put(new THREE.CylinderGeometry(0.305, 0.305, 0.07, 32, 1, true), m4([0, 4.1, 0]))];
   const silver2 = [put(new THREE.CylinderGeometry(0.3, 0.302, 0.02, 40), m4([0, SC.slaBase + 0.01, 0]))];
   return {
     bells1: merge(bells1),
@@ -603,6 +623,9 @@ function buildBatches(geo) {
     cavity1: merge(cavity1),
     heat1: merge(heat1),
     hw2: merge(hw2),
+    hwFwd: merge(hwFwd),
+    stageDome: merge(stageDome),
+    stageSkirt: merge(stageSkirt),
     cav2: merge(cav2),
     les: merge(les),
     lesOrange: merge(lesOrange),
@@ -668,6 +691,24 @@ export function setRocketTextureAnisotropy(n) {
   });
 }
 
+/**
+ * The payload's materials (PayloadSection, CarrierModel): LV-001's own paint, so the
+ * outbound assembly in MissionScene is the same vehicle as on the pad.
+ */
+export function payloadMaterials(bell = null) {
+  const S = shared();
+  return {
+    panel: S.mat.paint2,
+    band: S.mat.orange,
+    hardware: S.mat.hardware,
+    black: S.mat.black,
+    silver: S.mat.silver,
+    white: S.mat.white,
+    bell: bell || S.mat.structure,
+    bellInner: S.mat.bellInner,
+  };
+}
+
 export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }) {
   const S = shared();
   const rootRef = useRef();
@@ -723,7 +764,8 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
     return m;
   }, [S]);
 
-  const payloadMats = useMemo(() => ({ panel: S.mat.paint2, band: S.mat.orange, hardware: S.mat.hardware }), [S]);
+  const payloadMats = useMemo(() => payloadMaterials(bell2Mat), [bell2Mat]);
+  const payloadRef = useRef();
   const plumeMats = useMemo(
     () => ({
       core: plumeMaterial({ color: "#ffb15a", core: "#fffaf0", opacity: 1.15, falloff: 0.9, noise: 0.25 }),
@@ -825,6 +867,9 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
       }
     }
 
+    // The payload leaves the upper stage after TLI
+    if (payloadRef.current) payloadRef.current.position.y = (c.stageGap || 0) / ROCKET_M_PER_UNIT;
+
     // Upper-stage vacuum engine (ignition, cutoff and TLI restart come from the timeline)
     const ig = c.upper;
     if (plume2Ref.current) {
@@ -925,7 +970,8 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
       <mesh geometry={S.batch.hw2} material={S.mat.hardware} />
       <mesh geometry={S.batch.cav2} material={S.mat.cavity} />
       <mesh geometry={S.batch.orange2} material={S.mat.orange} />
-      <mesh geometry={S.batch.silver2} material={S.mat.silver} />
+      <mesh geometry={S.batch.stageDome} material={S.mat.skirt} />
+      <mesh geometry={S.batch.stageSkirt} material={S.mat.skirt} />
       <group position={[0, 2.5, 0]}>
         <mesh geometry={S.geo.bell2} material={bell2Mat} />
         <mesh geometry={S.geo.bell2Inner} material={bellInner2} position={[0, 0.004, 0]} />
@@ -946,20 +992,22 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
         <sprite ref={halo2Ref} material={haloMats.s2} position={[0, -0.3, 0]} scale={[1.1, 1.1, 1]} />
       </group>
 
-      {/* Stage 2 body */}
-      <mesh position={[0, 3.54, 0]} material={S.mat.paint2}>
-        <cylinderGeometry args={[0.3, 0.34, 1.36, 32, 1, true]} />
+      {/* Stage 2 body, up to the carrier's separation plane (the carrier is its black top) */}
+      <mesh position={[0, 3.5025, 0]} material={S.mat.paint2}>
+        <cylinderGeometry args={[0.302, 0.34, 1.285, 32, 1, true]} />
       </mesh>
       <mesh position={[0, 3.2, 0]} material={S.mat.white}>
         <cylinderGeometry args={[0.328, 0.328, 0.022, 32]} />
       </mesh>
-      <mesh position={[0, 4.19, 0]} material={S.mat.black}>
-        <cylinderGeometry args={[0.302, 0.302, 0.06, 32]} />
-      </mesh>
 
-      {/* The payload: spacecraft adapter with the lunar module inside, the CSM on top (metres) */}
-      <group position={[0, SPACECRAFT.slaBase, 0]} scale={SPACECRAFT.M}>
-        <PayloadSection ctrlRef={ctrlRef} materials={payloadMats} />
+      {/* The payload: the lunar transfer carrier, the spacecraft adapter with the lunar module
+          inside, the CSM on top. After TLI it leaves the upper stage (ctrl.stageGap, metres). */}
+      <group ref={payloadRef}>
+        <mesh geometry={S.batch.silver2} material={S.mat.silver} />
+        <mesh geometry={S.batch.hwFwd} material={S.mat.hardware} />
+        <group position={[0, SPACECRAFT.slaBase, 0]} scale={SPACECRAFT.M}>
+          <PayloadSection ctrlRef={ctrlRef} materials={payloadMats} />
+        </group>
       </group>
       {/* Boost cover + escape tower, jettisoned in flight */}
       <group ref={lesRef}>
