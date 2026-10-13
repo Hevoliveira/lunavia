@@ -662,7 +662,8 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitRea
           // Nose away from the Earth, the main engine back at it, pivoted on the centre of mass; the
           // deep-space shot carries the midcourse correction on the main engine.
           const att = coastAttitude(id, u);
-          v.asm = { yaw: Math.PI - att.phi, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: id === "deep" ? mccLevel(u) : 0, retro: 0, yawRcs: 0 };
+          // The outer group's turn is pi - phi: speeding phi up is a torque about payload -X.
+          v.asm = { yaw: Math.PI - att.phi, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: id === "deep" ? mccLevel(u) : 0, retro: 0, yawRcs: -att.rcs };
         }
         v.stackOn = false;
         v.shadowR = 20;
