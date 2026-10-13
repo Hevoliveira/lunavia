@@ -168,10 +168,11 @@ const SEP_CAMS = {
   // The whole assembly over the top of the stage: the joint opens, the carrier's engines
   // come out of the stage's forward skirt, its RCS pushing the assembly ahead.
   carrierSep: (u, g) => ({ pos: [21 - 2 * u, -2.5 + 0.5 * u + 0.5 * g, -27 + 2 * u], look: [0, 5 + 0.5 * g, 0], fov: 44 }),
-  // Looking down past the outbound assembly at the Earth, the spent stage falling behind.
+  // From aft and above: the carrier's main engine and thrust cone, the Earth beyond, the
+  // spent stage falling away behind.
   farewell: (u, g) => {
     const mid = ASSEMBLY.com + g;
-    return { pos: [31 + 5 * u, mid + 9, -18 - 4 * u], look: [-14, mid - 3, 2], fov: 46 };
+    return { pos: [24 + 3 * u, mid - 26 - 2 * u, -19 - 2 * u], look: [-14, mid - 2, 2], fov: 52 };
   },
 };
 const _tdA = new THREE.Vector3();

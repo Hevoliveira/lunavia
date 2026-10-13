@@ -15,7 +15,7 @@ import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import MissionTitle from "@/components/MissionTitle";
 import { goForPdi } from "@/data/lunarOrbitShot";
-import { APPROACH_SHOT, CISLUNAR, CRUISE_SHOT, DEEP_SHOT, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, coastShotAt, cruiseTime, orbitClockAt, orbitShotAt } from "@/data/orbitSequence";
+import { APPROACH_SHOT, CISLUNAR, CRUISE_SHOT, DEEP_SHOT, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, coastShotAt, cruiseTime, mccLevel, orbitClockAt, orbitShotAt } from "@/data/orbitSequence";
 import { TD } from "@/data/transposition";
 import { TITLE } from "@/data/titleReveal";
 
@@ -129,6 +129,7 @@ export default function Mission() {
   const [spaceTime, setSpaceTime] = useState(CRUISE_START);
   const cruiseRef = useRef(CRUISE_START); // same clock, for the loop
   const losRef = useRef(false); // the coast has handed over to lunar orbit
+  const mccRef = useRef(false); // the midcourse correction burn is on
   const cruiseClockRef = useRef(0); // real seconds into the coast (data/orbitSequence cruiseTime)
   // Lunar orbit presentation (ORBIT, TITLE, DIFFICULTY, BRIEFING): the orbit
   // clock, read every frame by the scene through the ref. It is real seconds
@@ -180,7 +181,15 @@ export default function Mission() {
         const c = Math.min(cruiseClockRef.current + dt, CISLUNAR.s.end);
         cruiseClockRef.current = c;
         const next = cruiseTime(c);
-        const cap = COAST_CAPTION[coastShotAt(next).id];
+        const coastShot = coastShotAt(next);
+        // The midcourse correction on the main engine, felt aboard (one short burn; the rest is a coast).
+        const mcc = coastShot.id === "deep" && mccLevel(coastShot.u) > 0.05;
+        if (mcc !== mccRef.current) {
+          mccRef.current = mcc;
+          if (mcc) audio.startRumble(0.16);
+          else audio.stopRumble();
+        }
+        const cap = COAST_CAPTION[coastShot.id];
         if (cap !== captionRef.current) {
           captionRef.current = cap;
           setCaption({ id: cap, ...SHOT_CAPTIONS[cap] });

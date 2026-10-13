@@ -704,6 +704,7 @@ export function payloadMaterials(bell = null) {
     black: S.mat.black,
     silver: S.mat.silver,
     white: S.mat.white,
+    structure: S.mat.structure,
     bell: bell || S.mat.structure,
     bellInner: S.mat.bellInner,
   };

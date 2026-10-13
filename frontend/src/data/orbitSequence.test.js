@@ -16,9 +16,12 @@ import {
   carrierDrift,
   deployState,
   loiBurnLevel,
+  MCC,
+  mccLevel,
   approachCloseCamera,
   approachMoonKm,
   approachYaw,
+  coastAttitude,
   coastDistanceKm,
   coastShotAt,
   cruiseCamera,
@@ -39,7 +42,7 @@ import { LOOP_TAU, loopCamera } from "./titleLoop";
 import { craftPose } from "./lunarOrbitShot";
 import { MOON_UNITS, craftScenePos, moonScenePos } from "./sceneTrack";
 import { undocking } from "./undocking";
-import { ASSEMBLY, CARRIER } from "./carrier";
+import { ASSEMBLY, CARRIER, MIDCOURSE_DV } from "./carrier";
 import { TD } from "./transposition";
 import { dockedLmPose } from "./csmDesign";
 import { ADAPTER } from "./payloadDesign";
@@ -75,15 +78,17 @@ function clearance(pos, lmY = 0, yaw = 0) {
  * radius along its axis; in lunar orbit (anchor ORBIT_ANCHOR, engines first) or in the coast (on its
  * centre of mass, yaw π + turn: the nose along +X at yaw 0).
  */
-function asmClearance(pos, coastYaw = null) {
+function asmClearance(pos, coastPhi = null) {
   let p = pos;
   let x0 = Math.min(ASSEMBLY_X.nose, ASSEMBLY_X.aft) - 15; // the CSM backs out and turns round up to ~15 m beyond the nose
   let x1 = Math.max(ASSEMBLY_X.nose, ASSEMBLY_X.aft);
-  if (coastYaw != null) {
-    const a = -(Math.PI + coastYaw); // into the assembly's own (unyawed, engines along +X) frame
-    p = [pos[0] * Math.cos(a) + pos[2] * Math.sin(a), pos[1], -pos[0] * Math.sin(a) + pos[2] * Math.cos(a)];
-    x0 = ASSEMBLY.com - ASSEMBLY.nose;
-    x1 = ASSEMBLY.com - ASSEMBLY.aft;
+  if (coastPhi != null) {
+    // into the assembly's own frame: nose along +X
+    const c = Math.cos(coastPhi);
+    const sn = Math.sin(coastPhi);
+    p = [pos[0] * c + pos[2] * sn, pos[1], -pos[0] * sn + pos[2] * c];
+    x0 = ASSEMBLY.aft - ASSEMBLY.com;
+    x1 = ASSEMBLY.nose - ASSEMBLY.com;
   }
   const x = Math.min(x1, Math.max(x0, p[0]));
   return Math.hypot(p[0] - x, p[1], p[2]) - ADAPTER.R0;
@@ -220,7 +225,7 @@ describe("lunar orbit: insertion, the deployment, the undocking, the title", () 
   test("lunar orbit insertion: engines first, the carrier fires retrograde, then shuts down before the establishing shot", () => {
     // the carrier's engine exits lead along the flight path (+X), the CSM's nose trails
     expect(ASSEMBLY_X.aft).toBeGreaterThan(ASSEMBLY_X.nose);
-    expect(assemblyPoint([0, CARRIER.engines.exitY, 0])[0]).toBeCloseTo(ASSEMBLY_X.aft, 9);
+    expect(assemblyPoint([0, CARRIER.engine.exitY, 0])[0]).toBeCloseTo(ASSEMBLY_X.aft, 9);
     expect(loiBurnLevel(0)).toBe(0);
     expect(loiBurnLevel(ORBIT_SEQ.ignition - 0.01)).toBe(0);
     expect(loiBurnLevel((ORBIT_SEQ.ignition + ORBIT_SEQ.cutoff) / 2)).toBe(1);
@@ -325,6 +330,50 @@ describe("the cislunar coast: departure, deep space, approach, all close on the 
     expect(deg(1737, approachMoonKm(1))).toBeLessThan(70);
   });
 
+  test("attitudes read as travel: the engine back at the Earth leaving it; the nose at the Moon, then the engine first", () => {
+    const nose = (phi) => [Math.cos(phi), 0, Math.sin(phi)];
+    const towardPlanet = (phi) => -nose(phi)[2]; // the planet of the shot is at -Z
+    for (let u = 0; u <= 1; u += 0.05) {
+      expect(towardPlanet(coastAttitude("depart", u).phi)).toBeLessThan(-0.3); // nose away from the Earth, engine towards it
+      expect(towardPlanet(coastAttitude("deep", u).phi)).toBeLessThan(-0.3);
+    }
+    expect(towardPlanet(coastAttitude("approach", 0).phi)).toBeGreaterThan(0.6); // nose on towards the Moon
+    expect(towardPlanet(coastAttitude("approach", 1).phi)).toBeLessThan(-0.6); // turned: the engine towards the Moon
+    // never broadside to the planet in the approach before or after the turn
+    expect(Math.abs(towardPlanet(coastAttitude("approach", CISLUNAR.turn[0]).phi))).toBeGreaterThan(0.6);
+    // every coast camera sees the assembly at a three-quarter angle (not end-on), with the engine end in view
+    const view = (cam, phi) => {
+      const f = cam.look.map((x, i) => x - cam.pos[i]);
+      const l = Math.hypot(...f);
+      return Math.acos(dot(f.map((x) => x / l), nose(phi))) / DEG;
+    };
+    for (let u = 0; u <= 1; u += 0.05) {
+      [[cruiseCamera(u), "depart"], [deepCamera(u), "deep"]].forEach(([c, id]) => {
+        const a = view(c, coastAttitude(id, u).phi);
+        // near profile: the 3 m main engine stands out past the 10.9 m carrier (tan > 1.84 for the bell's tip)
+        expect(a).toBeGreaterThan(92);
+        expect(a).toBeLessThan(112);
+      });
+    }
+    expect(view(approachCloseCamera(0), coastAttitude("approach", 0).phi)).toBeLessThan(60); // from behind the engine end
+    // lunar orbit insertion is filmed from ahead of the engine end (engine first along +X)
+    const loi = ORBIT_SHOTS[0].cam(0.5);
+    const f = loi.look.map((x, i) => x - loi.pos[i]);
+    expect(-f[0] / Math.hypot(...f)).toBeGreaterThan(0.4); // looking back along -X, at the engine end
+    expect(loi.pos[0]).toBeGreaterThan(ASSEMBLY_X.aft);
+  });
+
+  test("coasting is unpowered; the only burn on the way is the midcourse correction on the main engine", () => {
+    expect(mccLevel(0)).toBe(0);
+    expect(mccLevel(1)).toBe(0);
+    expect(mccLevel((MCC.on + MCC.off) / 2 / MCC.shotLen)).toBe(1);
+    let on = 0;
+    for (let u = 0; u <= 1; u += 0.005) if (mccLevel(u) > 0.02) on += 0.005 * MCC.shotLen;
+    expect(on).toBeGreaterThan(0.8);
+    expect(on).toBeLessThan(2);
+    expect(MCC.dv).toBeLessThan(MIDCOURSE_DV);
+  });
+
   test("the assembly turns engines first during the approach, smoothly, its RCS firing only to start and stop the turn", () => {
     expect(approachYaw(0).yaw).toBe(0);
     expect(approachYaw(CISLUNAR.turn[0]).yaw).toBe(0);
@@ -345,12 +394,12 @@ describe("the cislunar coast: departure, deep space, approach, all close on the 
   test("the close cameras stay outside the spacecraft, on the far side from the planet", () => {
     for (let u = 0; u <= 1; u += 0.05) {
       // the outbound assembly on the way out (nose first, then turning engines first)
-      [cruiseCamera(u), deepCamera(u)].forEach((c) => {
-        expect(asmClearance(c.pos, 0)).toBeGreaterThan(10);
+      [[cruiseCamera(u), "depart"], [deepCamera(u), "deep"]].forEach(([c, id]) => {
+        expect(asmClearance(c.pos, coastAttitude(id, u).phi)).toBeGreaterThan(10);
         expect(c.pos[2]).toBeGreaterThan(0); // the planet is at -Z, beyond the assembly
       });
       const c = approachCloseCamera(u);
-      expect(asmClearance(c.pos, approachYaw(u).yaw)).toBeGreaterThan(10);
+      expect(asmClearance(c.pos, coastAttitude("approach", u).phi)).toBeGreaterThan(10);
       expect(c.pos[2]).toBeGreaterThan(0);
       // the CSM alone on the way home
       expect(clearance(returnCamera(u).pos)).toBeGreaterThan(10);
