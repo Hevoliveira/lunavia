@@ -96,7 +96,7 @@ export const LM_CENTRE_X = 7.0;
 // The two framings either side of the title shot, LM-relative (metres): where the
 // TWO SPACECRAFT shot leaves the camera, and where it settles behind the LM with
 // the LM in the right third and room for the title on the left.
-const PAIR_END = { pos: [-6, 13, 37], look: [2.5, -4.2, 0] };
+const PAIR_END = { pos: [-4, 8.5, 30], look: [2.5, 1.2, 0] };
 const TITLE_LM_X = LM_CENTRE_X + undocking(ORBIT_SEQ.title - ORBIT_SEQ.undock).lmY;
 const TITLE_FROM = { pos: [PAIR_END.pos[0] - TITLE_LM_X, PAIR_END.pos[1], PAIR_END.pos[2]], look: [PAIR_END.look[0] - TITLE_LM_X, PAIR_END.look[1], PAIR_END.look[2]] };
 export const TITLE_HOLD = { pos: [-11, 6, 19], look: [-6, -3, -4] };
