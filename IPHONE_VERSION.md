@@ -1,16 +1,19 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 8224e36**.
+This folder installs **BUILD e85ea35**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 8224e36 · 2026-10-13 05:54 UTC**
+> **LUNAVIA iOS · BUILD e85ea35 · 2026-10-13 11:59 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
-- **532885b** is the previous release: the lunar module in the rocket and the transposition,
+- **8224e36** is the previous release: the true-scale coast and the title inside the mission,
+  but the lunar module and the CSM still left the rocket near the Earth (the transposition
+  after TLI), and the title went straight on to the descent setup by itself;
+- **532885b** is the release before: the lunar module in the rocket and the transposition,
   but the opening before the menu and the old Earth-to-Moon transition (the jump to a giant
   Earth, the dark frames and the fade to black before lunar orbit);
-- **11618a2** is the release before: the shared spacecraft and the opening, but no lunar
+- **11618a2** is an earlier release: the shared spacecraft and the opening, but no lunar
   module inside the rocket and no transposition and docking;
 - **a360daf** is the four lunar missions release, with the old spacecraft and no opening;
 - **718ce0c** is the lunar module fidelity release, without the four missions;
@@ -39,20 +42,24 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | One spacecraft from Earth to the Moon (shared CSM, escape tower jettison), lunar module undocking, opening cinematic, Laju Productions credit | #11 | 11618a2 |
 | Spacecraft lineage: the lunar module inside LV-001's adapter, transposition, docking and extraction after TLI, lunar approach | #12 | 532885b |
 | Cinematic flow: the Earth-to-Moon coast at true scale, lunar orbit insertion burn, the title inside the mission after the go for powered descent, no opening before the menu | #13 | 8224e36 |
+| Lunar deployment: the LM and CSM stay integrated to the Moon on a lunar transfer carrier (only the spent upper stage separates after TLI), the carrier's insertion burn, the deployment in lunar orbit, and a persistent title screen with START MISSIONS | #14 | e85ea35 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 8224e36** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release changes what you see, not how you fly.**
-  - The home screen opens straight away, every time: no opening film before the menu, no first-launch flag.
-  - The Earth-to-Moon coast is three close shots of the docked spacecraft (departure, deep space, lunar approach) with the planet behind it at its true size: no jump to a giant Earth, no dark frames, no fade to black. On the approach the spacecraft turns engine first.
-  - Lunar orbit opens on the insertion burn (the service module's engine firing over the Moon), then the whole Moon, the docked spacecraft and the undocking as before.
-  - After the undocking and FLIGHT's "we're go for powered descent", the title LUNAVIA · A LAJU PRODUCTIONS GAME appears over the lunar module moving away, then the descent setup opens. Once per mission; SKIP TO DESCENT goes straight to the descent setup; never in Training.
-  - Descent physics, difficulty, touchdown limits, scoring, training, the four missions, the spacecraft and the launch with the transposition are unchanged.
-- **Records are kept.** Nothing new is stored; the old `lunavia.opening.seen` flag, if present, is ignored.
+- **Built from the clean tree at e85ea35** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release changes the mission sequence and the title, not how you fly.**
+  - After TLI only the spent upper stage separates. The lunar module stays inside the closed adapter with the CSM on top, on the new lunar transfer carrier (the top of the upper stage, same outline). Nothing leaves the rocket near the Earth.
+  - The outbound assembly coasts to the Moon whole, turns engines first, and the carrier's engines put it into lunar orbit.
+  - In lunar orbit, after a steady shot of the integrated assembly, the adapter opens. The CSM turns round, docks with the lunar module and pulls it off the carrier, and the carrier is left behind. Then the undocking as before.
+  - After CAPCOM's "we're go for powered descent": LUNAVIA, A LAJU PRODUCTIONS GAME and a **START MISSIONS** button (**INICIAR MISSÕES** in Portuguese).
+    - The title screen stays up with no timer: the spacecraft come to rest, the camera drifts slowly to show the CSM beyond the lunar module.
+    - Tap START MISSIONS once to open the descent setup.
+    - SKIP CINEMATIC in lunar orbit goes to this screen, never past it.
+  - Descent physics, difficulty, touchdown limits, scoring, training, the four missions, reentry and the spacecraft themselves are unchanged.
+- **Records are kept.** Nothing new is stored.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the true-scale coast, the insertion burn and the title inside the mission.
+  - every feature above is in the bundled game, including the upper-stage separation, the carrier's insertion burn, the deployment in lunar orbit, the carrier left behind and the START MISSIONS title screen.

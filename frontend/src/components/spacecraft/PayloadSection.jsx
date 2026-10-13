@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import CarrierModel from "@/components/spacecraft/CarrierModel";
 import CsmModel from "@/components/spacecraft/CsmModel";
 import LanderModel from "@/components/LanderModel";
 import { RCS_QUADS, RCS_THRUSTERS } from "@/data/csmDesign";
@@ -10,9 +11,13 @@ import { transposition } from "@/data/transposition";
 
 /**
  * LV-001's payload section, in metres (data/payloadDesign's frame: origin on
- * the axis at the upper stage's forward bulkhead, +Y up the vehicle).
- * RocketModel draws it at 1/18 scale on top of its upper stage.
+ * the axis at the carrier's deck, +Y up the vehicle). RocketModel draws it at
+ * 1/18 scale on top of its upper stage; MissionScene draws the same component
+ * as the outbound assembly, from the translunar coast to the deployment in
+ * lunar orbit.
  *
+ * - the lunar transfer carrier (CarrierModel, data/carrier): the top of the
+ *   upper stage's cylinder, with the deck, propellant and engines;
  * - the spacecraft adapter: a fixed ring on the stage and four panels hinged to
  *   it, centred on the lunar module's legs;
  * - the lunar module (LanderModel, the approved model) upright inside, legs out,
@@ -21,9 +26,15 @@ import { transposition } from "@/data/transposition";
  *   folded beside the engine bell.
  *
  * `ctrlRef.current` is read every frame:
- *   td: data/transposition state (separation, transposition, docking, extraction)
+ *   td: data/transposition state (separation, transposition, docking, extraction),
+ *       flown in lunar orbit relative to the carrier
  *   ghost: 0..1 — the adapter turns translucent to show the lunar module inside
  *          (the pad's payload shot)
+ *   carrier: CarrierModel's controls (engines, rcs, inside)
+ *   yawRcs (-1..1): the service module's couple that turns the assembly about
+ *          the payload frame's X axis (+: torque about +X)
+ *   hideCraft: the CSM and the LM are drawn elsewhere (SpacecraftStack takes
+ *          over once they have left the carrier); the carrier and ring stay
  * Until the adapter opens (or is seen through) it is drawn closed, as one
  * frustum and its orange band, and nothing inside it is drawn: the launch costs
  * what it did before (two draw calls for the adapter).
@@ -81,8 +92,12 @@ function geometry() {
 // Which CSM thrusters each RCS command fires (exhaust direction, CSM frame).
 const QUAD_X = RCS_QUADS.map((a) => Math.sin(a));
 const THR = RCS_THRUSTERS.map((t) => ({ fwd: t.dir[1] > 0.5, aft: t.dir[1] < -0.5, side: QUAD_X[t.quad] > 0.5 ? 1 : QUAD_X[t.quad] < -0.5 ? -1 : 0 }));
+// The couple about X: the +Z quad's forward thruster (pushing it -Y) with the -Z quad's aft
+// one (pushing it +Y) turns the CSM about +X; the reverse pair about -X.
+const TORQUE_X_POS = RCS_THRUSTERS.map((t) => (t.quad === 0 && t.dir[1] > 0.5) || (t.quad === 2 && t.dir[1] < -0.5));
+const TORQUE_X_NEG = RCS_THRUSTERS.map((t) => (t.quad === 0 && t.dir[1] < -0.5) || (t.quad === 2 && t.dir[1] > 0.5));
 
-export default function PayloadSection({ ctrlRef, materials }) {
+export default function PayloadSection({ ctrlRef, materials, shadows = false }) {
   const G = geometry();
   // Open (or seen through) the adapter is double-sided and can fade; one pass each (forceSinglePass).
   const panelMat = useMemo(() => {
@@ -99,14 +114,15 @@ export default function PayloadSection({ ctrlRef, materials }) {
     m.forceSinglePass = true;
     return m;
   }, [materials]);
+  const rootRef = useRef();
   const openRef = useRef();
   const closedRef = useRef();
   const gl = useThree((st) => st.gl);
   const scene = useThree((st) => st.scene);
   const camera = useThree((st) => st.camera);
   useEffect(() => {
-    // Compile the open adapter's and the LM's shaders now, not when the adapter first opens.
-    const o = openRef.current;
+    // Compile the open adapter's, the LM's and the carrier's shaders now, not when they first show.
+    const o = rootRef.current;
     if (!o) return;
     const hidden = [];
     o.traverse((n) => {
@@ -168,33 +184,42 @@ export default function PayloadSection({ ctrlRef, materials }) {
     }
     hga.current = s.hga;
     const r = s.rcs;
+    const yaw = c.yawRcs || 0;
     THR.forEach((t, i) => {
       let k = t.fwd ? r.fwd : t.aft ? r.aft : 0;
       // Turning couple: the +X quad's aft thruster with the -X quad's forward one (and the reverse).
       if (t.side === 1) k = Math.max(k, t.aft ? r.pitchPos : t.fwd ? r.pitchNeg : 0);
       if (t.side === -1) k = Math.max(k, t.fwd ? r.pitchPos : t.aft ? r.pitchNeg : 0);
+      if (yaw > 0 && TORQUE_X_POS[i]) k = Math.max(k, yaw);
+      if (yaw < 0 && TORQUE_X_NEG[i]) k = Math.max(k, -yaw);
       rcs.current[i] = k;
     });
     // The LM: inside until the adapter opens (or is seen through), then out with the CSM.
-    if (lmRef.current) lmRef.current.position.set(s.lm.pos[0], s.lm.pos[1], s.lm.pos[2]);
+    if (lmRef.current) {
+      lmRef.current.position.set(s.lm.pos[0], s.lm.pos[1], s.lm.pos[2]);
+      lmRef.current.visible = !c.hideCraft;
+    }
+    if (csmRef.current) csmRef.current.visible = !c.hideCraft;
   });
 
   return (
-    <group name="payload">
+    <group name="payload" ref={rootRef}>
+      {/* The lunar transfer carrier: deck, tank and engines under the adapter */}
+      <CarrierModel ctrlRef={ctrlRef} materials={materials} shadows={shadows} />
       {/* Closed: the adapter as one frustum and its band */}
       <group ref={closedRef}>
-        <mesh geometry={G.closed} material={materials.panel} />
+        <mesh geometry={G.closed} material={materials.panel} castShadow={shadows} receiveShadow={shadows} />
         <mesh geometry={G.closedBand} material={materials.band} />
       </group>
       <group ref={openRef} visible={false}>
-        {/* Fixed ring (stays on the upper stage) and the LM's mounts */}
-        <mesh geometry={G.ring} material={panelMat} />
+        {/* Fixed ring and the LM's mounts (they stay on the carrier) */}
+        <mesh geometry={G.ring} material={panelMat} receiveShadow={shadows} />
         <lineSegments ref={ringEdgeRef} geometry={G.ringEdges} material={edgeMat} visible={false} />
-        <mesh geometry={G.mounts} material={materials.hardware} />
+        <mesh geometry={G.mounts} material={materials.hardware} castShadow={shadows} receiveShadow={shadows} />
         {/* Four panels, hinged at the ring */}
         {G.panels.map((P, i) => (
           <group key={i} ref={(el) => (panelRefs.current[i] = el)}>
-            <mesh geometry={P.body} material={panelMat} />
+            <mesh geometry={P.body} material={panelMat} castShadow={shadows} receiveShadow={shadows} />
             <mesh geometry={P.band} material={bandMat} />
             <lineSegments ref={(el) => (edgeRefs.current[i] = el)} geometry={P.edges} material={edgeMat} visible={false} />
           </group>
@@ -208,7 +233,7 @@ export default function PayloadSection({ ctrlRef, materials }) {
       </group>
       {/* The command and service module */}
       <group ref={csmRef} position={MATED.csm.pos}>
-        <CsmModel rcsRef={rcs} hgaRef={hga} />
+        <CsmModel rcsRef={rcs} hgaRef={hga} castShadow={shadows} receiveShadow={shadows} />
       </group>
     </group>
   );

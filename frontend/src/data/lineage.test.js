@@ -28,17 +28,42 @@ describe("spacecraft lineage: one launch vehicle, one spacecraft, one mission", 
 
   test("the command and service module and the lunar module that undock in lunar orbit are the ones from the pad", () => {
     expect(partsAfter("undocking")).toEqual(expect.arrayContaining(["cm", "sm", "lm"]));
-    expect(partsAfter("extraction").sort()).toEqual(["cm", "lm", "sm"]);
-    expect(partsAfter("translunarCoast").sort()).toEqual(["cm", "lm", "sm"]);
-    expect(partsAfter("lunarArrival").sort()).toEqual(["cm", "lm", "sm"]);
+    expect(partsAfter("carrierLeft").sort()).toEqual(["cm", "lm", "sm"]);
+    // they cross to the Moon integrated: carrier, adapter (panels closed, the LM inside), CSM
+    const outbound = ["adapterPanels", "adapterRing", "carrier", "cm", "lm", "sm"];
+    expect(partsAfter("translunarCoast").sort()).toEqual(outbound);
+    expect(partsAfter("lunarOrbitInsertion").sort()).toEqual(outbound);
+    expect(partsAfter("lunarArrival").sort()).toEqual(outbound);
   });
 
-  test("the upper stage, the adapter and the escape tower leave, and each is shown leaving", () => {
+  test("no deployment near the Earth: the LM and the CSM leave the outbound assembly only in lunar orbit, after the insertion burn", () => {
+    const idx = (id) => LINEAGE.findIndex((s) => s.id === id);
+    const loi = idx("lunarOrbitInsertion");
+    expect(LINEAGE[loi].burn).toBe("carrier");
+    // Every step shown in the launch cinematic keeps the LM inside the closed adapter
+    LINEAGE.filter((s) => s.shot.launch).forEach((s) => {
+      expect(partsAfter(s.id)).toEqual(expect.arrayContaining(["lm", "adapterPanels", "adapterRing", "cm", "sm"]));
+      expect(s.joins).toBeUndefined();
+    });
+    // The panels open, the CSM docks with the LM and the carrier is left behind only after
+    // the insertion burn, each in a lunar-orbit shot
+    ["panelsJettison", "transposition", "docking", "extraction", "carrierLeft"].forEach((id) => {
+      expect(idx(id)).toBeGreaterThan(loi);
+      expect(LINEAGE[idx(id)].shot.orbit).toBeTruthy();
+      expect(LINEAGE[idx(id)].shot.launch).toBeUndefined();
+    });
+    // Near the Earth only the spent stages and the escape tower go
+    const earthSide = LINEAGE.slice(0, idx("translunarCoast") + 1).flatMap((s) => s.removes || []);
+    expect(earthSide.sort()).toEqual(["les", "stage1", "stage2"]);
+  });
+
+  test("the upper stage, the carrier, the adapter and the escape tower leave, and each is shown leaving", () => {
     const removedAt = {};
     LINEAGE.forEach((s) => (s.removes || []).forEach((p) => (removedAt[p] = s)));
-    expect(Object.keys(removedAt).sort()).toEqual(["adapterPanels", "adapterRing", "les", "lm", "sm", "stage1", "stage2"]);
+    expect(Object.keys(removedAt).sort()).toEqual(["adapterPanels", "adapterRing", "carrier", "les", "lm", "sm", "stage1", "stage2"]);
     Object.values(removedAt).forEach((s) => expect(s.shot).toBeTruthy());
-    expect(removedAt.stage2.id).toBe("extraction");
+    expect(removedAt.stage2.id).toBe("stageSeparation");
+    expect(removedAt.carrier.id).toBe("carrierLeft");
   });
 
   test("every change is seen in a shot that exists, at an event that exists", () => {
@@ -54,23 +79,29 @@ describe("spacecraft lineage: one launch vehicle, one spacecraft, one mission", 
       if (orbit) expect(orbitShots).toContain(orbit);
       if (mission) expect(MISSION_SHOTS).toContain(mission);
     });
-    // The extraction shot comes after the docking shot, which comes after TLI
+    // After TLI: the stage separation, then the coast; in lunar orbit: insertion, then the
+    // deployment in order, then the undocking
     const at = (id) => launchShots.indexOf(id);
-    expect(at("tli")).toBeLessThan(at("tdSep"));
-    expect(at("tdSep")).toBeLessThan(at("tdTurn"));
-    expect(at("tdTurn")).toBeLessThan(at("tdDock"));
-    expect(at("tdDock")).toBeLessThan(at("tdExtract"));
+    expect(at("tli")).toBeLessThan(at("carrierSep"));
+    expect(at("carrierSep")).toBeLessThan(at("farewell"));
+    const o = (id) => orbitShots.indexOf(id);
+    ["loi", "assembly", "deploySep", "deployTurn", "deployDock", "deployExtract", "leave", "undock"].forEach((id, i, a) => {
+      if (i) expect(o(a[i - 1])).toBeLessThan(o(id));
+    });
   });
 
   test("no substitute models: every scene draws the spacecraft from the same two models", () => {
     // The removed placeholders stay removed
     ["components/SpacecraftModel.jsx", "components/EarthMoonHero.jsx"].forEach((f) => expect(fs.existsSync(path.join(SRC, f))).toBe(false));
-    // The rocket carries the CSM and the LM through its payload section
+    // The rocket carries the CSM and the LM through its payload section, on the carrier
     const rocket = read("components/RocketModel.jsx");
     expect(rocket).toMatch(/import PayloadSection from "@\/components\/spacecraft\/PayloadSection"/);
     const payload = read("components/spacecraft/PayloadSection.jsx");
     expect(payload).toMatch(/import CsmModel/);
     expect(payload).toMatch(/import LanderModel from "@\/components\/LanderModel"/);
+    expect(payload).toMatch(/import CarrierModel from "@\/components\/spacecraft\/CarrierModel"/);
+    // The same payload section flies the coast and the deployment in lunar orbit
+    expect(read("components/MissionScene.jsx")).toMatch(/import PayloadSection from "@\/components\/spacecraft\/PayloadSection"/);
     // The stack flown to the Moon and back
     const stack = read("components/spacecraft/SpacecraftStack.jsx");
     expect(stack).toMatch(/import CsmModel/);

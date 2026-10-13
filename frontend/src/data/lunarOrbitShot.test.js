@@ -95,10 +95,10 @@ describe("spacecraft in lunar orbit", () => {
     expect(Math.abs(craftAlpha(ORBIT_SEQ.cut + 1e-6) - craftAlpha(ORBIT_SEQ.cut))).toBeLessThan(1e-6);
   });
 
-  test("GO FOR PDI lights once the lunar module has undocked and separated, just before the descent setup", () => {
-    const first = [...Array(600).keys()].map((i) => i * 0.1).find((t) => goForPdi(t));
+  test("GO FOR PDI lights once the lunar module has undocked and separated, before the title screen", () => {
+    const first = [...Array(1200).keys()].map((i) => i * 0.1).find((t) => goForPdi(t));
     expect(first).toBeGreaterThan(ORBIT_SEQ.undock + 10);
-    expect(first).toBeLessThanOrEqual(ORBIT_SEQ.end);
+    expect(first).toBeLessThanOrEqual(ORBIT_SEQ.titleScreen);
     for (let t = first; t < 3600; t += 1) expect(goForPdi(t)).toBe(true);
   });
 

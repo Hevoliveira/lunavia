@@ -1,8 +1,9 @@
 import {
   SHOTS, EVENTS, DURATION, LIFTOFF_T, MILESTONES, metAt, formatMet, trajectoryAt, padHeight,
   stage1Thrust, upperThrust, sepProgress, eventTime, shotAt, airDensity, sunAt, rollAt, stage1Visible,
-  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE, LES_JETTISON, lesJettison, payloadReveal,
+  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE, LES_JETTISON, lesJettison, payloadReveal, STAGE_SEP_START,
 } from "./launchTimeline";
+import { STAGE_SEP } from "./carrier";
 
 describe("launch timeline", () => {
   test("shots tile the whole sequence without gaps or overlaps", () => {
@@ -133,7 +134,7 @@ describe("launch timeline", () => {
   test("TLI finale: roll, ullage, a 3-2-1 hold, ignition, then the vehicle leaves", () => {
     const shot = (id) => SHOTS.find((x) => x.id === id);
     // Order of the finale beats
-    expect(SHOTS.slice(-10).map((s) => s.id)).toEqual(["finalPass", "tliPrep", "tliCount", "tli", "departure", "tdSep", "tdTurn", "tdDock", "tdExtract", "farewell"]);
+    expect(SHOTS.slice(-7).map((s) => s.id)).toEqual(["finalPass", "tliPrep", "tliCount", "tli", "departure", "carrierSep", "farewell"]);
     // RCS roll inside the night pass; ullage just before ignition
     RCS_WINDOWS.forEach(([a, b]) => {
       expect(a).toBeGreaterThanOrEqual(shot("tliPrep").start);
@@ -155,26 +156,37 @@ describe("launch timeline", () => {
     expect(upperThrust(eventTime("lunarTransfer") + 0.5)).toBe(0);
     // Leaving: altitude rises through the departure shot, then the Earth recedes
     expect(trajectoryAt(shot("departure").end - 0.1).altKm).toBeGreaterThan(trajectoryAt(shot("departure").start).altKm);
-    expect(trajectoryAt(shot("tdSep").start).altKm).toBeGreaterThan(5000);
+    expect(trajectoryAt(shot("carrierSep").start).altKm).toBeGreaterThan(5000);
   });
 
-  test("after TLI the payload comes out of the rocket before the coast: separation, transposition, docking, extraction", () => {
+  test("after TLI only the spent upper stage separates: the lunar module and the CSM stay in the outbound assembly", () => {
     const shot = (id) => SHOTS.find((x) => x.id === id);
-    // The upper stage has finished its burn before the spacecraft separates
-    expect(upperThrust(shot("tdSep").start)).toBe(0);
-    expect(eventTime("tliCutoff")).toBeLessThan(eventTime("tdSep"));
+    // No deployment near the Earth: no transposition, docking or extraction shot or event
+    const earthSide = /^td|transposition|docking|dock|extract|panels|hga|capture/i;
+    SHOTS.forEach((x) => expect(x.id).not.toMatch(earthSide));
+    EVENTS.forEach((e) => expect(e.id).not.toMatch(earthSide));
+    EVENTS.filter((e) => e.t > eventTime("tli")).forEach((e) => {
+      expect(`${e.caption || ""} ${e.sub || ""}`).not.toMatch(/EXTRACT|TRANSPOSITION|DOCKING|DOCKED|PANELS OPEN|ADAPTER OPEN/);
+    });
+    // The upper stage has finished its burn before it separates, at the stage's pyros (data/carrier STAGE_SEP)
+    expect(upperThrust(shot("carrierSep").start)).toBe(0);
+    expect(eventTime("tliCutoff")).toBeLessThan(eventTime("carrierSep"));
+    expect(eventTime("carrierSep")).toBeCloseTo(STAGE_SEP_START + STAGE_SEP.t0, 9);
+    expect(shot("carrierSep").start).toBe(STAGE_SEP_START);
+    expect(shot("farewell").start - STAGE_SEP_START).toBeCloseTo(STAGE_SEP.coastFrom, 9);
     // In mission order, each inside its own shot
-    [["tdSep", "tdSep"], ["tdTurn", "tdTurn"], ["tdDock", "tdDock"], ["capture", "tdDock"], ["hardDock", "tdDock"], ["tdExtract", "tdExtract"], ["farewell", "farewell"]].forEach(([e, s]) => {
+    [["carrierSep", "carrierSep"], ["farewell", "farewell"]].forEach(([e, s]) => {
       expect(shotAt(eventTime(e)).id).toBe(s);
     });
+    expect(EVENTS.find((e) => e.id === "carrierSep").sub).toMatch(/LM AND CSM STAY INTEGRATED/);
     // The mission clock reaches the cruise (MET 12 000 s) as the cinematic ends, and
-    // the docking runs at a modest compression, the coast after it faster
+    // the separation runs at a modest compression, the coast after it faster
     expect(metAt(DURATION)).toBeCloseTo(12000, 0);
     const rate = (a, b) => (metAt(b) - metAt(a)) / (b - a);
-    expect(rate(shot("tdTurn").start, shot("tdDock").end)).toBeLessThanOrEqual(20);
-    // The spacecraft climbs from ~6 000 km through the docking, then the Earth recedes to the cruise's distance
-    expect(trajectoryAt(shot("tdDock").start).altKm).toBeGreaterThan(6000);
-    expect(trajectoryAt(shot("tdExtract").end).altKm).toBeLessThan(8000);
+    expect(rate(shot("carrierSep").start, shot("carrierSep").end)).toBeLessThanOrEqual(20);
+    // The vehicle climbs from ~6 000 km through the separation, then the Earth recedes to the cruise's distance
+    expect(trajectoryAt(shot("carrierSep").start).altKm).toBeGreaterThanOrEqual(6000);
+    expect(trajectoryAt(shot("carrierSep").end).altKm).toBeLessThan(8000);
     expect(trajectoryAt(DURATION).altKm / 25000).toBeGreaterThan(0.95);
     // The pad opens on the payload: the spacecraft on top and the lunar module inside the adapter
     expect(SHOTS[1].id).toBe("payload");
