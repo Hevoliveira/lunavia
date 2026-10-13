@@ -41,7 +41,7 @@ export default function MissionTitle({ clockRef }) {
       <div className="absolute inset-y-0 left-0 w-[62%] md:w-[50%] flex flex-col items-center justify-center text-center px-6 safe-ml">
         <div
           ref={title}
-          className="font-display font-black text-white text-6xl md:text-8xl short:text-5xl leading-none"
+          className="title-reveal-name font-display font-black text-white leading-none"
           style={{ opacity: 0, letterSpacing: "0.42em", textShadow: "0 2px 24px rgba(0,0,0,0.65)" }}
           data-testid="title-reveal-name"
         >
