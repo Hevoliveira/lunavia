@@ -2,21 +2,17 @@ import { Canvas, createPortal, useFrame, useThree } from "@react-three/fiber";
 import { Stars, OrbitControls, useTexture } from "@react-three/drei";
 import { useRef, useMemo, Suspense, useEffect } from "react";
 import * as THREE from "three";
-import { EARTH_RADIUS_KM, MOON_RADIUS_KM, trajectoryPosition } from "@/data/missionPhases";
+import { MOON_RADIUS_KM, trajectoryPosition } from "@/data/missionPhases";
 import { EARTH_UNITS, MOON_UNITS, SCENE_SCALE, craftScenePos } from "@/data/sceneTrack";
 import SpacecraftStack from "@/components/spacecraft/SpacecraftStack";
 import PayloadSection from "@/components/spacecraft/PayloadSection";
 import { payloadMaterials } from "@/components/RocketModel";
-import { ASSEMBLY } from "@/data/carrier";
 import { lunarEnv } from "@/components/LanderModel";
 import { COAST, undocking } from "@/data/undocking";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
 import {
-  APPROACH_RAY,
   ASSEMBLY_ROTATION,
   ASSEMBLY_X,
-  CISLUNAR,
-  COAST_ASSEMBLY,
   LM_CENTRE_X,
   M_PER_UNIT,
   ORBIT_ANCHOR,
@@ -24,14 +20,6 @@ import {
   RETURN_CLOSE_END,
   STACK,
   STACK_ROTATION,
-  approachCloseCamera,
-  approachMoonKm,
-  coastAttitude,
-  mccLevel,
-  coastDistanceKm,
-  coastShotAt,
-  cruiseCamera,
-  deepCamera,
   deployState,
   orbitShotAt,
   orbitShotCamera,
@@ -47,12 +35,13 @@ import {
 import { LZ_UP, MOON_ROTATION, craftPose, landingSite, orbitCamera, orbitPoint, smoother } from "@/data/lunarOrbitShot";
 
 /*
- * The cruise, lunar orbit and return, in two layers composited every frame:
- * the planets in scene units, then the spacecraft at true size in metres
+ * Lunar orbit and the return, in two layers composited every frame: the
+ * planets in scene units, then the spacecraft at true size in metres
  * (data/orbitSequence explains the frames). The spacecraft is the expedition's
- * own (components/spacecraft): on the way out, LV-001's outbound assembly
- * (PayloadSection: the transfer carrier, the closed adapter with the LM inside,
- * the CSM on top), which fires into lunar orbit and deploys there; then CSM and
+ * own (components/spacecraft): LV-001's outbound assembly, which arrives in lunar
+ * orbit integrated (PayloadSection: the transfer carrier, the closed adapter with
+ * the LM inside, the CSM on top; the mission cuts there straight from TLI
+ * cutoff) and deploys there; then CSM and
  * LM docked (SpacecraftStack), the LM undocking before the descent, the CSM
  * alone on the way home. Wide shots, where the spacecraft is far below a
  * pixel, show it as a sunlit glint on its path.
@@ -64,6 +53,15 @@ const EARTH_NORMAL = process.env.PUBLIC_URL + "/textures/planets/earth_normal_20
 const EARTH_SPEC = process.env.PUBLIC_URL + "/textures/planets/earth_specular_2048.jpg";
 const EARTH_CLOUDS = process.env.PUBLIC_URL + "/textures/planets/earth_clouds_1024.png";
 const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
+
+/**
+ * Load the planets' textures ahead of time (during the launch), so the cut from
+ * TLI cutoff to lunar orbit lands on a drawn scene, not on a frame waiting for them.
+ */
+export function preloadMissionScene() {
+  useTexture.preload([EARTH_MAP, EARTH_NORMAL, EARTH_SPEC, EARTH_CLOUDS]);
+  useTexture.preload([MOON_MAP]);
+}
 
 const SUN_POS = [30, 10, -20];
 const SUN_DIR = new THREE.Vector3(...SUN_POS).normalize();
@@ -626,57 +624,20 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitRea
     _M.set(moonPos[0], moonPos[1], moonPos[2]);
     v.origin = scPos;
 
-    // ---- From TLI to lunar orbit, and leaving the Moon: close on the spacecraft ----
-    // The planet behind it is seen at its true apparent size (the planets are
-    // drawn 10x oversized for the Earth-Moon views, so the planet camera stands
-    // back by the same factor): the Earth only shrinks, the Moon only grows.
-    const outbound = t <= CISLUNAR.los;
-    const returnClose = t >= 504000 && t < RETURN_CLOSE_END;
-    if (outbound || returnClose) {
-      let frame;
-      let origin;
-      let cam;
-      if (outbound) {
-        const { id, u } = coastShotAt(t);
-        if (id === "approach") {
-          // The Moon behind the stack, seen from the side the lunar-orbit shots look at.
-          frame = radialFrame(APPROACH_RAY);
-          const d = trueSizeDistance(MOON_UNITS, approachMoonKm(u), MOON_RADIUS_KM);
-          origin = [moonPos[0] + frame.z[0] * d, 0, moonPos[2] + frame.z[2] * d];
-          cam = approachCloseCamera(u);
-          // Only the Moon: from the spacecraft the Earth is behind the camera (the map-scale
-          // Earth, drawn 10x oversized, must not appear beside it).
-          v.only = "moon";
-          // Nose on towards the Moon, then the turn, engine first, on RCS (data/orbitSequence coastAttitude).
-          const att = coastAttitude("approach", u);
-          // The outer group's turn is pi - phi: speeding phi up is a torque about payload -X.
-          v.asm = { yaw: Math.PI - att.phi, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: 0, retro: 0, yawRcs: -att.rcs };
-          v.shot = "approachClose";
-        } else {
-          frame = radialFrame([scPos[0], scPos[1], scPos[2]]);
-          const d = trueSizeDistance(EARTH_UNITS, coastDistanceKm(t), EARTH_RADIUS_KM);
-          origin = [frame.z[0] * d, 0, frame.z[2] * d];
-          cam = id === "depart" ? cruiseCamera(smooth01(u)) : deepCamera(u);
-          v.only = "earth"; // the Moon is ahead, out of this view
-          v.shot = id === "depart" ? "cruiseClose" : "deepSpace";
-          // Nose away from the Earth, the main engine back at it, pivoted on the centre of mass; the
-          // deep-space shot carries the midcourse correction on the main engine.
-          const att = coastAttitude(id, u);
-          // The outer group's turn is pi - phi: speeding phi up is a torque about payload -X.
-          v.asm = { yaw: Math.PI - att.phi, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: id === "deep" ? mccLevel(u) : 0, retro: 0, yawRcs: -att.rcs };
-        }
-        v.stackOn = false;
-        v.shadowR = 20;
-      } else {
-        const away = [scPos[0] - moonPos[0], 0, scPos[2] - moonPos[2]];
-        frame = radialFrame(away);
-        const d = trueSizeDistance(MOON_UNITS, returnDistanceKm(t), MOON_RADIUS_KM);
-        origin = [moonPos[0] + frame.z[0] * d, 0, moonPos[2] + frame.z[2] * d];
-        cam = returnCamera(smooth01((t - 504000) / (RETURN_CLOSE_END - 504000)));
-        v.shot = "returnClose";
-      }
+    // ---- Leaving the Moon: close on the CSM ----
+    // The Moon behind it is seen at its true apparent size (the planets are drawn
+    // 10x oversized for the Earth-Moon views, so the planet camera stands back by
+    // the same factor): it only shrinks. (No translunar travel is shown on the way
+    // out: the mission cuts from TLI cutoff straight to lunar orbit.)
+    if (t >= 504000 && t < RETURN_CLOSE_END) {
+      const away = [scPos[0] - moonPos[0], 0, scPos[2] - moonPos[2]];
+      const frame = radialFrame(away);
+      const d = trueSizeDistance(MOON_UNITS, returnDistanceKm(t), MOON_RADIUS_KM);
+      const origin = [moonPos[0] + frame.z[0] * d, 0, moonPos[2] + frame.z[2] * d];
+      const cam = returnCamera(smooth01((t - 504000) / (RETURN_CLOSE_END - 504000)));
+      v.shot = "returnClose";
       v.stack = undocking(COAST);
-      v.focus = outbound ? [COAST_ASSEMBLY.mid, 0, 0] : [0, 0, 0];
+      v.focus = [0, 0, 0];
       vehicleView(v, frame, origin, cam, camera);
       snap.current = true;
       return;

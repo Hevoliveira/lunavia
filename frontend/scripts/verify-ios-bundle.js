@@ -55,17 +55,23 @@ const FEATURES = [
   ["Lunar module undocking in the mission", "UNDOCKING PREPARATION"],
   ["Laju Productions credit", "A LAJU PRODUCTIONS GAME"],
   ["Lunar module inside the launch vehicle (payload shot)", "LUNAR MODULE INSIDE THE ADAPTER"],
-  ["Lunar approach with the outbound assembly", "LUNAR APPROACH"],
-  ["Cislunar coast at true scale (departure, deep space, approach turning engine first)", "TURNING ENGINE FIRST ON RCS"],
-  ["Lunar orbit insertion burn", "RETROGRADE BURN"],
   ["Title reveal inside the mission, after the go for powered descent", "title-reveal-credit"],
-  ["Only the upper stage separates after TLI; LM and CSM stay integrated", "LM AND CSM STAY INTEGRATED"],
-  ["Lunar orbit insertion by the transfer carrier's main engine", "TRANSFER CARRIER MAIN ENGINE"],
+  ["The outbound assembly arrives in lunar orbit integrated", "LM AND CSM STILL INTEGRATED"],
   ["Deployment in lunar orbit: transposition, docking, extraction", "LUNAR MODULE EXTRACTED"],
   ["Carrier left behind in lunar orbit", "CARRIER LEFT BEHIND"],
   ["Persistent title screen with START MISSIONS", "btn-start-missions"],
-  ["Outbound propulsion: main engine and midcourse correction", "MIDCOURSE CORRECTION ON THE MAIN ENGINE"],
-  ["Translunar attitude: MCC turn, burn and turn back", "TURN, BURN 3 M/S, TURN BACK"],
+  ["Direct cut: 2 s after TLI cutoff straight to lunar orbit", "__lvLaunchCut"],
+];
+
+// Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
+// travel shots must not be in the bundled game.
+const REMOVED = [
+  ["Upper-stage separation shot after TLI", "THE TRANSFER CARRIER TAKES OVER"],
+  ["Farewell shot (stage left behind)", "UPPER STAGE LEFT BEHIND"],
+  ["Translunar coast shot", "MAIN ENGINE AFT · LM AND CSM INTEGRATED"],
+  ["Deep-space midcourse correction", "MIDCOURSE CORRECTION ON THE MAIN ENGINE"],
+  ["Lunar approach turn", "TURNING ENGINE FIRST ON RCS"],
+  ["Lunar orbit insertion burn shot", "RETROGRADE BURN · OUT OF CONTACT WITH EARTH"],
 ];
 
 function sourceText(dir) {
@@ -158,6 +164,9 @@ if (js) {
     if (!src.includes(marker)) console.log(`  --    ${name}: not in this source`);
     else if (js.includes(marker)) ok(`${name}`);
     else fail(`${name} is in the source but not in the bundled game`);
+  }
+  for (const [name, marker] of REMOVED) {
+    js.includes(marker) ? fail(`${name} is still in the bundled game`) : ok(`removed: ${name}`);
   }
 }
 

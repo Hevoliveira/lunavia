@@ -7,13 +7,14 @@ import { framePoints, centreViewOn } from "@/lib/cameraFraming";
 import { ParticlePool } from "@/components/scenes/launch/particles";
 import { createEnvironment, R as ENV_R, KM_PER_UNIT } from "@/components/scenes/launch/environment";
 import * as TL from "@/data/launchTimeline";
-import { ASSEMBLY, stageGap, stageSepRcs } from "@/data/carrier";
-import { toRocketUnits } from "@/data/payloadDesign";
+import comms from "@/audio/comms";
 
 /*
  * LaunchCinematic — automatic Earth departure of LV-001, from T-15 on the pad
  * to translunar injection. Driven entirely by data/launchTimeline; the player
- * watches (a discreet SKIP is offered) and takes control only at the Moon.
+ * watches (a discreet SKIP is offered) and takes control only at the Moon. It
+ * ends 2 s after GUIDANCE's "Cutoff." is over (TL.TLI_CUT): the mission then
+ * cuts straight to lunar orbit (no translunar travel is shown).
  *
  * Rendering is two layers composited every frame:
  *  1. Environment (true scale, see launch/environment): sky, atmosphere,
@@ -156,27 +157,6 @@ const DEPART_CAM = { d0: 3.2, d1: 28, side: -0.3, up: 0.34, fov: 46 };
 // ... framed high, so the sunlit Earth below fills the lower half
 const DEPART_RECT = { x0: 0.1, x1: 0.9, y0: 0.14, y1: 0.56 };
 
-/*
- * After TLI: the spent upper stage separates from the lunar transfer carrier
- * (data/carrier). Cameras in the payload frame (metres; +Y up the vehicle,
- * which in this attitude points along the orbit; +X is local up; the Sun is
- * ahead and to the -Z side), riding with the outbound assembly: g is the gap
- * opened between the carrier and the stage. Nothing comes out of the adapter:
- * the lunar module stays inside it, the CSM on top, all the way to the Moon.
- */
-const SEP_CAMS = {
-  // The whole assembly over the top of the stage: the joint opens, the carrier's engines
-  // come out of the stage's forward skirt, its RCS pushing the assembly ahead.
-  carrierSep: (u, g) => ({ pos: [21 - 2 * u, -2.5 + 0.5 * u + 0.5 * g, -27 + 2 * u], look: [0, 5 + 0.5 * g, 0], fov: 44 }),
-  // From aft and above: the carrier's main engine and thrust cone, the Earth beyond, the
-  // spent stage falling away behind.
-  farewell: (u, g) => {
-    const mid = ASSEMBLY.com + g;
-    return { pos: [24 + 3 * u, mid - 26 - 2 * u, -19 - 2 * u], look: [-14, mid - 2, 2], fov: 52 };
-  },
-};
-const _tdA = new THREE.Vector3();
-const _tdB = new THREE.Vector3();
 
 /* Sunlight glints: places on the spacecraft where the Sun reflects towards
  * the camera, each a band of the surface of revolution (model units): the
@@ -341,13 +321,13 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     c.showStage1 = TL.stage1Visible(t);
     c.expand = 1 - Math.sqrt(TL.airDensity(traj.altKm));
     c.les = TL.lesJettison(t);
-    // The adapter stays closed (c.td null: mated); after TLI the stage drops away from the carrier.
+    // The adapter stays closed (c.td null: mated) and the carrier on the upper stage:
+    // the stage separates off screen, across the cut to lunar orbit.
     c.td = null;
-    const sepTau = t - TL.STAGE_SEP_START;
-    c.stageGap = sepTau > 0 ? stageGap(sepTau) : 0;
+    c.stageGap = 0;
     c.carrier = c.carrier || {};
-    c.carrier.inside = c.stageGap > 0.001;
-    c.carrier.rcs = sepTau > 0 ? stageSepRcs(sepTau) : 0;
+    c.carrier.inside = false;
+    c.carrier.rcs = 0;
     c.carrier.engines = 0;
     c.ghost = TL.payloadReveal(t);
     const g = rocketGroupRef.current;
@@ -447,7 +427,8 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     const c = ctrlRef.current;
 
     // --- Camera ---
-    const shotU = (t - shot.start) / (shot.end - shot.start);
+    // camEnd: a shot held past its camera move (the departure, to the cut) continues it unchanged.
+    const shotU = (t - shot.start) / ((shot.camEnd || shot.end) - shot.start);
     const tip = t < TL.LES_JETTISON ? S2.tip : S2.tipCsm;
     const cut = S.lastShot !== shot;
     if (regime === "pad") {
@@ -483,22 +464,6 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
         camera.lookAt(rig.root.localToWorld(_cam.a.set(0, S2.bell + 0.25, 0)));
         if (camera.fov !== STAGE1_CAM.fov) {
           camera.fov = STAGE1_CAM.fov;
-          camera.updateProjectionMatrix();
-        }
-        camera.clearViewOffset();
-        S.roll = 0;
-      }
-    } else if (SEP_CAMS[shot.id]) {
-      // The upper stage's separation, and the coast: framed in the payload frame.
-      const rig = rigRef.current;
-      if (rig && rig.root) {
-        rig.root.updateWorldMatrix(true, true);
-        const def = SEP_CAMS[shot.id](smooth(shotU) * 0.6 + shotU * 0.4, c.stageGap || 0);
-        camera.position.copy(rig.root.localToWorld(_tdA.set(...toRocketUnits(def.pos))));
-        camera.up.set(0, 1, 0);
-        camera.lookAt(rig.root.localToWorld(_tdB.set(...toRocketUnits(def.look))));
-        if (camera.fov !== def.fov) {
-          camera.fov = def.fov;
           camera.updateProjectionMatrix();
         }
         camera.clearViewOffset();
@@ -594,8 +559,8 @@ function Director({ rigRef, rocketGroupRef, ctrlRef, padProg, sunRef, padLightRe
     }
     camera.updateMatrixWorld();
     S.lastShot = shot;
-    // Glints mark the spacecraft on the rocket; once the stage separates the cameras are close anyway.
-    updateGlints(glints, t < TL.STAGE_SEP_START ? rigRef.current : null, camera, S.sunW, regime === "flight" && t >= 61 ? TL.sunAt(t) : null);
+    // Glints mark the spacecraft on the rocket.
+    updateGlints(glints, rigRef.current, camera, S.sunW, regime === "flight" && t >= 61 ? TL.sunAt(t) : null);
 
     // --- Environment camera (true scale) ---
     let altKm;
@@ -1083,17 +1048,7 @@ function useAudioDirector(audio) {
           break;
         case "tliCutoff":
           audio.roarStop?.(1.2);
-          say("launch.tliCutoff", 200);
-          break;
-        case "lunarTransfer":
-          say("launch.lunarTransfer", 900);
-          break;
-        // Upper-stage separation: the pyros, felt through the structure, then the
-        // carrier's RCS pushing the assembly clear.
-        case "carrierSep":
-          audio.thud?.(0.3);
-          audio.clank?.(0.22);
-          audio.hiss?.(2.2, 0.07);
+          say(TL.TLI_CUT.line, TL.TLI_CUT.delay * 1000);
           break;
         default:
       }
@@ -1127,7 +1082,7 @@ function useAudioDirector(audio) {
       }
       // Cameras outside the vehicle in vacuum hear nothing: the spent stage's,
       // and the one left on the parking orbit as the vehicle leaves.
-      if (shot.id === "stage1Cam" || shot.id === "departure" || t >= TL.STAGE_SEP_START) level = 0;
+      if (shot.id === "stage1Cam" || shot.id === "departure") level = 0;
       audio.roarSet(level, muffle);
     },
   };
@@ -1171,7 +1126,7 @@ const CinematicCanvas = memo(function CinematicCanvas({ hooks }) {
   );
 });
 
-export default function LaunchCinematic({ audio, onComplete, onSkip }) {
+export default function LaunchCinematic({ audio, onComplete, onSkip, onCutAhead }) {
   const [caption, setCaption] = useState(null);
   const [hud, setHud] = useState({ met: TL.formatMet(-15), name: TL.SHOTS[0].name, alt: null, vel: null, count: null });
   const [skipVisible, setSkipVisible] = useState(false);
@@ -1182,6 +1137,25 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
   const lastTliCount = useRef(null);
   const director = useAudioDirector(audio);
   const doneRef = useRef(false);
+  // The cut to lunar orbit (TL.TLI_CUT): when GUIDANCE's "Cutoff." starts and ends, in cinematic time.
+  // lineEnd in cinematic time, lineEndWall in real seconds (the hold is timed on the real clock,
+  // whatever the frame rate).
+  const cutRef = useRef({ t: 0, started: false, lineEnd: null, lineEndWall: null, holdEndWall: null, ahead: false });
+  const aheadRef = useRef(onCutAhead);
+  aheadRef.current = onCutAhead;
+
+  useEffect(
+    () =>
+      comms.subscribe((e) => {
+        if (e.id !== TL.TLI_CUT.line) return;
+        if (e.type === "start") cutRef.current.started = true;
+        if (e.type === "end" && cutRef.current.lineEnd == null) {
+          cutRef.current.lineEnd = cutRef.current.t;
+          cutRef.current.lineEndWall = performance.now() / 1000;
+        }
+      }),
+    []
+  );
 
   useEffect(() => {
     const id = setTimeout(() => setSkipVisible(true), 2500);
@@ -1221,12 +1195,28 @@ export default function LaunchCinematic({ audio, onComplete, onSkip }) {
           lastTliCount.current = tn;
           if (audio) audio.beep(880, 0.05, 0.05);
         }
-        // Fades: dip to black across the pad → flight cut, out at the end; a
-        // short bright bloom as the full-thrust exhaust hits the trench.
-        // A slower fade at the very end hands over to the cislunar cruise.
+        // The end: "Cutoff." heard to its end, the departure shot held 2 s, then a
+        // brief fade through black and the mission cuts to lunar orbit (TL.TLI_CUT).
+        const C = cutRef.current;
+        C.t = t;
+        if (t >= TL.eventTime("tliCutoff") && !C.ahead) {
+          // From "Cutoff." on, the next scene (lunar orbit) is drawn underneath, so the cut lands on it.
+          C.ahead = true;
+          if (aheadRef.current) aheadRef.current();
+        }
+        // How far into the fade (0..1): 2 s of real time after the call has ended; if it was never
+        // said, its clip's length stands in, in film time; never past the departure shot.
+        let fadeU = (t - (TL.DURATION - TL.TLI_CUT.fade)) / TL.TLI_CUT.fade;
+        if (C.lineEndWall != null) fadeU = Math.max(fadeU, (performance.now() / 1000 - C.lineEndWall - TL.TLI_CUT.hold) / TL.TLI_CUT.fade);
+        else if (!C.started && t > TL.eventTime("tliCutoff") + TL.TLI_CUT.delay + 1.5) fadeU = Math.max(fadeU, (t - TL.tliCutHoldEnd(null)) / TL.TLI_CUT.fade);
+        if (fadeU >= 0 && C.holdEndWall == null) C.holdEndWall = performance.now() / 1000;
+        if (typeof window !== "undefined") window.__lvLaunchCut = { lineEnd: C.lineEnd, lineEndWall: C.lineEndWall, holdEndWall: C.holdEndWall, t };
+        if (fadeU >= 1) hooks.onComplete();
+        // Fades: dip to black across the pad → flight cut and at the cut to lunar
+        // orbit; a short bright bloom as the full-thrust exhaust hits the trench.
         const f = Math.max(
           1 - Math.abs(t - 32) / 0.4,
-          smooth((t - (TL.DURATION - 1.6)) / 1.5),
+          smooth(fadeU),
           0
         );
         if (fadeRef.current) fadeRef.current.style.opacity = String(clamp01(f));

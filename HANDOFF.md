@@ -2175,3 +2175,47 @@ Clearances (measured; the tests hold the minimums): lunar module to adapter wall
 - the departure camera sees the coasting assembly obliquely (130–160°).
 
 The §38 "near profile 92–112°" check was replaced by these.
+
+## 40. Direct cut: from TLI cutoff straight to lunar orbit
+
+**Editing decision (requested):** the whole translunar travel sequence is removed from the player's experience. It is not repaired, redesigned or replaced: no new animation stands in for it. The film now goes:
+
+> EARTH DEPARTURE → GUIDANCE "Cutoff." → the departure shot held 2 s → fade to black (0.35 s) → LUNAR ORBIT (T+80:00:00) → CAPCOM "LUNAVIA, Houston. Lunar orbit insertion looks good. Welcome to the Moon."
+
+**Removed (runtime sequences and their references):**
+- **Launch cinematic:**
+  - the `carrierSep` (upper-stage separation) and `farewell` (stage left behind) shots, with their cameras (`SEP_CAMS`), events, captions and separation sounds;
+  - CAPCOM's `launch.lunarTransfer` call ("good burn… on your way to the Moon"), which would have been cut off mid-sentence.
+- **Mission:**
+  - the `SPACE` state (CISLUNAR CRUISE) and its loop: the departure, deep-space/MCC and approach shots, their captions, the MCC rumble and CAPCOM's `cruise.ambient` call;
+  - the lunar-orbit `loi` shot (the insertion burn), its rumble cues and `loiBurnLevel`.
+- **MissionScene:** the Director's outbound close-shot branch (only the return's close shot remains).
+- **Data (orbitSequence):** `CISLUNAR`, `cruiseTime`, `coastShotAt`, `coastDistanceKm`, `approachMoonKm`, `APPROACH_RAY`, `approachYaw`, `COAST_*`, `coastAttitude`, `MCC*`, `mccAttitude`, the coast cameras and shot captions; their tests.
+- **Kept:** the voice lines stay in the catalogue and voice pack, unused. All spacecraft models and shared components are unchanged (CarrierModel, PayloadSection, RocketModel; `data/carrier` stage-separation helpers).
+
+**The 2-second cut** (`data/launchTimeline` `TLI_CUT`, `tliCutHoldEnd`; `LaunchCinematic`):
+- The film subscribes to the comms hub. When GUIDANCE's `launch.tliCutoff` ends (the clip with voice, or the subtitle's own timing without), the departure shot is held exactly 2 s on the real clock (`performance.now`, whatever the frame rate), then fades through black in 0.35 s and completes.
+- The film's own clock caps each frame at 0.1 s, so on a very slow device it falls behind real time; the hold does not.
+- If the call is never said (filtered, a seek past it), the clip's length (0.75 s ≥ the 0.63/0.71 s EN/PT clips) stands in from its 0.2 s delay, in film time.
+- The film never runs past `DURATION` (105).
+- The departure shot keeps its camera move (`camEnd` 103.5); the cut normally comes at about t 103.2–103.5.
+- The "Cutoff." subtitle is never cut, and the LUNAR TRANSFER caption stays up through the hold.
+
+**The jump** (`Mission.jsx`):
+- `handleLaunchComplete` (end of the film or SKIP) sets the orbit clock to `ORBIT_ENTRY` (= `ORBIT_SEQ.arrive`, 5.6), marks earlier cues done and enters `ORBIT`.
+- The establishing shot (LUNAR ORBIT · LUNAR ORBIT INSERTION COMPLETE · LM AND CSM STILL INTEGRATED) opens. CAPCOM's welcome follows at 0.6 s (the existing `arrival` cue). The deployment, undocking, go for PDI, title and START MISSIONS follow on the same clock, unchanged.
+- **No blank frame:**
+  - the lunar-orbit textures are preloaded at launch (`preloadMissionScene`);
+  - from "Cutoff." the lunar-orbit scene is mounted under the launch, held on the arrival (`onCutAhead`), so the cut lands on an already-drawn frame.
+- **Mission state:**
+  - The outbound assembly arrives integrated (carrier, closed adapter with the LM, CSM); the spent upper stage is gone. `data/lineage` records the cut as the one off-screen step (`translunarCut`: stage 2 leaves; the insertion burn is flown).
+  - No hidden timer: nothing of the coast runs in the background.
+  - `resetMission` clears the pre-mount.
+
+**Tests** (297):
+- `launchTimeline.test` (the cut, the call, the hold, the fade, no shot after the departure);
+- `orbitSequence.test` (entry on the arrival, integrated, engines off);
+- `lineage.test` (the off-screen step);
+- `pages/directCut.test` (no cruise state; launch and SKIP go straight to the arrival; the welcome cue; no separation, coast or LOI code left).
+
+`verify-ios-bundle` also fails if any removed caption is still in the bundled game.
