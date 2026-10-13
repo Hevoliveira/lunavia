@@ -501,22 +501,57 @@ export function approachYaw(u) {
  * main engine (MCC, in the deep-space shot).
  */
 export const COAST_ASSEMBLY = { nose: ASSEMBLY.nose - ASSEMBLY.com, aft: ASSEMBLY.aft - ASSEMBLY.com, mid: (ASSEMBLY.nose + ASSEMBLY.aft) / 2 - ASSEMBLY.com };
-export const COAST_ATTITUDE = { depart: 30 * DEG, deep: 25 * DEG, approach: -45 * DEG }; // nose direction phi
+/*
+ * After TLI (flown by the upper stage, nose along the flight path) the carrier
+ * holds that attitude through the coast: nose forward, a little off the
+ * trajectory (the flight path here runs at phi 94-107 deg; the attitude is held,
+ * not steered onto the velocity), engine back towards the Earth.
+ */
+export const COAST_ATTITUDE = { depart: 75 * DEG, deep: 75 * DEG, approach: -45 * DEG }; // nose direction phi
 
-/** The nose direction phi (rad) and the turning couple's level (-1..1, + speeding up the turn) in a coast shot. */
+/**
+ * The nose direction phi (rad) and the turning couple's level (-1..1, + speeding up
+ * phi) in a coast shot: the stable coast attitude, the midcourse correction's turns
+ * (deep space) and the turn engine first (approach).
+ */
 export function coastAttitude(id, u) {
+  if (id === "deep") return mccAttitude(u);
   if (id !== "approach") return { phi: COAST_ATTITUDE[id], rcs: 0 };
   const turn = approachYaw(u);
   return { phi: COAST_ATTITUDE.approach + turn.yaw, rcs: turn.rcs };
 }
 
 /*
- * Midcourse correction on day 2 (deep-space shot, seconds into the shot): the
- * main engine, along the flight path, ~3 m/s (about 2 s at full thrust, shown in
- * 1.2 s). Before and after it the assembly coasts.
+ * Midcourse correction on day 2 (deep-space shot; seconds into the shot). The
+ * correction's Δv (3 m/s) is across the flight path (about 105-115 deg from the
+ * velocity), trimming the arrival point for lunar orbit insertion: direction
+ * MCC.phi in the coast frame. The sequence:
+ *   turn  on RCS from the coast attitude to the burn attitude (thrust axis = Δv)
+ *   burn  the main engine (about 2 s at full thrust, shown in 1.2 s)
+ *   turn  back to the coast attitude on RCS; the coast resumes, unpowered.
  */
-export const MCC = { on: 1.6, off: 2.8, shotLen: CISLUNAR.s.deep - CISLUNAR.s.depart, dv: 3 };
+export const MCC = {
+  shotLen: CISLUNAR.s.deep - CISLUNAR.s.depart,
+  phi: -10 * DEG, // the burn attitude: the nose (thrust) along the correction's Δv
+  turnIn: [0.1, 1.15],
+  on: 1.25, // burnLevel: full 0.35 s after on, out 0.5 s after off
+  off: 2.45,
+  turnOut: [3.0, 4.05],
+  dv: 3,
+};
+/** The correction's Δv direction (unit, coast frame). */
+export const MCC_DIRECTION = [Math.cos(MCC.phi), 0, Math.sin(MCC.phi)];
 export const mccLevel = (u) => burnLevel(u * MCC.shotLen, MCC.on, MCC.off);
+/** The deep-space shot's attitude: coast, turn in, hold for the burn, turn out, coast. */
+export function mccAttitude(u) {
+  const s = u * MCC.shotLen;
+  const d = MCC.phi - COAST_ATTITUDE.deep;
+  const f = (x) => COAST_ATTITUDE.deep + d * (ease((x - MCC.turnIn[0]) / (MCC.turnIn[1] - MCC.turnIn[0])) - ease((x - MCC.turnOut[0]) / (MCC.turnOut[1] - MCC.turnOut[0])));
+  const h = 0.01;
+  const acc = (f(s + h) - 2 * f(s) + f(s - h)) / (h * h);
+  const peak = (Math.abs(d) * 5.77) / ((MCC.turnIn[1] - MCC.turnIn[0]) ** 2);
+  return { phi: f(s), rcs: Math.max(-1, Math.min(1, acc / (peak * 0.5))) };
+}
 
 export const CRUISE_SHOT = {
   caption: "TRANSLUNAR COAST",
@@ -530,7 +565,7 @@ export function cruiseCamera(u) {
   return { pos: lerp([-18, 9, 40], [-16, 8, 36], ease(u)), look: [1.5, 0.8, -6] };
 }
 
-export const DEEP_SHOT = { caption: "DEEP SPACE", sub: "DAY 2 · MIDCOURSE CORRECTION ON THE MAIN ENGINE · THE EARTH 280,000 KM BEHIND" };
+export const DEEP_SHOT = { caption: "DEEP SPACE", sub: "DAY 2 · MIDCOURSE CORRECTION ON THE MAIN ENGINE · TURN, BURN 3 M/S, TURN BACK" };
 /** Deep space: higher and further back, in profile, the Earth small beyond the engine end. */
 export function deepCamera(u) {
   return { pos: lerp([-15, 15, 60], [-14, 13, 62], ease(u)), look: [1, 2.5, -8] };

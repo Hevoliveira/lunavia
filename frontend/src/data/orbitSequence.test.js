@@ -17,6 +17,8 @@ import {
   deployState,
   loiBurnLevel,
   MCC,
+  MCC_DIRECTION,
+  mccAttitude,
   mccLevel,
   approachCloseCamera,
   approachMoonKm,
@@ -38,6 +40,7 @@ import {
   undockTime,
   vehicleFrame,
 } from "./orbitSequence";
+import { trajectoryPosition } from "./missionPhases";
 import { LOOP_TAU, loopCamera } from "./titleLoop";
 import { craftPose } from "./lunarOrbitShot";
 import { MOON_UNITS, craftScenePos, moonScenePos } from "./sceneTrack";
@@ -335,25 +338,22 @@ describe("the cislunar coast: departure, deep space, approach, all close on the 
     const towardPlanet = (phi) => -nose(phi)[2]; // the planet of the shot is at -Z
     for (let u = 0; u <= 1; u += 0.05) {
       expect(towardPlanet(coastAttitude("depart", u).phi)).toBeLessThan(-0.3); // nose away from the Earth, engine towards it
-      expect(towardPlanet(coastAttitude("deep", u).phi)).toBeLessThan(-0.3);
+      const sd = u * MCC.shotLen;
+      if (sd < MCC.turnIn[0] || sd > MCC.turnOut[1]) expect(towardPlanet(coastAttitude("deep", u).phi)).toBeLessThan(-0.3); // outside the correction
     }
     expect(towardPlanet(coastAttitude("approach", 0).phi)).toBeGreaterThan(0.6); // nose on towards the Moon
     expect(towardPlanet(coastAttitude("approach", 1).phi)).toBeLessThan(-0.6); // turned: the engine towards the Moon
     // never broadside to the planet in the approach before or after the turn
     expect(Math.abs(towardPlanet(coastAttitude("approach", CISLUNAR.turn[0]).phi))).toBeGreaterThan(0.6);
-    // every coast camera sees the assembly at a three-quarter angle (not end-on), with the engine end in view
     const view = (cam, phi) => {
       const f = cam.look.map((x, i) => x - cam.pos[i]);
       const l = Math.hypot(...f);
       return Math.acos(dot(f.map((x) => x / l), nose(phi))) / DEG;
     };
+    // the coast cameras see the nose-forward assembly obliquely (never end-on, never broadside)
     for (let u = 0; u <= 1; u += 0.05) {
-      [[cruiseCamera(u), "depart"], [deepCamera(u), "deep"]].forEach(([c, id]) => {
-        const a = view(c, coastAttitude(id, u).phi);
-        // near profile: the 3 m main engine stands out past the 10.9 m carrier (tan > 1.84 for the bell's tip)
-        expect(a).toBeGreaterThan(92);
-        expect(a).toBeLessThan(112);
-      });
+      expect(view(cruiseCamera(u), coastAttitude("depart", u).phi)).toBeGreaterThan(130);
+      expect(view(cruiseCamera(u), coastAttitude("depart", u).phi)).toBeLessThan(160);
     }
     expect(view(approachCloseCamera(0), coastAttitude("approach", 0).phi)).toBeLessThan(60); // from behind the engine end
     // lunar orbit insertion is filmed from ahead of the engine end (engine first along +X)
@@ -361,6 +361,64 @@ describe("the cislunar coast: departure, deep space, approach, all close on the 
     const f = loi.look.map((x, i) => x - loi.pos[i]);
     expect(-f[0] / Math.hypot(...f)).toBeGreaterThan(0.4); // looking back along -X, at the engine end
     expect(loi.pos[0]).toBeGreaterThan(ASSEMBLY_X.aft);
+  });
+
+  test("after TLI the assembly coasts nose forward: within 35 deg of the flight path, not sideways to it", () => {
+    // the flight path's direction in the coast frame (x along the local horizontal, z away from the Earth)
+    const pathPhi = (t) => {
+      const a = trajectoryPosition(t);
+      const b = trajectoryPosition(t + 100);
+      const r = Math.hypot(a.x, a.z);
+      const z = [a.x / r, a.z / r];
+      const v = [b.x - a.x, b.z - a.z];
+      return Math.atan2(v[0] * z[0] + v[1] * z[1], v[0] * z[1] - v[1] * z[0]);
+    };
+    const shots = [["depart", CISLUNAR.start, CISLUNAR.departEnd], ["deep", CISLUNAR.departEnd, CISLUNAR.deepEnd]];
+    for (const [id, t0, t1] of shots) {
+      for (let u = 0; u <= 1; u += 0.02) {
+        const s = u * MCC.shotLen;
+        if (id === "deep" && s > MCC.turnIn[0] && s < MCC.turnOut[1]) continue; // the correction's maneuver
+        const off = Math.abs(coastAttitude(id, u).phi - pathPhi(t0 + u * (t1 - t0))) / DEG;
+        expect(off).toBeLessThan(35);
+        expect(coastAttitude(id, u).rcs).toBe(0); // a held attitude: no RCS
+      }
+    }
+  });
+
+  test("the midcourse correction: turn on RCS, burn along the thrust axis, turn back; the engine fires only while held", () => {
+    const sAt = (s) => s / MCC.shotLen;
+    // the sequence is ordered with settling pauses: turn in, hold, burn, hold, turn out
+    expect(MCC.turnIn[1]).toBeLessThan(MCC.on);
+    expect(MCC.off + 0.5).toBeLessThan(MCC.turnOut[0]); // the shutdown's tail out before the turn back
+    expect(MCC.turnOut[1]).toBeLessThan(MCC.shotLen);
+    // the burn attitude: the thrust axis (the nose; the engine fires aft) along the correction's Δv
+    for (let s = MCC.turnIn[1] + 0.02; s <= MCC.turnOut[0] - 0.02; s += 0.05) {
+      const a = mccAttitude(sAt(s));
+      expect(a.phi).toBeCloseTo(MCC.phi, 6);
+      expect(a.rcs).toBeCloseTo(0, 6);
+      expect(Math.cos(a.phi) * MCC_DIRECTION[0] + Math.sin(a.phi) * MCC_DIRECTION[2]).toBeCloseTo(1, 9);
+    }
+    // ignition only in the burn attitude; no thrust while turning
+    for (let s = 0; s <= MCC.shotLen; s += 0.02) {
+      if (mccLevel(sAt(s)) > 0) expect(Math.abs(mccAttitude(sAt(s)).phi - MCC.phi)).toBeLessThan(1e-6);
+      if (Math.abs(mccAttitude(sAt(s)).rcs) > 0.01) expect(mccLevel(sAt(s))).toBe(0);
+    }
+    // a visible turn (more than 60 deg) both ways, its RCS starting and stopping it
+    expect(Math.abs(coastAttitude("deep", 0).phi - MCC.phi) / DEG).toBeGreaterThan(60);
+    expect(mccAttitude(sAt(MCC.turnIn[0] + 0.1)).rcs).toBeLessThan(-0.5); // phi decreasing: starting the turn
+    expect(mccAttitude(sAt(MCC.turnIn[1] - 0.1)).rcs).toBeGreaterThan(0.5); // stopping it
+    expect(mccAttitude(sAt(MCC.turnOut[0] + 0.1)).rcs).toBeGreaterThan(0.5);
+    expect(mccAttitude(sAt(MCC.turnOut[1] - 0.1)).rcs).toBeLessThan(-0.5);
+    expect(mccAttitude(0).phi).toBeCloseTo(coastAttitude("deep", 0).phi, 9);
+    expect(mccAttitude(1).phi).toBeCloseTo(coastAttitude("deep", 0).phi, 9);
+    // the deep-space camera sees the burn obliquely from behind the engine end: the bell and the plume in view
+    for (let s = MCC.on; s <= MCC.off; s += 0.1) {
+      const cam = deepCamera(sAt(s));
+      const f = cam.look.map((x, i) => x - cam.pos[i]);
+      const a = Math.acos(dot(f.map((x) => x / Math.hypot(...f)), MCC_DIRECTION)) / DEG;
+      expect(a).toBeGreaterThan(50);
+      expect(a).toBeLessThan(85);
+    }
   });
 
   test("coasting is unpowered; the only burn on the way is the midcourse correction on the main engine", () => {

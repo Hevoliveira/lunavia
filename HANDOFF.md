@@ -2139,3 +2139,39 @@ Clearances (measured; the tests hold the minimums): lunar module to adapter wall
 - every coast camera is near profile (92–112° off the nose);
 - the only coast burn is the MCC;
 - the LOI is filmed from ahead of the engine end.
+
+## 39. Translunar attitude and the midcourse correction maneuver
+
+**What was wrong** (BUILD 33d6f8c):
+- **Sideways travel.** In the departure and deep-space coasts the assembly held its nose 25–30° off the local horizontal. The flight path in those shots runs at 94–107° (outward from the Earth), so the nose sat 65–80° off the direction of travel and the spacecraft seemed to fly sideways towards the Moon.
+- **MCC without a maneuver.** The midcourse correction fired in that same coast attitude, with no turn before or after. The burn did not match a thrust direction, and the main engine only read as a real maneuver at LOI.
+
+**TLI and the separation (checked, unchanged):** the upper stage flies TLI (launchTimeline 92.6–100 s), nose along the flight path, 12° above the local horizontal. The carrier separates at 104.1 s. The only planned maneuver after separation is the carrier's RCS push clear of the stage (`stageSepRcs`). No main-engine burn was added there: none is planned, and adding one would invent acceleration.
+
+**Attitude and burns now** (`data/orbitSequence.js`; cameras untouched):
+
+| Phase | Attitude | Engine / RCS |
+|---|---|---|
+| After separation (launch) | TLI attitude held, nose along the flight path | off; separation RCS push |
+| Departure coast | **φ 75°**: nose forward, 19–32° off the flight path (held, not steered onto the velocity); engine back towards the Earth | off; no RCS |
+| Deep space, s 0–0.1 | φ 75° | off |
+| MCC turn in, s 0.1–1.15 | RCS turn 75° → −10° (85°), quintic, couple starting and stopping it | off; RCS |
+| MCC burn, s 1.25–2.45 (+0.5 s tail-off) | **burn attitude φ −10°**: thrust axis = the correction's Δv (`MCC_DIRECTION`, 3 m/s across the flight path, trimming the arrival) | **main engine on**; plume from the bell; rumble aboard |
+| MCC turn out, s 3.0–4.05 | RCS turn back to φ 75° | off; RCS |
+| Deep coast resumed | φ 75° | off |
+| Approach, LOI | unchanged (nose to the Moon, the turn engine first on RCS, the retrograde insertion burn) | unchanged |
+
+**RCS puffs:**
+- The carrier's side firings during the turns are soft billboard puffs down each jet, three per quad (`CarrierModel` `yawFx`). Together with the service module's couple they make the turns visible.
+- Before this, the side-puff meshes never showed. React Three Fiber *copies* a `material` prop of the mesh's own default class (`MeshBasicMaterial`) into the mesh's material, so per-frame writes to the memoised material never reached the rendered one.
+- The same applies to `M.puff`, the separation and retro puffs. Those were left as they are: outside this milestone's scope.
+
+**Tests** (`orbitSequence.test.js`):
+- the departure and deep coasts stay within 35° of the flight path, with no RCS, outside the maneuver;
+- the MCC is ordered turn → hold → burn → tail-off → turn;
+- the engine fires only in the burn attitude, the thrust axis lies along `MCC_DIRECTION`, and there is no thrust while turning;
+- each turn is more than 60°, with RCS starting and stopping it;
+- the deep camera sees the burn from behind the engine end (50–85° from the thrust axis);
+- the departure camera sees the coasting assembly obliquely (130–160°).
+
+The §38 "near profile 92–112°" check was replaced by these.

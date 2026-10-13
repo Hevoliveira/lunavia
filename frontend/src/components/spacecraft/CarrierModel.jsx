@@ -140,9 +140,9 @@ function geometry() {
     quads: flat(quads),
     puffs: puffs(() => V(0, -1, 0), [0, 1, 2, 3]),
     retroPuffs: puffs(() => V(0, 1, 0), [0, 1, 2, 3]),
-    // The quads at 0° and 180° (on ±X) fire sideways along ±Z to turn the assembly about X.
-    yawPos: puffs(() => V(0, 0, 1), [0, 2]),
-    yawNeg: puffs(() => V(0, 0, -1), [0, 2]),
+    // The quads at 0° and 180° (on ±X) fire sideways along ±Z, aft of the centre of mass, to
+    // turn the assembly about X (with the service module's couple forward): their nozzles.
+    yawJets: [0, 2].map((i) => quadAt(rcs.azDeg[i]).c),
     plumeOuter,
     plumeCore,
   };
@@ -154,13 +154,43 @@ export default function CarrierModel({ ctrlRef = null, materials, shadows = fals
   const insideRef = useRef();
   const puffRef = useRef();
   const retroRef = useRef();
-  const yawPosRef = useRef();
-  const yawNegRef = useRef();
+  // The turning firings, longer than the separation's pulses: soft gas puffs that read from
+  // any side (billboards down the jet, growing and fading).
+  const yawFx = useMemo(() => {
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 64;
+    const x = cv.getContext("2d");
+    const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, "rgba(240,244,255,1)");
+    gr.addColorStop(0.35, "rgba(225,232,255,0.55)");
+    gr.addColorStop(1, "rgba(210,220,255,0)");
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 64, 64);
+    const map = new THREE.CanvasTexture(cv);
+    const side = (sign) => {
+      const g = new THREE.Group();
+      g.visible = false;
+      G.yawJets.forEach((c) => {
+        [[0.7, 1.3, 1], [1.9, 2.2, 0.7], [3.4, 3.2, 0.4]].forEach(([d, size, k]) => {
+          const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, opacity: 0, depthWrite: false }));
+          sp.position.set(c.x, c.y, c.z + sign * d);
+          sp.scale.set(size, size, 1);
+          sp.userData.k = k;
+          sp.renderOrder = 2;
+          g.add(sp);
+        });
+      });
+      return g;
+    };
+    return { pos: side(1), neg: side(-1) };
+  }, [G]);
   const outerRef = useRef();
   const coreRef = useRef();
   const M = useMemo(
     () => ({
       puff: new THREE.MeshBasicMaterial({ color: "#dfe6ff", transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+      // Normal blending: the cruise draws the spacecraft in its own layer, composited by alpha
+      // (an additive puff over empty space would leave no alpha there).
       outer: plumeMaterial(0.55, "#ffe8d0", "#ff9a66", false),
       core: plumeMaterial(1.3, "#ffffff", "#ffc48a", true),
       tank: new THREE.MeshStandardMaterial({ color: "#b8925a", roughness: 0.42, metalness: 0.6 }),
@@ -181,12 +211,14 @@ export default function CarrierModel({ ctrlRef = null, materials, shadows = fals
     const t = state.clock.elapsedTime;
     if (insideRef.current) insideRef.current.visible = !!c.inside;
     const yaw = c.yaw || 0;
-    const puff = Math.max(c.rcs || 0, c.retro || 0, Math.abs(yaw));
+    const puff = Math.max(c.rcs || 0, c.retro || 0);
     if (puffRef.current) puffRef.current.visible = (c.rcs || 0) > 0.02;
     if (retroRef.current) retroRef.current.visible = (c.retro || 0) > 0.02;
-    if (yawPosRef.current) yawPosRef.current.visible = yaw > 0.02;
-    if (yawNegRef.current) yawNegRef.current.visible = yaw < -0.02;
+    yawFx.pos.visible = yaw > 0.02;
+    yawFx.neg.visible = yaw < -0.02;
     M.puff.opacity = 0.32 * puff;
+    const yo = Math.min(1, Math.abs(yaw) * 1.6) * (0.75 + 0.1 * Math.sin(t * 61));
+    (yaw > 0 ? yawFx.pos : yawFx.neg).children.forEach((sp) => (sp.material.opacity = yo * sp.userData.k));
     M.inner.emissiveIntensity = 0.9 * k;
     const on = k > 0.02;
     if (outerRef.current) {
@@ -228,8 +260,8 @@ export default function CarrierModel({ ctrlRef = null, materials, shadows = fals
       </group>
       <mesh ref={puffRef} geometry={G.puffs} material={M.puff} visible={false} renderOrder={2} />
       <mesh ref={retroRef} geometry={G.retroPuffs} material={M.puff} visible={false} renderOrder={2} />
-      <mesh ref={yawPosRef} geometry={G.yawPos} material={M.puff} visible={false} renderOrder={2} />
-      <mesh ref={yawNegRef} geometry={G.yawNeg} material={M.puff} visible={false} renderOrder={2} />
+      <primitive object={yawFx.pos} />
+      <primitive object={yawFx.neg} />
       <mesh ref={outerRef} geometry={G.plumeOuter} material={M.outer} visible={false} renderOrder={2} />
       <mesh ref={coreRef} geometry={G.plumeCore} material={M.core} visible={false} renderOrder={3} />
     </group>

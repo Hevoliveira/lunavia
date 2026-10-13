@@ -65,6 +65,7 @@ const FEATURES = [
   ["Carrier left behind in lunar orbit", "CARRIER LEFT BEHIND"],
   ["Persistent title screen with START MISSIONS", "btn-start-missions"],
   ["Outbound propulsion: main engine and midcourse correction", "MIDCOURSE CORRECTION ON THE MAIN ENGINE"],
+  ["Translunar attitude: MCC turn, burn and turn back", "TURN, BURN 3 M/S, TURN BACK"],
 ];
 
 function sourceText(dir) {
