@@ -1,8 +1,6 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, ChevronRight, Play } from "lucide-react";
+import { ArrowUpRight, ChevronRight } from "lucide-react";
 import TitleLoop from "@/components/opening/TitleLoop";
-import OpeningCinematic, { openingDue } from "@/components/opening/OpeningCinematic";
 import BuildBadge from "@/components/BuildBadge";
 
 const MANIFESTO_LINES = [
@@ -25,15 +23,15 @@ const PHASES_PREVIEW = [
 ];
 
 export default function Landing() {
-  // The opening plays by itself the first time only; WATCH THE OPENING replays it.
-  const [opening, setOpening] = useState(openingDue);
+  // The home screen opens as it is, every time: nothing plays by itself. The
+  // game's title is presented inside the mission, in lunar orbit after the go
+  // for powered descent (data/titleReveal).
   return (
     <main data-testid="landing-page" className="relative bg-[#050505] text-white safe-px">
-      {opening && <OpeningCinematic onDone={() => setOpening(false)} />}
       {/* HERO */}
       <section className="relative h-screen short:h-auto short:min-h-screen w-full overflow-hidden" data-testid="hero">
-        {/* Title loop: the expedition's spacecraft in lunar orbit (not while the opening runs) */}
-        {!opening && <TitleLoop />}
+        {/* Title loop: the command and service module alone in lunar orbit, a slow drift */}
+        <TitleLoop />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#050505]" />
 
         {/* corner markers */}
@@ -94,9 +92,6 @@ export default function Landing() {
               >
                 LER MANIFESTO
               </Link>
-              <button type="button" onClick={() => setOpening(true)} data-testid="hero-opening" className="btn-hud !border-white/15 !text-zinc-300">
-                <Play size={12} /> ABERTURA
-              </button>
             </div>
           </div>
 

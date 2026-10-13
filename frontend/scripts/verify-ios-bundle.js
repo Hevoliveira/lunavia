@@ -45,7 +45,6 @@ const FEATURES = [
   ["Training instructor and debrief", "BRAKING ALTITUDE"],
   ["Mission Control voice", "MISSION CONTROL VOICE"],
   ["Lunar orbit rotation fix", "descent-fade"],
-  ["Moon-anchored lunar arrival", "anchorStart"],
   ["Touchdown fidelity (CONTACT LIGHT / ENGINE STOP lamps)", "lamp-engine-stop"],
   ["Lunar landing sites", "training-site-continue"],
   ["Lunar module fidelity (two-stage LM)", "engineInner"],
@@ -54,10 +53,13 @@ const FEATURES = [
   ["Far-side approach intro", "farside-intro-skip"],
   ["One spacecraft from Earth orbit to the Moon (shared CSM, escape tower jettison)", "ESCAPE TOWER JETTISONED"],
   ["Lunar module undocking in the mission", "SKIP TO DESCENT"],
-  ["Opening cinematic and Laju Productions credit", "A LAJU PRODUCTIONS GAME"],
+  ["Laju Productions credit", "A LAJU PRODUCTIONS GAME"],
   ["Lunar module inside the launch vehicle (payload shot)", "LUNAR MODULE INSIDE THE ADAPTER"],
   ["Transposition, docking and lunar module extraction", "LUNAR MODULE EXTRACTED"],
   ["Lunar approach with the docked spacecraft", "LUNAR APPROACH"],
+  ["Cislunar coast at true scale (departure, deep space, approach turning engine first)", "TURNING ENGINE FIRST"],
+  ["Lunar orbit insertion burn", "RETROGRADE BURN"],
+  ["Title reveal inside the mission, after the go for powered descent", "title-reveal-credit"],
 ];
 
 function sourceText(dir) {

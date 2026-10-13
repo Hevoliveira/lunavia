@@ -1,5 +1,4 @@
 import {
-  APPROACH,
   CAMERA_RAY,
   LZ_LAT,
   LZ_LON,
@@ -8,8 +7,6 @@ import {
   MOON_ROTATION,
   ORBIT,
   applyRotation,
-  approachCamera,
-  approachPoint,
   craftAlpha,
   craftPose,
   goForPdi,
@@ -17,8 +14,8 @@ import {
   norm,
   orbitCamera,
 } from "./lunarOrbitShot";
-import { MOON_UNITS as R, craftScenePos, moonScenePos } from "./sceneTrack";
-import { ORBIT_RATE, ORBIT_SEQ } from "./orbitSequence";
+import { MOON_UNITS as R, moonScenePos } from "./sceneTrack";
+import { APPROACH_RAY, ORBIT_RATE, ORBIT_SEQ } from "./orbitSequence";
 
 const DEG = Math.PI / 180;
 const M = moonScenePos(270000); // the lunar orbit is shown with the Moon where the cruise left it
@@ -65,10 +62,18 @@ describe("Moon orientation and lighting", () => {
 });
 
 describe("spacecraft in lunar orbit", () => {
-  test("always moves forward, decelerating smoothly from arrival to a creep", () => {
-    let prev = craftAlpha(0);
+  test("during the insertion burn it flies at its real orbital rate, continuous into the establishing shot", () => {
+    for (const t of [0, 1, 3, ORBIT_SEQ.arrive - 0.1]) {
+      expect((craftAlpha(t + 0.05) - craftAlpha(t)) / 0.05 / DEG).toBeCloseTo(ORBIT_RATE, 6);
+    }
+    expect(Math.abs(craftAlpha(ORBIT_SEQ.arrive - 1e-6) - craftAlpha(ORBIT_SEQ.arrive))).toBeLessThan(1e-6);
+  });
+
+  test("from the establishing shot, always moves forward, decelerating smoothly from arrival to a creep", () => {
+    const A = ORBIT_SEQ.arrive;
+    let prev = craftAlpha(A);
     let prevRate = Infinity;
-    for (let t = 0.05; t < 600; t += 0.05) {
+    for (let t = A + 0.05; t < 600; t += 0.05) {
       const a = craftAlpha(t);
       const rate = (a - prev) / 0.05 / DEG;
       expect(rate).toBeGreaterThan(0);
@@ -76,8 +81,8 @@ describe("spacecraft in lunar orbit", () => {
       prev = a;
       prevRate = rate;
     }
-    expect((craftAlpha(0.05) - craftAlpha(0)) / 0.05 / DEG).toBeLessThan(8);
-    expect((craftAlpha(20.05) - craftAlpha(20)) / 0.05 / DEG).toBeLessThan(0.15);
+    expect((craftAlpha(A + 0.05) - craftAlpha(A)) / 0.05 / DEG).toBeLessThan(8);
+    expect((craftAlpha(A + 20.05) - craftAlpha(A + 20)) / 0.05 / DEG).toBeLessThan(0.15);
   });
 
   test("time-compressed only in the wide establishing shot; at the spacecraft, its real orbital rate", () => {
@@ -98,7 +103,7 @@ describe("spacecraft in lunar orbit", () => {
   });
 
   test("flies towards the landing site, east to west", () => {
-    const before = craftPose(8, M, R);
+    const before = craftPose(ORBIT_SEQ.arrive + 8, M, R);
     const site = landingSite(M, R);
     expect(dot(before.fwd, norm(sub(site, before.pos)))).toBeGreaterThan(0.5);
     expect(before.alpha).toBeLessThan(0);
@@ -108,7 +113,8 @@ describe("spacecraft in lunar orbit", () => {
 describe("orbit camera: the Moon cannot appear to turn", () => {
   const dt = 1 / 60;
   const rows = [];
-  for (let i = 0; i <= 600 * 60; i += i < 60 * 20 ? 1 : 60) rows.push({ tau: i * dt, cam: orbitCamera(i * dt, M, R) });
+  // From the establishing shot on (the only shot that uses this camera).
+  for (let i = 0; i <= 600 * 60; i += i < 60 * 20 ? 1 : 60) rows.push({ tau: ORBIT_SEQ.arrive + i * dt, cam: orbitCamera(ORBIT_SEQ.arrive + i * dt, M, R) });
 
   test("the camera never leaves its ray from the Moon's centre: total surface sweep is zero", () => {
     let total = 0;
@@ -118,7 +124,7 @@ describe("orbit camera: the Moon cannot appear to turn", () => {
   });
 
   test("it only dollies in and tilts, gently: pan < 8 deg/s, dolly < 0.6 R/s, no roll, never inside 1.25 R", () => {
-    const first20 = rows.filter((r) => r.tau <= 20);
+    const first20 = rows.filter((r) => r.tau <= ORBIT_SEQ.arrive + 20);
     for (let i = 1; i < first20.length; i++) {
       const a = first20[i - 1].cam;
       const b = first20[i].cam;
@@ -132,14 +138,14 @@ describe("orbit camera: the Moon cannot appear to turn", () => {
   });
 
   test("once settled the picture is still: nothing in it moves more than the craft's creep", () => {
-    const a = orbitCamera(ORBIT.settleEnd + 0.5, M, R);
+    const a = orbitCamera(ORBIT_SEQ.arrive + ORBIT.settleEnd + 0.5, M, R);
     const b = orbitCamera(3600, M, R);
     expect(a.pos).toEqual(b.pos);
     expect(a.look).toEqual(b.look);
   });
 
   test("establishing shot: the whole Moon in frame with the landing site on the visible face", () => {
-    const cam = orbitCamera(0, M, R);
+    const cam = orbitCamera(ORBIT_SEQ.arrive, M, R);
     const d = len(sub(cam.pos, M));
     const radius = Math.asin(R / d) / DEG;
     const off = angle(sub(cam.look, cam.pos), sub(M, cam.pos));
@@ -155,7 +161,7 @@ describe("orbit camera: the Moon cannot appear to turn", () => {
     ["iPhone Pro Max", 932 / 430],
     ["desktop", 1280 / 720],
   ])("establishing shot on %s: the spacecraft's glint is on screen, in front of the Moon, the site on the visible face", (_, aspect) => {
-    for (const tau of [0.5, 2, 4]) {
+    for (const tau of [0.5, 2, 4].map((x) => ORBIT_SEQ.arrive + x)) {
       const cam = orbitCamera(tau, M, R);
       const craft = craftPose(tau, M, R);
       const c = project(cam, craft.pos, aspect);
@@ -178,58 +184,10 @@ describe("orbit camera: the Moon cannot appear to turn", () => {
 });
 
 describe("arrival at the end of the cruise", () => {
-  // The cruise camera before the arrival shot: near the craft, looking back at the Earth.
-  const cruise = (t) => ({ pos: add(craftScenePos(t), [0.8, 0.35, 0.9]), look: [0, 0, 0] });
-  const frames = [];
-  for (let t = APPROACH.turnStart; t <= APPROACH.losEnd; t += 30000 / 60) {
-    const c = cruise(t);
-    const Mt = moonScenePos(t);
-    frames.push({ t, M: Mt, S: craftScenePos(t), cam: approachCamera(t, c.pos, c.look, Mt, R, craftScenePos(t)) });
-  }
-  const dt = 1 / 60;
-
-  test("the camera turns to the Moon while it is still small, never whipping round when it is big", () => {
-    for (let i = 1; i < frames.length; i++) {
-      const a = frames[i - 1];
-      const b = frames[i];
-      const pan = angle(sub(a.cam.look, a.cam.pos), sub(b.cam.look, b.cam.pos)) / dt;
-      const moonRadius = Math.asin(Math.min(1, R / len(sub(b.M, b.cam.pos)))) / DEG;
-      if (moonRadius > 9) expect(pan).toBeLessThan(15);
-    }
-  });
-
-  test("once the Moon is big the camera stays on one ray, Moon centred: zero sweep", () => {
-    const held = frames.filter((f) => f.t >= APPROACH.anchorEnd);
-    expect(held.length).toBeGreaterThan(10);
-    let total = 0;
-    for (let i = 1; i < held.length; i++) {
-      // the Moon itself moves a little along its orbit: measure from its own centre
-      total += angle(sub(held[i - 1].cam.pos, held[i - 1].M), sub(held[i].cam.pos, held[i].M));
-    }
-    expect(total).toBeLessThan(0.01);
-    held.forEach((f) => {
-      expect(len(sub(f.cam.pos, approachPoint(f.M, R, f.S)))).toBeLessThan(1e-9);
-      expect(angle(sub(f.cam.look, f.cam.pos), sub(f.M, f.cam.pos))).toBeLessThan(0.001);
-    });
-  });
-
-  test("loss of signal comes before the craft could be seen reaching the drawn Moon", () => {
-    const at = (t) => len(sub(craftScenePos(t), moonScenePos(t))) / R;
-    expect(at(APPROACH.los)).toBeGreaterThan(1.5);
-    expect(at(APPROACH.losEnd)).toBeGreaterThan(1.1);
-    expect(APPROACH.los).toBeGreaterThan(APPROACH.anchorEnd);
-  });
-
-  test("the camera follows the craft down its ray, never overtaking it, then holds while it flies on", () => {
-    let prevDist = Infinity;
-    for (let t = APPROACH.anchorEnd; t <= APPROACH.losEnd; t += 500) {
-      const Mt = moonScenePos(t);
-      const S = craftScenePos(t);
-      const camDist = len(sub(approachPoint(Mt, R, S), Mt));
-      expect(camDist - len(sub(S, Mt))).toBeGreaterThan(1.5 * R);
-      expect(camDist).toBeLessThanOrEqual(prevDist + 1e-9);
-      expect(camDist).toBeGreaterThan(APPROACH.hold * R);
-      prevDist = camDist;
-    }
+  test("the approach sees the Moon from the side the orbit shots look at: the same face, lit the same way", () => {
+    const flat = norm([CAMERA_RAY[0], 0, CAMERA_RAY[2]]);
+    APPROACH_RAY.forEach((x, i) => expect(x).toBeCloseTo(flat[i], 9));
+    // mostly lit (gibbous), not the night side
+    expect((1 + dot(APPROACH_RAY, SUN)) / 2).toBeGreaterThan(0.6);
   });
 });

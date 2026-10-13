@@ -1873,3 +1873,47 @@ Clearances (measured; the tests hold the minimums): lunar module to adapter wall
 - The ascent stage's rendezvous with the CSM is not flown; the return is the CSM alone (§34).
 - No new voice lines: the transposition has captions and mechanical sounds only.
 - All validation ran in a browser with software rendering, not on a physical iPhone.
+
+## 36. Cinematic flow: the cislunar coast, lunar orbit insertion and the title inside the mission
+
+**What was wrong** (audited on BUILD 532885b against an iPhone recording, 12 October 2026):
+- **The opening played before the game.** `Landing.jsx` mounted `OpeningCinematic` on the first launch on a device (`lunavia.opening.seen` in localStorage): a 52 s film with its own, synthetic undocking, before the player had launched anything. The mission itself never showed the title.
+- **2:38–2:54 of the recording (the translunar coast).** Measured frame by frame (`window.__lvMissionView`, 30 fps device timeline):
+  - The close departure shot draws the Earth at its true apparent size (6.3° at the cut, 117,000 km). The next shot was a *wide* chase shot in the scene's map scale, where the Earth is drawn 10× oversized and the camera sat at 1.2–1.6× the craft's distance from it, looking back at it: the Earth jumped from 6.3° to 65° across the cut and filled the frame.
+  - The chase camera then turned towards a small Moon seen from its night side (a crescent, by design of the old "phase language"), lagging behind a 30,000× time compression: about 4 s of near-black frames (mean luminance 6–7 of 255) with only stars and the red trajectory lines.
+  - The close approach shot also looked at the Moon's night side; at loss of signal the dark disc filled the frame, then the picture faded to black (450 ms + 80 ms hold + 1.1 s fade-in; 17 frames below luminance 4) and cut to the wide lunar-orbit shot, with the cruise clock jumping to its end under the black. No lunar orbit insertion was shown.
+
+**The coast now** (`data/orbitSequence.js` `CISLUNAR`, `cruiseTime`, `coastShotAt`; pure and tested). Every shot from TLI to lunar orbit is close on the docked stack; the planet behind it is drawn at its true apparent size for the spacecraft's real distance. The map-scale planets are never seen from close by; in these shots only the planet the shot is about is drawn (`viewRef.only`).
+
+| Real s | Mission t | Shot | What it shows |
+|---|---|---|---|
+| 0–4 | 12,000–40,000 | DEPARTURE (`cruiseClose`, unchanged) | The stack; the Earth behind it, 26° → 6.3° |
+| 4–8.2 | 40,000–150,000 | DEEP SPACE (`deepSpace`, new) | Further back, from the LM's end; the Earth small in the upper right, 6.3° → 2.6° (285,000 km) |
+| 8.2–15 | 150,000–207,000 | LUNAR APPROACH (`approachClose`) | The Moon behind the stack, growing at a steady zoom rate (64,000 → 4,600 km, 3.1° → 41°), seen from the side the lunar-orbit shots look at (`APPROACH_RAY`, the orbit camera's azimuth): the same sunlit face, lit the same way. The stack turns engine first for the burn (`approachYaw`: 180° about the local vertical through its middle, a smooth start and stop on the service module's RCS couple) |
+
+- The coast runs on its own real-seconds clock (`cruiseTime`); there is no fade and no clock jump: at 15 s lunar orbit opens.
+- The Earth's apparent size only shrinks and the Moon's only grows (tested), and the size is continuous at the departure → deep-space cut.
+
+**Lunar orbit now opens on the insertion burn** (`ORBIT_SEQ`, orbit clock τ):
+
+| τ (s) | Shot | |
+|---|---|---|
+| 0–5.6 | LUNAR ORBIT INSERTION (`loi`, new) | The stack engine first over the lunar horizon (lit terrain, the Sun from behind and above); the SPS fires retrograde (0.9–4.7 s, a soft start and shutdown); caption BEHIND THE MOON · SPS ENGINE · RETROGRADE BURN · OUT OF CONTACT WITH EARTH; a low rumble aboard |
+| 5.6–10.1 | establishing (wide) | Unchanged, shifted: the whole Moon, the orbit, the site; "Lunar orbit insertion looks good. Welcome to the Moon." once the signal is back |
+| 10.1–31.6 | stack, tunnel, undock | Unchanged (§34–35); latches release at 21.6 |
+| 31.6–36 | TWO SPACECRAFT | FLIGHT: "Capcom, we're go for powered descent." at 34.8 |
+| 36–46.4 | title (new) | No cut: from where the two-spacecraft shot stops, the camera eases in behind the LM as it moves away, the CSM receding; LUNAVIA at 38.6, A LAJU PRODUCTIONS GAME at 41, both gone by 45.8 |
+| 46.4– | followLm | The descent setup (difficulty) fades in over the same, still-moving shot |
+
+- `craftAlpha` and `orbitCamera` are measured from `ORBIT_SEQ.arrive`; during the burn the craft flies at its real orbital rate, so the surface does not slide.
+- The SPS plume is an exhaust effect added in `SpacecraftStack` (`SpsPlume`, the LM's vacuum plume shader, exported from `LanderModel`); the CSM's geometry is unchanged. `VehicleLayer` now pre-compiles hidden objects too, so the first ignition does not hitch.
+
+**The title, inside the mission** (`data/titleReveal.js`, `components/MissionTitle.jsx`):
+- It belongs to the orbit clock, so it plays once per full mission: SKIP TO DESCENT jumps past it with everything else, a restarted landing (back to DIFFICULTY) and BRIEFING → back never replay it, and the Training Center (which never flies the orbit) never shows it. A new mission (RELAUNCH, or LAUNCH after an abort) plays it again.
+- The overlay sets its opacities from the orbit clock in its own requestAnimationFrame loop: no React render per frame.
+- Music: the space pad swells in under it (from τ 35.4) and fades as the descent setup opens. All sound in the mission starts after the LAUNCH tap (iOS gesture rule); if the audio context is suspended the title simply plays silent.
+
+**The home screen** opens as it is, every time: the title loop (CSM alone in lunar orbit) and the static LUNAVIA · A LAJU PRODUCTIONS GAME credit. Removed: `OpeningCinematic`, `OpeningScene`'s opening mode, `data/openingSequence.js`, the ABERTURA button and the `lunavia.opening.seen` flag (no longer read or written; an old copy on a device is ignored). The title loop is now one component (`components/opening/TitleLoop.jsx`, `data/titleLoop.js`).
+
+**Descent preparation:** unchanged. The difficulty selection still opens after the orbit (now after the title), as an overlay over the moving LM shot (`veil-in`, 0.9 s), then BRIEFING and BEGIN PDI. Destination (the mission's site) and difficulty are kept through SKIP, BRIEFING → back and restarts.
+

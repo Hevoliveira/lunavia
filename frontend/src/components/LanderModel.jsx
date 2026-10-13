@@ -222,7 +222,8 @@ const PLUME_FRAG = /* glsl */ `
     float a = clamp(uGain * uThrust * fall * (0.3 + 0.7 * rim * rim) * flick, 0.0, 1.0);
     gl_FragColor = vec4(mix(uHot, uCool, s) * (uAdd > 0.5 ? a : 1.0), a);
   }`;
-function plumeMaterial(gain, hot, cool, additive) {
+/** The vacuum plume shader (also the CSM's SPS plume, components/spacecraft/SpacecraftStack). */
+export function plumeMaterial(gain, hot, cool, additive) {
   return new THREE.ShaderMaterial({
     vertexShader: PLUME_VERT,
     fragmentShader: PLUME_FRAG,

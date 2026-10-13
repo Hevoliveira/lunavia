@@ -200,6 +200,15 @@ html {
     animation: fade-in 1200ms ease-out both;
 }
 
+/* The descent setup opening over the lunar-orbit shot */
+@keyframes veil-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.veil-in {
+    animation: veil-in 900ms ease-out both;
+}
+
 /* Marquee ticker */
 @keyframes ticker {
     0% { transform: translateX(0); }

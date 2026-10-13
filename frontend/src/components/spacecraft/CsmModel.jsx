@@ -7,8 +7,8 @@ import { buildCM, buildHGA, buildSM, hgaRotation, HGA, PARTS, RCS_THRUSTERS, SM_
  * LUNAVIA's command and service module (shape: data/csmDesign.js, metres).
  *
  * The one spacecraft of the expedition: RocketModel carries it to orbit,
- * SpacecraftStack docks the lunar module to it, the lunar-orbit shots and the
- * opening fly it, and ReentryScene's capsule is its command module.
+ * SpacecraftStack docks the lunar module to it, the cruise, lunar-orbit and
+ * title-loop shots fly it, and ReentryScene's capsule is its command module.
  *
  * **Materials.**
  * - Service module: white paint in six panel sectors, two radiator panels,
