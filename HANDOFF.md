@@ -1954,3 +1954,153 @@ Clearances (measured; the tests hold the minimums): lunar module to adapter wall
 - In headless captures CSS fades do not follow the fake clock, so stills catch the descent setup mid-fade; in real time it is fully in after 0.9 s (checked at 667×375).
 - Not tested on a physical iPhone.
 
+
+## 37. Lunar deployment and the persistent title screen
+
+**What was wrong** (BUILD 8224e36, from the brief "Critical mission sequence & persistent title screen"):
+- **The lunar module and the CSM were released near the Earth.** `data/launchTimeline.js` ran the transposition, docking and extraction of §35 at `TD_START` = 103.5 s, about 20 minutes after TLI, around 6,000 km from the Earth:
+  - the adapter's panels were jettisoned;
+  - the CSM turned round, docked with the LM and pulled it out;
+  - the upper stage was left behind.
+
+  From there the cruise drew `SpacecraftStack` (the docked pair alone). Captions and fades never hid it: it was the mission's actual sequence (`lineage.js`: `panelsJettison`, `docking`, `extraction`, all with `shot.launch`).
+- **Why it stayed.** §35 followed Apollo, where the S-IVB carried the payload only through TLI. LV-001 had nothing else to propel the LM and the CSM together to the Moon:
+  - the upper stage is 24.5 m long and must not go to the Moon;
+  - the CSM's engine bell sits 0.9 m above the LM inside the adapter, so it cannot fire with the LM in there.
+
+  Moving the deployment to lunar orbit needed a propulsion module that does not exist in Apollo. Every earlier milestone corrected framing, scale and continuity around that sequence; none changed the sequence itself.
+- **The title auto-advanced.** `Mission.jsx` switched to the descent setup at `ORBIT_SEQ.end` (46.4 s), with no button. SKIP TO DESCENT went straight past it.
+
+**The structural adaptation: the lunar transfer carrier** (`data/carrier.js`, pure and tested; `components/spacecraft/CarrierModel.jsx`). Explained to the user before it was implemented.
+- It is the top 1.35 m of LV-001's upper-stage cylinder, now a separate module:
+  - same radius (5.44 m);
+  - the black band under the adapter unchanged (1.08 m), a strip of the stage's white below it;
+  - so LV-001's outline and identity do not change.
+- The payload frame's origin is now its deck, so the LM's mounts, the LM, the adapter and the CSM do not move by a millimetre.
+- **Contents:**
+  - the deck and the adapter's fixed ring;
+  - a toroidal tank (R 3.35 m, tube 0.5 m: 16.5 m³ for 15 m³ of storable propellant);
+  - four 27 kN engines (Isp 316 s) at 45/135/225/315°, between the LM's legs, nested in the upper stage's forward skirt above its new forward dome (0.25 m clearance);
+  - four RCS quads.
+- **Mass:**
+
+  | Part | Mass (t) |
+  |---|---|
+  | CSM | 28.8 |
+  | LM | 15.1 |
+  | Adapter | 2.2 |
+  | Carrier, dry | 4.2 |
+  | Carrier, propellant | 18 |
+  | **Assembly at LOI** | **68.3** |
+
+  That gives 948 m/s of Δv, against 910 m/s for LOI plus 20 m/s of midcourse corrections. The LOI burn takes about 500 s on four engines; the centre of mass sits inside the adapter.
+- **The outbound assembly:** carrier → closed adapter with the LM inside → CSM, its high-gain antenna folded. It is 22 m long, from the engine exits to the probe.
+
+**Mission timeline now**
+
+| When | What |
+|---|---|
+| Launch 0–99 s | Unchanged: pad, ascent, staging, tower jettison, Earth orbit, TLI, departure |
+| 103.5–111 (`carrierSep`) | UPPER STAGE SEPARATION · THE TRANSFER CARRIER TAKES OVER · LM AND CSM STAY INTEGRATED. Pyros at 104.1; the carrier's RCS pushes the assembly ahead (0.5 m/s); the stage falls back, its forward dome and the carrier's engines uncovered (`STAGE_SEP`, `stageGap`) |
+| 111–116.5 (`farewell`) | UPPER STAGE LEFT BEHIND: looking down past the assembly at the Earth; the spent stage falls behind; MET reaches 12,000 s |
+| Coast, 15 s real | DEPARTURE, DEEP SPACE, LUNAR APPROACH (§36), now of the integrated assembly, nose first, pivoted on its centre of mass. On the approach it turns engines first (the CSM's RCS couple) |
+| τ 0–5.6 (`loi`) | LUNAR ORBIT INSERTION · TRANSFER CARRIER ENGINES · RETROGRADE BURN; the carrier's four plumes; rumble |
+| 5.6–10.1 | Establishing shot (wide): LM AND CSM STILL INTEGRATED |
+| 10.1–15.1 (`assembly`) | LV-001 IN LUNAR ORBIT: a stable shot of the integrated assembly over the horizon |
+| 15.1–53.1 | The deployment (`data/transposition.js` TD, unchanged mechanics, now relative to the carrier): ADAPTER OPENS (panels jettisoned at 1.6 m/s), TRANSPOSITION, DOCKING, LUNAR MODULE EXTRACTED, the antenna out |
+| 53.1–58.6 (`leave`) | CARRIER LEFT BEHIND: SpacecraftStack takes over the docked pair at the cut, in the identical pose; the carrier backs away on its RCS (`carrierDrift`), then is not drawn |
+| 58.6–77 | Unchanged choreography, shifted: tunnel, UNDOCKING at 62.6 (latches, the CSM's RCS, the LM's roll, the separation burn), TWO SPACECRAFT; CAPCOM's existing "we're go for powered descent" at 75.8 |
+| 79.6, 82 | LUNAVIA, then A LAJU PRODUCTIONS GAME, over the LM moving away |
+| 84.6– (TITLE state) | START MISSIONS; the title screen, held |
+
+**Frames.** The payload frame is laid on the vehicle frame by +90° about Z (`ASSEMBLY_ROTATION`): payload +Y runs along −X, payload +X along +Y.
+- In the coast the assembly pivots on its centre of mass. Yaw π puts the nose first; π + turn brings the engines first.
+- In lunar orbit it is placed at `ORBIT_ANCHOR` = `DOCK.hardY` + the extraction offset at TD's end (13.94 m). The docked pair the deployment ends with then lands exactly on SpacecraftStack's pose: CSM origin at the vehicle origin, LM at `dockedLmPose(0)`, with the same rotation. This is tested, so there is no jump at the hand-over.
+- `PayloadSection` takes new controls: `carrier` (engines, rcs, retro, inside), `yawRcs` (the CSM's couple about +X) and `hideCraft`. `MissionScene`'s `VehicleLayer` draws it with shadows (`assembly`); the title loop does not mount it.
+
+**The persistent title screen** (`Mission.jsx` TITLE state, `components/MissionTitle.jsx`, `data/titleReveal.js`):
+- **What is on screen.** LUNAVIA, A LAJU PRODUCTIONS GAME and **START MISSIONS** (**INICIAR MISSÕES** when the subtitles are in Portuguese). The button is 240×56 px, the only control in the overlay that takes input.
+- **No timer.** Nothing advances by itself.
+- **The orbit clock** slows to a stop past `ORBIT_SEQ.titleScreen` (`orbitClockAt`: τ → 84.6 + 6·(1 − e^(−t/6))). The LM and the CSM come to rest about 20 m apart, the Moon is steady, and nothing replays.
+- **The camera** drifts over 36 s of real time (`TITLE_DRIFT`, circling the LM so it holds its place in frame) to a wide hold from ahead of the LM. The CSM is in the distance between the title and the LM, the lunar horizon below. A slow breathing sway follows (real time).
+- **Music.** The space pad stays under it until START.
+- **START MISSIONS:**
+  - it is accepted once (`startedRef`, and the button disables itself), only in TITLE;
+  - it opens the existing descent setup (DIFFICULTY → BRIEFING → BEGIN PDI);
+  - the destination chosen before launch is kept, nothing is relaunched or reset, and there is no second destination choice.
+- **SKIP CINEMATIC** in lunar orbit (renamed from SKIP TO DESCENT) jumps to the title screen, never past it. The skipped sounds stay silent.
+- **Once per mission.** A restarted landing or BRIEFING → back returns to DIFFICULTY without the title; a new mission (RELAUNCH, or LAUNCH after ABORT) reaches its own title screen. Nothing is stored and there is no first-run flag. Training never flies the orbit and never shows it.
+- ABORT stays available on the title screen (top right); the HUD strip is hidden there.
+
+**Validation tooling (read-only):**
+- `window.__lvLaunchView` (t, shot, stageGap, payload state, adapterOpened);
+- `window.__lvMissionView` (asm, stackOn, real);
+- `window.__lvOrbitSeek` (jump the orbit clock forward, like `__lvLaunchSeek`).
+
+**Not changed:** LV-001's identity and outline; the LM's and the CSM's geometry; landing physics, fuel, the COMMANDER balance, the four sites, hazards, Training, reentry, touch controls, scoring and records. No medals, challenges or leaderboards.
+
+**Validation.** Headless Chromium with software rendering at iPhone landscape sizes. These are browser tests, not a physical iPhone. Everything below ran on the bundled iOS files of BUILD e85ea35 (`frontend/ios/App/App/public`, served locally) unless noted.
+- **Jest:** 303 tests pass (292 before). New or rewritten:
+  - `carrier`: the outline is unchanged, the LM does not move, the tank and engines fit and clear the stage's dome, the mass and Δv budget, the separation gap and its RCS, soft burns;
+  - `launchTimeline`: no transposition, docking, extraction, panel or antenna event or shot after TLI, and no caption saying so; the separation at the carrier's pyros; the MET reaching the cruise;
+  - `lineage`: every step shown in the launch keeps the LM inside the closed adapter; the panels, docking, extraction and the carrier's departure only after `lunarOrbitInsertion` (burn: carrier), each in a lunar-orbit shot; near the Earth only the stages and the tower go;
+  - `orbitSequence`:
+    - the shot order;
+    - integrated through the burn and the steady shot, each deployment phase in its own shot;
+    - the hand-over to SpacecraftStack is exact (CSM at the origin, same rotation, LM at `dockedLmPose(0)`);
+    - the carrier drifts away and is not drawn again;
+    - the carrier's burn engines-first and only in the burn;
+    - camera clearances for the assembly;
+  - `titleReveal`:
+    - LUNAVIA, the credit and START MISSIONS after the go for powered descent, and they stay up;
+    - the orbit clock never goes back and comes to rest (no second undocking, the LM and CSM 20 m apart);
+    - the LM clear of the title on three aspects through the drift; the CSM in frame at the wide hold;
+    - the camera's speed and turn rate;
+    - EN/PT labels;
+  - `transposition`: the real 0.9 m/s after the sequence.
+- **The 90-second title screen test**, in real time (no fake clock), run alone. For each language: launch skipped, coast and lunar orbit played by themselves to the title screen, then 90 s with no input, sampled every 5 s, then one tap on START MISSIONS.
+
+  | | English, 852×393 | Portuguese, 667×375 |
+  |---|---|---|
+  | Title screen opened by itself | τ 84.7 | τ 84.7 |
+  | Go-for-PDI subtitle → LUNAVIA | τ 75.9 → 80.7 | τ 76.0 → 80.8 |
+  | Over 90 s, every sample | LUNAVIA, credit and button fully up; still TITLE; no descent setup | same |
+  | LM–CSM gap over 90 s | 14.3 → 20.2 m, monotonic; last 30 s: +0.006 m | 14.2 → 20.2 m; last 30 s: +0.002 m |
+  | Orbit clock over 90 s | 85.46 → 90.60 | 85.38 → 90.60 |
+  | Button | 240×56 px, "START MISSIONS" | 247×56 px, "INICIAR MISSÕES" |
+  | One tap | descent setup once, button gone, orbit not restarted, the existing difficulties | same |
+  | Titles this mission / page errors | 1 / none | 1 / none |
+
+  A first run of both in parallel with other jobs (frame rate starved) passed every check except the extra "all but still" one: the mission caps each frame at 0.1 s, so the clock's slowing had not finished within 90 wall seconds. Rerun alone, all pass.
+- **Two full missions** in the app at 852×393, run alone. No page errors; the console shows only the external font the harness blocks.
+  - **Mission 1, the whole film.** Launch → UPPER STAGE SEPARATION → coast → carrier LOI → deployment → undocking → CAPCOM go for PDI (τ 75.8) → LUNAVIA (τ 80.7) → title screen held 10 s → START MISSIONS → ASTRONAUT → THE EAGLE HAS LANDED → reentry → MISSION COMPLETE. Traces:
+    - launch: 1,593 samples across all 23 shots; the adapter never opened; the stage gap opened at t 105 s, after TLI cutoff (100 s);
+    - coast: 91 samples, all integrated (`mated`, the CSM and LM drawn by the assembly, no stack);
+    - lunar orbit: carrier engines on τ 1.1–4.9; the first deployment phase at τ 15.4 (separation); then transposition, approach, capture, docked, extraction; SpacecraftStack from τ 53.1 at the `leave` cut; shots in order loi → establish → assembly → deploySep → deployTurn → deployDock → deployExtract → leave → tunnel → undock → pair → title.
+  - **Mission 2, after RELAUNCH.** Launch skipped → coast → SKIP CINEMATIC during the burn → title screen held 5 s → START MISSIONS → CADET, no input: HARD LANDING → restarted landing (no second title) → THE EAGLE HAS LANDED → reentry → MISSION COMPLETE.
+- **A/B/F/G path checks**, fake clock, 852×393:
+  - A/B: the home screen; nothing autoplays and no flag is written.
+  - F: a Training landing starts with no title.
+  - G1: SKIP CINEMATIC, then ABORT in the coast.
+  - G2: SKIP CINEMATIC during the insertion burn lands on the title screen (not the descent setup). It waits 20 s more, then START opens the setup once.
+  - G3: BRIEFING → back (the title not shown again); pause and resume; ABORT from the descent.
+  - G4: SKIP during the title animation lands on the title screen with its button. START pressed twice gives one descent setup.
+  - G5: a restarted landing does not repeat the title.
+  - G6: back to the menu and back.
+  - G8: ABORT from the title screen.
+  - G7: relaunch on /mission.
+  - No page errors.
+- **Stills of every phase** (26, from the pad to the held title screen) at 852×393, 667×375 and 932×430. "Before" frames of BUILD 8224e36's transposition near the Earth (T+03:04–03:15).
+- **iOS bundle:** BUILD e85ea35, built with `yarn ios:sync` from the clean commit. `ios:verify` passes, with the new markers: upper-stage separation, carrier LOI, deployment in lunar orbit, carrier left behind, START MISSIONS.
+
+**Limitations:**
+- The carrier is LUNAVIA's own design, not Apollo hardware. Its insertion burn is condensed (about 4 s on screen for a ~500 s burn), and so is the deployment (38 s, §35's choreography, the panels spring-jettisoned at 1.6 m/s).
+- The carrier's disposal is not shown: it backs away on its RCS and is no longer drawn from the tunnel shot on.
+- From the insertion burn to the title screen now takes about 85 s instead of 36 s, because the deployment is shown. SKIP CINEMATIC goes to the title screen.
+- On the title screen the LM and the CSM come to rest because the orbit clock slows to a stop, not by physics; the ambient motion is the camera's drift and sway. During the drift the CSM passes behind the title text for a few seconds.
+- The go for powered descent is the existing line, which the subtitles label FLIGHT; there are no new voice lines.
+- Under the black band, the carrier's 0.27 m white strip uses the vehicle's plain white rather than the stage's panel texture.
+- `window.__lvOrbitSeek` (validation tooling) ships in the bundle; it is inert unless set.
+- Unchanged and noted: the site navbar shows over the descent setup, and the difficulty cards' descriptions are in Portuguese.
+- In headless captures CSS animations do not follow the fake clock, so captions are caught mid-animation.
+- Not tested on a physical iPhone.
