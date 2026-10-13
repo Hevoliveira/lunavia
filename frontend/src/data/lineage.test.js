@@ -74,7 +74,7 @@ describe("spacecraft lineage: one launch vehicle, one spacecraft, one mission", 
     // The stack flown to the Moon and back
     const stack = read("components/spacecraft/SpacecraftStack.jsx");
     expect(stack).toMatch(/import CsmModel/);
-    expect(stack).toMatch(/import LanderModel from "@\/components\/LanderModel"/);
+    expect(stack).toMatch(/import LanderModel(, \{ plumeMaterial \})? from "@\/components\/LanderModel"/);
     expect(read("components/MissionScene.jsx")).toMatch(/import SpacecraftStack/);
     // Reentry: the same command module profile and service module
     const reentry = read("components/scenes/ReentryScene.jsx");

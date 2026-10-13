@@ -200,6 +200,26 @@ html {
     animation: fade-in 1200ms ease-out both;
 }
 
+/* The in-mission title: sized to its column (the left 62% of a phone, 50% from md), so
+   LUNAVIA, letter-spaced as it fades in (about 8.2 em wide), never runs off the screen. */
+.title-reveal-name {
+    font-size: min(3rem, calc(7.5vw - 0.4rem));
+}
+@media (min-width: 768px) {
+    .title-reveal-name {
+        font-size: min(6rem, calc(6vw - 0.4rem));
+    }
+}
+
+/* The descent setup opening over the lunar-orbit shot */
+@keyframes veil-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.veil-in {
+    animation: veil-in 900ms ease-out both;
+}
+
 /* Marquee ticker */
 @keyframes ticker {
     0% { transform: translateX(0); }

@@ -1,7 +1,7 @@
 /*
  * LUNAVIA — lunar module undocking in lunar orbit (pure, unit-tested).
  *
- * One choreography, used by the mission's lunar orbit and by the opening:
+ * One choreography, used by the mission's lunar orbit:
  *
  *  0. The lunar module's landing gear is readied: its contact probes, folded
  *     since launch (data/payloadDesign), swing down (PROBES, before release).

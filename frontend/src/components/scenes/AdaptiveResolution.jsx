@@ -3,7 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 
 /**
  * The launch cinematic's adaptive resolution, for the other spacecraft canvases
- * (mission cruise / lunar orbit / return, the opening, the title loop): if the
+ * (mission cruise / lunar orbit / return, the title loop): if the
  * device cannot hold ~45 fps, step the pixel ratio down by 0.25 once per 2 s, to
  * no lower than 1.25, and never back up (no oscillation). Warm-up (shader
  * compiles) and app-switch pauses are ignored. __lvFixedDpr pins it for captures.

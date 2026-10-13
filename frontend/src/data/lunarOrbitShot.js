@@ -8,11 +8,9 @@
  * features only grow as the camera approaches. The Moon itself has one fixed
  * orientation (MOON_ROTATION) in every shot.
  *
- * Arrival. At the end of the cruise the camera turns from the receding Earth
- * to the Moon (while it is still small), then holds at a fixed point while the
- * craft flies past it towards the Moon. The picture fades to black at loss of
- * signal (LOS), before the craft would reach the drawn Moon, and the lunar
- * orbit opens from black on the establishing shot.
+ * Arrival. The cruise ends close on the spacecraft (data/orbitSequence
+ * CISLUNAR), the Moon behind it seen from this same CAMERA_RAY side; lunar orbit
+ * opens close on the insertion burn (ORBIT_SEQ.loi), then the establishing shot.
  *
  * Orbit. The landing site (Mare Tranquillitatis, 0.67°N 23.47°E) is lit by a
  * low morning Sun from the east. The craft flies its orbit over the site, east
@@ -125,14 +123,17 @@ const arrivalAlpha = (t) => ORBIT.pdiAlpha + ORBIT.creep * (1 - Math.exp(-t / OR
 
 /**
  * Along-track angle from the site at time tau (s since lunar orbit began).
- * Time-compressed only in the wide establishing shot; from the cut to the
- * spacecraft on (data/orbitSequence ORBIT_SEQ.cut) it flies at its real
- * orbital rate, so the surface under the close shots drifts as it would.
+ * Time-compressed only in the wide establishing shot (ORBIT_SEQ.arrive to
+ * .cut); before it, during the insertion burn, and from the cut to the
+ * spacecraft on, it flies at its real orbital rate, so the surface under the
+ * close shots drifts as it would.
  */
 export function craftAlpha(tau) {
-  const t = Math.max(0, tau);
-  if (t <= ORBIT_SEQ.cut) return arrivalAlpha(t);
-  return arrivalAlpha(ORBIT_SEQ.cut) + ORBIT_RATE * DEG * (t - ORBIT_SEQ.cut);
+  const t = tau - ORBIT_SEQ.arrive;
+  const cut = ORBIT_SEQ.cut - ORBIT_SEQ.arrive;
+  if (t < 0) return arrivalAlpha(0) + ORBIT_RATE * DEG * t;
+  if (t <= cut) return arrivalAlpha(t);
+  return arrivalAlpha(cut) + ORBIT_RATE * DEG * (t - cut);
 }
 
 const radialAt = (alpha) => add(scale(LZ_UP, Math.cos(alpha)), scale(WEST, Math.sin(alpha)));
@@ -173,57 +174,11 @@ const SETTLED_DIR = norm(add(add(scale(CAMERA_RAY, 1.0785 - ORBIT.r1), scale(RAY
  * Moon's centre up to the horizon. Up is always world +Y (no roll).
  */
 export function orbitCamera(tau, M, R) {
-  const u = smoother((tau - ORBIT.settleStart) / (ORBIT.settleEnd - ORBIT.settleStart));
+  const t = tau - ORBIT_SEQ.arrive; // seconds into the establishing shot
+  const u = smoother((t - ORBIT.settleStart) / (ORBIT.settleEnd - ORBIT.settleStart));
   // A barely perceptible push-in while the establishing shot holds.
-  const r = ORBIT.r0 * (1 - 0.04 * smoother(tau / ORBIT.settleStart)) * (1 - u) + ORBIT.r1 * u;
+  const r = ORBIT.r0 * (1 - 0.04 * smoother(t / ORBIT.settleStart)) * (1 - u) + ORBIT.r1 * u;
   const pos = add(M, scale(CAMERA_RAY, R * r));
   const dir = slerp(WIDE_DIR, SETTLED_DIR, u);
   return { pos, look: add(pos, scale(dir, R)), up: UP.slice(), settle: u };
-}
-
-/* ---- the arrival (end of the cruise, MissionScene missionTime) ------------ */
-export const APPROACH = {
-  turnStart: 55000, // the camera turns from the receding Earth to the (still small) Moon,
-  turnEnd: 160000, //   quickly while only stars are in view, slowing right down as the Moon comes in
-  anchorStart: 120000, // ... and moves onto a fixed ray from the Moon, behind the craft
-  anchorEnd: 160000,
-  ray: fromAzEl(-160, 3), // close to where the smoothed cruise camera is, so that move is short
-  gap: 1.6, // Moon radii behind the craft along that ray ...
-  hold: 4.4, // ... until the camera stops here and the craft flies on towards the Moon
-  los: 207000, // loss of signal: fade to black, then lunar orbit
-  losEnd: 222000, // the cruise clock stops here, under black, before the craft reaches the drawn Moon
-};
-
-/** How far the camera has turned from the Earth to the Moon (0..1): eased in, with a long ease out. */
-export const approachTurn = (t) => {
-  const x = Math.min(1, Math.max(0, (t - APPROACH.turnStart) / (APPROACH.turnEnd - APPROACH.turnStart)));
-  return smoother(1 - (1 - x) * (1 - x));
-};
-/** How far the camera has moved onto its fixed ray (0..1). */
-export const approachAnchor = (t) => smoother((t - APPROACH.anchorStart) / (APPROACH.anchorEnd - APPROACH.anchorStart));
-
-/**
- * Camera point on the fixed approach ray for a Moon at M and the craft at S:
- * a constant gap behind the craft, easing to a stop at APPROACH.hold.
- */
-export function approachPoint(M, R, S) {
-  const d = Math.hypot(S[0] - M[0], S[1] - M[1], S[2] - M[2]) / R + APPROACH.gap;
-  const k = 1.2; // smooth maximum, so the camera glides to a stop instead of braking hard
-  const r = (d + APPROACH.hold + Math.sqrt((d - APPROACH.hold) ** 2 + k * k)) / 2;
-  return add(M, scale(APPROACH.ray, R * r));
-}
-
-/**
- * Arrival camera, blended from the cruise camera (position and look point,
- * which keep their own smoothing and look back at the Earth) onto the
- * approach ray, turning to the Moon at a steady, time-based rate.
- */
-export function approachCamera(t, cruisePos, cruiseLook, M, R, S) {
-  const w = approachAnchor(t);
-  const a = approachPoint(M, R, S);
-  const pos = [cruisePos[0] + (a[0] - cruisePos[0]) * w, cruisePos[1] + (a[1] - cruisePos[1]) * w, cruisePos[2] + (a[2] - cruisePos[2]) * w];
-  const back = norm(add(cruiseLook, scale(pos, -1)));
-  const toMoon = norm(add(M, scale(pos, -1)));
-  const dir = slerp(back, toMoon, approachTurn(t));
-  return { pos, look: add(pos, scale(dir, 10)) };
 }
