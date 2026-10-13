@@ -22,8 +22,9 @@
  * fire with the LM inside). So the top 1.35 m of the upper stage's cylinder is
  * a separate module: the carrier. Same diameter, so LV-001's outline does not
  * change; it carries the deck the LM's mounts stand on (the LM does not move),
- * the adapter's fixed ring, a toroidal tank of storable propellant, four small
- * engines nested in the upper stage's forward skirt, and RCS.
+ * the adapter's fixed ring, a toroidal tank of storable propellant, a main
+ * engine on a thrust cone (nested in the upper stage's forward skirt at launch),
+ * and RCS.
  *
  * Units: metres, tonnes, seconds; the payload frame of data/payloadDesign
  * (origin on the axis at the carrier's deck, +Y up the vehicle).
@@ -40,15 +41,18 @@ export const CARRIER = {
   bandH: 0.06 * ROCKET_M_PER_UNIT, // LV-001's black band under the adapter (1.08 m); the skin below it is the stage's white
   deckY: 0,
   tank: { R: 3.35, r: 0.5, y: -0.7 }, // toroidal tank: major radius, tube radius, centre height
-  engines: {
-    count: 4,
-    azDeg: [45, 135, 225, 315], // between the LM's legs (and the adapter panels)
-    r: 3.3, // radial position of each engine's axis
-    throatR: 0.13,
-    exitR: 0.34,
-    mountY: -1.35, // on the aft bulkhead
-    exitY: -2.2, // nozzle exits, nested in the upper stage's forward skirt at launch
-    thrustKN: 27,
+  // One gimballed main engine on the axis (the transfer propulsion engine), hung from a
+  // conical thrust structure under the aft bulkhead; at launch it is nested in the upper
+  // stage's forward skirt, above the stage's forward dome.
+  thrustCone: { topY: -1.35, topR: 2.1, bottomY: -1.95, bottomR: 0.55 },
+  engine: {
+    gimbalY: -1.95, // gimbal at the thrust cone's apex
+    chamberR: 0.34,
+    throatY: -2.25,
+    throatR: 0.24,
+    exitR: 1.3,
+    exitY: -4.9, // nozzle exit (a 2.65 m bell, 2.6 m across, area ratio ~29)
+    thrustKN: 110,
     isp: 316, // s, storable propellants (hypergolic)
   },
   rcs: { azDeg: [0, 90, 180, 270], y: -0.68 }, // four quads on the skirt
@@ -56,7 +60,7 @@ export const CARRIER = {
 };
 
 /** The upper stage's forward bulkhead, once the carrier has gone (dome apex and rim, payload frame). */
-export const STAGE_FORWARD = { apexY: -2.45, rimY: -3.05, R: CARRIER.R };
+export const STAGE_FORWARD = { apexY: -5.2, rimY: -5.8, R: CARRIER.R };
 
 export const ADAPTER_MASS = 2.2; // t: four panels and the fixed ring
 /** Mass of the outbound assembly at lunar orbit insertion (t). */
@@ -66,22 +70,22 @@ export const LOI_DV = 910;
 export const MIDCOURSE_DV = 20;
 
 /** The carrier's Δv capacity with the whole assembly (m/s). */
-export const deltaVCapacity = () => CARRIER.engines.isp * G0 * Math.log(ASSEMBLY_MASS / (ASSEMBLY_MASS - CARRIER.mass.propellant));
+export const deltaVCapacity = () => CARRIER.engine.isp * G0 * Math.log(ASSEMBLY_MASS / (ASSEMBLY_MASS - CARRIER.mass.propellant));
 /** Propellant volume (m³, mixed density 1.2 t/m³) and the toroidal tank's volume. */
 export const propellantVolume = () => CARRIER.mass.propellant / 1.2;
 export const tankVolume = () => 2 * Math.PI * Math.PI * CARRIER.tank.R * CARRIER.tank.r * CARRIER.tank.r;
-/** LOI burn duration (s) with all four engines. */
+/** LOI burn duration (s) on the main engine. */
 export const loiBurnSeconds = () => {
-  const F = CARRIER.engines.count * CARRIER.engines.thrustKN * 1000;
-  const mdot = F / (CARRIER.engines.isp * G0); // kg/s
+  const F = CARRIER.engine.thrustKN * 1000;
+  const mdot = F / (CARRIER.engine.isp * G0); // kg/s
   const m0 = ASSEMBLY_MASS * 1000;
-  const mf = m0 / Math.exp(LOI_DV / (CARRIER.engines.isp * G0));
+  const mf = m0 / Math.exp(LOI_DV / (CARRIER.engine.isp * G0));
   return (m0 - mf) / mdot;
 };
 
 /** The outbound assembly's extent along the axis (payload frame): engine exits to the probe's tip. */
 export const ASSEMBLY = {
-  aft: CARRIER.engines.exitY,
+  aft: CARRIER.engine.exitY,
   nose: CSM_MATED.y + CM_TOP + PROBE_L,
   // Centre of mass (payload frame y, m): carrier with its propellant, adapter, LM, CSM.
   com: (() => {

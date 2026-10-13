@@ -26,7 +26,8 @@ import {
   STACK_ROTATION,
   approachCloseCamera,
   approachMoonKm,
-  approachYaw,
+  coastAttitude,
+  mccLevel,
   coastDistanceKm,
   coastShotAt,
   cruiseCamera,
@@ -423,6 +424,7 @@ export function VehicleLayer({ viewRef, lm = true, assembly = false }) {
         c.hideCraft = a.craft === false;
         c.carrier.engines = a.engines || 0;
         c.carrier.retro = a.retro || 0;
+        c.carrier.yaw = a.yawRcs || 0; // the carrier's aft quads join the CSM's couple
       }
     }
     _sunV.set(v.sunV[0], v.sunV[1], v.sunV[2]);
@@ -645,8 +647,10 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitRea
           // Only the Moon: from the spacecraft the Earth is behind the camera (the map-scale
           // Earth, drawn 10x oversized, must not appear beside it).
           v.only = "moon";
-          const turn = approachYaw(u);
-          v.asm = { yaw: Math.PI + turn.yaw, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: 0, retro: 0, yawRcs: turn.rcs };
+          // Nose on towards the Moon, then the turn, engine first, on RCS (data/orbitSequence coastAttitude).
+          const att = coastAttitude("approach", u);
+          // The outer group's turn is pi - phi: speeding phi up is a torque about payload -X.
+          v.asm = { yaw: Math.PI - att.phi, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: 0, retro: 0, yawRcs: -att.rcs };
           v.shot = "approachClose";
         } else {
           frame = radialFrame([scPos[0], scPos[1], scPos[2]]);
@@ -655,8 +659,10 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitRea
           cam = id === "depart" ? cruiseCamera(smooth01(u)) : deepCamera(u);
           v.only = "earth"; // the Moon is ahead, out of this view
           v.shot = id === "depart" ? "cruiseClose" : "deepSpace";
-          // Nose first (yaw π: the payload's +Y along +X), pivoted on the centre of mass.
-          v.asm = { yaw: Math.PI, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: 0, retro: 0, yawRcs: 0 };
+          // Nose away from the Earth, the main engine back at it, pivoted on the centre of mass; the
+          // deep-space shot carries the midcourse correction on the main engine.
+          const att = coastAttitude(id, u);
+          v.asm = { yaw: Math.PI - att.phi, anchor: ASSEMBLY.com, x: 0, td: null, craft: true, engines: id === "deep" ? mccLevel(u) : 0, retro: 0, yawRcs: 0 };
         }
         v.stackOn = false;
         v.shadowR = 20;

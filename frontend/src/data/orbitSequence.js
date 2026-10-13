@@ -207,11 +207,11 @@ export const ORBIT_SHOTS = [
     len: ORBIT_SEQ.arrive - ORBIT_SEQ.loi,
     kicker: "BEHIND THE MOON",
     caption: "LUNAR ORBIT INSERTION",
-    sub: "TRANSFER CARRIER ENGINES · RETROGRADE BURN · OUT OF CONTACT WITH EARTH",
+    sub: "TRANSFER CARRIER MAIN ENGINE · RETROGRADE BURN · OUT OF CONTACT WITH EARTH",
     asm: true,
-    // Engines first (the assembly turned round on the approach): from behind its sunlit
-    // side, the plumes ahead, the lunar horizon below.
-    cam: (u) => ({ pos: lerp([-15, 11, 31], [-12, 10, 28], ease(u)), look: lerp([9, -4.5, 0], [10, -4, 0], ease(u)) }),
+    // Engine first (the assembly turned round on the approach): from ahead of it and above,
+    // the main engine and its plume towards the camera's right, the lunar horizon below.
+    cam: (u) => ({ pos: lerp([26, 9, 27], [23, 8.5, 25], ease(u)), look: lerp([9, -4, 0], [9.5, -3.8, 0], ease(u)) }),
   },
   {
     id: "establish",
@@ -487,33 +487,59 @@ export function approachYaw(u) {
 }
 
 /*
- * The coast cameras frame the outbound assembly (vehicle frame, metres): pivoted
- * on its centre of mass at the origin, nose leading along +X (ASSEMBLY.nose -
- * ASSEMBLY.com ahead, the carrier's engines ASSEMBLY.com - ASSEMBLY.aft behind),
- * 22 m long and 10.9 m across the adapter.
+ * The coast: the outbound assembly (vehicle frame, metres) pivots on its centre
+ * of mass at the origin; its axis lies in the horizontal plane at angle phi from
+ * +X towards +Z (nose direction [cos phi, 0, sin phi]); ASSEMBLY.nose - ASSEMBLY.com
+ * ahead, the main engine's exit ASSEMBLY.com - ASSEMBLY.aft behind; 24 m long and
+ * 10.9 m across the adapter. The planet of the shot is at -Z, beyond it.
+ *
+ * Attitudes read as travel: leaving the Earth, the nose points away from it and
+ * the main engine back at it; on the approach the nose points on towards the
+ * Moon (the engine end towards the camera), then the assembly turns about its
+ * centre of mass on RCS, engine first, for the insertion burn. Coasting is
+ * unpowered; the one burn on the way is a short midcourse correction on the
+ * main engine (MCC, in the deep-space shot).
  */
 export const COAST_ASSEMBLY = { nose: ASSEMBLY.nose - ASSEMBLY.com, aft: ASSEMBLY.aft - ASSEMBLY.com, mid: (ASSEMBLY.nose + ASSEMBLY.aft) / 2 - ASSEMBLY.com };
+export const COAST_ATTITUDE = { depart: 30 * DEG, deep: 25 * DEG, approach: -45 * DEG }; // nose direction phi
+
+/** The nose direction phi (rad) and the turning couple's level (-1..1, + speeding up the turn) in a coast shot. */
+export function coastAttitude(id, u) {
+  if (id !== "approach") return { phi: COAST_ATTITUDE[id], rcs: 0 };
+  const turn = approachYaw(u);
+  return { phi: COAST_ATTITUDE.approach + turn.yaw, rcs: turn.rcs };
+}
+
+/*
+ * Midcourse correction on day 2 (deep-space shot, seconds into the shot): the
+ * main engine, along the flight path, ~3 m/s (about 2 s at full thrust, shown in
+ * 1.2 s). Before and after it the assembly coasts.
+ */
+export const MCC = { on: 1.6, off: 2.8, shotLen: CISLUNAR.s.deep - CISLUNAR.s.depart, dv: 3 };
+export const mccLevel = (u) => burnLevel(u * MCC.shotLen, MCC.on, MCC.off);
 
 export const CRUISE_SHOT = {
   caption: "TRANSLUNAR COAST",
-  sub: "OUTBOUND ASSEMBLY · LM AND CSM INTEGRATED · 3-DAY COAST TO THE MOON",
+  sub: "OUTBOUND ASSEMBLY · MAIN ENGINE AFT · LM AND CSM INTEGRATED · 3-DAY COAST",
 };
+/**
+ * Departure: from the sunlit side, close to profile (about 100° off the nose), so the
+ * main engine stands out past the carrier towards the Earth beyond; the nose away from it.
+ */
 export function cruiseCamera(u) {
-  const m = COAST_ASSEMBLY.mid;
-  return { pos: lerp([m + 15, 7, 47], [m + 8, 5.4, 38], ease(u)), look: lerp([m + 1.5, -2.2, 0], [m, -1.6, 0], ease(u)) };
+  return { pos: lerp([-18, 9, 40], [-16, 8, 36], ease(u)), look: [1.5, 0.8, -6] };
 }
 
-export const DEEP_SHOT = { caption: "DEEP SPACE", sub: "DAY 2 · THE EARTH 280,000 KM BEHIND · PASSIVE THERMAL CONTROL" };
-/** Deep space: further back, from the CSM's end, the Earth small in the upper right. */
+export const DEEP_SHOT = { caption: "DEEP SPACE", sub: "DAY 2 · MIDCOURSE CORRECTION ON THE MAIN ENGINE · THE EARTH 280,000 KM BEHIND" };
+/** Deep space: higher and further back, in profile, the Earth small beyond the engine end. */
 export function deepCamera(u) {
-  const m = COAST_ASSEMBLY.mid;
-  return { pos: lerp([m + 29, 11, 50], [m + 20, 9.5, 58], ease(u)), look: lerp([m + 0.8, 1.4, 0], [m, 1.1, 0], ease(u)) };
+  return { pos: lerp([-15, 15, 60], [-14, 13, 62], ease(u)), look: [1, 2.5, -8] };
 }
 
-export const APPROACH_SHOT = { caption: "LUNAR APPROACH", sub: "OUTBOUND ASSEMBLY · TURNING ENGINES FIRST FOR LUNAR ORBIT INSERTION" };
-/** The approach: from the assembly's sunlit side, the Moon behind it in the upper left. */
+export const APPROACH_SHOT = { caption: "LUNAR APPROACH", sub: "OUTBOUND ASSEMBLY · TURNING ENGINE FIRST ON RCS FOR LUNAR ORBIT INSERTION" };
+/** The approach: from the sunlit side, behind the engine end; the Moon ahead, beyond the nose. */
 export function approachCloseCamera(u) {
-  return { pos: lerp([-17, 7, 43], [-12, 6, 35], ease(u)), look: lerp([-0.8, -1.3, 0], [0, -0.7, 0], ease(u)) };
+  return { pos: lerp([-6, 9, 44], [-4, 8, 38], ease(u)), look: lerp([0, 1, -6], [0, 0.8, -6], ease(u)) };
 }
 
 export const RETURN_CLOSE_END = 560000; // mission s

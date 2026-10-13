@@ -1,12 +1,14 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD e85ea35**.
+This folder installs **BUILD 33d6f8c**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD e85ea35 · 2026-10-13 11:59 UTC**
+> **LUNAVIA iOS · BUILD 33d6f8c · 2026-10-13 15:23 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **e85ea35** is the previous release: the deployment in lunar orbit and the START MISSIONS title
+  screen, but the Moon-bound assembly had no visible main engine and coasted broadside;
 - **8224e36** is the previous release: the true-scale coast and the title inside the mission,
   but the lunar module and the CSM still left the rocket near the Earth (the transposition
   after TLI), and the title went straight on to the descent setup by itself;
@@ -43,23 +45,20 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Spacecraft lineage: the lunar module inside LV-001's adapter, transposition, docking and extraction after TLI, lunar approach | #12 | 532885b |
 | Cinematic flow: the Earth-to-Moon coast at true scale, lunar orbit insertion burn, the title inside the mission after the go for powered descent, no opening before the menu | #13 | 8224e36 |
 | Lunar deployment: the LM and CSM stay integrated to the Moon on a lunar transfer carrier (only the spent upper stage separates after TLI), the carrier's insertion burn, the deployment in lunar orbit, and a persistent title screen with START MISSIONS | #14 | e85ea35 |
+| Outbound propulsion: the carrier's visible main engine, travel attitudes (engine back at the Earth, nose to the Moon, then engine first), a midcourse correction burn and the insertion burn on the main engine | #15 | 33d6f8c |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at e85ea35** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release changes the mission sequence and the title, not how you fly.**
-  - After TLI only the spent upper stage separates. The lunar module stays inside the closed adapter with the CSM on top, on the new lunar transfer carrier (the top of the upper stage, same outline). Nothing leaves the rocket near the Earth.
-  - The outbound assembly coasts to the Moon whole, turns engines first, and the carrier's engines put it into lunar orbit.
-  - In lunar orbit, after a steady shot of the integrated assembly, the adapter opens. The CSM turns round, docks with the lunar module and pulls it off the carrier, and the carrier is left behind. Then the undocking as before.
-  - After CAPCOM's "we're go for powered descent": LUNAVIA, A LAJU PRODUCTIONS GAME and a **START MISSIONS** button (**INICIAR MISSÕES** in Portuguese).
-    - The title screen stays up with no timer: the spacecraft come to rest, the camera drifts slowly to show the CSM beyond the lunar module.
-    - Tap START MISSIONS once to open the descent setup.
-    - SKIP CINEMATIC in lunar orbit goes to this screen, never past it.
-  - Descent physics, difficulty, touchdown limits, scoring, training, the four missions, reentry and the spacecraft themselves are unchanged.
+- **Built from the clean tree at 33d6f8c** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release changes how the Moon-bound spacecraft looks and flies on screen, not how you fly.**
+  - After the upper stage separates, the transfer carrier shows a real propulsion end: one main engine on a thrust cone, with its feed lines and a 2.6 m bell.
+  - On the way out, the engine points back at the Earth. Approaching the Moon, the nose points at it, then the assembly turns engine first on its thrusters.
+  - Burns: a short midcourse correction on day 2, and the lunar orbit insertion on the main engine, filmed from ahead of the engine. The rest of the coast is unpowered.
+  - The deployment in lunar orbit, the title screen, the four missions, descent, training and reentry are unchanged.
 - **Records are kept.** Nothing new is stored.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the upper-stage separation, the carrier's insertion burn, the deployment in lunar orbit, the carrier left behind and the START MISSIONS title screen.
+  - every feature above is in the bundled game, including the carrier's main-engine insertion burn and the midcourse correction.

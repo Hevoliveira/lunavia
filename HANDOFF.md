@@ -2104,3 +2104,38 @@ Clearances (measured; the tests hold the minimums): lunar module to adapter wall
 - Unchanged and noted: the site navbar shows over the descent setup, and the difficulty cards' descriptions are in Portuguese.
 - In headless captures CSS animations do not follow the fake clock, so captions are caught mid-animation.
 - Not tested on a physical iPhone.
+
+## 38. Outbound propulsion: the transfer carrier's main engine
+
+**What was wrong** (BUILD e85ea35):
+- After the upper stage separated, the Moon-bound assembly did not read as propulsion-capable. Its aft end was a dark 10.9 m disc carrying four bells 0.68 m across (about 6% of the diameter).
+- No coast camera faced that end. Every coast shot held the assembly broadside to the planet behind it (`radialFrame`). The approach turned it from broadside to broadside: it never pointed at the Moon, so it seemed to drift sideways.
+- No burn was shown between the separation and lunar orbit insertion. The LOI shot looked from the nose side, and its four plumes were faint.
+
+**The propulsion end** (`data/carrier.js`, `CarrierModel.jsx`):
+- **Main engine:** one gimballed engine on the axis, 110 kN, Isp 316 s, hypergolic. It hangs from a conical thrust structure (eight longerons) under the aft bulkhead. Its parts:
+  - the gimbal block, the chamber and two gimbal actuators;
+  - two feed lines from the toroidal tank;
+  - a 2.65 m bell, 2.6 m across at the exit (area ratio ~29): a dark upper bell, a lighter radiatively cooled extension, a sooty interior that glows faintly while it fires.
+- **Fit at launch:** nested in the upper stage's forward skirt; the stage's forward dome was moved down 2.75 m to clear it (0.3 m, tested).
+- **Assembly:** now 24.7 m from the engine exit to the CSM's probe. LOI takes about 490 s on the one engine; the Δv budget is unchanged.
+- **RCS:** the four quads stay. The quads at ±X fire sideways to join the CSM's couple during the turn.
+- **Plume:** one main plume, a faint wide vacuum plume and a brighter core.
+
+**Attitude and burns:**
+
+| When | Attitude | Engine |
+|---|---|---|
+| Upper-stage separation | Engine emerging from the stage's skirt | off; RCS push |
+| Farewell (launch) | Filmed from aft: engine, thrust cone, Earth beyond, stage falling away | off |
+| Departure | Nose 30° away from the Earth, engine back at it; near-profile view, the bell standing out past the carrier | off (coast) |
+| Deep space | Nose 25° away from the Earth | **midcourse correction**, 1.2 s on screen (~3 m/s), soft ignition and shutdown, rumble aboard |
+| Approach | Nose on towards the Moon, the engine end towards the camera; then the turn, engine first, on RCS (the bell in profile mid-turn) | off; RCS |
+| LOI | Engine first; filmed from ahead of the engine end | **on** τ 0.9–4.7 |
+
+`coastAttitude`, `MCC`/`mccLevel` and the coast cameras are pure and tested:
+- the engine faces the Earth when leaving it;
+- the nose faces the Moon, then the engine does;
+- every coast camera is near profile (92–112° off the nose);
+- the only coast burn is the MCC;
+- the LOI is filmed from ahead of the engine end.
