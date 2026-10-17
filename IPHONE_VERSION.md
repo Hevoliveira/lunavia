@@ -1,12 +1,15 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD d25ef56**.
+This folder installs **BUILD af89907**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD d25ef56 · 2026-10-13 17:52 UTC**
+> **LUNAVIA iOS · BUILD af89907 · 2026-10-13 20:30 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **d25ef56** is the previous release: it still played the whole Earth-to-Moon travel (the
+  upper stage's separation, the translunar coast, deep space and the midcourse correction,
+  the approach and the insertion burn);
 - **33d6f8c** is the previous release: the carrier's main engine and the burns, but the
   assembly coasted 65–80° off its direction of travel (it seemed to fly sideways), and the
   midcourse correction fired without turning into a burn attitude;
@@ -50,19 +53,21 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Lunar deployment: the LM and CSM stay integrated to the Moon on a lunar transfer carrier (only the spent upper stage separates after TLI), the carrier's insertion burn, the deployment in lunar orbit, and a persistent title screen with START MISSIONS | #14 | e85ea35 |
 | Outbound propulsion: the carrier's visible main engine, travel attitudes (engine back at the Earth, nose to the Moon, then engine first), a midcourse correction burn and the insertion burn on the main engine | #15 | 33d6f8c |
 | Translunar attitude: nose forward along the flight path after TLI, and the midcourse correction as a real maneuver (RCS turn into the burn attitude, main-engine burn, turn back) | #16 | d25ef56 |
+| Direct cut: the Earth departure ends 2 s after GUIDANCE's "Cutoff." and the film cuts straight to lunar orbit, where CAPCOM welcomes the crew (the translunar travel sequence removed) | #17 | af89907 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at d25ef56** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release changes how the Moon-bound spacecraft is oriented and maneuvers on screen, not how you fly.**
-  - After TLI and the upper stage's separation, the assembly coasts nose forward along its flight path, no longer sideways, with the engine back towards the Earth.
-  - On day 2 the midcourse correction is a real maneuver: the assembly turns on its thrusters into the burn attitude, fires the main engine (plume from the bell), shuts down, and turns back. The thruster puffs are visible.
-  - The rest of the coast is unpowered. The approach, the turn engine first and the lunar orbit insertion burn are unchanged.
-  - The cameras, the spacecraft, the deployment in lunar orbit, the title screen, the four missions, descent, training and reentry are unchanged.
+- **Built from the clean tree at af89907** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release shortens the film between the Earth and the Moon; it does not change how you fly.**
+  - The launch plays as before up to translunar injection. GUIDANCE says "Cutoff.", the departure shot stays 2 seconds more, then a brief fade to black.
+  - The next scene is LUNAR ORBIT (T+80:00:00): CAPCOM says "LUNAVIA, Houston. Lunar orbit insertion looks good. Welcome to the Moon."
+  - No travel between the two is shown any more: no upper-stage separation shot, translunar coast, deep space, midcourse correction, lunar approach or insertion burn.
+  - SKIP CINEMATIC during the launch goes to the same arrival.
+  - The lunar-orbit deployment, the undocking, the title screen and START MISSIONS, the four missions, descent, return, reentry and training are unchanged.
 - **Records are kept.** Nothing new is stored.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the carrier's main-engine insertion burn and the midcourse correction maneuver (turn, burn, turn back).
+  - every feature above is in the bundled game, including the direct cut to lunar orbit; it also fails if any removed travel shot is still in the bundle.
