@@ -64,7 +64,7 @@ const FEATURES = [
   ["Carrier left behind in lunar orbit", "CARRIER LEFT BEHIND"],
   ["Persistent title screen with START MISSIONS", "btn-start-missions"],
   ["Direct cut: 2 s after TLI cutoff straight to lunar orbit", "__lvLaunchCut"],
-  ["Opening first: the launch plays when LUNAVIA opens", 'entry:"opening"'],
+  ["Opening first: the launch plays when LUNAVIA opens", "data-opening"],
   ["Game menu after START MISSIONS (MISSIONS / TRAINING)", "mode-missions"],
 ];
 

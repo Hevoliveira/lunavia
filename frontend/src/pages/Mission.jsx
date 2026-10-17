@@ -474,6 +474,7 @@ export default function Mission({ entry = "opening" }) {
     <main
       className="relative w-full h-screen overflow-hidden bg-[#050505] game-surface"
       data-testid="mission-page"
+      data-opening={opening ? "1" : "0"}
     >
       {/* --- Scene layer --- */}
 
