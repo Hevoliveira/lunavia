@@ -20,7 +20,7 @@
 import { MOON_RADIUS_KM } from "./missionPhases";
 import { MOON_UNITS } from "./sceneTrack";
 import { undocking } from "./undocking";
-import { ASSEMBLY, burnLevel } from "./carrier";
+import { ASSEMBLY } from "./carrier";
 import { DOCK } from "./payloadDesign";
 import { TD, extractionOffset, transposition } from "./transposition";
 
@@ -85,9 +85,9 @@ export const ASSEMBLY_X = { nose: ORBIT_ANCHOR - ASSEMBLY.nose, aft: ORBIT_ANCHO
 
 /* ---- the lunar-orbit sequence (mission) ----------------------------------------------- */
 /*
- * Real seconds since lunar orbit began (the mission's orbit clock).
- * 0–5.6     LUNAR ORBIT INSERTION  close: the outbound assembly, engines first,
- *           fires the carrier's engines retrograde (behind the Moon, out of contact)
+ * The mission's orbit clock, in real seconds. The mission cuts from TLI cutoff
+ * straight to the arrival: the clock starts at ORBIT_ENTRY (5.6). Before it,
+ * behind the cut: the three-day coast and the carrier's insertion burn.
  * 5.6–10.1  ESTABLISHING  the whole Moon, the orbit and the landing site; the spacecraft a glint
  * 10.1–15.1 THE ASSEMBLY  above the lunar horizon, still integrated, a stable shot
  * 15.1–53.1 DEPLOYMENT (data/transposition, tau - deploy): the adapter opens, the
@@ -103,10 +103,8 @@ export const ASSEMBLY_X = { nose: ORBIT_ANCHOR - ASSEMBLY.nose, aft: ORBIT_ANCHO
  *           (orbitClockAt) and waits for the player, with no timer
  */
 export const ORBIT_SEQ = {
-  loi: 0,
-  ignition: 0.9, // the carrier's engines on
-  cutoff: 4.7, // off (an 8-minute burn, condensed)
-  arrive: 5.6, // establishing shot; the time-compressed arrival starts here
+  loi: 0, // the clock's origin: the insertion burn, behind the cut
+  arrive: 5.6, // establishing shot; the time-compressed arrival starts here (ORBIT_ENTRY)
   cut: 10.1, // to the integrated assembly
   deploy: 15.1, // the deployment starts (transposition time 0)
   swap: 15.1 + TD.end, // the docked pair is clear: SpacecraftStack takes it over
@@ -118,6 +116,8 @@ export const ORBIT_SEQ = {
   titleScreen: 84.6, // the title fully up (data/titleReveal TITLE.button)
   end: 87.4, // the title shot's camera move ends
 };
+/** Where the mission enters lunar orbit (the cut from TLI cutoff): the arrival, CAPCOM's welcome. */
+export const ORBIT_ENTRY = ORBIT_SEQ.arrive;
 /** The deployment's shots, in transposition time (data/transposition TD). */
 const DEPLOY_SHOTS = { sep: 0, turn: TD.out.t1, dock: TD.approach.t0, extract: TD.extract.t0, end: TD.end };
 
@@ -201,18 +201,6 @@ function aroundLm(a, b, e) {
 const P = (pos, look) => ({ pos: assemblyPoint(pos), look: assemblyPoint(look) });
 
 export const ORBIT_SHOTS = [
-  {
-    id: "loi",
-    start: ORBIT_SEQ.loi,
-    len: ORBIT_SEQ.arrive - ORBIT_SEQ.loi,
-    kicker: "BEHIND THE MOON",
-    caption: "LUNAR ORBIT INSERTION",
-    sub: "TRANSFER CARRIER MAIN ENGINE · RETROGRADE BURN · OUT OF CONTACT WITH EARTH",
-    asm: true,
-    // Engine first (the assembly turned round on the approach): from ahead of it and above,
-    // the main engine and its plume towards the camera's right, the lunar horizon below.
-    cam: (u) => ({ pos: lerp([26, 9, 27], [23, 8.5, 25], ease(u)), look: lerp([9, -4, 0], [9.5, -3.8, 0], ease(u)) }),
-  },
   {
     id: "establish",
     start: ORBIT_SEQ.arrive,
@@ -343,8 +331,6 @@ export function orbitShotCamera(shot, u, lmY, e = 0) {
   return { pos: [c.pos[0] + x, c.pos[1], c.pos[2]], look: [c.look[0] + x, c.look[1], c.look[2]] };
 }
 
-/** The carrier's engines during lunar orbit insertion, 0..1 (soft start and shutdown). */
-export const loiBurnLevel = (tau) => burnLevel(tau, ORBIT_SEQ.ignition, ORBIT_SEQ.cutoff);
 
 /**
  * The shot at orbit time tau, with its own progress u (0..1). A drifting shot (the title
@@ -388,24 +374,19 @@ export function deployState(tau) {
   const td = transposition(tau - ORBIT_SEQ.deploy);
   const d = carrierDrift(tau - ORBIT_SEQ.swap);
   const e = extractionOffset(tau - ORBIT_SEQ.deploy, 1);
-  return { on: tau < ORBIT_SEQ.tunnel, craft: tau < ORBIT_SEQ.swap, td, x: d.x, e, engines: loiBurnLevel(tau), retro: d.retro };
+  return { on: tau < ORBIT_SEQ.tunnel, craft: tau < ORBIT_SEQ.swap, td, x: d.x, e, engines: 0, retro: d.retro };
 }
 
 /** Undocking choreography time for orbit time tau (negative = still docked). */
 export const undockTime = (tau) => tau - ORBIT_SEQ.undock;
 
-/* ---- the cislunar coast and the return: close on the spacecraft (mission time) ---------- */
+/* ---- the return: close on the spacecraft (mission time) ---------- */
 /*
- * Every shot from TLI to lunar orbit is close on the docked stack, the planet
- * behind it at its true apparent size for the spacecraft's real distance: the
- * Earth's apparent size only shrinks and the Moon's only grows, with no jump
- * between shots. (The scene's map-scale planets, 10x oversized for the
- * Earth-Moon views, are never seen from close by.) The return opens the same
- * way on the CSM alone, the Moon behind it.
- *
- * After TLI the spent upper stage has gone; the outbound assembly (data/carrier)
- * flies broadside to the planet behind (its thermal-control attitude), nose
- * leading, the lunar module inside its closed adapter.
+ * The return opens close on the CSM alone, the Moon behind it at its true
+ * apparent size for the spacecraft's real distance. (The scene's map-scale
+ * planets, 10x oversized for the Earth-Moon views, are never seen from close
+ * by.) No translunar travel is shown on the way out: the mission cuts from TLI
+ * cutoff straight to lunar orbit (ORBIT_ENTRY).
  *
  * radialFrame: Z away from the planet behind the shot, Y the orbit-plane normal
  * (world +Y), X = Y × Z along the stack. The planet is at -Z, beyond the stack.
@@ -418,164 +399,8 @@ export function radialFrame(awayFromPlanet) {
 /** Where to stand so that a planet of drawn radius R appears as it does from distanceKm (radius radiusKm). */
 export const trueSizeDistance = (R, distanceKm, radiusKm) => (R * distanceKm) / radiusKm;
 
-/**
- * Distance from the Earth's centre (km) on the way out. It continues from the
- * launch cinematic's last shot (about 24,600 km at T+3:16): ~62,000 km three
- * hours after TLI, ~120,000 km at T+11 h, ~285,000 km at T+42 h.
- */
-export const coastDistanceKm = (t) => Math.max(6556, 305 * Math.pow(Math.max(0, t - 9840), 0.577));
 /** Distance from the Moon's centre (km) as the CSM leaves it after TEI (close return shot). */
 export const returnDistanceKm = (t) => 1837 + 2.2 * Math.pow(Math.max(0, t - 504000), 0.95);
-
-/**
- * The coast from TLI to lunar orbit, in mission time t (s) and in real seconds
- * s since it began (the mission's cruise clock):
- *   DEPARTURE  close, the Earth behind receding         t 12,000 → 40,000    s 0 → 4
- *   DEEP SPACE medium tracking, the Earth small behind   t 40,000 → 150,000   s 4 → 8.2
- *   APPROACH   close, the Moon behind growing; the assembly
- *              turns engines first for the insertion burn t 150,000 → 207,000  s 8.2 → 15
- * then lunar orbit opens on the insertion burn (ORBIT_SEQ.loi), with no fade.
- */
-export const CISLUNAR = {
-  start: 12000,
-  departEnd: 40000,
-  deepEnd: 150000,
-  los: 207000, // the assembly nears the Moon's limb; it passes behind for the burn (loss of signal)
-  s: { depart: 4, deep: 8.2, end: 15 },
-  moonKm: [64000, 4600], // the approach: distance from the Moon's centre (km), first and last frame
-  turn: [0.22, 0.9], // the approach's progress over which the assembly turns engines first
-};
-
-/** Mission time at s real seconds into the coast. */
-export function cruiseTime(s) {
-  const S = CISLUNAR.s;
-  if (s <= S.depart) return CISLUNAR.start + (CISLUNAR.departEnd - CISLUNAR.start) * (Math.max(0, s) / S.depart);
-  if (s <= S.deep) return CISLUNAR.departEnd + (CISLUNAR.deepEnd - CISLUNAR.departEnd) * ((s - S.depart) / (S.deep - S.depart));
-  return CISLUNAR.deepEnd + (CISLUNAR.los - CISLUNAR.deepEnd) * Math.min(1, (s - S.deep) / (S.end - S.deep));
-}
-
-/** The coast shot at mission time t: { id: "depart" | "deep" | "approach", u (0..1) }. */
-export function coastShotAt(t) {
-  const c = (x) => Math.min(1, Math.max(0, x));
-  if (t < CISLUNAR.departEnd) return { id: "depart", u: c((t - CISLUNAR.start) / (CISLUNAR.departEnd - CISLUNAR.start)) };
-  if (t < CISLUNAR.deepEnd) return { id: "deep", u: c((t - CISLUNAR.departEnd) / (CISLUNAR.deepEnd - CISLUNAR.departEnd)) };
-  return { id: "approach", u: c((t - CISLUNAR.deepEnd) / (CISLUNAR.los - CISLUNAR.deepEnd)) };
-}
-
-/** Distance from the Moon's centre (km) at approach progress u: a steady zoom (the Moon's size grows at a constant rate). */
-export const approachMoonKm = (u) => CISLUNAR.moonKm[0] * Math.pow(CISLUNAR.moonKm[1] / CISLUNAR.moonKm[0], Math.min(1, Math.max(0, u)));
-
-/**
- * The approach is seen from the side of the Moon the lunar-orbit shots look at
- * (data/lunarOrbitShot CAMERA_RAY, azimuth -100°): the same sunlit face, lit the
- * same way, from the first frame of the approach to the establishing shot.
- */
-export const APPROACH_RAY = [Math.cos(-100 * DEG), 0, Math.sin(-100 * DEG)];
-
-/**
- * The assembly's turn, engines first, during the approach (about the vehicle's
- * local vertical, through its centre of mass): { yaw (rad), rcs (-1..1) },
- * rcs the turning couple's level (+: speeding the turn up, -: stopping it).
- */
-export function approachYaw(u) {
-  const [a, b] = CISLUNAR.turn;
-  const f = (x) => Math.PI * ease((x - a) / (b - a));
-  const h = 0.004;
-  const acc = (f(u + h) - 2 * f(u) + f(u - h)) / (h * h);
-  const peak = (Math.PI * 5.77) / ((b - a) * (b - a)); // the quintic's largest acceleration
-  return { yaw: f(u), rcs: Math.max(-1, Math.min(1, acc / (peak * 0.5))) };
-}
-
-/*
- * The coast: the outbound assembly (vehicle frame, metres) pivots on its centre
- * of mass at the origin; its axis lies in the horizontal plane at angle phi from
- * +X towards +Z (nose direction [cos phi, 0, sin phi]); ASSEMBLY.nose - ASSEMBLY.com
- * ahead, the main engine's exit ASSEMBLY.com - ASSEMBLY.aft behind; 24 m long and
- * 10.9 m across the adapter. The planet of the shot is at -Z, beyond it.
- *
- * Attitudes read as travel: leaving the Earth, the nose points away from it and
- * the main engine back at it; on the approach the nose points on towards the
- * Moon (the engine end towards the camera), then the assembly turns about its
- * centre of mass on RCS, engine first, for the insertion burn. Coasting is
- * unpowered; the one burn on the way is a short midcourse correction on the
- * main engine (MCC, in the deep-space shot).
- */
-export const COAST_ASSEMBLY = { nose: ASSEMBLY.nose - ASSEMBLY.com, aft: ASSEMBLY.aft - ASSEMBLY.com, mid: (ASSEMBLY.nose + ASSEMBLY.aft) / 2 - ASSEMBLY.com };
-/*
- * After TLI (flown by the upper stage, nose along the flight path) the carrier
- * holds that attitude through the coast: nose forward, a little off the
- * trajectory (the flight path here runs at phi 94-107 deg; the attitude is held,
- * not steered onto the velocity), engine back towards the Earth.
- */
-export const COAST_ATTITUDE = { depart: 75 * DEG, deep: 75 * DEG, approach: -45 * DEG }; // nose direction phi
-
-/**
- * The nose direction phi (rad) and the turning couple's level (-1..1, + speeding up
- * phi) in a coast shot: the stable coast attitude, the midcourse correction's turns
- * (deep space) and the turn engine first (approach).
- */
-export function coastAttitude(id, u) {
-  if (id === "deep") return mccAttitude(u);
-  if (id !== "approach") return { phi: COAST_ATTITUDE[id], rcs: 0 };
-  const turn = approachYaw(u);
-  return { phi: COAST_ATTITUDE.approach + turn.yaw, rcs: turn.rcs };
-}
-
-/*
- * Midcourse correction on day 2 (deep-space shot; seconds into the shot). The
- * correction's Δv (3 m/s) is across the flight path (about 105-115 deg from the
- * velocity), trimming the arrival point for lunar orbit insertion: direction
- * MCC.phi in the coast frame. The sequence:
- *   turn  on RCS from the coast attitude to the burn attitude (thrust axis = Δv)
- *   burn  the main engine (about 2 s at full thrust, shown in 1.2 s)
- *   turn  back to the coast attitude on RCS; the coast resumes, unpowered.
- */
-export const MCC = {
-  shotLen: CISLUNAR.s.deep - CISLUNAR.s.depart,
-  phi: -10 * DEG, // the burn attitude: the nose (thrust) along the correction's Δv
-  turnIn: [0.1, 1.15],
-  on: 1.25, // burnLevel: full 0.35 s after on, out 0.5 s after off
-  off: 2.45,
-  turnOut: [3.0, 4.05],
-  dv: 3,
-};
-/** The correction's Δv direction (unit, coast frame). */
-export const MCC_DIRECTION = [Math.cos(MCC.phi), 0, Math.sin(MCC.phi)];
-export const mccLevel = (u) => burnLevel(u * MCC.shotLen, MCC.on, MCC.off);
-/** The deep-space shot's attitude: coast, turn in, hold for the burn, turn out, coast. */
-export function mccAttitude(u) {
-  const s = u * MCC.shotLen;
-  const d = MCC.phi - COAST_ATTITUDE.deep;
-  const f = (x) => COAST_ATTITUDE.deep + d * (ease((x - MCC.turnIn[0]) / (MCC.turnIn[1] - MCC.turnIn[0])) - ease((x - MCC.turnOut[0]) / (MCC.turnOut[1] - MCC.turnOut[0])));
-  const h = 0.01;
-  const acc = (f(s + h) - 2 * f(s) + f(s - h)) / (h * h);
-  const peak = (Math.abs(d) * 5.77) / ((MCC.turnIn[1] - MCC.turnIn[0]) ** 2);
-  return { phi: f(s), rcs: Math.max(-1, Math.min(1, acc / (peak * 0.5))) };
-}
-
-export const CRUISE_SHOT = {
-  caption: "TRANSLUNAR COAST",
-  sub: "OUTBOUND ASSEMBLY · MAIN ENGINE AFT · LM AND CSM INTEGRATED · 3-DAY COAST",
-};
-/**
- * Departure: from the sunlit side, close to profile (about 100° off the nose), so the
- * main engine stands out past the carrier towards the Earth beyond; the nose away from it.
- */
-export function cruiseCamera(u) {
-  return { pos: lerp([-18, 9, 40], [-16, 8, 36], ease(u)), look: [1.5, 0.8, -6] };
-}
-
-export const DEEP_SHOT = { caption: "DEEP SPACE", sub: "DAY 2 · MIDCOURSE CORRECTION ON THE MAIN ENGINE · TURN, BURN 3 M/S, TURN BACK" };
-/** Deep space: higher and further back, in profile, the Earth small beyond the engine end. */
-export function deepCamera(u) {
-  return { pos: lerp([-15, 15, 60], [-14, 13, 62], ease(u)), look: [1, 2.5, -8] };
-}
-
-export const APPROACH_SHOT = { caption: "LUNAR APPROACH", sub: "OUTBOUND ASSEMBLY · TURNING ENGINE FIRST ON RCS FOR LUNAR ORBIT INSERTION" };
-/** The approach: from the sunlit side, behind the engine end; the Moon ahead, beyond the nose. */
-export function approachCloseCamera(u) {
-  return { pos: lerp([-6, 9, 44], [-4, 8, 38], ease(u)), look: lerp([0, 1, -6], [0, 0.8, -6], ease(u)) };
-}
 
 export const RETURN_CLOSE_END = 560000; // mission s
 export const RETURN_SHOT = { caption: "TRANSEARTH COAST", sub: "THE CSM HEADS HOME · THE LUNAR MODULE STAYED BEHIND" };

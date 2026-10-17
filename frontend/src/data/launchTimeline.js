@@ -17,11 +17,29 @@
 
 export const UNIT_M = 30; // metres per pad-scale scene unit
 export const LIFTOFF_T = 15; // countdown starts at T-15
-export const DURATION = 116.5;
+// The latest the film can end (the end of the departure shot): it normally ends
+// earlier, at TLI_CUT (2 s after GUIDANCE's "Cutoff." is over), and the mission cuts
+// straight to lunar orbit.
+export const DURATION = 105;
 // After TLI the upper stage separates from the lunar transfer carrier (data/carrier
-// STAGE_SEP, tau = t - STAGE_SEP_START). The lunar module and the CSM stay inside the
-// outbound assembly: nothing is extracted near the Earth.
+// STAGE_SEP) off screen, across the cut to lunar orbit: the lunar module and the
+// CSM stay inside the outbound assembly. The trajectory model past it is kept.
 export const STAGE_SEP_START = 103.5;
+
+/*
+ * The end of the Earth departure: GUIDANCE's "Cutoff." (event tliCutoff), heard
+ * to its end, then the departure shot held exactly `hold` seconds (real time,
+ * whatever the frame rate), then a fade through black of `fade` seconds into
+ * lunar orbit. If the call is never said (filtered or dropped), its clip's
+ * length stands in for it (`fallbackLine`, from its delay, in film time). The
+ * film never runs past DURATION.
+ */
+export const TLI_CUT = { line: "launch.tliCutoff", delay: 0.2, fallbackLine: 0.75, hold: 2, fade: 0.35 };
+/** Film time at which the hold ends, given when the call ended in film time (or null if it was never said). */
+export const tliCutHoldEnd = (lineEndT) => {
+  const end = lineEndT != null ? lineEndT : eventTime("tliCutoff") + TLI_CUT.delay + TLI_CUT.fallbackLine;
+  return Math.min(DURATION - TLI_CUT.fade, end + TLI_CUT.hold);
+};
 
 // Camera shots, in order. Hard cuts between shots, smooth motion within.
 export const SHOTS = [
@@ -48,11 +66,8 @@ export const SHOTS = [
   { id: "tliPrep", start: 85.5, end: 89.5, regime: "flight", name: "TLI PREPARATION" },
   { id: "tliCount", start: 89.5, end: 92.5, regime: "flight", name: "GO FOR TLI" },
   { id: "tli", start: 92.5, end: 99, regime: "flight", name: "TRANSLUNAR INJECTION" },
-  { id: "departure", start: 99, end: 103.5, regime: "flight", name: "LEAVING EARTH ORBIT" },
-  // Twenty minutes after the burn the spent upper stage separates; the outbound
-  // assembly (carrier, adapter with the LM inside, CSM) goes on to the Moon whole.
-  { id: "carrierSep", start: 103.5, end: 111, regime: "flight", name: "UPPER STAGE SEPARATION" },
-  { id: "farewell", start: 111, end: DURATION, regime: "flight", name: "TRANSLUNAR COAST" },
+  // The last shot: held to the cut to lunar orbit (TLI_CUT).
+  { id: "departure", start: 99, end: DURATION, camEnd: 103.5, regime: "flight", name: "LEAVING EARTH ORBIT" },
 ];
 
 // Mission events. Captions describe what happens; none of them waits for input.
@@ -76,9 +91,6 @@ export const EVENTS = [
   { t: 92.6, id: "tli", caption: "TRANSLUNAR INJECTION", sub: "UPPER STAGE RESTART AT SUNRISE · Δv 3.1 KM/S", kicker: "DEPARTURE FOR THE MOON" },
   { t: 100, id: "tliCutoff" },
   { t: 100.3, id: "lunarTransfer", caption: "LUNAR TRANSFER", sub: "TLI CUTOFF · ON COURSE FOR THE MOON · 3-DAY COAST", kicker: "DEPARTURE FOR THE MOON" },
-  // Upper-stage separation (pyros at STAGE_SEP_START + data/carrier STAGE_SEP.t0).
-  { t: 104.1, id: "carrierSep", caption: "UPPER STAGE SEPARATION", sub: "THE TRANSFER CARRIER TAKES OVER · LM AND CSM STAY INTEGRATED", kicker: "TRANSLUNAR COAST" },
-  { t: 111.3, id: "farewell", caption: "UPPER STAGE LEFT BEHIND", sub: "OUTBOUND ASSEMBLY ON COURSE FOR THE MOON · 3-DAY COAST", kicker: "TRANSLUNAR COAST" },
 ];
 
 export const eventTime = (id) => EVENTS.find((e) => e.id === id).t;
@@ -389,4 +401,4 @@ export function payloadReveal(t) {
 }
 
 /* Validation helper: the order of required mission milestones. */
-export const MILESTONES = ["engineStart", "liftoff", "towerClear", "maxQ", "meco", "separation", "usIgnition", "orbit", "finalPass", "tliPrep", "tli", "lunarTransfer", "carrierSep", "farewell"];
+export const MILESTONES = ["engineStart", "liftoff", "towerClear", "maxQ", "meco", "separation", "usIgnition", "orbit", "finalPass", "tliPrep", "tli", "tliCutoff", "lunarTransfer"];

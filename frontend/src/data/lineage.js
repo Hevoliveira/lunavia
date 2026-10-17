@@ -5,9 +5,12 @@
  * the vehicle, the parts it removes or joins, and the shot that shows it
  * happening, so nothing is swapped, added or dropped off screen. The tests
  * hold four rules: no part appears after the pad; every part that leaves is
- * shown leaving; the command and service module and the lunar module that reach
- * lunar orbit are the ones that stood on the pad; and they leave the outbound
- * assembly only in lunar orbit, after the insertion burn, never near the Earth.
+ * shown leaving, except across the one cut the film makes on purpose (`offScreen`:
+ * from TLI cutoff straight to lunar orbit, where only the spent upper stage
+ * leaves, and the insertion burn is flown); the command and service module and
+ * the lunar module that reach lunar orbit are the ones that stood on the pad;
+ * and they leave the outbound assembly only in lunar orbit, after the insertion
+ * burn, never near the Earth.
  *
  * `drawnBy` names the component that draws each configuration; all of them are
  * built from the same two models (CsmModel and LanderModel).
@@ -44,11 +47,12 @@ export const LINEAGE = [
   { id: "towerJettison", event: "lesJettison", removes: ["les"], shot: { launch: "usIgnition" }, drawnBy: "RocketModel" },
   { id: "earthOrbit", event: "orbit", shot: { launch: "orbitClose" }, drawnBy: "RocketModel" },
   { id: "tli", event: "tli", shot: { launch: "tli" }, burn: "stage2", drawnBy: "RocketModel" },
-  // After TLI only the spent upper stage leaves; the LM stays in the closed adapter, the CSM on top.
-  { id: "stageSeparation", event: "carrierSep", removes: ["stage2"], shot: { launch: "carrierSep" }, drawnBy: "RocketModel" },
-  { id: "translunarCoast", event: "farewell", shot: { launch: "farewell", mission: "cruiseClose" }, lm: "in the adapter", drawnBy: "PayloadSection" },
-  { id: "lunarApproach", shot: { mission: "approachClose" }, drawnBy: "PayloadSection" },
-  { id: "lunarOrbitInsertion", shot: { orbit: "loi" }, burn: "carrier", drawnBy: "PayloadSection" },
+  // The cut: the film ends 2 s after TLI cutoff (the last launch shot) and resumes on the
+  // arrival in lunar orbit. Behind it, off screen: the spent upper stage separates (the LM
+  // stays in the closed adapter, the CSM on top), the three-day coast, the carrier's
+  // insertion burn.
+  { id: "translunarCut", event: "tliCutoff", removes: ["stage2"], offScreen: "TLI cutoff → lunar orbit", shot: { launch: "departure" }, lm: "in the adapter", drawnBy: "RocketModel" },
+  { id: "lunarOrbitInsertion", offScreen: "TLI cutoff → lunar orbit", shot: { orbit: "establish" }, burn: "carrier", drawnBy: "PayloadSection" },
   { id: "lunarArrival", shot: { orbit: "assembly" }, drawnBy: "PayloadSection" },
   // The deployment, in lunar orbit (data/transposition, data/orbitSequence ORBIT_SEQ.deploy).
   { id: "panelsJettison", removes: ["adapterPanels"], shot: { orbit: "deploySep" }, drawnBy: "PayloadSection" },

@@ -8,9 +8,8 @@
  * features only grow as the camera approaches. The Moon itself has one fixed
  * orientation (MOON_ROTATION) in every shot.
  *
- * Arrival. The cruise ends close on the spacecraft (data/orbitSequence
- * CISLUNAR), the Moon behind it seen from this same CAMERA_RAY side; lunar orbit
- * opens close on the insertion burn (ORBIT_SEQ.loi), then the establishing shot.
+ * Arrival. The mission cuts from TLI cutoff straight to the establishing shot
+ * (data/orbitSequence ORBIT_ENTRY): no translunar travel is shown.
  *
  * Orbit. The landing site (Mare Tranquillitatis, 0.67°N 23.47°E) is lit by a
  * low morning Sun from the east. The craft flies its orbit over the site, east

@@ -15,7 +15,7 @@ import {
   orbitCamera,
 } from "./lunarOrbitShot";
 import { MOON_UNITS as R, moonScenePos } from "./sceneTrack";
-import { APPROACH_RAY, ORBIT_RATE, ORBIT_SEQ } from "./orbitSequence";
+import { ORBIT_RATE, ORBIT_SEQ } from "./orbitSequence";
 
 const DEG = Math.PI / 180;
 const M = moonScenePos(270000); // the lunar orbit is shown with the Moon where the cruise left it
@@ -180,14 +180,5 @@ describe("orbit camera: the Moon cannot appear to turn", () => {
       if (disc > 0) expect(-b - Math.sqrt(disc)).toBeGreaterThan(dl);
       expect(dot(sub(cam.pos, landingSite(M, R)), LZ_UP)).toBeGreaterThan(0);
     }
-  });
-});
-
-describe("arrival at the end of the cruise", () => {
-  test("the approach sees the Moon from the side the orbit shots look at: the same face, lit the same way", () => {
-    const flat = norm([CAMERA_RAY[0], 0, CAMERA_RAY[2]]);
-    APPROACH_RAY.forEach((x, i) => expect(x).toBeCloseTo(flat[i], 9));
-    // mostly lit (gibbous), not the night side
-    expect((1 + dot(APPROACH_RAY, SUN)) / 2).toBeGreaterThan(0.6);
   });
 });

@@ -6,7 +6,7 @@ import { ORBIT_SHOTS } from "./orbitSequence";
 
 const SRC = path.resolve(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
-const MISSION_SHOTS = ["cruiseClose", "approachClose", "returnClose", "descent", "reentry"];
+const MISSION_SHOTS = ["returnClose", "descent", "reentry"];
 
 describe("spacecraft lineage: one launch vehicle, one spacecraft, one mission", () => {
   const pad = LINEAGE[0].parts;
@@ -31,7 +31,7 @@ describe("spacecraft lineage: one launch vehicle, one spacecraft, one mission", 
     expect(partsAfter("carrierLeft").sort()).toEqual(["cm", "lm", "sm"]);
     // they cross to the Moon integrated: carrier, adapter (panels closed, the LM inside), CSM
     const outbound = ["adapterPanels", "adapterRing", "carrier", "cm", "lm", "sm"];
-    expect(partsAfter("translunarCoast").sort()).toEqual(outbound);
+    expect(partsAfter("translunarCut").sort()).toEqual(outbound);
     expect(partsAfter("lunarOrbitInsertion").sort()).toEqual(outbound);
     expect(partsAfter("lunarArrival").sort()).toEqual(outbound);
   });
@@ -53,7 +53,7 @@ describe("spacecraft lineage: one launch vehicle, one spacecraft, one mission", 
       expect(LINEAGE[idx(id)].shot.launch).toBeUndefined();
     });
     // Near the Earth only the spent stages and the escape tower go
-    const earthSide = LINEAGE.slice(0, idx("translunarCoast") + 1).flatMap((s) => s.removes || []);
+    const earthSide = LINEAGE.slice(0, idx("translunarCut") + 1).flatMap((s) => s.removes || []);
     expect(earthSide.sort()).toEqual(["les", "stage1", "stage2"]);
   });
 
@@ -62,7 +62,11 @@ describe("spacecraft lineage: one launch vehicle, one spacecraft, one mission", 
     LINEAGE.forEach((s) => (s.removes || []).forEach((p) => (removedAt[p] = s)));
     expect(Object.keys(removedAt).sort()).toEqual(["adapterPanels", "adapterRing", "carrier", "les", "lm", "sm", "stage1", "stage2"]);
     Object.values(removedAt).forEach((s) => expect(s.shot).toBeTruthy());
-    expect(removedAt.stage2.id).toBe("stageSeparation");
+    // the spent upper stage across the one deliberate cut (TLI cutoff → lunar orbit); everything else on screen
+    expect(removedAt.stage2.id).toBe("translunarCut");
+    expect(removedAt.stage2.offScreen).toBeTruthy();
+    expect(LINEAGE.filter((s) => s.offScreen).map((s) => s.id)).toEqual(["translunarCut", "lunarOrbitInsertion"]);
+    Object.values(removedAt).filter((s) => s !== removedAt.stage2).forEach((s) => expect(s.offScreen).toBeUndefined());
     expect(removedAt.carrier.id).toBe("carrierLeft");
   });
 
@@ -79,13 +83,14 @@ describe("spacecraft lineage: one launch vehicle, one spacecraft, one mission", 
       if (orbit) expect(orbitShots).toContain(orbit);
       if (mission) expect(MISSION_SHOTS).toContain(mission);
     });
-    // After TLI: the stage separation, then the coast; in lunar orbit: insertion, then the
-    // deployment in order, then the undocking
+    // The launch ends on the departure after TLI (the cut); lunar orbit opens on the arrival,
+    // then the deployment in order, then the undocking
     const at = (id) => launchShots.indexOf(id);
-    expect(at("tli")).toBeLessThan(at("carrierSep"));
-    expect(at("carrierSep")).toBeLessThan(at("farewell"));
+    expect(at("tli")).toBeLessThan(at("departure"));
+    expect(launchShots[launchShots.length - 1]).toBe("departure");
     const o = (id) => orbitShots.indexOf(id);
-    ["loi", "assembly", "deploySep", "deployTurn", "deployDock", "deployExtract", "leave", "undock"].forEach((id, i, a) => {
+    expect(orbitShots[0]).toBe("establish");
+    ["establish", "assembly", "deploySep", "deployTurn", "deployDock", "deployExtract", "leave", "undock"].forEach((id, i, a) => {
       if (i) expect(o(a[i - 1])).toBeLessThan(o(id));
     });
   });

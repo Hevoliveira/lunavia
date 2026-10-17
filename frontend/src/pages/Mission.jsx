@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowUpRight, RotateCcw } from "lucide-react";
 import ControlRoomView from "@/components/scenes/ControlRoomView";
 import LaunchCinematic from "@/components/scenes/LaunchCinematic";
-import MissionScene from "@/components/MissionScene";
+import MissionScene, { preloadMissionScene } from "@/components/MissionScene";
 import DescentScene from "@/components/scenes/DescentScene";
 import ReentryScene from "@/components/scenes/ReentryScene";
 import DescentGame from "@/components/DescentGame";
@@ -15,16 +15,18 @@ import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import MissionTitle from "@/components/MissionTitle";
 import { goForPdi } from "@/data/lunarOrbitShot";
-import { APPROACH_SHOT, CISLUNAR, CRUISE_SHOT, DEEP_SHOT, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, coastShotAt, cruiseTime, mccLevel, orbitClockAt, orbitShotAt } from "@/data/orbitSequence";
+import { ORBIT_ENTRY, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, orbitClockAt, orbitShotAt } from "@/data/orbitSequence";
 import { TD } from "@/data/transposition";
 import { TITLE } from "@/data/titleReveal";
 
 /*
  * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
  * count → liftoff → ascent → MECO → staging → upper stage → parking orbit →
- * TLI → the spent upper stage separates) without any input, then the outbound
- * assembly coasts to the Moon and its transfer carrier fires into lunar orbit.
- * There, and only there, the spacecraft deploy: the CSM docks with the lunar
+ * TLI) without any input and ends 2 s after GUIDANCE's "Cutoff." Then the film
+ * cuts straight to lunar orbit (ORBIT_ENTRY: the arrival, CAPCOM's welcome): no
+ * translunar travel is shown. The three-day coast, the spent upper stage's
+ * separation and the insertion burn happen across the cut; the outbound
+ * assembly arrives integrated. There, and only there, the spacecraft deploy: the CSM docks with the lunar
  * module and pulls it off the carrier, then the LM undocks (data/orbitSequence).
  * After CAPCOM's go for powered descent the game's title is presented, once per
  * mission, over the lunar module moving away (data/titleReveal), and the title
@@ -36,7 +38,6 @@ import { TITLE } from "@/data/titleReveal";
 const STATES = {
   CONTROL: "control",
   LAUNCH: "launch",
-  SPACE: "space",
   ORBIT: "orbit",
   TITLE: "title",              // the persistent title screen: START MISSIONS
   DIFFICULTY: "difficulty",
@@ -53,7 +54,6 @@ const STATES = {
 const STATE_LABELS = {
   control: { code: "T-00:00:10", name: "MISSION CONTROL" },
   launch: { code: "T-00:00:15", name: "LAUNCH" },
-  space: { code: "T+03:00:00", name: "CISLUNAR CRUISE" },
   orbit: { code: "T+80:00:00", name: "LUNAR ORBIT" },
   title: { code: "T+81:30:00", name: "LUNAR ORBIT" },
   difficulty: { code: "T+82:00:00", name: "DESCENT · SETUP" },
@@ -67,8 +67,9 @@ const STATE_LABELS = {
   complete: { code: "T+195:15:00", name: "SPLASHDOWN · MISSION COMPLETE" },
 };
 
-// Cruise picks up after the TLI burn shown in the launch cinematic.
-const CRUISE_START = CISLUNAR.start;
+// Mission time on arrival in lunar orbit (T+80 h). The lunar-orbit scene runs on its own
+// clock (orbitClockRef); only the return reads missionTime.
+const ARRIVAL_TIME = 80 * 3600;
 
 // Undocking sounds, seconds after the latches release (data/orbitSequence ORBIT_SEQ.undock).
 const UNDOCK_SOUND = [
@@ -80,20 +81,14 @@ const UNDOCK_SOUND = [
 
 // Shot captions (lower third), keyed by shot.
 const SHOT_CAPTIONS = {
-  cruiseClose: { kicker: "TRANSLUNAR COAST", title: CRUISE_SHOT.caption, sub: CRUISE_SHOT.sub },
-  deepSpace: { kicker: "TRANSLUNAR COAST", title: DEEP_SHOT.caption, sub: DEEP_SHOT.sub },
-  approachClose: { kicker: "TRANSLUNAR COAST", title: APPROACH_SHOT.caption, sub: APPROACH_SHOT.sub },
   returnClose: { kicker: "TRANS-EARTH INJECTION", title: RETURN_SHOT.caption, sub: RETURN_SHOT.sub },
 };
-const COAST_CAPTION = { depart: "cruiseClose", deep: "deepSpace", approach: "approachClose" };
 
 // Lunar orbit's sound and comms, once each as the orbit clock passes them (and
 // only if it is still near: SKIP jumps past them silently). The deployment's
 // pyros, RCS and latches are felt through the structure (data/transposition TD).
 const DEP = (x) => ORBIT_SEQ.deploy + x;
 const ORBIT_CUES = [
-  { t: ORBIT_SEQ.ignition, cue: "loiOn" },
-  { t: ORBIT_SEQ.cutoff, cue: "loiOff" },
   { t: ORBIT_SEQ.arrive + 0.6, cue: "arrival" },
   { t: DEP(TD.sep), cue: "thud", vol: 0.3 },
   { t: DEP(TD.sep) + 0.02, cue: "clank", vol: 0.22 },
@@ -112,7 +107,6 @@ const ORBIT_CUES = [
 
 const FLIGHT_STATES = new Set([
   STATES.LAUNCH,
-  STATES.SPACE,
   STATES.ORBIT,
   STATES.TITLE,
   STATES.MANUAL_DESCENT,
@@ -126,11 +120,6 @@ export default function Mission() {
   const [state, setState] = useState(STATES.CONTROL);
   const [progress, setProgress] = useState(0);
   const [descentAlt, setDescentAlt] = useState(8);
-  const [spaceTime, setSpaceTime] = useState(CRUISE_START);
-  const cruiseRef = useRef(CRUISE_START); // same clock, for the loop
-  const losRef = useRef(false); // the coast has handed over to lunar orbit
-  const mccRef = useRef(false); // the midcourse correction burn is on
-  const cruiseClockRef = useRef(0); // real seconds into the coast (data/orbitSequence cruiseTime)
   // Lunar orbit presentation (ORBIT, TITLE, DIFFICULTY, BRIEFING): the orbit
   // clock, read every frame by the scene through the ref. It is real seconds
   // since orbit began until the title screen, then slows to a near stop
@@ -138,10 +127,13 @@ export default function Mission() {
   const orbitClockRef = useRef(0);
   const orbitRealRef = useRef(0);
   const [goPdi, setGoPdi] = useState(false);
+  // From GUIDANCE's "Cutoff." the lunar-orbit scene is mounted under the launch, held on the
+  // arrival, so that it is already drawn when the film cuts to it.
+  const [orbitAhead, setOrbitAhead] = useState(false);
   const goPdiRef = useRef(false);
   const titleRef = useRef(false); // this mission has reached its title screen
   const startedRef = useRef(false); // START MISSIONS pressed (once per mission)
-  // Lower-third caption of the current shot (cruise close shot, lunar orbit, return).
+  // Lower-third caption of the current shot (lunar orbit, return).
   const [caption, setCaption] = useState(null);
   const captionRef = useRef(null);
   const undockSoundRef = useRef(new Set());
@@ -174,36 +166,7 @@ export default function Mission() {
       lastTsRef.current = ts;
       const s = stateRef.current;
 
-      if (s === STATES.SPACE) {
-        // The coast on its own clock: departure, deep space, the approach
-        // (data/orbitSequence CISLUNAR), then lunar orbit opens on the
-        // insertion burn, with no fade.
-        const c = Math.min(cruiseClockRef.current + dt, CISLUNAR.s.end);
-        cruiseClockRef.current = c;
-        const next = cruiseTime(c);
-        const coastShot = coastShotAt(next);
-        // The midcourse correction on the main engine, felt aboard (one short burn; the rest is a coast).
-        const mcc = coastShot.id === "deep" && mccLevel(coastShot.u) > 0.05;
-        if (mcc !== mccRef.current) {
-          mccRef.current = mcc;
-          if (mcc) audio.startRumble(0.16);
-          else audio.stopRumble();
-        }
-        const cap = COAST_CAPTION[coastShot.id];
-        if (cap !== captionRef.current) {
-          captionRef.current = cap;
-          setCaption({ id: cap, ...SHOT_CAPTIONS[cap] });
-        }
-        cruiseRef.current = next;
-        setSpaceTime(next);
-        if (c >= CISLUNAR.s.end && !losRef.current) {
-          losRef.current = true;
-          orbitClockRef.current = 0;
-          orbitRealRef.current = 0;
-          orbitCueRef.current = new Set();
-          setState(STATES.ORBIT);
-        }
-      } else if (s === STATES.ORBIT || s === STATES.TITLE || s === STATES.DIFFICULTY || s === STATES.BRIEFING) {
+      if (s === STATES.ORBIT || s === STATES.TITLE || s === STATES.DIFFICULTY || s === STATES.BRIEFING) {
         // The orbit keeps flying while the player reads; no React render per frame.
         orbitRealRef.current += dt;
         // Seek (validation tooling): jump the orbit clock forward, as the launch's __lvLaunchSeek does.
@@ -232,14 +195,12 @@ export default function Mission() {
               if (tau - at < 0.5) (c.cue === "clank" ? audio.clank(c.vol) : audio.hiss(c.dur, c.vol));
             }
           });
-          // The insertion burn felt aboard, Houston on reacquiring the signal, the title's music.
+          // Houston's welcome on arrival, the deployment's sounds, the title's music.
           ORBIT_CUES.forEach((c, i) => {
             if (tau >= c.t && !orbitCueRef.current.has(i)) {
               orbitCueRef.current.add(i);
               if (tau - c.t >= 0.5) return;
-              if (c.cue === "loiOn") audio.startRumble(0.32);
-              else if (c.cue === "loiOff") audio.stopRumble();
-              else if (c.cue === "arrival") audio.say("orbit.arrival");
+              if (c.cue === "arrival") audio.say("orbit.arrival");
               else if (c.cue === "titleMusic") audio.padStart();
               else if (c.cue === "thud") audio.thud?.(c.vol);
               else if (c.cue === "clank") audio.clank(c.vol);
@@ -294,19 +255,32 @@ export default function Mission() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // "Cutoff.": mount lunar orbit under the launch, its clock held on the arrival.
+  const handleCutAhead = () => {
+    if (stateRef.current !== STATES.LAUNCH) return;
+    orbitRealRef.current = ORBIT_ENTRY;
+    orbitClockRef.current = orbitClockAt(ORBIT_ENTRY);
+    setOrbitAhead(true);
+  };
+
   const handleLaunch = () => {
     audio.init();
+    preloadMissionScene(); // lunar orbit follows the launch directly
     setState(STATES.LAUNCH);
   };
 
-  // End of the Earth departure (or SKIP): straight into the cislunar cruise.
-  // Skipping only shortens the film; the mission states are the same.
+  // End of the Earth departure (2 s after "Cutoff.", or SKIP): a cinematic time jump
+  // straight to lunar orbit, on the arrival (ORBIT_ENTRY), where CAPCOM welcomes the crew.
+  // The coast, the upper stage's separation and the insertion burn are behind the cut:
+  // the orbit clock starts at the arrival, and the deployment, the undocking and the
+  // title follow on it as before. Skipping only shortens the film; the states are the same.
   const handleLaunchComplete = () => {
-    cruiseRef.current = CRUISE_START;
-    cruiseClockRef.current = 0;
-    losRef.current = false;
-    setSpaceTime(CRUISE_START);
-    setState(STATES.SPACE);
+    if (stateRef.current !== STATES.LAUNCH) return;
+    audio.roarStop(0.3);
+    orbitRealRef.current = ORBIT_ENTRY;
+    orbitClockRef.current = orbitClockAt(ORBIT_ENTRY);
+    orbitCueRef.current = new Set(ORBIT_CUES.flatMap((c, i) => (c.t < ORBIT_ENTRY ? [i] : [])));
+    setState(STATES.ORBIT);
   };
 
   const handleSkipLaunch = () => {
@@ -402,12 +376,9 @@ export default function Mission() {
     audio.ambienceStop(0.5);
     audio.padStop(1);
     setState(STATES.CONTROL);
+    setOrbitAhead(false);
     setProgress(0);
     setDescentAlt(8);
-    losRef.current = false;
-    cruiseClockRef.current = 0;
-    cruiseRef.current = CRUISE_START;
-    setSpaceTime(CRUISE_START);
     setFade({ o: 0, ms: 0 });
     orbitClockRef.current = 0;
     orbitRealRef.current = 0;
@@ -429,12 +400,10 @@ export default function Mission() {
   const inLunarOrbit = state === STATES.ORBIT || state === STATES.TITLE || state === STATES.DIFFICULTY || state === STATES.BRIEFING;
 
   // Mission control between the scripted flight and the manual phases:
-  // a word during the cruise, arrival at the Moon once the signal is back after
-  // the insertion burn (ORBIT_CUES), and CAPCOM's go for powered descent once
-  // the lunar module has separated, before the title.
+  // the welcome on arrival in lunar orbit (ORBIT_CUES), and CAPCOM's go for
+  // powered descent once the lunar module has separated, before the title.
   const goPdiCalledRef = useRef(false);
   useEffect(() => {
-    if (state === STATES.SPACE) audio.say("cruise.ambient", { delay: 3 });
     if (state === STATES.ORBIT) goPdiCalledRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
@@ -449,7 +418,7 @@ export default function Mission() {
   // Engine sound belongs to the launch cinematic; the space music fades out
   // as the crew reaches lunar orbit and takes control.
   useEffect(() => {
-    if (state === STATES.SPACE || state === STATES.ORBIT) {
+    if (state === STATES.ORBIT) {
       audio.stopRumble();
     }
     if (state === STATES.ORBIT) audio.padStop(5);
@@ -478,14 +447,15 @@ export default function Mission() {
       {/* --- Scene layer --- */}
       {state === STATES.CONTROL && <ControlRoomView onLaunch={handleLaunch} />}
 
-      {state === STATES.LAUNCH && (
-        <LaunchCinematic audio={audio} onComplete={handleLaunchComplete} onSkip={handleSkipLaunch} />
+      {/* One scene for lunar orbit and the descent-prep screens: kept mounted
+          across them so the camera never cuts or snaps. It is mounted under the
+          launch from "Cutoff." (held on the arrival), so the cut lands on a drawn frame. */}
+      {(inLunarOrbit || (state === STATES.LAUNCH && orbitAhead)) && (
+        <MissionScene missionTime={ARRIVAL_TIME} cinematic={true} orbitClock={orbitClockRef} orbitReal={orbitRealRef} />
       )}
 
-      {/* One scene for the cruise, lunar orbit and the descent-prep screens:
-          kept mounted across them so the camera never cuts or snaps. */}
-      {(state === STATES.SPACE || inLunarOrbit) && (
-        <MissionScene missionTime={spaceTime} cinematic={true} orbitClock={inLunarOrbit ? orbitClockRef : null} orbitReal={inLunarOrbit ? orbitRealRef : null} />
+      {state === STATES.LAUNCH && (
+        <LaunchCinematic audio={audio} onComplete={handleLaunchComplete} onSkip={handleSkipLaunch} onCutAhead={handleCutAhead} />
       )}
 
       {/* The title, once per mission: over the LM moving away after the go for powered descent,
@@ -576,8 +546,8 @@ export default function Mission() {
         </div>
       )}
 
-      {/* Shot caption, lower third (cruise close shot, lunar orbit and undocking, return) */}
-      {caption && (state === STATES.SPACE || state === STATES.ORBIT || state === STATES.RETURN) && (
+      {/* Shot caption, lower third (lunar orbit and undocking, return) */}
+      {caption && (state === STATES.ORBIT || state === STATES.RETURN) && (
         <div
           key={caption.id}
           data-testid="mission-caption"

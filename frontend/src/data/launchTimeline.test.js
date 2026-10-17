@@ -1,9 +1,10 @@
 import {
   SHOTS, EVENTS, DURATION, LIFTOFF_T, MILESTONES, metAt, formatMet, trajectoryAt, padHeight,
   stage1Thrust, upperThrust, sepProgress, eventTime, shotAt, airDensity, sunAt, rollAt, stage1Visible,
-  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE, LES_JETTISON, lesJettison, payloadReveal, STAGE_SEP_START,
+  tliCountdown, orbitPhase, RCS_WINDOWS, ULLAGE, LES_JETTISON, lesJettison, payloadReveal, TLI_CUT, tliCutHoldEnd,
 } from "./launchTimeline";
-import { STAGE_SEP } from "./carrier";
+import catalog from "../audio/commsLines.json";
+import manifest from "../../public/voice/manifest.json";
 
 describe("launch timeline", () => {
   test("shots tile the whole sequence without gaps or overlaps", () => {
@@ -58,7 +59,7 @@ describe("launch timeline", () => {
     expect(orbit.altKm).toBeCloseTo(185, 0);
     expect(orbit.speedKmps).toBeCloseTo(7.8, 1); // circular LEO
     expect(tliEnd.speedKmps).toBeGreaterThan(10.4); // above LEO, escape-class after TLI
-    expect(away.altKm).toBeGreaterThan(10000); // Earth recedes into a globe
+    expect(away.altKm).toBeGreaterThan(5000); // climbing away from the parking orbit as the film ends
     // The whole parking orbit is flown at 185 km, at orbital speed
     for (let t = eventTime("orbit") + 0.5; t < eventTime("tli"); t += 0.5) {
       expect(trajectoryAt(t).altKm).toBeCloseTo(185, 0);
@@ -95,7 +96,7 @@ describe("launch timeline", () => {
     expect(shotAt(0).id).toBe("wide");
     expect(shotAt(eventTime("separation")).id).toBe("sepJoint");
     expect(shotAt(eventTime("tli")).id).toBe("tli");
-    expect(shotAt(DURATION - 0.01).id).toBe("farewell");
+    expect(shotAt(DURATION - 0.01).id).toBe("departure");
     expect(airDensity(0)).toBe(1);
     expect(airDensity(65)).toBeLessThan(0.001);
   });
@@ -134,7 +135,7 @@ describe("launch timeline", () => {
   test("TLI finale: roll, ullage, a 3-2-1 hold, ignition, then the vehicle leaves", () => {
     const shot = (id) => SHOTS.find((x) => x.id === id);
     // Order of the finale beats
-    expect(SHOTS.slice(-7).map((s) => s.id)).toEqual(["finalPass", "tliPrep", "tliCount", "tli", "departure", "carrierSep", "farewell"]);
+    expect(SHOTS.slice(-5).map((s) => s.id)).toEqual(["finalPass", "tliPrep", "tliCount", "tli", "departure"]);
     // RCS roll inside the night pass; ullage just before ignition
     RCS_WINDOWS.forEach(([a, b]) => {
       expect(a).toBeGreaterThanOrEqual(shot("tliPrep").start);
@@ -154,12 +155,11 @@ describe("launch timeline", () => {
     // The burn is still on as the departure shot opens, then cuts off
     expect(upperThrust(shot("departure").start + 0.2)).toBe(1);
     expect(upperThrust(eventTime("lunarTransfer") + 0.5)).toBe(0);
-    // Leaving: altitude rises through the departure shot, then the Earth recedes
+    // Leaving: altitude rises through the departure shot
     expect(trajectoryAt(shot("departure").end - 0.1).altKm).toBeGreaterThan(trajectoryAt(shot("departure").start).altKm);
-    expect(trajectoryAt(shot("carrierSep").start).altKm).toBeGreaterThan(5000);
   });
 
-  test("after TLI only the spent upper stage separates: the lunar module and the CSM stay in the outbound assembly", () => {
+  test("the film ends on the departure, 2 s after GUIDANCE's \"Cutoff.\" is over: no translunar travel, no deployment near the Earth", () => {
     const shot = (id) => SHOTS.find((x) => x.id === id);
     // No deployment near the Earth: no transposition, docking or extraction shot or event
     const earthSide = /^td|transposition|docking|dock|extract|panels|hga|capture/i;
@@ -168,26 +168,33 @@ describe("launch timeline", () => {
     EVENTS.filter((e) => e.t > eventTime("tli")).forEach((e) => {
       expect(`${e.caption || ""} ${e.sub || ""}`).not.toMatch(/EXTRACT|TRANSPOSITION|DOCKING|DOCKED|PANELS OPEN|ADAPTER OPEN/);
     });
-    // The upper stage has finished its burn before it separates, at the stage's pyros (data/carrier STAGE_SEP)
-    expect(upperThrust(shot("carrierSep").start)).toBe(0);
-    expect(eventTime("tliCutoff")).toBeLessThan(eventTime("carrierSep"));
-    expect(eventTime("carrierSep")).toBeCloseTo(STAGE_SEP_START + STAGE_SEP.t0, 9);
-    expect(shot("carrierSep").start).toBe(STAGE_SEP_START);
-    expect(shot("farewell").start - STAGE_SEP_START).toBeCloseTo(STAGE_SEP.coastFrom, 9);
-    // In mission order, each inside its own shot
-    [["carrierSep", "carrierSep"], ["farewell", "farewell"]].forEach(([e, s]) => {
-      expect(shotAt(eventTime(e)).id).toBe(s);
-    });
-    expect(EVENTS.find((e) => e.id === "carrierSep").sub).toMatch(/LM AND CSM STAY INTEGRATED/);
-    // The mission clock reaches the cruise (MET 12 000 s) as the cinematic ends, and
-    // the separation runs at a modest compression, the coast after it faster
-    expect(metAt(DURATION)).toBeCloseTo(12000, 0);
-    const rate = (a, b) => (metAt(b) - metAt(a)) / (b - a);
-    expect(rate(shot("carrierSep").start, shot("carrierSep").end)).toBeLessThanOrEqual(20);
-    // The vehicle climbs from ~6 000 km through the separation, then the Earth recedes to the cruise's distance
-    expect(trajectoryAt(shot("carrierSep").start).altKm).toBeGreaterThanOrEqual(6000);
-    expect(trajectoryAt(shot("carrierSep").end).altKm).toBeLessThan(8000);
-    expect(trajectoryAt(DURATION).altKm / 25000).toBeGreaterThan(0.95);
+    // No translunar travel: nothing after the departure shot; its last event is the lunar-transfer caption
+    expect(SHOTS[SHOTS.length - 1].id).toBe("departure");
+    SHOTS.forEach((x) => expect(x.id).not.toMatch(/carrierSep|farewell|coast|cruise|deep|approach/i));
+    expect(EVENTS[EVENTS.length - 1].id).toBe("lunarTransfer");
+    EVENTS.forEach((e) => expect(`${e.caption || ""} ${e.sub || ""} ${e.kicker || ""}`).not.toMatch(/SEPARATION.*CARRIER|TRANSLUNAR COAST|LEFT BEHIND/));
+    // The cut: the call is GUIDANCE's "Cutoff.", at TLI cutoff, the upper stage's burn over
+    const line = catalog.lines.find((l) => l.id === TLI_CUT.line);
+    expect(line.role).toBe("GUIDANCE");
+    expect(line.variants[0].en).toBe("Cutoff.");
+    expect(upperThrust(eventTime("tliCutoff") + 0.8)).toBe(0);
+    // held exactly 2 s after the call ends, then a fade of at most 0.5 s
+    expect(TLI_CUT.hold).toBe(2);
+    expect(TLI_CUT.fade).toBeGreaterThan(0);
+    expect(TLI_CUT.fade).toBeLessThanOrEqual(0.5);
+    expect(tliCutHoldEnd(101.1)).toBeCloseTo(103.1, 9);
+    // never said (filtered, or the film seeked past it): the clip's own length stands in for it
+    const clip = Math.max(...["en", "pt"].map((l) => manifest.langs[l].clips[TLI_CUT.line][0].d));
+    expect(clip).toBeGreaterThan(0.5);
+    expect(TLI_CUT.fallbackLine).toBeGreaterThanOrEqual(clip);
+    expect(tliCutHoldEnd(null)).toBeCloseTo(eventTime("tliCutoff") + TLI_CUT.delay + TLI_CUT.fallbackLine + 2, 9);
+    // the hold stays on the departure shot, and its camera move is the one it always had
+    expect(shotAt(tliCutHoldEnd(null)).id).toBe("departure");
+    expect(tliCutHoldEnd(102.9)).toBeLessThanOrEqual(DURATION - TLI_CUT.fade);
+    expect(shot("departure").camEnd).toBe(103.5);
+    // The mission clock as the film ends: about three hours after launch
+    expect(metAt(tliCutHoldEnd(null)) / 3600).toBeGreaterThan(2.5);
+    expect(metAt(tliCutHoldEnd(null)) / 3600).toBeLessThan(3.5);
     // The pad opens on the payload: the spacecraft on top and the lunar module inside the adapter
     expect(SHOTS[1].id).toBe("payload");
     // ... seen through the adapter for about two seconds of that shot, and never elsewhere
