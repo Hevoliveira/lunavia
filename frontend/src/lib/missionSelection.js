@@ -34,7 +34,7 @@ export function saveSelection(sel) {
   return s;
 }
 
-/** Official missions flown, newest last: { id, siteId, difficulty, at, landing?, completed }. */
+/** Official missions flown, newest last: { id, siteId, difficulty, at, landing?, docking?, completed }. */
 export function loadMissionLog() {
   const l = read(LOG_KEY);
   return Array.isArray(l) ? l : [];
@@ -68,6 +68,24 @@ export function logMissionLanding(id, result) {
     fuelPct: n(result.fuelPct),
     terrain: (result.terrain && result.terrain.site) || null,
     attempts: ((e.landing && e.landing.attempts) || 0) + 1,
+  };
+  write(LOG_KEY, log);
+  return log;
+}
+
+/** The docking with the CSM after the lunar ascent: success, attempts, contacts, RCS left, time (s). */
+export function logMissionDocking(id, result) {
+  const log = loadMissionLog();
+  const e = log.find((x) => x.id === id);
+  if (!e || !result) return log;
+  const prev = e.docking || {};
+  e.docking = {
+    success: !!result.success,
+    attempts: Math.max(result.attempts || 1, prev.attempts || 0),
+    contacts: result.contacts != null ? result.contacts : prev.contacts || 0,
+    propLeft: result.propLeft != null ? result.propLeft : null,
+    time: result.time != null ? result.time : null,
+    failure: result.success ? null : result.failure || null,
   };
   write(LOG_KEY, log);
   return log;

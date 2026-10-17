@@ -168,8 +168,14 @@ const WINDOWS = [
 ];
 
 /* ---- the static vehicle ------------------------------------------------------------ */
-export function buildBody() {
-  const P = Object.fromEntries(PARTS.map((k) => [k, []]));
+// The ascent engine (under the cabin, inside the interstage while the stages are joined).
+export const ASC_ENGINE = { top: AS_Y, exitY: AS_Y - 0.085, throatR: 0.03, exitR: 0.062 };
+
+/** The parts of both stages, per material: { descent, ascent } (lists of geometries). */
+function collect() {
+  const PD = Object.fromEntries(PARTS.map((k) => [k, []]));
+  const PA = Object.fromEntries(PARTS.map((k) => [k, []]));
+  let P = PD; // everything up to the interstage belongs to the descent stage
   const { a, c, y0, y1 } = DS;
 
   // Descent stage: foil body, silver top deck, black heat shield and engine skirt.
@@ -218,8 +224,9 @@ export function buildBody() {
   P.engineInner.push(lathe(bell.map(([r, y]) => [r * 0.965, y + 0.002]), 28));
   P.engine.push(new THREE.TorusGeometry(EXIT_R, 0.006, 6, 28).rotateX(Math.PI / 2).translate(0, EXIT_Y + 0.003, 0));
 
-  // Ascent stage: interstage, faceted cabin with bevelled edges.
+  // The interstage (the descent stage's top fittings), then the ascent stage: faceted cabin with bevelled edges.
   P.black.push(prism(octagon(0.31, 0.1), y1 + 0.016, AS_Y + 0.006));
+  P = PA;
   const profile = [
     [-0.24, AS_Y],
     [0.2, AS_Y],
@@ -310,7 +317,33 @@ export function buildBody() {
     nozzle([0, 0, sz], 0.042);
   });
 
-  return Object.fromEntries(PARTS.map((k) => [k, merge(P[k])]));
+  return { descent: PD, ascent: PA };
+}
+
+/** The whole lunar module, stages joined: one merged geometry per material. */
+export function buildBody() {
+  const { descent, ascent } = collect();
+  return Object.fromEntries(PARTS.map((k) => [k, merge(descent[k].concat(ascent[k]))]));
+}
+
+/**
+ * The two stages apart (lunar liftoff): { descent, ascent }, each one merged
+ * geometry per material (materials a stage does not use are left out). The
+ * ascent stage adds its own engine under the cabin, hidden by the interstage
+ * while the stages are joined. Same model units and origin as buildBody.
+ */
+export function buildStages() {
+  const { descent, ascent } = collect();
+  const bell = [];
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    bell.push([ASC_ENGINE.throatR + (ASC_ENGINE.exitR - ASC_ENGINE.throatR) * (1 - Math.pow(1 - t, 2)), ASC_ENGINE.top - 0.012 - (ASC_ENGINE.top - 0.012 - ASC_ENGINE.exitY) * t]);
+  }
+  ascent.engine.push(lathe(bell, 20).translate(0, 0, -0.03));
+  ascent.engineInner.push(lathe(bell.map(([r, y]) => [r * 0.94, y + 0.002]), 20).translate(0, 0, -0.03));
+  ascent.engine.push(new THREE.CylinderGeometry(0.05, 0.05, 0.014, 16).translate(0, ASC_ENGINE.top - 0.007, -0.03));
+  const pack = (P) => Object.fromEntries(PARTS.filter((k) => P[k].length).map((k) => [k, merge(P[k])]));
+  return { descent: pack(descent), ascent: pack(ascent) };
 }
 
 /**

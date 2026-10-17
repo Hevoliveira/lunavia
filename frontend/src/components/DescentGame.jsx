@@ -896,6 +896,13 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
         const finalTilt = p.tilt;
         const finalFuel = p.fuel;
         const result = gradeTouchdown(p, cfg, site);
+        // Where the LM came to rest (read when the result is reported, after it has settled):
+        // the lunar liftoff starts from exactly this pose, on the same terrain.
+        const withPose = (r) => {
+          const f = fxRef.current;
+          r.pose = { x: f.x, padY: f.padY, groundY: f.groundY, tilt: f.tilt || 0, pitch: f.pitch || 0, comp: f.comp.slice(), probe: f.probe.slice(), xPos: p.xPos, site: site.id };
+          return r;
+        };
         // The drawing plays out the graded touchdown (it does not decide it),
         // settling onto the plane of the ground under the footpads.
         const tr = result.terrain;
@@ -928,10 +935,10 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
           } else {
             if (audio.touchdown) audio.touchdown(impact);
             else audio.boom(0.25);
-            setTimeout(() => onSuccess && onSuccess(result), RESULT_DELAY.landed);
+            setTimeout(() => onSuccess && onSuccess(withPose(result)), RESULT_DELAY.landed);
           }
         } else {
-          setTimeout(() => (result.crashed ? onCrash?.(result) : onSuccess?.(result)), result.crashed ? RESULT_DELAY.crashed : RESULT_DELAY.landed);
+          setTimeout(() => (result.crashed ? onCrash?.(result) : onSuccess?.(withPose(result))), result.crashed ? RESULT_DELAY.crashed : RESULT_DELAY.landed);
         }
       }
 

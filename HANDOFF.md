@@ -2337,3 +2337,90 @@ The §38 "near profile 92–112°" check was replaced by these.
 - Everything after the launch: the cut, lunar orbit, the title, START MISSIONS → MISSIONS / TRAINING, the missions and training.
 - ABORT and MAIN MENU return to the menu (`/menu`).
 - LAUNCH in the navigation bar, or reopening the app, shows the startup screen again; it never relaunches by itself.
+
+## 44. Lunar ascent, orbital rendezvous and playable docking
+
+**Mission order now:**
+1. Startup → launch → direct cut → lunar orbit → undocking → title → MISSIONS.
+2. Landing → results → **CONTINUE MISSION**.
+3. **LUNAR SURFACE — ASCENT PREPARATION**, which waits for INITIATE LUNAR ASCENT.
+4. Lunar liftoff → orbit insertion → automatic rendezvous.
+5. **LUNAVIA — DOCKING OPERATIONS**, flown by the player.
+6. Hard dock → crew transfer → ascent stage jettisoned.
+7. The existing return (TEI) → reentry → MISSION COMPLETE.
+
+A mission is complete only at splashdown, which needs the docking.
+
+**Files:**
+
+| File | What it is |
+|---|---|
+| `data/dockingSim.js` (tested) | the authoritative docking physics |
+| `data/rendezvous.js` (tested) | Clohessy–Wiltshire rendezvous guidance |
+| `data/lunarAscent.js` (tested) | the liftoff trajectory |
+| `data/lmDesign.js buildStages` (tested) | the LM split into its two stages |
+| `components/LanderModel.jsx` | `ascent` / `parts` props |
+| `components/LunarAscent.jsx` | ascent preparation and liftoff |
+| `components/DockingOps.jsx` | rendezvous film, docking UI, hard dock, transfer, jettison |
+| `pages/Mission.jsx` | the ASCENT and DOCKING states |
+| `lib/missionSelection.js` | `logMissionDocking` |
+| `audio/commsLines.json` | 22 new lines, Kokoro-rendered EN/PT clips |
+| `components/DescentGame.jsx` | `result.pose`, the landed pose (landing physics and controls untouched) |
+
+**Stage separation:**
+- `lmDesign.collect()` keeps the descent and ascent parts apart.
+- `buildBody()` (the joined LM) is unchanged: same parts, same order.
+- `buildStages()` also adds the ascent engine bell, hidden inside the interstage while the stages are joined.
+- At liftoff the descent stage stays with its legs at the landing's pose (position on the terrain, tilt, strut compression), on the same site terrain.
+
+**Liftoff** (`ascentAt`):
+- 15.6 kN on 4.8 t, in lunar gravity.
+- 10 s of vertical rise, then a pitchover to 52°.
+- The film runs 22 s.
+- The vacuum plume is short and faint, with no smoke. An ignition flash lights the descent stage's deck.
+
+**Rendezvous** (`planRendezvous`):
+- In the CSM's LVLH frame. Insertion is co-elliptic, 14 km below and 46 km behind.
+- TPI: a two-point CW targeting burn over a 130° transfer, executed with a deterministic 1–2 % error.
+- A midcourse correction re-targets from the actual state.
+- A braking burn leaves exactly the docking checkpoint's state.
+- The total is ≈ 9 m/s and ≈ 1 h 7 min of mission time, played as a 34-s film whose clock slows near the end.
+- Tested: numerical integration of the docking sim's own dynamics lands on the checkpoint within centimetres.
+
+**Docking** (`dockingSim`): the CSM's frame in metres; the CSM holds LVLH attitude with its probe pointing −V-bar.
+- **Translational motion:** Clohessy–Wiltshire plus the RCS in body axes.
+- **Attitude:** a quaternion with body rates. Attitude hold damps the rates on CADET and ASTRONAUT; COMMANDER has no hold.
+- **Auto align (CADET):** an option that holds the docking attitude. Translation stays with the player.
+- **Contact:** judged when the probe tip crosses the drogue's ring plane, using the drogue's offset from the probe's axis, the axis angle, roll, closing and lateral speed, and the rates.
+  - Inside tolerance: capture, a 6-s retraction, then hard dock on the ring (`dockedLmPose`).
+  - Outside tolerance: deflection and rebound, which is recoverable.
+- **Failures:**
+  - closing above 0.6 m/s damages the mechanism;
+  - the hull points meeting the CM cone or SM drum is a collision (recoverable below 0.12 m/s);
+  - beyond 180 m the target is lost;
+  - an empty RCS, stopped short of the target, is a failure.
+- **Difficulties** (`DOCKING`): RCS authority, propellant, start state and tolerances.
+
+  | | lateral | angle | closing |
+  |---|---|---|---|
+  | CADET | 0.30 m | 7° | 0.015–0.40 m/s |
+  | ASTRONAUT | 0.20 m | 5° | 0.025–0.30 m/s |
+  | COMMANDER | 0.14 m | 3.5° | 0.03–0.22 m/s |
+
+  The reference pilot (0.25–0.4 s reaction time, pulses only) docks at all three.
+
+**UI** (DockingOps):
+- **Views:** WINDOW (COAS: looking up the tunnel, reticle, the probe tip and a far axis mark projected from the geometry) and EXTERNAL (the docking corridor drawn in space).
+- **HUD:** range, closing, lateral and vertical rates, offset, attitude error, RCS %, status, warnings.
+- **Alignment display:** an offset dot (±1 m) and an attitude cross (±10°), against the tolerance ring; "IN CORRIDOR" when within tolerance.
+- **Controls:** a cross pad with FWD/AFT, switching between TRANSLATION and ATTITUDE (pitch/yaw, roll).
+  - A tap is a 0.12-s minimum impulse; holding keeps firing; multi-touch works.
+  - CADET has the AUTO ALIGN toggle and step-by-step hints.
+  - Keyboard: W/S/A/D/R/F for translation, arrows and Q/E for attitude.
+- **Failure:** RETRY FROM RENDEZVOUS CHECKPOINT (fresh `checkpointState`, full RCS) or ABORT MISSION.
+
+**Far side (Silent Horizon):**
+- No Earth link on the surface or after insertion; the crew's calls pass through (`throughBlackout`).
+- Signal is reacquired during the rendezvous, at `COAST + 0.3·TRANSFER`, or at hand-over if the film is skipped.
+
+**Validation tooling** (never set by the game): `window.__lvTimeScale` (docking only, ≤ 16×) and `window.__lvDockAutopilot`, the reference pilot on the simulation clock. Read-only state: `__lvDock`, `__lvDockState`, `__lvAscent`.

@@ -10,6 +10,48 @@
     "GUIDANCE": "am_fenrir"
    },
    "clips": {
+    "ascent.armed": [
+     {
+      "d": 3.42,
+      "f": "en/ascent.armed.0.mp3"
+     }
+    ],
+    "ascent.goLiftoff": [
+     {
+      "d": 5.75,
+      "f": "en/ascent.goLiftoff.0.mp3"
+     }
+    ],
+    "ascent.insertion": [
+     {
+      "d": 5.11,
+      "f": "en/ascent.insertion.0.mp3"
+     }
+    ],
+    "ascent.insertionCrew": [
+     {
+      "d": 3.94,
+      "f": "en/ascent.insertionCrew.0.mp3"
+     }
+    ],
+    "ascent.liftoff": [
+     {
+      "d": 3.08,
+      "f": "en/ascent.liftoff.0.mp3"
+     }
+    ],
+    "ascent.pitchover": [
+     {
+      "d": 1.55,
+      "f": "en/ascent.pitchover.0.mp3"
+     }
+    ],
+    "ascent.proceed": [
+     {
+      "d": 1.83,
+      "f": "en/ascent.proceed.0.mp3"
+     }
+    ],
     "cruise.ambient": [
      {
       "d": 3.9,
@@ -210,6 +252,60 @@
       "f": "en/descent.touchdownFlight.0.mp3"
      }
     ],
+    "dock.capture": [
+     {
+      "d": 1.43,
+      "f": "en/dock.capture.0.mp3"
+     }
+    ],
+    "dock.closing": [
+     {
+      "d": 1.38,
+      "f": "en/dock.closing.0.mp3"
+     }
+    ],
+    "dock.collision": [
+     {
+      "d": 1.05,
+      "f": "en/dock.collision.0.mp3"
+     }
+    ],
+    "dock.contact": [
+     {
+      "d": 0.8,
+      "f": "en/dock.contact.0.mp3"
+     }
+    ],
+    "dock.deflected": [
+     {
+      "d": 1.45,
+      "f": "en/dock.deflected.0.mp3"
+     }
+    ],
+    "dock.hard": [
+     {
+      "d": 3.04,
+      "f": "en/dock.hard.0.mp3"
+     }
+    ],
+    "dock.hardCrew": [
+     {
+      "d": 1.67,
+      "f": "en/dock.hardCrew.0.mp3"
+     }
+    ],
+    "dock.jettison": [
+     {
+      "d": 4.32,
+      "f": "en/dock.jettison.0.mp3"
+     }
+    ],
+    "dock.transfer": [
+     {
+      "d": 3.26,
+      "f": "en/dock.transfer.0.mp3"
+     }
+    ],
     "launch.count1": [
      {
       "d": 0.47,
@@ -346,6 +442,42 @@
      {
       "d": 2.15,
       "f": "en/orbit.goPdi.0.mp3"
+     }
+    ],
+    "rdv.aos": [
+     {
+      "d": 3.66,
+      "f": "en/rdv.aos.0.mp3"
+     }
+    ],
+    "rdv.braking": [
+     {
+      "d": 2.6,
+      "f": "en/rdv.braking.0.mp3"
+     }
+    ],
+    "rdv.handover": [
+     {
+      "d": 3.05,
+      "f": "en/rdv.handover.0.mp3"
+     }
+    ],
+    "rdv.handoverCrew": [
+     {
+      "d": 3.26,
+      "f": "en/rdv.handoverCrew.0.mp3"
+     }
+    ],
+    "rdv.mcc": [
+     {
+      "d": 2.04,
+      "f": "en/rdv.mcc.0.mp3"
+     }
+    ],
+    "rdv.tpi": [
+     {
+      "d": 2.41,
+      "f": "en/rdv.tpi.0.mp3"
      }
     ],
     "reentry.aos": [
@@ -555,6 +687,48 @@
     "GUIDANCE": "pm_santa"
    },
    "clips": {
+    "ascent.armed": [
+     {
+      "d": 4.11,
+      "f": "pt/ascent.armed.0.mp3"
+     }
+    ],
+    "ascent.goLiftoff": [
+     {
+      "d": 6.31,
+      "f": "pt/ascent.goLiftoff.0.mp3"
+     }
+    ],
+    "ascent.insertion": [
+     {
+      "d": 6.29,
+      "f": "pt/ascent.insertion.0.mp3"
+     }
+    ],
+    "ascent.insertionCrew": [
+     {
+      "d": 4.52,
+      "f": "pt/ascent.insertionCrew.0.mp3"
+     }
+    ],
+    "ascent.liftoff": [
+     {
+      "d": 3.81,
+      "f": "pt/ascent.liftoff.0.mp3"
+     }
+    ],
+    "ascent.pitchover": [
+     {
+      "d": 2.06,
+      "f": "pt/ascent.pitchover.0.mp3"
+     }
+    ],
+    "ascent.proceed": [
+     {
+      "d": 2.72,
+      "f": "pt/ascent.proceed.0.mp3"
+     }
+    ],
     "cruise.ambient": [
      {
       "d": 3.64,
@@ -755,6 +929,60 @@
       "f": "pt/descent.touchdownFlight.0.mp3"
      }
     ],
+    "dock.capture": [
+     {
+      "d": 1.71,
+      "f": "pt/dock.capture.0.mp3"
+     }
+    ],
+    "dock.closing": [
+     {
+      "d": 2.11,
+      "f": "pt/dock.closing.0.mp3"
+     }
+    ],
+    "dock.collision": [
+     {
+      "d": 1.5,
+      "f": "pt/dock.collision.0.mp3"
+     }
+    ],
+    "dock.contact": [
+     {
+      "d": 0.87,
+      "f": "pt/dock.contact.0.mp3"
+     }
+    ],
+    "dock.deflected": [
+     {
+      "d": 1.55,
+      "f": "pt/dock.deflected.0.mp3"
+     }
+    ],
+    "dock.hard": [
+     {
+      "d": 3.89,
+      "f": "pt/dock.hard.0.mp3"
+     }
+    ],
+    "dock.hardCrew": [
+     {
+      "d": 2.94,
+      "f": "pt/dock.hardCrew.0.mp3"
+     }
+    ],
+    "dock.jettison": [
+     {
+      "d": 4.66,
+      "f": "pt/dock.jettison.0.mp3"
+     }
+    ],
+    "dock.transfer": [
+     {
+      "d": 5.22,
+      "f": "pt/dock.transfer.0.mp3"
+     }
+    ],
     "launch.count1": [
      {
       "d": 0.57,
@@ -891,6 +1119,42 @@
      {
       "d": 3.29,
       "f": "pt/orbit.goPdi.0.mp3"
+     }
+    ],
+    "rdv.aos": [
+     {
+      "d": 3.88,
+      "f": "pt/rdv.aos.0.mp3"
+     }
+    ],
+    "rdv.braking": [
+     {
+      "d": 3.26,
+      "f": "pt/rdv.braking.0.mp3"
+     }
+    ],
+    "rdv.handover": [
+     {
+      "d": 3.32,
+      "f": "pt/rdv.handover.0.mp3"
+     }
+    ],
+    "rdv.handoverCrew": [
+     {
+      "d": 4.06,
+      "f": "pt/rdv.handoverCrew.0.mp3"
+     }
+    ],
+    "rdv.mcc": [
+     {
+      "d": 2.66,
+      "f": "pt/rdv.mcc.0.mp3"
+     }
+    ],
+    "rdv.tpi": [
+     {
+      "d": 2.68,
+      "f": "pt/rdv.tpi.0.mp3"
      }
     ],
     "reentry.aos": [

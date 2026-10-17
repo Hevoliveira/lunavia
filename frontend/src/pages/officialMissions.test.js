@@ -104,3 +104,37 @@ describe("Flight Training Center: lunar landing at the Sea of Tranquility only",
     expect(training).not.toMatch(/LaunchCinematic|MissionScene/);
   });
 });
+
+describe("after the landing: lunar ascent, rendezvous and the player's docking, then home", () => {
+  const mission = read("pages/Mission.jsx");
+  const ascent = read("components/LunarAscent.jsx");
+  const dock = read("components/DockingOps.jsx");
+  test("a successful landing continues to the lunar surface (ascent preparation), never straight home", () => {
+    const cont = between(mission, "const handleContinueFromResult", "// Liftoff film over");
+    expect(cont).toMatch(/if \(!descentResult \|\| descentResult\.crashed\) return;/);
+    expect(cont).toMatch(/setState\(STATES\.ASCENT\)/);
+    expect(cont).not.toMatch(/STATES\.RETURN/);
+    // the return (trans-Earth injection) is reached only from a completed docking
+    expect((mission.match(/setState\(STATES\.RETURN\)/g) || []).length).toBe(1);
+    expect(between(mission, "const handleDockingComplete", "const handleDockingResult")).toMatch(/setState\(STATES\.RETURN\)/);
+    expect(between(mission, "const handleAscentComplete", "const handleDockingComplete")).toMatch(/setState\(STATES\.DOCKING\)/);
+  });
+  test("the ascent starts at the landing's own site and pose, and only from INITIATE LUNAR ASCENT", () => {
+    expect(mission).toMatch(/<LunarAscent\s+siteId=\{mission\.siteId\}\s+pose=\{landingRef\.current && landingRef\.current\.pose\}/);
+    expect(ascent).toMatch(/useState\("prep"\)/);
+    expect(ascent).toMatch(/LUNAR SURFACE — ASCENT PREPARATION/);
+    expect(ascent).toMatch(/INITIATE LUNAR ASCENT/);
+    expect((ascent.match(/setStage\("countdown"\)/g) || []).length).toBe(1);
+    expect(between(ascent, "const initiate = () => {", "};")).toMatch(/if \(stage !== "prep"\) return;/);
+    // the stages separate: the descent stage stays (LanderModel with the ascent stage on its own)
+    expect(ascent).toMatch(/<LanderModel scale=\{LM\.scale\} fx=\{fx\} ascent=\{ascRef\.current\} \/>/);
+  });
+  test("docking is the simulation's: stepped every frame from the player's input, judged only by its contact rules; retries restart at the checkpoint", () => {
+    expect(dock).toMatch(/const e = stepDocking\(s, inp, difficulty, dt, \{ align: alignRef\.current \}\);/);
+    expect(dock).not.toMatch(/status = "docked"|phase: "docked"|kind: "docked"/); // the component never declares a dock itself
+    expect(between(dock, "const startDocking = () => {", "};")).toMatch(/const cp = makeCheckpoint\(\);/);
+    expect(dock).toMatch(/RETRY FROM RENDEZVOUS CHECKPOINT/);
+    expect(mission).toMatch(/<DockingOps\s+difficulty=\{difficulty\}\s+farSide=\{mission\.comms\.farSide\}/);
+    expect(mission).toMatch(/onResult=\{handleDockingResult\}/);
+  });
+});
