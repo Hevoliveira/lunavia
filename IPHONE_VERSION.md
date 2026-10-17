@@ -1,12 +1,14 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD af89907**.
+This folder installs **BUILD 902db61**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD af89907 · 2026-10-13 20:30 UTC**
+> **LUNAVIA iOS · BUILD 902db61 · 2026-10-17 17:32 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **af89907** is the previous release: the direct cut to lunar orbit, but every full mission
+  landed at the Sea of Tranquility, and the four destinations were training exercises only;
 - **d25ef56** is the previous release: it still played the whole Earth-to-Moon travel (the
   upper stage's separation, the translunar coast, deep space and the midcourse correction,
   the approach and the insertion burn);
@@ -54,20 +56,28 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Outbound propulsion: the carrier's visible main engine, travel attitudes (engine back at the Earth, nose to the Moon, then engine first), a midcourse correction burn and the insertion burn on the main engine | #15 | 33d6f8c |
 | Translunar attitude: nose forward along the flight path after TLI, and the midcourse correction as a real maneuver (RCS turn into the burn attitude, main-engine burn, turn back) | #16 | d25ef56 |
 | Direct cut: the Earth departure ends 2 s after GUIDANCE's "Cutoff." and the film cuts straight to lunar orbit, where CAPCOM welcomes the crew (the translunar travel sequence removed) | #17 | af89907 |
+| Four official lunar missions: MISSIONS (01 Sea of Tranquility, introductory; 02 Hadley–Apennine, intermediate; 03 Tycho Highlands, advanced; 04 Silent Horizon, expert, far side), then the pilot difficulty; the whole mission flies to the chosen destination. The Flight Training Center keeps lunar landing training at the Sea of Tranquility only | #18 | 39625fa, 902db61 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at af89907** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release shortens the film between the Earth and the Moon; it does not change how you fly.**
-  - The launch plays as before up to translunar injection. GUIDANCE says "Cutoff.", the departure shot stays 2 seconds more, then a brief fade to black.
-  - The next scene is LUNAR ORBIT (T+80:00:00): CAPCOM says "LUNAVIA, Houston. Lunar orbit insertion looks good. Welcome to the Moon."
-  - No travel between the two is shown any more: no upper-stage separation shot, translunar coast, deep space, midcourse correction, lunar approach or insertion burn.
-  - SKIP CINEMATIC during the launch goes to the same arrival.
-  - The lunar-orbit deployment, the undocking, the title screen and START MISSIONS, the four missions, descent, return, reentry and training are unchanged.
-- **Records are kept.** Nothing new is stored.
+- **Built from the clean tree at 902db61** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release makes the four destinations the main game's missions.** How you fly is unchanged: gravity, thrust, fuel, RCS, the landing limits and COMMANDER are the same.
+  - **MISSIONS** (the main menu, the navigation bar and LAUNCH all lead to it) shows four cards. Each card has the mission number and name, a short description, a terrain picture, the environment level, the main piloting challenge and START MISSION. All four are open.
+  - After a card you choose the pilot difficulty (CADET, ASTRONAUT or COMMANDER), then mission control and LAUNCH.
+  - The whole mission keeps that choice:
+    - the launch and the direct cut to lunar orbit, over the destination;
+    - the deployment, undocking and title screen;
+    - START MISSIONS, which goes straight to the destination's briefing;
+    - the descent at the destination, its results, the return, the reentry and MISSION COMPLETE.
+    
+    You are not asked again. To change mission, use CHANGE MISSION in mission control, before launch.
+  - **Silent Horizon** (far side): the welcome and the go for powered descent come while the Earth is still in view. After BEGIN PDI the signal is lost behind the Moon, and you land with EARTH LINK UNAVAILABLE and no Houston.
+  - The cinematic auto-landing skip is no longer offered in the main mission, because it always showed the same generic ground.
+  - **Flight Training Center:** lunar landing training is "Sea of Tranquility — lunar landing training" only. Reentry training is unchanged.
+- **Records are kept.** New: the last mission chosen, and a log of the official missions flown (destination, difficulty, landing, completion), kept on the iPhone apart from the training records.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the direct cut to lunar orbit; it also fails if any removed travel shot is still in the bundle.
+  - every feature above is in the bundled game, including the direct cut to lunar orbit and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
