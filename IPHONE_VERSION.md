@@ -1,12 +1,18 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD af89907**.
+This folder installs **BUILD 57770c4**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD af89907 · 2026-10-13 20:30 UTC**
+> **LUNAVIA iOS · BUILD 57770c4 · 2026-10-17 22:24 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **de30822** is the previous release: the launch started by itself when LUNAVIA opened,
+  without the THE ROAD TO THE MOON startup screen;
+- **902db61** is the previous release: the four official missions, but MISSIONS came first and
+  the launch only started from a mission-control screen (LAUNCH SEQUENCE — INITIATE);
+- **af89907** is the previous release: the direct cut to lunar orbit, but every full mission
+  landed at the Sea of Tranquility, and the four destinations were training exercises only;
 - **d25ef56** is the previous release: it still played the whole Earth-to-Moon travel (the
   upper stage's separation, the translunar coast, deep space and the midcourse correction,
   the approach and the insertion burn);
@@ -54,20 +60,24 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Outbound propulsion: the carrier's visible main engine, travel attitudes (engine back at the Earth, nose to the Moon, then engine first), a midcourse correction burn and the insertion burn on the main engine | #15 | 33d6f8c |
 | Translunar attitude: nose forward along the flight path after TLI, and the midcourse correction as a real maneuver (RCS turn into the burn attitude, main-engine burn, turn back) | #16 | d25ef56 |
 | Direct cut: the Earth departure ends 2 s after GUIDANCE's "Cutoff." and the film cuts straight to lunar orbit, where CAPCOM welcomes the crew (the translunar travel sequence removed) | #17 | af89907 |
+| Four official lunar missions: MISSIONS (01 Sea of Tranquility, introductory; 02 Hadley–Apennine, intermediate; 03 Tycho Highlands, advanced; 04 Silent Horizon, expert, far side), then the pilot difficulty; the whole mission flies to the chosen destination. The Flight Training Center keeps lunar landing training at the Sea of Tranquility only | #18 | 39625fa, 902db61 |
+| Opening first: LUNAVIA opens on the launch (Earth departure, direct cut to lunar orbit, deployment, undocking, title); START MISSIONS then opens MISSIONS / TRAINING, and a mission continues from lunar orbit to its destination | #18 | 0dcc555, de30822 |
+| Startup screen restored: LUNAVIA opens on THE ROAD TO THE MOON and the launch starts only when you press LAUNCH SEQUENCE — INITIATE | #18 | 57770c4 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at af89907** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release shortens the film between the Earth and the Moon; it does not change how you fly.**
-  - The launch plays as before up to translunar injection. GUIDANCE says "Cutoff.", the departure shot stays 2 seconds more, then a brief fade to black.
-  - The next scene is LUNAR ORBIT (T+80:00:00): CAPCOM says "LUNAVIA, Houston. Lunar orbit insertion looks good. Welcome to the Moon."
-  - No travel between the two is shown any more: no upper-stage separation shot, translunar coast, deep space, midcourse correction, lunar approach or insertion burn.
-  - SKIP CINEMATIC during the launch goes to the same arrival.
-  - The lunar-orbit deployment, the undocking, the title screen and START MISSIONS, the four missions, descent, return, reentry and training are unchanged.
-- **Records are kept.** Nothing new is stored.
+- **Built from the clean tree at 57770c4** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release restores the startup screen; everything after the launch is unchanged.**
+  1. Open LUNAVIA and you see THE ROAD TO THE MOON (LV-001 · READY FOR LAUNCH, mission control). It waits for as long as you like; nothing starts by itself.
+  2. Press **LAUNCH SEQUENCE — INITIATE**. The launch starts, once: liftoff, ascent, staging, Earth orbit, translunar injection and "Cutoff.".
+  3. Two seconds later the film cuts to lunar orbit and CAPCOM welcomes the crew. The deployment, the undocking, the go for powered descent and LUNAVIA / A LAJU PRODUCTIONS GAME follow.
+  4. **START MISSIONS** opens **MISSIONS** (the four official missions) or **TRAINING**.
+  - ABORT, the end of a mission and MAIN MENU bring you back to MISSIONS / TRAINING.
+  - LAUNCH in the navigation bar, or reopening the app, shows THE ROAD TO THE MOON again, waiting for the button.
+- **Records are kept.** New: the last mission chosen, and a log of the official missions flown (destination, difficulty, landing, completion), kept on the iPhone apart from the training records.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the direct cut to lunar orbit; it also fails if any removed travel shot is still in the bundle.
+  - every feature above is in the bundled game, including the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.

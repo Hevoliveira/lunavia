@@ -32,7 +32,7 @@ import {
   undockTime,
   vehicleFrame,
 } from "@/data/orbitSequence";
-import { LZ_UP, MOON_ROTATION, craftPose, landingSite, orbitCamera, orbitPoint, smoother } from "@/data/lunarOrbitShot";
+import { LZ_UP, MOON_ROTATION, craftPose, landingSite, moonRotationFor, orbitCamera, orbitPoint, smoother } from "@/data/lunarOrbitShot";
 
 /*
  * Lunar orbit and the return, in two layers composited every frame: the
@@ -125,11 +125,13 @@ export function Earth({ small }) {
 // The Moon keeps one fixed orientation in every shot (it is tidally locked and
 // turns by only half a degree per hour), with the landing site in a low
 // morning Sun on the face the orbit camera sees. See data/lunarOrbitShot.js.
-const MOON_QUATERNION = (() => {
-  const m = MOON_ROTATION;
+const quaternionOf = (m) => {
   const m4 = new THREE.Matrix4().set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1);
   return new THREE.Quaternion().setFromRotationMatrix(m4);
-})();
+};
+const MOON_QUATERNION = quaternionOf(MOON_ROTATION);
+/** The Moon turned so that a mission's orbit view (lat, lon in degrees) lies under the orbit (data/missionConfig orbitView). */
+const moonQuaternionFor = (view) => (view ? quaternionOf(moonRotationFor(view.lat * (Math.PI / 180), view.lon * (Math.PI / 180))) : MOON_QUATERNION);
 // The landing-site ring lies flat on the surface (ringGeometry faces +Z).
 const RING_QUATERNION = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...LZ_UP));
 
@@ -200,7 +202,8 @@ function moonDetailTexture() {
   return DETAIL_TEX;
 }
 
-export function Moon({ position }) {
+export function Moon({ position, view = null }) {
+  const quaternion = useMemo(() => moonQuaternionFor(view), [view]);
   const [raw] = useTexture([MOON_MAP]);
   const map = useMemo(() => softMoonMap(raw), [raw]);
   const gl = useThree((st) => st.gl);
@@ -243,7 +246,7 @@ export function Moon({ position }) {
     detail.value = 1 - Math.min(1, Math.max(0, (d - 1.25) / 0.45));
   });
   return (
-    <mesh position={position} quaternion={MOON_QUATERNION}>
+    <mesh position={position} quaternion={quaternion}>
       <sphereGeometry args={[MOON_UNITS, 160, 120]} />
       <meshStandardMaterial ref={mat} map={map} roughness={1} metalness={0} bumpMap={map} bumpScale={0.05} onBeforeCompile={onBeforeCompile} />
     </mesh>
@@ -287,7 +290,7 @@ export function Glint({ viewRef }) {
 }
 
 /** Landing site on the surface and the orbit path, during the establishing shot. */
-function OrbitGuides({ clock, moonPos }) {
+function OrbitGuides({ clock, moonPos, marker = true }) {
   const orbitMat = useRef();
   const ringMat = useRef();
   const site = useMemo(() => landingSite(moonPos, MOON_UNITS), [moonPos]);
@@ -311,7 +314,7 @@ function OrbitGuides({ clock, moonPos }) {
       <line geometry={orbitLine}>
         <lineBasicMaterial ref={orbitMat} color="#FF3B00" transparent opacity={0} depthWrite={false} />
       </line>
-      <mesh position={[site[0] + LZ_UP[0] * 0.002, site[1] + LZ_UP[1] * 0.002, site[2] + LZ_UP[2] * 0.002]} quaternion={RING_QUATERNION}>
+      <mesh visible={marker} position={[site[0] + LZ_UP[0] * 0.002, site[1] + LZ_UP[1] * 0.002, site[2] + LZ_UP[2] * 0.002]} quaternion={RING_QUATERNION}>
         <ringGeometry args={[0.035, 0.045, 48]} />
         <meshBasicMaterial ref={ringMat} color="#FF3B00" transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
@@ -711,7 +714,7 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitRea
 // the end of the cruise, so nothing drifts while the player reads.
 const ORBIT_EPOCH = 270000;
 
-function Scene({ missionTime, cinematic, orbitClock, orbitReal }) {
+function Scene({ missionTime, cinematic, orbitClock, orbitReal, orbitView }) {
   const t = orbitClock ? ORBIT_EPOCH : missionTime;
   const scPos = craftScenePos(t, [0, 0, 0]);
   const p = trajectoryPosition(t);
@@ -739,10 +742,10 @@ function Scene({ missionTime, cinematic, orbitClock, orbitReal }) {
         <Earth small={!!orbitClock} />
       </group>
       <group ref={moonGroup}>
-        <Moon position={moonPos} />
+        <Moon position={moonPos} view={orbitClock ? orbitView : null} />
       </group>
       <Glint viewRef={viewRef} />
-      {orbitClock ? <OrbitGuides clock={orbitClock} moonPos={moonPos} /> : <TrajectoryPath viewRef={viewRef} />}
+      {orbitClock ? <OrbitGuides clock={orbitClock} moonPos={moonPos} marker={!orbitView || orbitView.marker} /> : <TrajectoryPath viewRef={viewRef} />}
       {!cinematic && <OrbitControls enablePan={false} enableZoom={true} minDistance={2} maxDistance={60} dampingFactor={0.06} />}
       <Director missionTime={missionTime} cinematic={cinematic} scPos={scPos} moonPos={moonPos} orbitClock={orbitClock} orbitReal={orbitReal} viewRef={viewRef} />
       {/* after the Director: this frame's shot decides which planets are drawn */}
@@ -764,7 +767,7 @@ function LoadingFallback() {
  * seconds since lunar orbit began) paces the title screen's slow drift. Keep the
  * same element mounted across the switch so the camera hands over without a cut.
  */
-export default function MissionScene({ missionTime, cinematic = false, orbitClock = null, orbitReal = null }) {
+export default function MissionScene({ missionTime, cinematic = false, orbitClock = null, orbitReal = null, orbitView = null }) {
   return (
     <div className="absolute inset-0 canvas-host" data-testid="mission-canvas">
       <Canvas
@@ -781,7 +784,7 @@ export default function MissionScene({ missionTime, cinematic = false, orbitCloc
         onCreated={({ gl }) => gl.setClearColor("#050505")}
       >
         <Suspense fallback={<LoadingFallback />}>
-          <Scene missionTime={missionTime} cinematic={cinematic} orbitClock={orbitClock} orbitReal={orbitReal} />
+          <Scene missionTime={missionTime} cinematic={cinematic} orbitClock={orbitClock} orbitReal={orbitReal} orbitView={orbitView} />
         </Suspense>
         {/* Stars outside the texture suspense so deep space never goes blank */}
         <Stars radius={100} depth={50} count={8000} factor={3.5} saturation={0} fade speed={0.1} />

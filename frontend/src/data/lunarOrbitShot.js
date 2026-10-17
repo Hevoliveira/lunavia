@@ -94,19 +94,26 @@ const NORTH = cross(LZ_UP, EAST);
 
 // three.js SphereGeometry with an equirectangular map: longitude λ, latitude φ
 // lands at local (cos φ cos λ, sin φ, -cos φ sin λ).
-const lzLocal = [Math.cos(LZ_LAT) * Math.cos(LZ_LON), Math.sin(LZ_LAT), -Math.cos(LZ_LAT) * Math.sin(LZ_LON)];
-const eastLocal = norm([-Math.sin(LZ_LON), 0, -Math.cos(LZ_LON)]);
-const northLocal = cross(lzLocal, eastLocal);
-
-/** Row-major 3x3 rotation taking Moon-local vectors to world: the real site lands at LZ_UP. */
-export const MOON_ROTATION = (() => {
+/**
+ * Row-major 3x3 rotation taking Moon-local vectors to world so that the
+ * selenographic point (lat, lon, radians) lands at LZ_UP, under the orbit and
+ * the site marker, with its local east towards EAST (the morning Sun). Every
+ * official mission flies the same orbit shot; only the ground under it turns.
+ */
+export function moonRotationFor(lat, lon) {
+  const lzLocal = [Math.cos(lat) * Math.cos(lon), Math.sin(lat), -Math.cos(lat) * Math.sin(lon)];
+  const eastLocal = norm([-Math.sin(lon), 0, -Math.cos(lon)]);
+  const northLocal = cross(lzLocal, eastLocal);
   // R = W · Lᵀ, W = [EAST NORTH LZ_UP] as columns, L = [east north up] (local) as columns.
   const W = [EAST, NORTH, LZ_UP];
   const L = [eastLocal, northLocal, lzLocal];
   const m = [];
   for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) m.push(W[0][i] * L[0][j] + W[1][i] * L[1][j] + W[2][i] * L[2][j]);
   return m;
-})();
+}
+
+/** The Sea of Tranquility under the orbit (the title loop and the default). */
+export const MOON_ROTATION = moonRotationFor(LZ_LAT, LZ_LON);
 
 export const applyRotation = (m, v) => [
   m[0] * v[0] + m[1] * v[1] + m[2] * v[2],

@@ -18,8 +18,14 @@ function App() {
       <BrowserRouter>
         <Navbar />
         <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/mission" element={<Mission />} />
+          {/* Opening LUNAVIA plays the expedition first (launch → lunar orbit → title →
+              START MISSIONS), then MISSIONS / TRAINING. Each entry has its own key so that
+              moving between them always starts that entry fresh. */}
+          <Route path="/" element={<Mission key="opening" entry="opening" />} />
+          <Route path="/mission" element={<Mission key="opening" entry="opening" />} />
+          <Route path="/menu" element={<Mission key="menu" entry="menu" />} />
+          <Route path="/missions" element={<Mission key="missions" entry="missions" />} />
+          <Route path="/home" element={<Landing />} />
           <Route path="/training" element={<Training />} />
           <Route path="/manifesto" element={<Manifesto />} />
         </Routes>

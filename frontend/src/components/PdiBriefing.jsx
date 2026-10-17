@@ -34,7 +34,12 @@ function Limit({ label, value, unit }) {
   );
 }
 
-export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
+/**
+ * mission (optional, data/missionConfig): the official mission's destination,
+ * named with its own briefing; the pilot difficulty was chosen before launch.
+ * onBack (optional): back to MISSIONS, to change the destination or difficulty.
+ */
+export default function PdiBriefing({ difficulty = "CADET", mission = null, onBegin, onBack = null }) {
   const cfg = DIFFICULTY[difficulty] || DIFFICULTY.CADET;
 
   return (
@@ -47,6 +52,12 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
           <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink mb-3">
             ● POWERED DESCENT INITIATION
           </div>
+          {mission && (
+            <div className="font-mono text-[10px] short:text-[9px] tracking-[0.3em] text-zinc-300 mb-2 short:mb-1" data-testid="pdi-mission">
+              MISSION {mission.number} · <span className="text-white" data-testid="pdi-site">{mission.name}</span> · {mission.environment} ENVIRONMENT
+              {mission.comms.farSide && <span className="text-[#9fb6cc]"> · NO EARTH LINK</span>}
+            </div>
+          )}
           <h2 className="font-display font-black text-white text-4xl md:text-6xl short:text-4xl leading-none">
             {cfg.label} · PDI READY
           </h2>
@@ -55,6 +66,9 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
               MISSION OBJECTIVE
             </span>
             Land the Lunar Module safely inside or near the designated landing area.
+            {mission && mission.briefing && (
+              <span className="block mt-1 text-[#c9d6e2]" data-testid="pdi-site-briefing">{mission.briefing}</span>
+            )}
           </p>
         </div>
 
@@ -169,13 +183,15 @@ export default function PdiBriefing({ difficulty = "CADET", onBegin, onBack }) {
           >
             ● BEGIN PDI ●
           </button>
-          <button
-            onClick={onBack}
-            data-testid="pdi-back"
-            className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 hover:text-white transition-colors py-3 px-2"
-          >
-            CHANGE DIFFICULTY
-          </button>
+          {onBack && (
+            <button
+              onClick={onBack}
+              data-testid="pdi-back"
+              className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 hover:text-white transition-colors py-3 px-2"
+            >
+              {mission ? "CHANGE MISSION" : "CHANGE DIFFICULTY"}
+            </button>
+          )}
         </div>
       </div>
     </div>
