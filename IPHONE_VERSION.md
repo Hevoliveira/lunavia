@@ -1,12 +1,14 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 902db61**.
+This folder installs **BUILD de30822**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 902db61 · 2026-10-17 17:32 UTC**
+> **LUNAVIA iOS · BUILD de30822 · 2026-10-17 21:15 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **902db61** is the previous release: the four official missions, but MISSIONS came first and
+  the launch only started from a mission-control screen (LAUNCH SEQUENCE — INITIATE);
 - **af89907** is the previous release: the direct cut to lunar orbit, but every full mission
   landed at the Sea of Tranquility, and the four destinations were training exercises only;
 - **d25ef56** is the previous release: it still played the whole Earth-to-Moon travel (the
@@ -57,27 +59,25 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Translunar attitude: nose forward along the flight path after TLI, and the midcourse correction as a real maneuver (RCS turn into the burn attitude, main-engine burn, turn back) | #16 | d25ef56 |
 | Direct cut: the Earth departure ends 2 s after GUIDANCE's "Cutoff." and the film cuts straight to lunar orbit, where CAPCOM welcomes the crew (the translunar travel sequence removed) | #17 | af89907 |
 | Four official lunar missions: MISSIONS (01 Sea of Tranquility, introductory; 02 Hadley–Apennine, intermediate; 03 Tycho Highlands, advanced; 04 Silent Horizon, expert, far side), then the pilot difficulty; the whole mission flies to the chosen destination. The Flight Training Center keeps lunar landing training at the Sea of Tranquility only | #18 | 39625fa, 902db61 |
+| Opening first: LUNAVIA opens on the launch (Earth departure, direct cut to lunar orbit, deployment, undocking, title); START MISSIONS then opens MISSIONS / TRAINING, and a mission continues from lunar orbit to its destination | #18 | 0dcc555, de30822 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 902db61** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release makes the four destinations the main game's missions.** How you fly is unchanged: gravity, thrust, fuel, RCS, the landing limits and COMMANDER are the same.
-  - **MISSIONS** (the main menu, the navigation bar and LAUNCH all lead to it) shows four cards. Each card has the mission number and name, a short description, a terrain picture, the environment level, the main piloting challenge and START MISSION. All four are open.
-  - After a card you choose the pilot difficulty (CADET, ASTRONAUT or COMMANDER), then mission control and LAUNCH.
-  - The whole mission keeps that choice:
-    - the launch and the direct cut to lunar orbit, over the destination;
-    - the deployment, undocking and title screen;
-    - START MISSIONS, which goes straight to the destination's briefing;
-    - the descent at the destination, its results, the return, the reentry and MISSION COMPLETE.
-    
-    You are not asked again. To change mission, use CHANGE MISSION in mission control, before launch.
-  - **Silent Horizon** (far side): the welcome and the go for powered descent come while the Earth is still in view. After BEGIN PDI the signal is lost behind the Moon, and you land with EARTH LINK UNAVAILABLE and no Houston.
-  - The cinematic auto-landing skip is no longer offered in the main mission, because it always showed the same generic ground.
-  - **Flight Training Center:** lunar landing training is "Sea of Tranquility — lunar landing training" only. Reentry training is unchanged.
+- **Built from the clean tree at de30822** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release changes the order of the game; it does not change how you fly.**
+  1. Open LUNAVIA and the launch starts by itself: the countdown, liftoff, ascent, staging, Earth orbit, translunar injection and GUIDANCE's "Cutoff.".
+  2. Two seconds later the film cuts to lunar orbit, and CAPCOM says "Welcome to the Moon".
+  3. The lunar module is deployed and undocks, CAPCOM gives the go for powered descent, and LUNAVIA / A LAJU PRODUCTIONS GAME appears.
+  4. The title screen waits for **START MISSIONS**.
+  5. START MISSIONS opens the menu: **MISSIONS** or **TRAINING**.
+     - **MISSIONS:** pick one of the four destinations and the pilot difficulty (CADET, ASTRONAUT, COMMANDER). The mission then continues from lunar orbit to that destination's briefing and descent, with no second launch, through landing, results, the return, reentry and MISSION COMPLETE.
+     - **TRAINING:** the Flight Training Center. Lunar landing at the Sea of Tranquility starts straight at the descent; reentry training is unchanged.
+  - ABORT, the end of a mission and MAIN MENU bring you back to the menu, without the opening again. To see the opening again, close and reopen LUNAVIA, or press LAUNCH in the navigation bar.
+  - SKIP CINEMATIC still shortens the launch and the lunar-orbit film. The mission-control screen (LAUNCH SEQUENCE — INITIATE) is gone.
 - **Records are kept.** New: the last mission chosen, and a log of the official missions flown (destination, difficulty, landing, completion), kept on the iPhone apart from the training records.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the direct cut to lunar orbit and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
+  - every feature above is in the bundled game, including the direct cut to lunar orbit, the opening-first order, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
