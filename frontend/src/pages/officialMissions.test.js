@@ -3,8 +3,9 @@ import path from "path";
 
 /*
  * The game's order, read from the source (as directCut.test does): opening
- * LUNAVIA plays the expedition first (launch → lunar orbit → deployment and
- * undocking → title → START MISSIONS), then the menu (MISSIONS / TRAINING);
+ * LUNAVIA shows THE ROAD TO THE MOON; LAUNCH SEQUENCE — INITIATE plays the
+ * expedition (launch → lunar orbit → deployment and undocking → title → START
+ * MISSIONS), then the menu (MISSIONS / TRAINING);
  * MISSIONS → destination → pilot difficulty → the descent at that destination,
  * with no second launch. Training flies the Sea of Tranquility only.
  */
@@ -12,15 +13,26 @@ const SRC = path.resolve(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
 const between = (src, a, b) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a) + a.length));
 
-describe("opening first, then the game menu", () => {
+describe("startup screen, then the expedition, then the game menu", () => {
   const mission = read("pages/Mission.jsx");
   const app = read("App.js");
 
-  test("opening LUNAVIA (/) starts the launch: no menu, no mission control, no input before it", () => {
+  test("opening LUNAVIA (/) shows THE ROAD TO THE MOON and waits: only LAUNCH SEQUENCE — INITIATE starts the launch", () => {
     expect(app).toMatch(/<Route path="\/" element=\{<Mission key="opening" entry="opening" \/>\} \/>/);
-    expect(mission).toMatch(/const ENTRY_STATE = \{ opening: STATES\.LAUNCH, menu: STATES\.MENU, missions: STATES\.SELECT \}/);
-    expect(mission).toMatch(/useState\(\(\) => ENTRY_STATE\[entry\] \|\| STATES\.LAUNCH\)/);
-    expect(mission).not.toMatch(/ControlRoomView|STATES\.CONTROL/);
+    expect(mission).toMatch(/const ENTRY_STATE = \{ opening: STATES\.CONTROL, menu: STATES\.MENU, missions: STATES\.SELECT \}/);
+    expect(mission).toMatch(/\{state === STATES\.CONTROL && <ControlRoomView onLaunch=\{handleLaunch\} \/>\}/);
+    // the launch starts in one place only, from the startup state, once
+    expect((mission.match(/setState\(STATES\.LAUNCH\)/g) || []).length).toBe(1);
+    const launch = between(mission, "const handleLaunch = () => {", "};");
+    expect(launch).toMatch(/if \(stateRef\.current !== STATES\.CONTROL\) return;\s+stateRef\.current = STATES\.LAUNCH;/);
+    // no autoplay: nothing on mount, no timer or resume event starts it
+    expect(mission).not.toMatch(/visibilitychange|appStateChange|addEventListener\("resume"/);
+    const view = read("components/scenes/ControlRoomView.jsx");
+    expect(view).toMatch(/THE ROAD<br \/>/);
+    expect(view).toMatch(/LV-001 · READY FOR LAUNCH/);
+    expect(view).toMatch(/LAUNCH SEQUENCE — INITIATE/);
+    expect(view).toMatch(/LV-001 ARTEMIS-CLASS/);
+    expect(view).toMatch(/onClick=\{startCountdown\}/); // the 1.1-s GO follows the press only
     // the launch film itself is the approved one, ending in the direct cut
     expect(mission).toMatch(/<LaunchCinematic audio=\{audio\} onComplete=\{handleLaunchComplete\} onSkip=\{handleSkipLaunch\} onCutAhead=\{handleCutAhead\} \/>/);
   });

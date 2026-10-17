@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowUpRight, RotateCcw } from "lucide-react";
+import ControlRoomView from "@/components/scenes/ControlRoomView";
 import LaunchCinematic from "@/components/scenes/LaunchCinematic";
 import MissionScene, { preloadMissionScene } from "@/components/MissionScene";
 import ReentryScene from "@/components/scenes/ReentryScene";
@@ -37,9 +38,10 @@ import { loadMissionLog, loadSelection, logMissionComplete, logMissionLanding, l
  * cinematic can be skipped; skipping lunar orbit lands on the title screen,
  * never past it.
  *
- * Opening first: opening LUNAVIA (/) starts this expedition by itself, with no
- * menu before it: the launch, the cut to lunar orbit, the deployment, the
- * undocking, the go for powered descent, the title and the title screen. START
+ * Startup: opening LUNAVIA (/) shows THE ROAD TO THE MOON (mission control,
+ * ControlRoomView) and waits, with no timer, for LAUNCH SEQUENCE — INITIATE. Only
+ * that press starts the expedition: the launch, the cut to lunar orbit, the
+ * deployment, the undocking, the go for powered descent, the title and the title screen. START
  * MISSIONS then opens the game menu (MENU): MISSIONS or TRAINING. The flight is
  * not replayed and nothing is reset; the lunar-orbit shot stays behind the menu.
  *
@@ -54,7 +56,8 @@ import { loadMissionLog, loadSelection, logMissionComplete, logMissionLanding, l
  * never through the opening again.
  */
 const STATES = {
-  LAUNCH: "launch",            // the opening: LV-001 from the pad to TLI
+  CONTROL: "control",          // startup: THE ROAD TO THE MOON, waiting for LAUNCH SEQUENCE — INITIATE
+  LAUNCH: "launch",            // LV-001 from the pad to TLI
   MENU: "menu",                // after START MISSIONS: MISSIONS or TRAINING
   SELECT: "select",            // MISSIONS: destination, then pilot difficulty
   ORBIT: "orbit",
@@ -69,6 +72,7 @@ const STATES = {
 };
 
 const STATE_LABELS = {
+  control: { code: "T-00:00:10", name: "MISSION CONTROL" },
   menu: { code: "T+81:30:00", name: "LUNAVIA" },
   select: { code: "T+81:30:00", name: "MISSIONS" },
   launch: { code: "T-00:00:15", name: "LAUNCH" },
@@ -136,15 +140,15 @@ const FLIGHT_STATES = new Set([
   STATES.REENTRY,
 ]);
 
-// Where the game opens: the opening (/), the menu (/menu) or MISSIONS (/missions).
+// Where the game opens: the startup screen (/), the menu (/menu) or MISSIONS (/missions).
 // The menu and MISSIONS are shown over lunar orbit as left by the opening (the LM
 // undocked, at the title screen).
-const ENTRY_STATE = { opening: STATES.LAUNCH, menu: STATES.MENU, missions: STATES.SELECT };
+const ENTRY_STATE = { opening: STATES.CONTROL, menu: STATES.MENU, missions: STATES.SELECT };
 
 export default function Mission({ entry = "opening" }) {
   const navigate = useNavigate();
-  const opening = (ENTRY_STATE[entry] || STATES.LAUNCH) === STATES.LAUNCH;
-  const [state, setState] = useState(() => ENTRY_STATE[entry] || STATES.LAUNCH);
+  const opening = (ENTRY_STATE[entry] || STATES.CONTROL) === STATES.CONTROL;
+  const [state, setState] = useState(() => ENTRY_STATE[entry] || STATES.CONTROL);
   // The official mission: destination and pilot difficulty, chosen on MISSIONS and
   // held, frozen, for the rest of the expedition (to splashdown).
   const [selection, setSelection] = useState(() => loadSelection());
@@ -269,13 +273,16 @@ export default function Mission({ entry = "opening" }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The opening starts by itself when LUNAVIA opens: no menu and no input before the
-  // launch. (In the iOS app sound plays at once; in a browser, from the first tap.)
-  useEffect(() => {
+  // LAUNCH SEQUENCE — INITIATE on the startup screen: the only way the launch starts
+  // (no timer, no autoplay). Once: the button gives way to GO, and only the startup
+  // state can launch.
+  const handleLaunch = () => {
+    if (stateRef.current !== STATES.CONTROL) return;
+    stateRef.current = STATES.LAUNCH;
     audio.init();
-    if (opening) preloadMissionScene(); // lunar orbit follows the launch directly
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    preloadMissionScene(); // lunar orbit follows the launch directly
+    setState(STATES.LAUNCH);
+  };
 
   // "Cutoff.": mount lunar orbit under the launch, its clock held on the arrival.
   const handleCutAhead = () => {
@@ -495,6 +502,8 @@ export default function Mission({ entry = "opening" }) {
         <MissionTitle clockRef={orbitClockRef} ready={state === STATES.TITLE} onStart={handleStartMissions} />
       )}
 
+      {state === STATES.CONTROL && <ControlRoomView onLaunch={handleLaunch} />}
+
       {/* START MISSIONS: the game menu, in the title's place over the same shot */}
       {state === STATES.MENU && <ModeMenu onMissions={() => setState(STATES.SELECT)} onTraining={handleTraining} />}
 
@@ -562,7 +571,7 @@ export default function Mission({ entry = "opening" }) {
       {state === STATES.COMPLETE && <ReentryScene final />}
 
       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
-      {state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
+      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
         <div
           data-testid="mission-hud-min"
           className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
@@ -638,7 +647,8 @@ export default function Mission({ entry = "opening" }) {
       )}
 
       {/* Global abort button — not shown during control, complete, or manual descent (which has its own) */}
-      {state !== STATES.SELECT &&
+      {state !== STATES.CONTROL &&
+        state !== STATES.SELECT &&
         state !== STATES.MENU &&
         state !== STATES.TITLE &&
         state !== STATES.COMPLETE &&

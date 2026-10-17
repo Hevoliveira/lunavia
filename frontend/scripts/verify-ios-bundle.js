@@ -64,7 +64,8 @@ const FEATURES = [
   ["Carrier left behind in lunar orbit", "CARRIER LEFT BEHIND"],
   ["Persistent title screen with START MISSIONS", "btn-start-missions"],
   ["Direct cut: 2 s after TLI cutoff straight to lunar orbit", "__lvLaunchCut"],
-  ["Opening first: the launch plays when LUNAVIA opens", "data-opening"],
+  ["Startup screen THE ROAD TO THE MOON with LAUNCH SEQUENCE — INITIATE", "control-launch-btn"],
+  ["The launch starts from the startup screen only", "data-opening"],
   ["Game menu after START MISSIONS (MISSIONS / TRAINING)", "mode-missions"],
 ];
 
@@ -78,7 +79,6 @@ const REMOVED = [
   ["Lunar approach turn", "TURNING ENGINE FIRST ON RCS"],
   ["Lunar orbit insertion burn shot", "RETROGRADE BURN · OUT OF CONTACT WITH EARTH"],
   ["Four destinations as training exercises", "training-mission-start-"],
-  ["Mission control screen before the launch", "control-launch-btn"],
 ];
 
 function sourceText(dir) {

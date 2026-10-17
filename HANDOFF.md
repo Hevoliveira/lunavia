@@ -2316,3 +2316,24 @@ The §38 "near profile 92–112°" check was replaced by these.
 - **Sound:** the opening calls `audio.init()` on mount. In the iOS app the web view does not require a tap for media (Capacitor sets `mediaTypesRequiringUserActionForPlayback = []`), so the launch is heard at once. In a desktop browser, the first tap or key unlocks sound (`useMissionAudio`).
 
 **Tests:** `pages/officialMissions.test.js` covers the new order.
+
+## 43. Startup screen restored: THE ROAD TO THE MOON before the launch
+
+**What changed in §42, and why it went wrong:**
+- §42 made `/` start the launch on mount: `ENTRY_STATE.opening` was `LAUNCH`, and a mount effect called `audio.init()`.
+- It also deleted `ControlRoomView`, the original startup screen.
+
+**Now:**
+- `ENTRY_STATE.opening` is `CONTROL` again.
+- `ControlRoomView` is restored byte-for-byte from af89907: THE ROAD TO THE MOON, "LV-001 · READY FOR LAUNCH", LAUNCH SEQUENCE — INITIATE, and the LV-001 ARTEMIS-CLASS strip.
+- It waits with no timer. Only its button calls `handleLaunch`, after its own 1.1-s GO.
+- **`handleLaunch` is the only `setState(STATES.LAUNCH)`.** It:
+  - returns unless the state is `CONTROL`;
+  - sets `stateRef` to `LAUNCH` at once, so a double tap cannot start a second sequence;
+  - then calls `audio.init()`, which runs within the tap, so iOS and browsers both play sound.
+- Nothing listens for visibility or app-resume events, so backgrounding and resuming cannot launch.
+
+**Unchanged from §42:**
+- Everything after the launch: the cut, lunar orbit, the title, START MISSIONS → MISSIONS / TRAINING, the missions and training.
+- ABORT and MAIN MENU return to the menu (`/menu`).
+- LAUNCH in the navigation bar, or reopening the app, shows the startup screen again; it never relaunches by itself.
