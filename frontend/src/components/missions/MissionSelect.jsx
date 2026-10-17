@@ -67,14 +67,16 @@ function MissionCard({ mission, site, active, last, onSelect, onStart }) {
         <div className="font-display font-black text-white text-[16px] short:text-[13px] leading-tight" data-testid="mission-title">{site.name}</div>
         <div className="font-mono text-[7.5px] tracking-[0.18em] text-zinc-500 mt-0.5 truncate">{site.ref}</div>
         <p className="text-[11px] short:text-[9.5px] text-zinc-300 leading-snug mt-1 line-clamp-3 short:line-clamp-2" data-testid="mission-summary">{mission.summary}</p>
-        <div className="flex items-center gap-1.5 mt-1.5 short:mt-1" data-testid="mission-environment" aria-label={`Environmental difficulty ${mission.environment}, ${level} of 4`}>
-          <span className="font-mono text-[7.5px] tracking-[0.2em] text-zinc-500">ENVIRONMENT</span>
-          <span className={`border px-1 font-mono text-[7.5px] tracking-wider ${ENV_TONE[mission.environment]}`}>{mission.environment}</span>
-          <span className="flex gap-0.5 ml-auto">
-            {[1, 2, 3, 4].map((k) => (
-              <i key={k} className={`inline-block w-2.5 h-1.5 ${k <= level ? (level >= 4 ? "bg-[#FF3B00]" : "bg-white/80") : "bg-white/15"}`} />
-            ))}
-          </span>
+        <div className="mt-1.5 short:mt-1 min-w-0" data-testid="mission-environment" aria-label={`Environmental difficulty ${mission.environment}, ${level} of 4`}>
+          <div className="font-mono text-[7.5px] tracking-[0.2em] text-zinc-500">ENVIRONMENT</div>
+          <div className="flex items-center gap-1.5 min-w-0 mt-0.5">
+            <span className={`border px-1 font-mono text-[7.5px] tracking-wider truncate ${ENV_TONE[mission.environment]}`}>{mission.environment}</span>
+            <span className="flex gap-0.5 ml-auto shrink-0">
+              {[1, 2, 3, 4].map((k) => (
+                <i key={k} className={`inline-block w-2.5 h-1.5 ${k <= level ? (level >= 4 ? "bg-[#FF3B00]" : "bg-white/80") : "bg-white/15"}`} />
+              ))}
+            </span>
+          </div>
         </div>
         <div className="mt-1.5 short:mt-1">
           <div className="font-mono text-[7.5px] tracking-[0.2em] text-zinc-500">PILOTING CHALLENGE</div>
@@ -133,7 +135,7 @@ export default function MissionSelect({ selection, log = [], onConfirm, onBack }
             <div className="font-mono text-[10px] short:text-[8px] tracking-[0.4em] text-[#FF3B00]">● LUNAVIA · OFFICIAL LUNAR MISSIONS</div>
             <h1 className="font-display font-black text-white text-4xl md:text-5xl short:text-xl tracking-tight mt-1 short:mt-0" data-testid="mission-select-title">MISSIONS</h1>
           </div>
-          <div className="font-mono text-[9px] short:text-[8px] tracking-[0.2em] text-zinc-500 text-right max-w-[26rem]">
+          <div className="font-mono text-[9px] short:text-[8px] tracking-[0.2em] text-zinc-500 text-right max-w-[26rem] short:max-w-[19rem] short:tracking-[0.12em]">
             CHOOSE A DESTINATION · THEN YOUR PILOT DIFFICULTY · THE FULL EXPEDITION FROM EARTH LAUNCH TO SPLASHDOWN
           </div>
         </div>
