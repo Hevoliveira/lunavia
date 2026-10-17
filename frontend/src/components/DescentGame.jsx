@@ -744,7 +744,10 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
   const fxRef = useRef(null);
   if (!fxRef.current) fxRef.current = createTouchdownFx();
   const contactRef = useRef(false);
-  if (typeof window !== "undefined") window.__lvDescentPhys = phys.current; // validation tooling (read-only)
+  if (typeof window !== "undefined") {
+    window.__lvDescentPhys = phys.current; // validation tooling (read-only)
+    window.__lvDescentSite = site.id; // validation tooling: the terrain actually flown
+  }
   const pausedRef = useRef(false);
   const endedRef = useRef(false);
   // Combine user pause + any modal into a single physics pause.

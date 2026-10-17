@@ -72,11 +72,11 @@ export default function Landing() {
             </p>
             <div className="mt-10 short:mt-3 flex flex-wrap gap-4 short:gap-2.5">
               <Link
-                to="/mission"
+                to="/missions"
                 data-testid="hero-cta-mission"
                 className="btn-hud btn-hud-primary"
               >
-                INICIAR MISSÃO <ArrowUpRight size={14} />
+                MISSIONS <ArrowUpRight size={14} />
               </Link>
               <Link
                 to="/training"
@@ -194,7 +194,7 @@ export default function Landing() {
             </div>
             <div className="mt-8">
               <Link
-                to="/mission"
+                to="/missions"
                 data-testid="flight-plan-cta"
                 className="btn-hud"
               >

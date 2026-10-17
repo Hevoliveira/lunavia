@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
  * MissionResult — post-touchdown explanation.
  * All values are captured touchdown-frame quantities from the simulation.
  */
-export default function MissionResult({ result, onRestart, onContinue, onEndMission, difficulty }) {
+export default function MissionResult({ result, onRestart, onContinue, onEndMission, difficulty, siteName = null }) {
   const isCrash = !!result.crashed;
   const b = result.breakdown;
 
@@ -26,7 +26,7 @@ export default function MissionResult({ result, onRestart, onContinue, onEndMiss
       <div className="hud-panel corners relative max-w-4xl w-full p-6 md:p-10 short:p-5 short:my-auto fade-in">
         <div className="flex items-center justify-between mb-4">
           <div className="font-mono text-[10px] tracking-[0.4em] text-zinc-500">
-            LM-1 · {result.zone} · {difficulty}
+            LM-1 · {siteName ? <span data-testid="result-site">{siteName} · </span> : null}{result.zone} · {difficulty}
           </div>
           <div
             className={`font-mono text-[10px] tracking-[0.4em] blink ${

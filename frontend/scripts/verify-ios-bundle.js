@@ -46,9 +46,12 @@ const FEATURES = [
   ["Mission Control voice", "MISSION CONTROL VOICE"],
   ["Lunar orbit rotation fix", "descent-fade"],
   ["Touchdown fidelity (CONTACT LIGHT / ENGINE STOP lamps)", "lamp-engine-stop"],
-  ["Lunar landing sites", "training-site-continue"],
+  ["Lunar landing sites (terrain, hazards, landing zones)", "OVER THE CRATER WALL"],
   ["Lunar module fidelity (two-stage LM)", "engineInner"],
-  ["Four lunar missions (mission selector)", "training-mission-start-"],
+  ["Four official lunar missions (MISSIONS)", "OFFICIAL LUNAR MISSIONS"],
+  ["Official mission cards with START MISSION", "mission-start-"],
+  ["Official mission selection kept (destination and pilot difficulty)", "lunavia.mission.selection.v1"],
+  ["Sea of Tranquility lunar landing training", "LUNAR LANDING TRAINING"],
   ["Far side mission (Silent Horizon, no Earth link)", "FAR SIDE TOUCHDOWN CONFIRMED"],
   ["Far-side approach intro", "farside-intro-skip"],
   ["One spacecraft from Earth orbit to the Moon (shared CSM, escape tower jettison)", "ESCAPE TOWER JETTISONED"],
@@ -61,6 +64,8 @@ const FEATURES = [
   ["Carrier left behind in lunar orbit", "CARRIER LEFT BEHIND"],
   ["Persistent title screen with START MISSIONS", "btn-start-missions"],
   ["Direct cut: 2 s after TLI cutoff straight to lunar orbit", "__lvLaunchCut"],
+  ["Opening first: the launch plays when LUNAVIA opens", "data-opening"],
+  ["Game menu after START MISSIONS (MISSIONS / TRAINING)", "mode-missions"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -72,6 +77,8 @@ const REMOVED = [
   ["Deep-space midcourse correction", "MIDCOURSE CORRECTION ON THE MAIN ENGINE"],
   ["Lunar approach turn", "TURNING ENGINE FIRST ON RCS"],
   ["Lunar orbit insertion burn shot", "RETROGRADE BURN · OUT OF CONTACT WITH EARTH"],
+  ["Four destinations as training exercises", "training-mission-start-"],
+  ["Mission control screen before the launch", "control-launch-btn"],
 ];
 
 function sourceText(dir) {

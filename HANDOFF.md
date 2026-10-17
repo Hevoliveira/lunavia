@@ -2219,3 +2219,100 @@ The §38 "near profile 92–112°" check was replaced by these.
 - `pages/directCut.test` (no cruise state; launch and SKIP go straight to the arrival; the welcome cue; no separation, coast or LOI code left).
 
 `verify-ios-bundle` also fails if any removed caption is still in the bundled game.
+
+## 41. Four official lunar missions; Sea of Tranquility-only lunar landing training
+
+**Before** (BUILD af89907):
+- The four destinations (data/landingSites `SITE_DEFS`) existed only inside the Flight Training Center: landing discipline → site cards (`MissionCard`) → scenarios.
+- The full mission never chose a site. `DescentGame` defaulted to `MISSION_SITE_ID` (Tranquility), and the pilot difficulty was asked only after START MISSIONS.
+
+**Now — one configuration, two modes** (`data/missionConfig.js`, tested):
+- `OFFICIAL_MISSIONS`:
+
+  | Mission | Destination | Environment |
+  |---|---|---|
+  | 01 | Sea of Tranquility | INTRODUCTORY |
+  | 02 | Hadley–Apennine | INTERMEDIATE |
+  | 03 | Tycho Highlands | ADVANCED |
+  | 04 | Silent Horizon | EXPERT |
+
+  Each has a summary, features and a piloting challenge.
+- `TRAINING_LANDING_SITES = ["tranquillitatis"]`.
+- `createMissionConfig({ mode, siteId, difficulty })` returns one frozen object for a flight: mode, destination, pilot difficulty, environment, terrain id, landing zones, comms (`earthLink`/`farSide`), seed, coordinates, the lunar-orbit view, briefing and base name.
+- Terrain, hazards and landing zones remain the site implementations themselves (`getSite(id)`); nothing is copied. The same `DescentGame` and `landerSim` fly every destination.
+- Environmental difficulty comes from the terrain only. Pilot difficulty (CADET/ASTRONAUT/COMMANDER, `DIFFICULTY`) is unchanged and identical at every destination: same entry state, fuel, engine and limits (tested). The reference pilot lands all 12 combinations (tested).
+
+**Official mission flow** (`pages/Mission.jsx`):
+- Main menu / nav → `/missions` → `MissionSelect`: four cards (number, name, summary, terrain preview, environment level, piloting challenge, START MISSION). The pilot step reuses `DifficultySelect`.
+- Then mission control, which shows the mission with a CHANGE MISSION button, and LAUNCH.
+- Launch → "Cutoff." → 2-s hold → direct cut to lunar orbit → CAPCOM's welcome → deployment, undocking, go for PDI, title, START MISSIONS.
+- START MISSIONS → **the destination's PDI briefing**: mission number, site name, environment, the site's own briefing. No second selection, no difficulty prompt, no relaunch.
+- BEGIN PDI → descent at the destination → results, shown over the landed LM at that site with the site named → return → reentry → MISSION COMPLETE (with the mission number, base and difficulty).
+- RETRY DESCENT returns to the same briefing.
+- The selection is held from launch to splashdown. It can be changed only on MISSIONS, before launch; it is kept on the device (`lib/missionSelection`).
+- **Lunar orbit over the destination:** `lunarOrbitShot.moonRotationFor(lat, lon)` turns the Moon so the destination lies under the same orbit, marker, camera and lighting (Tranquility's rotation is unchanged, `MOON_ROTATION`). The orbit captions name the destination.
+- **Silent Horizon (far side):**
+  - The orbit is shown over the near side, on the ground track 120° east of the site, with no site marker. CAPCOM's welcome and the go for powered descent need a line of sight to the Earth.
+  - After BEGIN PDI, `FarSideIntro` plays the loss of signal behind the Moon (existing voices only), with no call to Houston.
+  - The descent runs with no Earth link, as before: `DescentGame` cuts the link and shows the chip.
+  - The link returns when the LM leaves the descent, for the return and reentry.
+- **Results logging:** each official flight is logged on the device (`lunavia.mission.log.v1`) with destination, difficulty, landing (success, grade, zone, telemetry, attempts) and completion. Training records (`lunavia.training.v2`) are separate.
+- **Removed from the official flow:** "SKIP — WATCH CINEMATIC AUTO-LANDING" (`DescentScene`, `DESCENT`/`SURFACE` states). That scene is a generic Moon surface: it would land the player at the wrong terrain and skip the landing results.
+
+**Flight Training Center:**
+- Lunar landing is "SEA OF TRANQUILITY — LUNAR LANDING TRAINING" only. There is no site step and no site cards; the far-side intro is gone from training.
+- Scenarios are unchanged:
+  - STANDARD: throttle, safe touchdown;
+  - PRECISION: RCS, horizontal velocity;
+  - BRAKING;
+  - COMMANDER.
+- Retry, debrief and records are unchanged; reentry training is unchanged.
+- Hadley, Tycho and Silent Horizon are no longer offered in training. Their code is used by the official missions.
+
+**Tests:**
+- `data/missionConfig.test.js`: the four missions, training = Tranquility, frozen configs, distinct destinations, the same spacecraft everywhere, 12 achievable combinations, the orbit view;
+- `lib/missionSelection.test.js`: persistence, the log, training kept separate;
+- `pages/officialMissions.test.js`: routes, no second selection, the far side, the log, training.
+
+## 42. Opening first, then MISSIONS / TRAINING
+
+**Order of the game (as asked):**
+1. Opening LUNAVIA (`/`) starts the LV-001 launch by itself. There is no menu, mission-control screen or tap before it.
+2. The approved af89907 film follows: ascent, staging, Earth orbit, TLI, GUIDANCE "Cutoff.", the 2-s hold, and the direct cut to lunar orbit.
+3. Lunar orbit: CAPCOM's welcome, the deployment, the undocking, the go for powered descent, then LUNAVIA / A LAJU PRODUCTIONS GAME.
+4. The persistent title screen waits for START MISSIONS.
+5. START MISSIONS opens the game menu (`ModeMenu`): **MISSIONS** or **TRAINING**. It sits in the title's place, over the same lunar-orbit shot. Nothing is replayed or reset.
+6. MISSIONS opens the four official destinations, then the pilot difficulty. The mission then continues from lunar orbit at that destination:
+   - its PDI briefing, with CHANGE MISSION going back to MISSIONS;
+   - the descent (Silent Horizon: loss of signal first);
+   - results, with RETRY going back to the same briefing;
+   - return, reentry, MISSION COMPLETE.
+
+   There is no second launch.
+7. TRAINING opens the Flight Training Center. Lunar landing training is at the Sea of Tranquility only and starts directly at the descent. Reentry training is unchanged.
+
+**Routes** (`App.js`; each has its own `key`, so moving between them starts that entry fresh):
+
+| Route | Opens on |
+|---|---|
+| `/` and `/mission` | the opening (`entry="opening"` → `LAUNCH`) |
+| `/menu` | MENU |
+| `/missions` | SELECT |
+| `/home` | the old landing page |
+
+- `/menu` and `/missions` show lunar orbit as the opening leaves it: the orbit clock is at the title screen and its sounds are marked done.
+- The navigation bar: Home → `/menu`, Missions → `/missions`, LAUNCH → `/` (the opening).
+- Training's MAIN MENU → `/menu`.
+
+**States** (`pages/Mission.jsx`):
+- The flow is LAUNCH → ORBIT → TITLE → MENU → SELECT → BRIEFING → (FAR_SIDE) → MANUAL_DESCENT → RESULT → RETURN → REENTRY → COMPLETE.
+- `ORBIT_STATES` (ORBIT, TITLE, MENU, SELECT, BRIEFING) keep the one lunar-orbit scene and clock mounted.
+- ABORT (launch, orbit, descent, return, reentry), END MISSION and MAIN MENU on MISSION COMPLETE all return to MENU (`resetMission`). The opening is not replayed.
+- `ControlRoomView` (the mission-control screen with LAUNCH SEQUENCE — INITIATE) is removed. This also removes the game's only online image (Unsplash).
+
+**Other changes:**
+- The orbit is the opening's own view (the approved Tranquility framing; captions without a destination), because no destination is chosen yet. `missionConfig.orbitView` and `moonRotationFor` remain available, but the scene no longer uses them.
+- An official flight is logged from the moment its destination and difficulty are confirmed.
+- **Sound:** the opening calls `audio.init()` on mount. In the iOS app the web view does not require a tap for media (Capacitor sets `mediaTypesRequiringUserActionForPlayback = []`), so the launch is heard at once. In a desktop browser, the first tap or key unlocks sound (`useMissionAudio`).
+
+**Tests:** `pages/officialMissions.test.js` covers the new order.

@@ -75,7 +75,7 @@ export default function Manifesto() {
 
         <div className="mt-24 border-t border-white/10 pt-10 flex flex-wrap gap-4">
           <Link
-            to="/mission"
+            to="/missions"
             data-testid="manifesto-cta"
             className="btn-hud btn-hud-primary"
           >
