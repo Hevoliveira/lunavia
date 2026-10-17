@@ -3,13 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, ChevronRight, Lock, Play, RotateCcw, Trophy, Volume2, VolumeX } from "lucide-react";
 import DescentGame from "@/components/DescentGame";
 import ReentryGame from "@/components/ReentryGame";
-import SitePreview, { SiteProfile } from "@/components/training/SitePreview";
-import FarSideIntro from "@/components/training/FarSideIntro";
 import BuildBadge from "@/components/BuildBadge";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import comms from "@/audio/comms";
 import { DIFFICULTY } from "@/data/landingPhysics";
-import { SITE_DEFS, SITE_IDS, MISSION_SITE_ID, getSite } from "@/data/landingSites";
+import { getSite } from "@/data/landingSites";
+import { TRAINING_LANDING_SITE, TRAINING_LANDING_SITES } from "@/data/missionConfig";
 import {
   DIFFICULTY_KEYS,
   LANDING_SCENARIOS,
@@ -26,13 +25,18 @@ import { loadProgress, recordAttempt, progressKey, totals, bestsFor } from "@/li
  * mission on their own. Each attempt runs the mission's own DescentGame or
  * ReentryGame (same physics, controls, limits and grading) from a training
  * start, with an instructor whose detail depends on the difficulty.
+ *
+ * Lunar landing training is flown at the Sea of Tranquility only
+ * (data/missionConfig TRAINING_LANDING_SITE): Hadley–Apennine, Tycho Highlands
+ * and Silent Horizon are official missions (MISSIONS), flown on the full
+ * expedition. Training goes straight to the problem: no launch, no lunar orbit.
  */
 
 const DISCIPLINES = {
   landing: {
-    title: "LUNAR LANDING SIMULATOR",
+    title: "SEA OF TRANQUILITY — LUNAR LANDING TRAINING",
     craft: "LM-1 · POWERED DESCENT",
-    blurb: "Practice descending and landing on the Moon.",
+    blurb: "Throttle, braking, horizontal velocity, RCS and safe touchdown practice at the Sea of Tranquility.",
     scenarios: LANDING_SCENARIOS,
   },
   reentry: {
@@ -50,20 +54,13 @@ const GUIDANCE_NOTE = {
 };
 
 const VOICE_KEY = "lunavia.training.voice";
-const SITE_KEY = "lunavia.training.site";
 
-// Every landing scenario at every landing site, plus the reentry scenarios.
+// Every landing scenario at the training site, plus the reentry scenarios.
 const TOTAL_SLOTS =
-  (LANDING_SCENARIOS.filter((s) => !s.lock).length * DIFFICULTY_KEYS.length + LANDING_SCENARIOS.filter((s) => s.lock).length) * SITE_IDS.length +
+  (LANDING_SCENARIOS.filter((s) => !s.lock).length * DIFFICULTY_KEYS.length + LANDING_SCENARIOS.filter((s) => s.lock).length) * TRAINING_LANDING_SITES.length +
   REENTRY_SCENARIOS.filter((s) => !s.lock).length * DIFFICULTY_KEYS.length +
   REENTRY_SCENARIOS.filter((s) => s.lock).length;
 
-const RATING_TONE = {
-  BEGINNER: "border-emerald-400/60 text-emerald-300",
-  INTERMEDIATE: "border-sky-400/60 text-sky-300",
-  ADVANCED: "border-amber-400/60 text-amber-300",
-  EXPERT: "border-[#FF3B00]/70 text-[#FF7A4D]",
-};
 const objectiveText = (scenario, siteId) => (typeof scenario.objective === "function" ? scenario.objective(getSite(siteId)) : scenario.objective);
 
 function Backdrop() {
@@ -124,7 +121,7 @@ function RecordsPanel({ progress }) {
           </thead>
           <tbody>
             {DIFFICULTY_KEYS.map((k) => {
-              const b = bestsFor(progress, "landing", k, landingIds, SITE_IDS);
+              const b = bestsFor(progress, "landing", k, landingIds, TRAINING_LANDING_SITES);
               return (
                 <tr key={k} data-testid={`records-landing-${k}`}>
                   <td className={td}>{k}</td>
@@ -161,68 +158,8 @@ function RecordsPanel({ progress }) {
         </table>
       </div>
       <p className="md:col-span-2 short:col-span-2 font-mono text-[9px] tracking-wider text-zinc-500">
-        All four lunar missions together. Kept on this device only, separate from the full mission. Removed if the app is deleted.
+        Lunar landing training at the Sea of Tranquility. Kept on this device only, separate from the official missions. Removed if the app is deleted.
       </p>
-    </div>
-  );
-}
-
-/** One lunar destination: terrain preview, identity, piloting challenge, environment difficulty, START MISSION. */
-function MissionCard({ site, active, onSelect, onStart }) {
-  const [img, setImg] = useState(true);
-  return (
-    <div
-      role="option"
-      aria-selected={active}
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onSelect()}
-      data-testid={`training-site-${site.id}`}
-      className={`group flex flex-col min-w-0 cursor-pointer border bg-black/55 transition-colors ${active ? "border-[#FF3B00] bg-[#FF3B00]/[0.07]" : "border-white/10 hover:border-white/30"}`}
-    >
-      <div className="relative w-full aspect-[2.1/1] short:aspect-[2.3/1] bg-[#0b0b0d] overflow-hidden">
-        {img && (
-          <img
-            src={`${process.env.PUBLIC_URL}/missions/${site.id}.jpg`}
-            alt={`${site.name}: the landing area`}
-            onError={() => setImg(false)}
-            className="absolute inset-0 w-full h-full object-cover"
-            draggable={false}
-          />
-        )}
-        <span className={`absolute top-1.5 left-1.5 border bg-black/60 px-1 font-mono text-[7px] tracking-wider ${RATING_TONE[site.rating]}`}>{site.rating}</span>
-        {site.earthLink === false && (
-          <span className="absolute top-1.5 right-1.5 border border-[#9fb6cc]/50 bg-black/60 px-1 font-mono text-[7px] tracking-wider text-[#9fb6cc]" data-testid="mission-no-link">NO EARTH LINK</span>
-        )}
-      </div>
-      <div className="p-2.5 short:p-2 flex flex-col flex-1 min-w-0">
-        <div className="font-mono text-[8px] tracking-[0.3em] text-[#FF3B00]">{site.kind}</div>
-        <div className="font-display font-black text-white text-[15px] short:text-[12px] leading-tight mt-0.5" data-testid="mission-title">{site.name}</div>
-        <div className="font-mono text-[7.5px] tracking-[0.18em] text-zinc-500 mt-0.5 truncate">{site.ref}</div>
-        <p className="text-[11px] short:text-[9.5px] text-zinc-300 leading-snug mt-1 line-clamp-3 short:line-clamp-2">{site.blurb}</p>
-        <div className="mt-1.5 short:mt-1">
-          <div className="font-mono text-[7.5px] tracking-[0.25em] text-zinc-500">PILOTING CHALLENGE</div>
-          <div className="text-[10.5px] short:text-[9px] text-white leading-snug line-clamp-2" data-testid="mission-challenge">{site.challenge}</div>
-        </div>
-        <div className="flex items-center gap-1.5 mt-1.5 short:mt-1" data-testid="mission-difficulty" aria-label={`Environment difficulty ${site.level} of 4`}>
-          <span className="font-mono text-[7.5px] tracking-[0.25em] text-zinc-500">TERRAIN</span>
-          {[1, 2, 3, 4].map((k) => (
-            <i key={k} className={`inline-block w-3 h-1.5 ${k <= site.level ? (site.level >= 4 ? "bg-[#FF3B00]" : "bg-white/80") : "bg-white/15"}`} />
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onStart();
-          }}
-          className={`btn-hud justify-center min-h-[40px] mt-auto pt-0 short:min-h-[36px] ${active ? "btn-hud-primary" : ""}`}
-          data-testid={active ? "training-site-continue" : `training-mission-start-${site.id}`}
-          style={{ marginTop: "0.6rem" }}
-        >
-          <Play size={12} /> START MISSION
-        </button>
-      </div>
     </div>
   );
 }
@@ -231,29 +168,12 @@ export default function Training() {
   const navigate = useNavigate();
   const audio = useMissionAudio();
   const [discipline, setDiscipline] = useState(null);
-  const [siteStep, setSiteStep] = useState(false);
-  const [siteId, setSiteIdState] = useState(() => {
-    try {
-      const v = window.localStorage.getItem(SITE_KEY);
-      return SITE_IDS.includes(v) ? v : MISSION_SITE_ID;
-    } catch {
-      return MISSION_SITE_ID;
-    }
-  });
-  const setSiteId = (id) => {
-    setSiteIdState(id);
-    try {
-      window.localStorage.setItem(SITE_KEY, id);
-    } catch {
-      // not kept; the choice still applies to this session
-    }
-  };
+  // Lunar landing training: the Sea of Tranquility only.
+  const siteId = TRAINING_LANDING_SITE;
   const [showRecords, setShowRecords] = useState(false);
   const [scenarioId, setScenarioId] = useState("standard");
   const [chosenDiff, setChosenDiff] = useState("CADET");
-  const [view, setView] = useState("center"); // center | intro | run | debrief
-  // The far-side approach (loss of signal) plays once per visit, never on a retry.
-  const farIntroSeen = useRef(false);
+  const [view, setView] = useState("center"); // center | run | debrief
   const [runKey, setRunKey] = useState(0);
   const [debrief, setDebrief] = useState(null);
   const [progress, setProgress] = useState(() => loadProgress());
@@ -314,8 +234,6 @@ export default function Training() {
     setDiscipline(d);
     setShowRecords(false);
     setScenarioId(DISCIPLINES[d].scenarios[0].id);
-    // lunar landing: choose the landing site first (with its preview)
-    setSiteStep(d === "landing");
   };
 
   const start = () => {
@@ -324,11 +242,6 @@ export default function Training() {
     runRef.current = { discipline, scenarioId: scenario.id, difficulty, site: discipline === "landing" ? siteId : null };
     setDebrief(null);
     setRunKey((k) => k + 1);
-    const farSide = discipline === "landing" && getSite(siteId).earthLink === false;
-    setView(farSide && !farIntroSeen.current ? "intro" : "run");
-  };
-  const introDone = () => {
-    farIntroSeen.current = true;
     setView("run");
   };
 
@@ -365,7 +278,6 @@ export default function Training() {
   const toCenter = () => {
     toScenarios();
     setDiscipline(null);
-    setSiteStep(false);
   };
   const toMenu = () => {
     stopSounds();
@@ -467,59 +379,7 @@ export default function Training() {
                 </>
               )}
 
-              {discipline === "landing" && siteStep && (
-                <div className="mt-6 short:mt-1" data-testid="training-sites">
-                  <div className="flex items-center justify-between gap-3 mb-2 short:mb-1">
-                    <button type="button" onClick={() => setDiscipline(null)} className="touch-ctrl font-mono text-[10px] tracking-[0.3em] text-zinc-400 hover:text-white flex items-center gap-1.5 py-2 short:py-1" data-testid="training-back">
-                      <ArrowLeft size={12} /> TRAINING CENTER
-                    </button>
-                    <div className="font-mono text-[9px] tracking-[0.3em] text-[#FF3B00] truncate">LUNAR MISSIONS · CHOOSE A DESTINATION</div>
-                  </div>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 short:grid-cols-4 gap-3 short:gap-2" role="listbox" aria-label="Lunar mission">
-                    {SITE_DEFS.map((s) => (
-                      <MissionCard
-                        key={s.id}
-                        site={s}
-                        active={s.id === siteId}
-                        onSelect={() => setSiteId(s.id)}
-                        onStart={() => {
-                          setSiteId(s.id);
-                          setSiteStep(false);
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {/* Larger screens: the selected destination, live, as the descent draws it */}
-                  {(() => {
-                    const site = getSite(siteId);
-                    const stat = (label, value, testId) => (
-                      <div data-testid={testId} className="min-w-0">
-                        <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500">{label}</div>
-                        <div className="font-mono text-[10px] text-white truncate">{value}</div>
-                      </div>
-                    );
-                    return (
-                      <div className="hidden md:grid short:hidden grid-cols-[1.4fr_1fr] mt-4 hud-panel corners relative bg-black/60 border border-white/10 overflow-hidden" data-testid="training-site-briefing">
-                        <SitePreview siteId={siteId} className="h-[260px] w-full" />
-                        <div className="p-4 flex flex-col min-w-0">
-                          <div className="font-mono text-[8px] tracking-[0.25em] text-zinc-500 truncate">{site.coords} · {site.ref}</div>
-                          <div className="font-display font-black text-white text-xl leading-tight mt-0.5" data-testid="training-site-name">{site.name}</div>
-                          <p className="text-[12px] text-zinc-300 leading-snug mt-1">{site.briefing}</p>
-                          <SiteProfile siteId={siteId} className="w-full mt-2" />
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2">
-                            {stat("APPROACH", site.approach.text, "site-approach")}
-                            {stat("PRIMARY LZ", `${site.primary.r} m radius`, "site-lz")}
-                            {stat("SUN", `${site.sun.el}° above the horizon`, "site-sun")}
-                            {stat("EARTH LINK", site.earthLink === false ? "UNAVAILABLE (FAR SIDE)" : "DIRECT", "site-link")}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {discipline && !(discipline === "landing" && siteStep) && (
+              {discipline && (
                 <div className="grid md:grid-cols-[1.1fr_1fr] short:grid-cols-[1.05fr_1fr] gap-6 short:gap-3 mt-6 short:mt-1.5">
                   {/* Scenario list */}
                   <div>
@@ -528,17 +388,10 @@ export default function Training() {
                         <ArrowLeft size={12} /> TRAINING CENTER
                       </button>
                       {discipline === "landing" ? (
-                        <button
-                          type="button"
-                          onClick={() => setSiteStep(true)}
-                          className="touch-ctrl py-2 font-mono text-[10px] tracking-[0.25em] text-[#FF3B00] flex items-center gap-1 min-w-0"
-                          data-testid="training-site-change"
-                          title="Change landing site"
-                        >
-                          <span className="text-zinc-500">SITE</span>
-                          <span className="text-white truncate" data-testid="training-site-current">{getSite(siteId).short}</span>
-                          <ChevronRight size={11} />
-                        </button>
+                        <span className="font-mono text-[10px] tracking-[0.25em] text-[#FF3B00] truncate min-w-0" data-testid="training-site-current">
+                          <span className="text-zinc-500">SITE </span>
+                          <span className="text-white">{getSite(siteId).name}</span>
+                        </span>
                       ) : (
                         <span className="font-mono text-[10px] tracking-[0.3em] text-[#FF3B00]">{DISCIPLINES[discipline].title}</span>
                       )}
@@ -664,9 +517,6 @@ export default function Training() {
         </>
       )}
 
-      {view === "intro" && run && (
-        <FarSideIntro audio={audio} briefing={getSite(run.site).briefing} onDone={introDone} />
-      )}
 
       {(view === "run" || view === "debrief") && run && run.discipline === "landing" && (
         <DescentGame

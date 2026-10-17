@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
  * Uses the Unsplash mission control image as a backdrop, with layered HUD
  * elements: countdown clock, telemetry, and a giant LAUNCH button.
  */
-export default function ControlRoomView({ onLaunch }) {
+export default function ControlRoomView({ mission = null, onLaunch, onChangeMission = null }) {
   // Starting the mission is the only input before the Moon: the terminal
   // count, ignition, ascent, staging, orbit and TLI then run automatically
   // in the launch cinematic.
@@ -59,19 +59,39 @@ export default function ControlRoomView({ onLaunch }) {
         {!launching && (
           <>
             <div className="font-mono text-[11px] tracking-[0.4em] text-zinc-400 mb-4 short:mb-2 short:mt-10 scan-in">
-              LV-001 · READY FOR LAUNCH
+              LV-001 · READY FOR LAUNCH{mission ? ` · MISSION ${mission.number}` : ""}
             </div>
             <h1
-              className="font-display font-black text-6xl md:text-8xl short:text-5xl tracking-tight text-white text-center"
+              className={`font-display font-black tracking-tight text-white text-center ${mission ? "text-5xl md:text-7xl short:text-4xl" : "text-6xl md:text-8xl short:text-5xl"}`}
               data-testid="control-room-title"
             >
-              THE ROAD<br />
-              <span className="text-[#FF3B00]">TO THE MOON</span>
+              {mission ? (
+                <>
+                  <span className="text-[#FF3B00]" data-testid="control-mission-name">{mission.name}</span>
+                </>
+              ) : (
+                <>
+                  THE ROAD<br />
+                  <span className="text-[#FF3B00]">TO THE MOON</span>
+                </>
+              )}
             </h1>
+            {mission && (
+              <div className="mt-4 short:mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 font-mono text-[10px] tracking-[0.3em] text-zinc-300" data-testid="control-mission">
+                <span>ENVIRONMENT · <span className="text-white">{mission.environment}</span></span>
+                <span>PILOT · <span className="text-white" data-testid="control-mission-difficulty">{mission.difficulty}</span></span>
+                {mission.comms.farSide && <span className="text-[#9fb6cc]">FAR SIDE · NO EARTH LINK DURING DESCENT</span>}
+                {onChangeMission && (
+                  <button type="button" onClick={onChangeMission} className="btn-hud !py-1 !min-h-[36px] !text-[9px]" data-testid="control-change-mission">
+                    CHANGE MISSION
+                  </button>
+                )}
+              </div>
+            )}
             <button
               onClick={startCountdown}
               data-testid="control-launch-btn"
-              className="mt-12 short:mt-5 group relative z-10 inline-flex items-center gap-4 px-8 py-4 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00] transition-colors duration-200 font-mono tracking-[0.35em] text-sm"
+              className="mt-10 short:mt-4 group relative z-10 inline-flex items-center gap-4 px-8 py-4 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00] transition-colors duration-200 font-mono tracking-[0.35em] text-sm"
             >
               <span className="inline-block w-3 h-3 rounded-full bg-[#FF3B00] blink" />
               LAUNCH SEQUENCE — INITIATE

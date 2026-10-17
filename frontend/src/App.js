@@ -19,6 +19,7 @@ function App() {
         <Navbar />
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/missions" element={<Mission />} />
           <Route path="/mission" element={<Mission />} />
           <Route path="/training" element={<Training />} />
           <Route path="/manifesto" element={<Manifesto />} />

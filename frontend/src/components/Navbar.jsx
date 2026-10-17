@@ -43,13 +43,13 @@ export default function Navbar() {
 
         <nav className="flex items-center gap-8 short:gap-5">
           {link("/", "Home", "nav-home")}
-          {link("/mission", "Mission", "nav-mission")}
+          {link("/missions", "Missions", "nav-mission")}
           {link("/training", "Training", "nav-training")}
           {link("/manifesto", "Manifesto", "nav-manifesto")}
           <AudioSettings />
           <a
             data-testid="nav-launch-btn"
-            href="/mission"
+            href="/missions"
             className="btn-hud !py-2 !px-4 short:!py-3"
           >
             LAUNCH

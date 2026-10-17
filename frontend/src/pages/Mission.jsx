@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { ArrowUpRight, RotateCcw } from "lucide-react";
 import ControlRoomView from "@/components/scenes/ControlRoomView";
 import LaunchCinematic from "@/components/scenes/LaunchCinematic";
 import MissionScene, { preloadMissionScene } from "@/components/MissionScene";
-import DescentScene from "@/components/scenes/DescentScene";
 import ReentryScene from "@/components/scenes/ReentryScene";
 import DescentGame from "@/components/DescentGame";
 import ReentryGame from "@/components/ReentryGame";
-import DifficultySelect from "@/components/DifficultySelect";
+import MissionSelect from "@/components/missions/MissionSelect";
+import FarSideIntro from "@/components/training/FarSideIntro";
 import PdiBriefing from "@/components/PdiBriefing";
 import MissionResult from "@/components/MissionResult";
 import AbortModal from "@/components/AbortModal";
@@ -18,6 +18,8 @@ import { goForPdi } from "@/data/lunarOrbitShot";
 import { ORBIT_ENTRY, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, orbitClockAt, orbitShotAt } from "@/data/orbitSequence";
 import { TD } from "@/data/transposition";
 import { TITLE } from "@/data/titleReveal";
+import { MODE, createMissionConfig } from "@/data/missionConfig";
+import { loadMissionLog, loadSelection, logMissionComplete, logMissionLanding, logMissionStart, saveSelection } from "@/lib/missionSelection";
 
 /*
  * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
@@ -31,37 +33,45 @@ import { TITLE } from "@/data/titleReveal";
  * After CAPCOM's go for powered descent the game's title is presented, once per
  * mission, over the lunar module moving away (data/titleReveal), and the title
  * screen (TITLE) waits, with no timer, for START MISSIONS: the first required
- * input after LAUNCH, which opens the descent setup (difficulty, then BEGIN
- * PDI). Every cinematic can be skipped; skipping lunar orbit lands on the
- * title screen, never past it.
+ * input after LAUNCH, which opens the descent briefing (BEGIN PDI). Every
+ * cinematic can be skipped; skipping lunar orbit lands on the title screen,
+ * never past it.
+ *
+ * Official missions (data/missionConfig): the destination and the pilot
+ * difficulty are chosen before launch, on MISSIONS (/missions, or CHANGE
+ * MISSION in mission control), and held for the whole expedition as one frozen
+ * mission config: the lunar orbit is shown over the destination, the descent
+ * flies its terrain, landing zones and hazards, and START MISSIONS never asks
+ * again. Silent Horizon (far side): the orbit, Houston's welcome and the go
+ * for powered descent are on the near side; after BEGIN PDI the spacecraft go
+ * behind the Moon (FarSideIntro, loss of signal) and the descent has no Earth
+ * link.
  */
 const STATES = {
+  SELECT: "select",            // MISSIONS: destination, then pilot difficulty
   CONTROL: "control",
   LAUNCH: "launch",
   ORBIT: "orbit",
   TITLE: "title",              // the persistent title screen: START MISSIONS
-  DIFFICULTY: "difficulty",
   BRIEFING: "briefing",        // Phase 2 - PDI readiness card, sim not yet live
+  FAR_SIDE: "far_side",        // Silent Horizon: loss of signal behind the Moon, before the descent
   MANUAL_DESCENT: "manual_descent",
   RESULT: "result",
-  DESCENT: "descent",       // cinematic auto-descent (skip path)
-  SURFACE: "surface",
   RETURN: "return",
   REENTRY: "reentry",
   COMPLETE: "complete",
 };
 
 const STATE_LABELS = {
+  select: { code: "T-00:30:00", name: "MISSIONS" },
   control: { code: "T-00:00:10", name: "MISSION CONTROL" },
   launch: { code: "T-00:00:15", name: "LAUNCH" },
   orbit: { code: "T+80:00:00", name: "LUNAR ORBIT" },
   title: { code: "T+81:30:00", name: "LUNAR ORBIT" },
-  difficulty: { code: "T+82:00:00", name: "DESCENT · SETUP" },
   briefing: { code: "T+82:00:00", name: "PDI · READINESS" },
+  far_side: { code: "T+82:00:00", name: "LOSS OF SIGNAL" },
   manual_descent: { code: "T+82:00:00", name: "POWERED DESCENT · MANUAL" },
   result: { code: "T+82:12:00", name: "MISSION RATING" },
-  descent: { code: "T+82:00:00", name: "POWERED DESCENT" },
-  surface: { code: "T+82:12:00", name: "TRANQUILITY BASE" },
   return: { code: "T+140:00:00", name: "TRANS-EARTH INJECTION" },
   reentry: { code: "T+195:00:00", name: "REENTRY" },
   complete: { code: "T+195:15:00", name: "SPLASHDOWN · MISSION COMPLETE" },
@@ -109,18 +119,26 @@ const FLIGHT_STATES = new Set([
   STATES.LAUNCH,
   STATES.ORBIT,
   STATES.TITLE,
+  STATES.FAR_SIDE,
   STATES.MANUAL_DESCENT,
-  STATES.DESCENT,
-  STATES.SURFACE,
   STATES.RETURN,
   STATES.REENTRY,
 ]);
 
 export default function Mission() {
-  const [state, setState] = useState(STATES.CONTROL);
-  const [progress, setProgress] = useState(0);
-  const [descentAlt, setDescentAlt] = useState(8);
-  // Lunar orbit presentation (ORBIT, TITLE, DIFFICULTY, BRIEFING): the orbit
+  // /missions opens on MISSIONS; /mission on mission control with the last choice.
+  const location = useLocation();
+  const [state, setState] = useState(() => (location.pathname === "/missions" ? STATES.SELECT : STATES.CONTROL));
+  // The official mission: destination and pilot difficulty, chosen before launch and
+  // held, frozen, for the whole expedition (changed only on MISSIONS, before launch).
+  const [selection, setSelection] = useState(() => loadSelection());
+  const mission = useMemo(() => createMissionConfig({ mode: MODE.OFFICIAL, ...selection }), [selection]);
+  const missionRef = useRef(mission);
+  missionRef.current = mission;
+  const difficulty = mission.difficulty;
+  const flightIdRef = useRef(null); // this flight's entry in the official missions' log
+  const [missionLog, setMissionLog] = useState(() => loadMissionLog());
+  // Lunar orbit presentation (ORBIT, TITLE, BRIEFING): the orbit
   // clock, read every frame by the scene through the ref. It is real seconds
   // since orbit began until the title screen, then slows to a near stop
   // (data/orbitSequence orbitClockAt) while the screen waits for the player.
@@ -142,7 +160,6 @@ export default function Mission() {
   const [fade, setFade] = useState({ o: 0, ms: 650 });
   const fadingRef = useRef(false);
   const [returnTime, setReturnTime] = useState(504000);
-  const [difficulty, setDifficulty] = useState("ASTRONAUT");
   const [descentResult, setDescentResult] = useState(null);
   const [showAbort, setShowAbort] = useState(false);
   const rafRef = useRef(null);
@@ -153,7 +170,6 @@ export default function Mission() {
 
   useEffect(() => {
     stateRef.current = state;
-    setProgress(0);
     lastTsRef.current = 0;
   }, [state]);
 
@@ -166,7 +182,7 @@ export default function Mission() {
       lastTsRef.current = ts;
       const s = stateRef.current;
 
-      if (s === STATES.ORBIT || s === STATES.TITLE || s === STATES.DIFFICULTY || s === STATES.BRIEFING) {
+      if (s === STATES.ORBIT || s === STATES.TITLE || s === STATES.BRIEFING) {
         // The orbit keeps flying while the player reads; no React render per frame.
         orbitRealRef.current += dt;
         // Seek (validation tooling): jump the orbit clock forward, as the launch's __lvLaunchSeek does.
@@ -212,26 +228,11 @@ export default function Mission() {
         const cap = s === STATES.ORBIT && shot.caption ? shot.id : null;
         if (cap !== captionRef.current) {
           captionRef.current = cap;
-          setCaption(cap ? { id: cap, kicker: shot.kicker || "LUNAR ORBIT", title: shot.caption, sub: shot.sub } : null);
+          // the destination stays named on screen all through lunar orbit
+          const m = missionRef.current;
+          const kicker = `${shot.kicker || "LUNAR ORBIT"} · ${m.name}${m.comms.farSide ? " (FAR SIDE)" : ""}`;
+          setCaption(cap ? { id: cap, kicker, title: shot.caption, sub: shot.sub } : null);
         }
-      } else if (s === STATES.DESCENT) {
-        setDescentAlt((a) => {
-          const next = a - dt * 1.2;
-          if (next <= 0) {
-            setState(STATES.SURFACE);
-            return 0;
-          }
-          return next;
-        });
-      } else if (s === STATES.SURFACE) {
-        setProgress((p) => {
-          const next = p + dt * 0.25;
-          if (next >= 1) {
-            setState(STATES.RETURN);
-            return 1;
-          }
-          return next;
-        });
       } else if (s === STATES.RETURN) {
         setReturnTime((t) => {
           // Slower over the close shot of the CSM leaving the Moon.
@@ -264,9 +265,18 @@ export default function Mission() {
   };
 
   const handleLaunch = () => {
+    if (stateRef.current !== STATES.CONTROL) return;
     audio.init();
     preloadMissionScene(); // lunar orbit follows the launch directly
+    const m = missionRef.current;
+    flightIdRef.current = logMissionStart({ siteId: m.siteId, difficulty: m.difficulty });
     setState(STATES.LAUNCH);
+  };
+
+  // MISSIONS: the destination and pilot difficulty for the next flight (before launch only).
+  const handleConfirmMission = (sel) => {
+    setSelection(saveSelection(sel));
+    setState(STATES.CONTROL);
   };
 
   // End of the Earth departure (2 s after "Cutoff.", or SKIP): a cinematic time jump
@@ -306,32 +316,33 @@ export default function Mission() {
     setState(STATES.TITLE);
   };
 
-  // START MISSIONS on the title screen: once, into the descent setup (the existing mission
-  // interface; the destination chosen before launch is kept, nothing relaunched or reset).
+  // START MISSIONS on the title screen: once, straight to the descent briefing at the
+  // destination chosen before launch, with the pilot difficulty chosen then (nothing is
+  // asked again, nothing relaunched or reset).
   const handleStartMissions = () => {
     if (stateRef.current !== STATES.TITLE || startedRef.current) return;
     startedRef.current = true;
     audio.padStop(2.5);
-    setState(STATES.DIFFICULTY);
-  };
-
-  // Phase 2 - selecting a difficulty no longer drops the player straight into a
-  // live descent. It opens the readiness card; the simulation starts only when
-  // BEGIN PDI is pressed, so the comms call moves there too.
-  const handleDifficulty = (key) => {
-    setDifficulty(key);
     setState(STATES.BRIEFING);
   };
 
+  // The descent itself, after the fade (or, on the far side, after loss of signal).
+  const enterDescent = () => {
+    setState(STATES.MANUAL_DESCENT);
+    // the crew's call to Houston: not on the far side (no link)
+    if (!missionRef.current.comms.farSide) audio.say("descent.pdiStart", { delay: 0.4 });
+  };
+
   // BEGIN PDI: a short fade through black into the descent view (the descent
-  // itself starts exactly as before, from its own initial state).
+  // itself starts exactly as before, from its site's own initial state). On the far
+  // side the spacecraft first go behind the Moon: loss of signal (FarSideIntro).
   const handleBeginPdi = () => {
     if (fadingRef.current) return;
     fadingRef.current = true;
     setFade({ o: 1, ms: 360 });
     setTimeout(() => {
-      setState(STATES.MANUAL_DESCENT);
-      audio.say("descent.pdiStart", { delay: 0.4 });
+      if (missionRef.current.comms.farSide) setState(STATES.FAR_SIDE);
+      else enterDescent();
       requestAnimationFrame(() => requestAnimationFrame(() => {
         setFade({ o: 0, ms: 650 });
         fadingRef.current = false;
@@ -339,26 +350,22 @@ export default function Mission() {
     }, 380);
   };
 
-  const handleSkipDifficulty = () => {
-    setState(STATES.DESCENT);
-    setDescentAlt(8);
-    audio.startRumble(0.8);
-  };
-
-  const handleDescentSuccess = (result) => {
+  const handleDescentEnd = (result) => {
     setDescentResult(result);
+    if (flightIdRef.current) setMissionLog(logMissionLanding(flightIdRef.current, result));
     setState(STATES.RESULT);
   };
 
-  const handleDescentCrash = (result) => {
-    setDescentResult(result);
-    setState(STATES.RESULT);
-  };
-
+  // RESTART on the results: the descent again, same destination and pilot difficulty.
   const handleRestartDescent = () => {
     audio.commsFlush();
     setDescentResult(null);
-    setState(STATES.DIFFICULTY);
+    setState(STATES.BRIEFING);
+  };
+
+  const handleMissionComplete = () => {
+    if (flightIdRef.current) setMissionLog(logMissionComplete(flightIdRef.current));
+    setState(STATES.COMPLETE);
   };
 
   const handleContinueFromResult = () => {
@@ -377,8 +384,7 @@ export default function Mission() {
     audio.padStop(1);
     setState(STATES.CONTROL);
     setOrbitAhead(false);
-    setProgress(0);
-    setDescentAlt(8);
+    flightIdRef.current = null;
     setFade({ o: 0, ms: 0 });
     orbitClockRef.current = 0;
     orbitRealRef.current = 0;
@@ -397,7 +403,7 @@ export default function Mission() {
   // GO FOR PDI: the lunar module has undocked and separated (data/lunarOrbitShot
   // goForPdi); FLIGHT's call comes just before the descent setup opens.
   const overLandingZone = goPdi;
-  const inLunarOrbit = state === STATES.ORBIT || state === STATES.TITLE || state === STATES.DIFFICULTY || state === STATES.BRIEFING;
+  const inLunarOrbit = state === STATES.ORBIT || state === STATES.TITLE || state === STATES.BRIEFING;
 
   // Mission control between the scripted flight and the manual phases:
   // the welcome on arrival in lunar orbit (ORBIT_CUES), and CAPCOM's go for
@@ -438,6 +444,7 @@ export default function Mission() {
   }, []);
 
   const label = STATE_LABELS[state] || { code: "", name: "" };
+  const landedOn = mission.base; // TRANQUILITY BASE, HADLEY · SURFACE, …
 
   return (
     <main
@@ -445,13 +452,16 @@ export default function Mission() {
       data-testid="mission-page"
     >
       {/* --- Scene layer --- */}
-      {state === STATES.CONTROL && <ControlRoomView onLaunch={handleLaunch} />}
+      {state === STATES.SELECT && (
+        <MissionSelect selection={selection} log={missionLog} onConfirm={handleConfirmMission} onBack={location.pathname === "/missions" ? null : () => setState(STATES.CONTROL)} />
+      )}
+      {state === STATES.CONTROL && <ControlRoomView mission={mission} onLaunch={handleLaunch} onChangeMission={() => setState(STATES.SELECT)} />}
 
       {/* One scene for lunar orbit and the descent-prep screens: kept mounted
           across them so the camera never cuts or snaps. It is mounted under the
           launch from "Cutoff." (held on the arrival), so the cut lands on a drawn frame. */}
       {(inLunarOrbit || (state === STATES.LAUNCH && orbitAhead)) && (
-        <MissionScene missionTime={ARRIVAL_TIME} cinematic={true} orbitClock={orbitClockRef} orbitReal={orbitRealRef} />
+        <MissionScene missionTime={ARRIVAL_TIME} cinematic={true} orbitClock={orbitClockRef} orbitReal={orbitRealRef} orbitView={mission.orbitView} />
       )}
 
       {state === STATES.LAUNCH && (
@@ -464,55 +474,45 @@ export default function Mission() {
         <MissionTitle clockRef={orbitClockRef} ready={state === STATES.TITLE} onStart={handleStartMissions} />
       )}
 
-      {/* The descent setup opens over the same shot */}
-      {state === STATES.DIFFICULTY && (
-        <div className="absolute inset-0 z-40 veil-in" data-testid="descent-setup">
-          <DifficultySelect
-            onSelect={handleDifficulty}
-            onSkip={handleSkipDifficulty}
-          />
+      {/* The descent briefing opens over the same shot: the destination and pilot
+          difficulty chosen before launch (never asked again) */}
+      {state === STATES.BRIEFING && (
+        <div className="absolute inset-0 z-40 veil-in" data-testid="descent-setup" data-site={mission.siteId} data-difficulty={mission.difficulty}>
+          <PdiBriefing difficulty={difficulty} mission={mission} onBegin={handleBeginPdi} />
         </div>
       )}
 
-      {state === STATES.BRIEFING && (
-        <>
-          <PdiBriefing
-            difficulty={difficulty}
-            onBegin={handleBeginPdi}
-            onBack={() => setState(STATES.DIFFICULTY)}
-          />
-        </>
+      {/* Silent Horizon: the spacecraft go behind the Moon; loss of signal, then the descent */}
+      {state === STATES.FAR_SIDE && (
+        <div className="absolute inset-0 z-40" data-testid="far-side-los">
+          <FarSideIntro audio={audio} briefing={mission.briefing} onDone={enterDescent} />
+        </div>
       )}
 
-      {state === STATES.MANUAL_DESCENT && (
+      {/* The descent at the mission's destination (its terrain, landing zones and hazards);
+          the results are shown over the landed lunar module at that site */}
+      {(state === STATES.MANUAL_DESCENT || state === STATES.RESULT) && (
         <DescentGame
           difficulty={difficulty}
+          site={mission.siteId}
           audio={audio}
-          onSuccess={handleDescentSuccess}
-          onCrash={handleDescentCrash}
+          onSuccess={handleDescentEnd}
+          onCrash={handleDescentEnd}
           onAbort={resetMission}
         />
       )}
 
       {state === STATES.RESULT && descentResult && (
-        <>
-          {/* Backdrop: keep the landed lander scene visible */}
-          <DescentScene altitude={0} thrust={0} dust={false} />
+        <div className="absolute inset-0 z-50" data-testid="mission-result-layer" data-site={mission.siteId}>
           <MissionResult
             result={descentResult}
             difficulty={difficulty}
+            siteName={mission.name}
             onRestart={handleRestartDescent}
             onContinue={handleContinueFromResult}
             onEndMission={resetMission}
           />
-        </>
-      )}
-
-      {state === STATES.DESCENT && (
-        <DescentScene altitude={descentAlt} thrust={1} dust={descentAlt < 1.5} />
-      )}
-      {state === STATES.SURFACE && (
-        <DescentScene altitude={0} thrust={0} dust={false} />
+        </div>
       )}
 
       {state === STATES.RETURN && (
@@ -523,7 +523,7 @@ export default function Mission() {
         <ReentryGame
           difficulty={difficulty}
           audio={audio}
-          onComplete={() => setState(STATES.COMPLETE)}
+          onComplete={handleMissionComplete}
           onAbort={resetMission}
         />
       )}
@@ -531,7 +531,7 @@ export default function Mission() {
       {state === STATES.COMPLETE && <ReentryScene final />}
 
       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
-      {state !== STATES.CONTROL && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.DIFFICULTY && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
+      {state !== STATES.SELECT && state !== STATES.CONTROL && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
         <div
           data-testid="mission-hud-min"
           className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
@@ -575,25 +575,6 @@ export default function Mission() {
         </button>
       )}
 
-      {state === STATES.SURFACE && (
-        <div
-          data-testid="surface-overlay"
-          className="absolute inset-0 pointer-events-none flex items-center justify-center"
-        >
-          <div className="text-center scan-in bg-black/30 backdrop-blur-sm px-10 py-6">
-            <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink mb-3">
-              ● CONTACT LIGHT
-            </div>
-            <div className="font-display font-black text-white text-5xl md:text-6xl">
-              THE EAGLE HAS LANDED
-            </div>
-            <div className="font-mono text-[11px] tracking-widest text-zinc-400 mt-3">
-              MARE TRANQUILLITATIS · 0°41′15″N 23°26′00″E
-            </div>
-          </div>
-        </div>
-      )}
-
       {state === STATES.COMPLETE && (
         <div
           data-testid="complete-overlay"
@@ -607,7 +588,7 @@ export default function Mission() {
               MISSION COMPLETE
             </h2>
             <p className="font-mono text-[11px] tracking-widest text-zinc-400 mb-10">
-              LV-001 · 195 HOURS · 384,400 KM · TRANQUILITY BASE · PACIFIC SPLASHDOWN
+              LV-001 · MISSION {mission.number} · {landedOn} · {difficulty} · PACIFIC SPLASHDOWN
             </p>
             <div className="flex gap-4 justify-center">
               <button
@@ -626,10 +607,11 @@ export default function Mission() {
       )}
 
       {/* Global abort button — not shown during control, complete, or manual descent (which has its own) */}
-      {state !== STATES.CONTROL &&
+      {state !== STATES.SELECT &&
+        state !== STATES.CONTROL &&
         state !== STATES.COMPLETE &&
         state !== STATES.MANUAL_DESCENT &&
-        state !== STATES.DIFFICULTY &&
+        state !== STATES.FAR_SIDE &&
         state !== STATES.BRIEFING &&
         state !== STATES.REENTRY &&
         state !== STATES.RESULT && (
