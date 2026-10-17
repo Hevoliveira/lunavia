@@ -51,7 +51,7 @@ const FEATURES = [
   ["Four official lunar missions (MISSIONS)", "OFFICIAL LUNAR MISSIONS"],
   ["Official mission cards with START MISSION", "mission-start-"],
   ["Official mission selection kept (destination and pilot difficulty)", "lunavia.mission.selection.v1"],
-  ["Sea of Tranquility lunar landing training", "SEA OF TRANQUILITY — LUNAR LANDING TRAINING"],
+  ["Sea of Tranquility lunar landing training", "LUNAR LANDING TRAINING"],
   ["Far side mission (Silent Horizon, no Earth link)", "FAR SIDE TOUCHDOWN CONFIRMED"],
   ["Far-side approach intro", "farside-intro-skip"],
   ["One spacecraft from Earth orbit to the Moon (shared CSM, escape tower jettison)", "ESCAPE TOWER JETTISONED"],
