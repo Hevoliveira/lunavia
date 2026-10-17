@@ -37,7 +37,7 @@ function Limit({ label, value, unit }) {
 /**
  * mission (optional, data/missionConfig): the official mission's destination,
  * named with its own briefing; the pilot difficulty was chosen before launch.
- * onBack (optional): a way back to change the difficulty.
+ * onBack (optional): back to MISSIONS, to change the destination or difficulty.
  */
 export default function PdiBriefing({ difficulty = "CADET", mission = null, onBegin, onBack = null }) {
   const cfg = DIFFICULTY[difficulty] || DIFFICULTY.CADET;
@@ -189,7 +189,7 @@ export default function PdiBriefing({ difficulty = "CADET", mission = null, onBe
               data-testid="pdi-back"
               className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 hover:text-white transition-colors py-3 px-2"
             >
-              CHANGE DIFFICULTY
+              {mission ? "CHANGE MISSION" : "CHANGE DIFFICULTY"}
             </button>
           )}
         </div>

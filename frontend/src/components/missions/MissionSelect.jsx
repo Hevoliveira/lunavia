@@ -177,10 +177,10 @@ export default function MissionSelect({ selection, log = [], onConfirm, onBack }
         <div className="mt-4 short:mt-2 flex flex-wrap items-center gap-3">
           {onBack ? (
             <button type="button" onClick={onBack} className="btn-hud min-h-[44px]" data-testid="mission-select-back">
-              <ArrowLeft size={14} /> MISSION CONTROL
+              <ArrowLeft size={14} /> MAIN MENU
             </button>
           ) : (
-            <Link to="/" className="btn-hud min-h-[44px]" data-testid="mission-select-menu">
+            <Link to="/menu" className="btn-hud min-h-[44px]" data-testid="mission-select-menu">
               <ArrowLeft size={14} /> MAIN MENU
             </Link>
           )}

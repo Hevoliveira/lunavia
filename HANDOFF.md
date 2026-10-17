@@ -2273,3 +2273,46 @@ The §38 "near profile 92–112°" check was replaced by these.
 - `data/missionConfig.test.js`: the four missions, training = Tranquility, frozen configs, distinct destinations, the same spacecraft everywhere, 12 achievable combinations, the orbit view;
 - `lib/missionSelection.test.js`: persistence, the log, training kept separate;
 - `pages/officialMissions.test.js`: routes, no second selection, the far side, the log, training.
+
+## 42. Opening first, then MISSIONS / TRAINING
+
+**Order of the game (as asked):**
+1. Opening LUNAVIA (`/`) starts the LV-001 launch by itself. There is no menu, mission-control screen or tap before it.
+2. The approved af89907 film follows: ascent, staging, Earth orbit, TLI, GUIDANCE "Cutoff.", the 2-s hold, and the direct cut to lunar orbit.
+3. Lunar orbit: CAPCOM's welcome, the deployment, the undocking, the go for powered descent, then LUNAVIA / A LAJU PRODUCTIONS GAME.
+4. The persistent title screen waits for START MISSIONS.
+5. START MISSIONS opens the game menu (`ModeMenu`): **MISSIONS** or **TRAINING**. It sits in the title's place, over the same lunar-orbit shot. Nothing is replayed or reset.
+6. MISSIONS opens the four official destinations, then the pilot difficulty. The mission then continues from lunar orbit at that destination:
+   - its PDI briefing, with CHANGE MISSION going back to MISSIONS;
+   - the descent (Silent Horizon: loss of signal first);
+   - results, with RETRY going back to the same briefing;
+   - return, reentry, MISSION COMPLETE.
+
+   There is no second launch.
+7. TRAINING opens the Flight Training Center. Lunar landing training is at the Sea of Tranquility only and starts directly at the descent. Reentry training is unchanged.
+
+**Routes** (`App.js`; each has its own `key`, so moving between them starts that entry fresh):
+
+| Route | Opens on |
+|---|---|
+| `/` and `/mission` | the opening (`entry="opening"` → `LAUNCH`) |
+| `/menu` | MENU |
+| `/missions` | SELECT |
+| `/home` | the old landing page |
+
+- `/menu` and `/missions` show lunar orbit as the opening leaves it: the orbit clock is at the title screen and its sounds are marked done.
+- The navigation bar: Home → `/menu`, Missions → `/missions`, LAUNCH → `/` (the opening).
+- Training's MAIN MENU → `/menu`.
+
+**States** (`pages/Mission.jsx`):
+- The flow is LAUNCH → ORBIT → TITLE → MENU → SELECT → BRIEFING → (FAR_SIDE) → MANUAL_DESCENT → RESULT → RETURN → REENTRY → COMPLETE.
+- `ORBIT_STATES` (ORBIT, TITLE, MENU, SELECT, BRIEFING) keep the one lunar-orbit scene and clock mounted.
+- ABORT (launch, orbit, descent, return, reentry), END MISSION and MAIN MENU on MISSION COMPLETE all return to MENU (`resetMission`). The opening is not replayed.
+- `ControlRoomView` (the mission-control screen with LAUNCH SEQUENCE — INITIATE) is removed. This also removes the game's only online image (Unsplash).
+
+**Other changes:**
+- The orbit is the opening's own view (the approved Tranquility framing; captions without a destination), because no destination is chosen yet. `missionConfig.orbitView` and `moonRotationFor` remain available, but the scene no longer uses them.
+- An official flight is logged from the moment its destination and difficulty are confirmed.
+- **Sound:** the opening calls `audio.init()` on mount. In the iOS app the web view does not require a tap for media (Capacitor sets `mediaTypesRequiringUserActionForPlayback = []`), so the launch is heard at once. In a desktop browser, the first tap or key unlocks sound (`useMissionAudio`).
+
+**Tests:** `pages/officialMissions.test.js` covers the new order.

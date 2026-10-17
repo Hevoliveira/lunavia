@@ -24,7 +24,7 @@ export default function Navbar() {
     >
       <div className="max-w-[1600px] mx-auto px-6 md:px-10 h-14 short:h-11 flex items-center justify-between">
         <Link
-          to="/"
+          to="/menu"
           data-testid="nav-logo"
           className="flex items-center gap-3 group short:py-2"
         >
@@ -42,14 +42,14 @@ export default function Navbar() {
         </Link>
 
         <nav className="flex items-center gap-8 short:gap-5">
-          {link("/", "Home", "nav-home")}
+          {link("/menu", "Home", "nav-home")}
           {link("/missions", "Missions", "nav-mission")}
           {link("/training", "Training", "nav-training")}
           {link("/manifesto", "Manifesto", "nav-manifesto")}
           <AudioSettings />
           <a
             data-testid="nav-launch-btn"
-            href="/missions"
+            href="/"
             className="btn-hud !py-2 !px-4 short:!py-3"
           >
             LAUNCH

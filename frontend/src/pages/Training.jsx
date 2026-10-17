@@ -281,7 +281,7 @@ export default function Training() {
   };
   const toMenu = () => {
     stopSounds();
-    navigate("/");
+    navigate("/menu");
   };
 
   // Desktop shortcut on the debrief: R retries.
@@ -369,7 +369,7 @@ export default function Training() {
                     ))}
                   </div>
                   <div className="mt-8 short:mt-2.5 flex flex-wrap gap-3">
-                    <Link to="/" className="btn-hud min-h-[44px]" data-testid="training-menu">
+                    <Link to="/menu" className="btn-hud min-h-[44px]" data-testid="training-menu">
                       <ArrowLeft size={14} /> MAIN MENU
                     </Link>
                     <button type="button" onClick={() => setShowRecords(true)} className="btn-hud min-h-[44px]" data-testid="training-records-open">

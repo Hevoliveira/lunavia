@@ -2,55 +2,68 @@ import fs from "fs";
 import path from "path";
 
 /*
- * The official missions' flow, read from the source (as directCut.test does):
- * MISSIONS → destination → pilot difficulty → mission control → launch → … →
- * START MISSIONS → the descent at the destination chosen before launch.
- * Training flies the Sea of Tranquility only.
+ * The game's order, read from the source (as directCut.test does): opening
+ * LUNAVIA plays the expedition first (launch → lunar orbit → deployment and
+ * undocking → title → START MISSIONS), then the menu (MISSIONS / TRAINING);
+ * MISSIONS → destination → pilot difficulty → the descent at that destination,
+ * with no second launch. Training flies the Sea of Tranquility only.
  */
 const SRC = path.resolve(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
+const between = (src, a, b) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a) + a.length));
 
-describe("official missions in the main game", () => {
+describe("opening first, then the game menu", () => {
   const mission = read("pages/Mission.jsx");
-  const select = read("components/missions/MissionSelect.jsx");
   const app = read("App.js");
 
-  test("MISSIONS is part of the main game: /missions, the main menu and the navigation lead to it", () => {
-    expect(app).toMatch(/<Route path="\/missions" element=\{<Mission \/>\} \/>/);
-    expect(read("pages/Landing.jsx")).toMatch(/to="\/missions"\s+data-testid="hero-cta-mission"/);
-    expect(read("components/Navbar.jsx")).toMatch(/link\("\/missions", "Missions", "nav-mission"\)/);
-    expect(mission).toMatch(/location\.pathname === "\/missions" \? STATES\.SELECT : STATES\.CONTROL/);
+  test("opening LUNAVIA (/) starts the launch: no menu, no mission control, no input before it", () => {
+    expect(app).toMatch(/<Route path="\/" element=\{<Mission key="opening" entry="opening" \/>\} \/>/);
+    expect(mission).toMatch(/const ENTRY_STATE = \{ opening: STATES\.LAUNCH, menu: STATES\.MENU, missions: STATES\.SELECT \}/);
+    expect(mission).toMatch(/useState\(\(\) => ENTRY_STATE\[entry\] \|\| STATES\.LAUNCH\)/);
+    expect(mission).not.toMatch(/ControlRoomView|STATES\.CONTROL/);
+    // the launch film itself is the approved one, ending in the direct cut
+    expect(mission).toMatch(/<LaunchCinematic audio=\{audio\} onComplete=\{handleLaunchComplete\} onSkip=\{handleSkipLaunch\} onCutAhead=\{handleCutAhead\} \/>/);
   });
 
-  test("the selection screen offers the four official missions, then the pilot difficulty, with no unlocks", () => {
+  test("START MISSIONS on the title screen opens MISSIONS / TRAINING: no landing, no relaunch, nothing reset", () => {
+    const start = between(mission, "const handleStartMissions", "const handleTraining");
+    expect(start).toMatch(/setState\(STATES\.MENU\)/);
+    expect(start).not.toMatch(/BRIEFING|LAUNCH|MANUAL_DESCENT|resetMission/);
+    expect(mission).toMatch(/<ModeMenu onMissions=\{\(\) => setState\(STATES\.SELECT\)\} onTraining=\{handleTraining\} \/>/);
+    expect(between(mission, "const handleTraining", "};")).toMatch(/navigate\("\/training"\)/);
+    const menu = read("components/missions/ModeMenu.jsx");
+    expect(menu).toMatch(/"mode-missions"[^\n]*"MISSIONS"/);
+    expect(menu).toMatch(/"mode-training"[^\n]*"TRAINING"/);
+  });
+
+  test("MISSIONS: four destinations, then the pilot difficulty, with no unlocks; then that destination's briefing (no second launch)", () => {
+    const select = read("components/missions/MissionSelect.jsx");
     expect(select).toMatch(/OFFICIAL_MISSIONS\.map/);
     expect(select).toMatch(/data-testid=\{`mission-start-\$\{site\.id\}`\}/);
-    expect(select).toMatch(/START MISSION/);
     expect(select).toMatch(/<DifficultySelect/);
     expect(select).not.toMatch(/\bLock\b|isLocked|locked:|unlockedBy|requires:/);
-  });
-
-  test("the choice is one frozen mission config held from launch to splashdown; it changes only on MISSIONS, before launch", () => {
-    expect(mission).toMatch(/createMissionConfig\(\{ mode: MODE\.OFFICIAL, \.\.\.selection \}\)/);
-    expect((mission.match(/setSelection\(/g) || []).length).toBe(1); // handleConfirmMission only
-    expect(mission).toMatch(/const handleConfirmMission = \(sel\) => \{\s+setSelection\(saveSelection\(sel\)\);\s+setState\(STATES\.CONTROL\);/);
-    expect(mission).toMatch(/onChangeMission=\{\(\) => setState\(STATES\.SELECT\)\}/);
-    // the descent flies the destination; the orbit is shown over it
-    expect(mission).toMatch(/<DescentGame\s+difficulty=\{difficulty\}\s+site=\{mission\.siteId\}/);
-    expect(mission).toMatch(/orbitView=\{mission\.orbitView\}/);
-  });
-
-  test("START MISSIONS continues to the destination's descent briefing: no second selection, no relaunch", () => {
-    const start = mission.slice(mission.indexOf("const handleStartMissions"), mission.indexOf("const enterDescent"));
-    expect(start).toMatch(/setState\(STATES\.BRIEFING\)/);
-    expect(mission).not.toMatch(/STATES\.DIFFICULTY|DifficultySelect/);
-    // the only selection screen is MISSIONS, before launch
+    const confirm = between(mission, "const handleConfirmMission", "// End of the Earth departure");
+    expect(confirm).toMatch(/setSelection\(next\)/);
+    expect(confirm).toMatch(/setState\(STATES\.BRIEFING\)/);
+    expect(confirm).not.toMatch(/STATES\.LAUNCH/);
+    expect((mission.match(/setSelection\(/g) || []).length).toBe(1);
     expect((mission.match(/<MissionSelect/g) || []).length).toBe(1);
-    expect(mission).toMatch(/\{state === STATES\.SELECT && \(\s*<MissionSelect/);
-    expect(mission).toMatch(/<PdiBriefing difficulty=\{difficulty\} mission=\{mission\} onBegin=\{handleBeginPdi\} \/>/);
-    // a restarted landing goes back to the same briefing
-    const restart = mission.slice(mission.indexOf("const handleRestartDescent"), mission.indexOf("const handleMissionComplete"));
-    expect(restart).toMatch(/setState\(STATES\.BRIEFING\)/);
+  });
+
+  test("the chosen destination and difficulty fly the descent; a restart returns to the same briefing", () => {
+    expect(mission).toMatch(/createMissionConfig\(\{ mode: MODE\.OFFICIAL, \.\.\.selection \}\)/);
+    expect(mission).toMatch(/<DescentGame\s+difficulty=\{difficulty\}\s+site=\{mission\.siteId\}/);
+    expect(mission).toMatch(/<PdiBriefing difficulty=\{difficulty\} mission=\{mission\} onBegin=\{handleBeginPdi\}/);
+    expect(between(mission, "const handleRestartDescent", "const handleMissionComplete")).toMatch(/setState\(STATES\.BRIEFING\)/);
+  });
+
+  test("ABORT and the end of a mission come back to the menu, never through the opening again", () => {
+    const reset = between(mission, "const resetMission", "// GO FOR PDI");
+    expect(reset).toMatch(/setState\(STATES\.MENU\)/);
+    expect(reset).not.toMatch(/STATES\.LAUNCH/);
+    expect(read("pages/Training.jsx")).toMatch(/navigate\("\/menu"\)/);
+    expect(app).toMatch(/<Route path="\/menu" element=\{<Mission key="menu" entry="menu" \/>\} \/>/);
+    expect(read("components/Navbar.jsx")).toMatch(/link\("\/missions", "Missions", "nav-mission"\)/);
   });
 
   test("Silent Horizon: loss of signal behind the Moon before the descent; no call to Houston from the far side", () => {
@@ -60,7 +73,7 @@ describe("official missions in the main game", () => {
   });
 
   test("official results are logged apart from training: destination, pilot difficulty, landing and completion", () => {
-    expect(mission).toMatch(/logMissionStart\(\{ siteId: m\.siteId, difficulty: m\.difficulty \}\)/);
+    expect(mission).toMatch(/flightIdRef\.current = logMissionStart\(next\)/);
     expect(mission).toMatch(/logMissionLanding\(flightIdRef\.current, result\)/);
     expect(mission).toMatch(/logMissionComplete\(flightIdRef\.current\)/);
   });
