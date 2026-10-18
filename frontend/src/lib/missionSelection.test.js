@@ -54,4 +54,19 @@ describe("the official missions' log (separate from training records)", () => {
     expect(loadMissionLog()[0].docking).toMatchObject({ success: true, attempts: 2, contacts: 1, propLeft: 6.2, failure: null });
     expect(loadMissionLog()[0].completed).toBe(false); // complete only at splashdown
   });
+
+  test("RESTART DOCKING: each restart is an attempt; a docking after restarts is never logged as a clean first attempt", () => {
+    const a = logMissionStart({ siteId: "hadley", difficulty: "ASTRONAUT" });
+    logMissionDocking(a, { success: false, failure: "restart", attempts: 1, restarts: 1 });
+    logMissionDocking(a, { success: false, failure: "restart", attempts: 2, restarts: 2 });
+    expect(loadMissionLog()[0].docking).toMatchObject({ success: false, attempts: 2, restarts: 2, firstAttempt: false });
+    logMissionDocking(a, { success: true, attempts: 3, restarts: 2, contacts: 0, propLeft: 15 });
+    expect(loadMissionLog()[0].docking).toMatchObject({ success: true, attempts: 3, restarts: 2, firstAttempt: false });
+    // a later, smaller count cannot rewrite the history
+    logMissionDocking(a, { success: true, attempts: 1, restarts: 0 });
+    expect(loadMissionLog()[0].docking).toMatchObject({ attempts: 3, restarts: 2, firstAttempt: false });
+    const b = logMissionStart({ siteId: "tycho", difficulty: "CADET" });
+    logMissionDocking(b, { success: true, attempts: 1, restarts: 0 });
+    expect(loadMissionLog().find((x) => x.id === b).docking.firstAttempt).toBe(true);
+  });
 });

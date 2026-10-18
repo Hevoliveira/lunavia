@@ -282,6 +282,66 @@
       "f": "en/dock.deflected.0.mp3"
      }
     ],
+    "dock.g.acquired": [
+     {
+      "d": 1.69,
+      "f": "en/dock.g.acquired.0.mp3"
+     }
+    ],
+    "dock.g.alignGood": [
+     {
+      "d": 2.79,
+      "f": "en/dock.g.alignGood.0.mp3"
+     }
+    ],
+    "dock.g.attitude": [
+     {
+      "d": 2.6,
+      "f": "en/dock.g.attitude.0.mp3"
+     }
+    ],
+    "dock.g.backoff": [
+     {
+      "d": 2.55,
+      "f": "en/dock.g.backoff.0.mp3"
+     }
+    ],
+    "dock.g.continue": [
+     {
+      "d": 2.39,
+      "f": "en/dock.g.continue.0.mp3"
+     }
+    ],
+    "dock.g.offAxis": [
+     {
+      "d": 2.72,
+      "f": "en/dock.g.offAxis.0.mp3"
+     }
+    ],
+    "dock.g.opening": [
+     {
+      "d": 2.32,
+      "f": "en/dock.g.opening.0.mp3"
+     }
+    ],
+    "dock.g.reduce": [
+     {
+      "d": 2.39,
+      "f": "en/dock.g.reduce.0.mp3"
+     }
+    ],
+    "dock.g.restart": [
+     {
+      "d": 3.09,
+      "f": "en/dock.g.restart.0.mp3"
+     }
+    ],
+    "dock.g.standby": [
+     {
+      "d": 1.47,
+      "f": "en/dock.g.standby.0.mp3"
+     }
+    ],
     "dock.hard": [
      {
       "d": 3.04,
@@ -957,6 +1017,66 @@
      {
       "d": 1.55,
       "f": "pt/dock.deflected.0.mp3"
+     }
+    ],
+    "dock.g.acquired": [
+     {
+      "d": 2.63,
+      "f": "pt/dock.g.acquired.0.mp3"
+     }
+    ],
+    "dock.g.alignGood": [
+     {
+      "d": 3.15,
+      "f": "pt/dock.g.alignGood.0.mp3"
+     }
+    ],
+    "dock.g.attitude": [
+     {
+      "d": 2.6,
+      "f": "pt/dock.g.attitude.0.mp3"
+     }
+    ],
+    "dock.g.backoff": [
+     {
+      "d": 2.82,
+      "f": "pt/dock.g.backoff.0.mp3"
+     }
+    ],
+    "dock.g.continue": [
+     {
+      "d": 2.35,
+      "f": "pt/dock.g.continue.0.mp3"
+     }
+    ],
+    "dock.g.offAxis": [
+     {
+      "d": 2.81,
+      "f": "pt/dock.g.offAxis.0.mp3"
+     }
+    ],
+    "dock.g.opening": [
+     {
+      "d": 3.11,
+      "f": "pt/dock.g.opening.0.mp3"
+     }
+    ],
+    "dock.g.reduce": [
+     {
+      "d": 2.62,
+      "f": "pt/dock.g.reduce.0.mp3"
+     }
+    ],
+    "dock.g.restart": [
+     {
+      "d": 3.79,
+      "f": "pt/dock.g.restart.0.mp3"
+     }
+    ],
+    "dock.g.standby": [
+     {
+      "d": 1.4,
+      "f": "pt/dock.g.standby.0.mp3"
      }
     ],
     "dock.hard": [

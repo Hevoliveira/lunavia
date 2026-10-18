@@ -2420,12 +2420,68 @@ A mission is complete only at splashdown, which needs the docking.
 - **Alignment display:** an offset dot (±1 m) and an attitude cross (±10°), against the tolerance ring; "IN CORRIDOR" when within tolerance.
 - **Controls:** a cross pad with FWD/AFT, switching between TRANSLATION and ATTITUDE (pitch/yaw, roll).
   - A tap is a 0.12-s minimum impulse; holding keeps firing; multi-touch works.
-  - CADET has the AUTO ALIGN toggle and step-by-step hints.
+  - CADET has the AUTO ALIGN toggle. (The step-by-step hints became the DOCKING GUIDANCE panel, §45.)
   - Keyboard: W/S/A/D/R/F for translation, arrows and Q/E for attitude.
-- **Failure:** RETRY FROM RENDEZVOUS CHECKPOINT (fresh `checkpointState`, full RCS) or ABORT MISSION.
+- **Failure:** RESTART DOCKING (back to the rendezvous checkpoint, full RCS; §45) or ABORT MISSION.
 
 **Far side (Silent Horizon):**
 - No Earth link on the surface or after insertion; the crew's calls pass through (`throughBlackout`).
 - Signal is reacquired during the rendezvous, at `COAST + 0.3·TRANSFER`, or at hand-over if the film is skipped.
 
 **Validation tooling** (never set by the game): `window.__lvTimeScale` (docking only, ≤ 16×) and `window.__lvDockAutopilot`, the reference pilot on the simulation clock. Read-only state: `__lvDock`, `__lvDockState`, `__lvAscent`.
+
+## 45. RESTART DOCKING and the docking guidance
+
+The docking physics, thresholds, RCS authority and propellant are unchanged (§44). This adds two things on top: a restart, and an instructor that reads the simulation.
+
+**RESTART DOCKING** (Portuguese: REINICIAR DOCKING, by the subtitle language like START MISSIONS):
+- In the top bar between PAUSE and ABORT, 96 × 44 pt, amber. **Press and hold 0.6 s** (`RESTART_HOLD_MS`); the fill shows the hold. A short tap only says HOLD TO RESTART, so a brush or a thumb sliding off a jet cannot fire it.
+- Also on the PAUSE screen (a plain tap) and on the failure screen (replacing the old retry button; the screen still says RETRY FROM RENDEZVOUS CHECKPOINT).
+- Available during the whole approach; not once the probe has captured (the capture is already a success).
+- It restarts only the docking: never the rendezvous, the ascent or the landing.
+- `dockingSim.restoreCheckpoint(s, difficulty)` rebuilds the state in place from `checkpointState`: position and velocity on the approach axis (the checkpoint's own slow drift), attitude and rates, the simulation clock, contacts, capture and failure state. Everything else the last attempt left on the object is deleted; only the scene's clocks and mode survive (`RESTART_KEEP`). Tested: deep-equal to a fresh checkpoint, and it evolves identically.
+- **RCS** is refilled, as the retry always did: each attempt starts with the difficulty's budget. No damage is carried over (a damaging contact ends the attempt).
+- No jet carries over: held pad buttons are cleared, and keys still down are ignored until released (`keysBlocked`). Measured in the browser: a finger left on RIGHT and the D key held through a restart fire nothing.
+- The guidance starts afresh (step 1), queued comms are flushed, the pause is cleared.
+- **Statistics:** each restart is a new attempt. The mission log's docking entry has `attempts`, `restarts`, `firstAttempt` (true only for a first-try docking with no restart) and the contacts of all attempts. Attempts and restarts only grow, so restarting until a clean run never reads as a clean first attempt.
+
+**DOCKING GUIDANCE** (`data/dockingGuidance.js`, pure and tested; the panel in `DockingOps`):
+- **Panel:** bottom centre, between the pad and the FWD/AFT column (clear of CADET's AUTO ALIGN), below the window reticle and the target. It shows:
+  - DOCKING GUIDANCE — STEP n/5 and the step's name, with a 5-segment bar;
+  - the single instruction, in colour by severity;
+  - the explanation (by difficulty);
+  - ▸ the control to use;
+  - the telemetry behind the instruction.
+- **Steps:** 1 ACQUIRE THE DOCKING TARGET, 2 ALIGN WITH THE DOCKING PORT, 3 REDUCE RELATIVE VELOCITY, 4 PROCEED WITH FINAL APPROACH, 5 DOCKING CONTACT (contact ✓, capture ✓, retraction %, hard dock).
+- **Rules, in priority order:**
+  1. RCS depleted;
+  2. closing above `closingLimit` (BRAKE NOW);
+  3. within 3 m and not lined up (BACK OFF);
+  4. rotating faster than the capture's rate tolerance within 1.5 m;
+  5. attitude (per-axis error against the tolerance; the worst axis leads and any axis needing a comparable correction is named with it, two fingers on the pad, so no turn runs unwatched; on COMMANDER, leftover turn rates down to about one tap);
+  6. lateral alignment and drift;
+  7. closing speed (slow, begin the approach, too slow to latch, opening);
+  8. CADET's auto align still turning;
+  9. the good news: cleared for the approach, STAND BY FOR CONTACT once every capture tolerance is met within 1.5 m.
+- **Thresholds come from the physics:** the capture tolerances (`DOCKING[d].tol`), `closingLimit`, and one tap's change (acceleration × `PULSE`) as the band an instruction starts and clears at (hysteresis: about half of it to clear). Target speeds are the reference pilot's: closing that falls with the range, lateral speed toward the axis that falls with the offset, a turn rate that falls with the error.
+- **Directions:** a correction is worked out in the CSM frame and turned into body axes through the current attitude, then into buttons (`CONTROLS`, the table the pad and the keyboard are now built from). Lateral motion uses the vehicle's own velocity, since a turn swings the port sideways and that is the attitude's to fix. While the attitude is outside tolerance, lateral aim is where the port will be once aligned. Tested on 400 seeded states with up to 40° of roll: one tap of what the panel names reduces the error it names.
+- **One instruction at a time:**
+  - an instruction stays on screen at least 1.5 s unless a safety rule outranks it (the hold counts from when it is visible);
+  - "wait" instructions hold against their own rule's next order;
+  - a correction that is done is confirmed for 1.1 s (✓ CLOSING VELOCITY REDUCED, ✓ RELATIVE MOTION STABILIZED…), and its rule then stays quiet for 1.5 s unless it is a safety order;
+  - the opposite jet on the same axis is never ordered within 2.5 s of the last order (1 s when it only brakes motion the last order started), otherwise LET IT SETTLE.
+- **Difficulty** (amount of guidance only; physics untouched):
+  - CADET: the briefing (step 1, 6 s), full explanations (which button, inertia, why), the named button lit on the pad (MODE lit first when needed), AUTO ALIGN wait states.
+  - ASTRONAUT: a 3.5-s briefing, the order with its number, the button lit.
+  - COMMANDER: no briefing, the order and the control alone, no lit buttons.
+- **GUIDANCE ON/OFF:** a toggle in the panel, remembered per difficulty (`lunavia.dockGuidance`), default ON. Off, the panel becomes a small GUIDANCE OFF chip; the HUD's safety warnings and telemetry stay, and the guidance voice calls stop.
+- **Voice:** 10 new lines, Kokoro-rendered EN/PT like the rest:
+  - GUIDANCE: "Flight, docking target acquired."
+  - CAPCOM: reduce relative velocity, off axis, attitude, back off, opening range, alignment good / cleared, continue, stand by for contact, restart acknowledgement.
+  - Spoken only when the instruction changes, and only if it is still current when the channel is free. Corrective lines are `coach` (CADET and ASTRONAUT) in one `dockGuide` group with 20–60 s cooldowns. The director's priorities keep them under the critical calls. Far side: the panel is onboard and always there; Houston's calls follow the Earth link as before.
+- **The guidance only reads** (tested: evaluating it never changes the state). Docking is still decided only by `judgeContact`.
+
+**Proof it teaches enough:** `guidedPilot` is a student that does only what the panel says (MODE when told, one tap, then a pause to see the effect; nothing while it says wait). It docks all three difficulties at reaction times from 0.25 s to 1.2 s in the unit tests. (Naming one rotation axis at a time used to fail COMMANDER from about 0.9 s: the other axes kept turning. Naming every axis that needs it fixed this.) In the browser, the same student reads the real panel and presses the real buttons with touch events in real time, with no autopilot and no time scale, and docks.
+
+**Validation tooling** (adds to §44): `__lvDock.guidance`, `__lvDock.restarts`, `__lvDockingTools.guidedPilot` and `checkpointState`.
+

@@ -79,9 +79,15 @@ export function logMissionDocking(id, result) {
   const e = log.find((x) => x.id === id);
   if (!e || !result) return log;
   const prev = e.docking || {};
+  // Attempts and restarts only ever grow within a flight: a docking reached after
+  // restarts is logged with them, never as a clean first attempt.
+  const attempts = Math.max(result.attempts || 1, prev.attempts || 0);
+  const restarts = Math.max(result.restarts || 0, prev.restarts || 0);
   e.docking = {
     success: !!result.success,
-    attempts: Math.max(result.attempts || 1, prev.attempts || 0),
+    attempts,
+    restarts,
+    firstAttempt: !!result.success && attempts === 1 && restarts === 0,
     contacts: result.contacts != null ? result.contacts : prev.contacts || 0,
     propLeft: result.propLeft != null ? result.propLeft : null,
     time: result.time != null ? result.time : null,

@@ -1,12 +1,14 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD af6a1c4**.
+This folder installs **BUILD 6bf030a**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD af6a1c4 · 2026-10-18 01:20 UTC**
+> **LUNAVIA iOS · BUILD 6bf030a · 2026-10-18 11:56 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **af6a1c4** is the previous release: the lunar ascent, the rendezvous and the docking, but
+  no RESTART DOCKING button and no DOCKING GUIDANCE panel;
 - **57770c4** is the previous release: the startup screen and the four missions, but a mission
   went straight home after the landing (no lunar ascent, rendezvous or docking);
 - **de30822** is the previous release: the launch started by itself when LUNAVIA opened,
@@ -66,11 +68,15 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Opening first: LUNAVIA opens on the launch (Earth departure, direct cut to lunar orbit, deployment, undocking, title); START MISSIONS then opens MISSIONS / TRAINING, and a mission continues from lunar orbit to its destination | #18 | 0dcc555, de30822 |
 | Startup screen restored: LUNAVIA opens on THE ROAD TO THE MOON and the launch starts only when you press LAUNCH SEQUENCE — INITIATE | #18 | 57770c4 |
 | Lunar ascent, orbital rendezvous and playable docking: after the landing, ascent preparation and liftoff (the descent stage stays on the Moon), the automatic rendezvous with the CSM, and the docking flown by the player (translation, attitude, closing speed), then crew transfer and the ascent stage's jettison before the return | #19 | 48420db, af6a1c4 |
+| RESTART DOCKING (hold, at any time in the approach; back to the final-approach checkpoint, never the ascent) and the live DOCKING GUIDANCE panel (one instruction at a time from the docking telemetry: step 1–5, the correction, the button to press, a confirmation; by difficulty; GUIDANCE ON/OFF; Mission Control calls) | #20 | 77c98e5, 6bf030a |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at af6a1c4** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release adds the return from the Moon's surface; everything before the landing is unchanged.**
+- **Built from the clean tree at 6bf030a** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release adds two things to the docking; its physics and everything else are unchanged.**
+  - **RESTART DOCKING** (in Portuguese, REINICIAR DOCKING), in the top bar between PAUSE and ABORT. **Press and hold** it for about half a second; a short tap only says HOLD TO RESTART. The ascent stage goes back to the final-approach checkpoint with full RCS, nothing moving or firing from before, and you try again at once. It never replays the ascent or the rendezvous. It is also on the PAUSE screen and on the failure screen. Each restart counts as a new attempt in the mission log.
+  - **DOCKING GUIDANCE**, the panel at the bottom between the controls. It shows **STEP 1–5**, the one correction to make now, how, and the button to press (lit on the pad for CADET and ASTRONAUT), then a ✓ when it is done. Everything it says comes from the docking's own numbers. CADET gets full explanations, ASTRONAUT short orders, COMMANDER only the essential ones. **GUIDANCE ON** hides it (the HUD's warnings stay). Mission Control adds a few spoken calls.
+- **How a mission goes after the landing** (as in the previous release):
   1. After a successful landing, **CONTINUE MISSION** shows **LUNAR SURFACE — ASCENT PREPARATION**: the checklist ticks in, and nothing starts until you press **INITIATE LUNAR ASCENT**.
   2. A short countdown, then **PROCEED**. The ascent stage leaves the descent stage, which stays on the Moon with its legs, and climbs away. SKIP CINEMATIC goes on to orbit.
   3. **Orbit insertion** and the **automatic rendezvous**: the radar range falls from 48 km as the guidance flies the terminal phase, a midcourse correction and the braking. SKIP CINEMATIC goes to the hand-over.
@@ -80,14 +86,14 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
      - A tap is one small RCS pulse; holding keeps the jets firing. Two fingers work together.
      - **VIEW** switches between the docking window (reticle; the cyan circle is the probe tip) and an outside view.
      - The panel top right shows the port's offset (dot) and the attitude (cross) against the capture circle. **IN CORRIDOR** means a docking now would latch.
-     - CADET: **AUTO ALIGN** holds the attitude for you, and the hints say what to do next. ASTRONAUT: the attitude holds still when you let go. COMMANDER: nothing holds; you stop what you start.
-     - Too fast, off the axis, misaligned or rotating: no capture, and the vehicles push apart. Back off and try again. A hard impact or a collision ends the attempt: **RETRY FROM RENDEZVOUS CHECKPOINT** (no new landing or launch).
+     - CADET: **AUTO ALIGN** holds the attitude for you. ASTRONAUT: the attitude holds still when you let go. COMMANDER: nothing holds; you stop what you start.
+     - Too fast, off the axis, misaligned or rotating: no capture, and the vehicles push apart. Back off and try again. A hard impact or a collision ends the attempt: **RESTART DOCKING** (no new landing or launch).
   5. **HARD DOCK CONFIRMED**, crew transfer, the ascent stage jettisoned, then the return and reentry as before. MISSION COMPLETE needs the docking.
-  - Silent Horizon (far side): no Houston on the surface or after insertion, until the rendezvous brings you back into view of the Earth.
-- **Records are kept.** The mission log on the iPhone now also records each flight's docking (attempts, success, RCS left).
+  - Silent Horizon (far side): no Houston on the surface or after insertion, until the rendezvous brings you back into view of the Earth. The guidance panel works throughout.
+- **Records are kept.** The mission log on the iPhone records each flight's docking: attempts, restarts, success, whether it was a first-attempt docking, RCS left.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
+  - every feature above is in the bundled game, including RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
