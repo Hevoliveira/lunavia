@@ -109,5 +109,48 @@ export function logMissionComplete(id) {
   return log;
 }
 
+/* Mission scoring (data/missionScoring) adds to the same entries; nothing above changes. */
+const update = (id, fn) => {
+  const log = loadMissionLog();
+  const e = log.find((x) => x.id === id);
+  if (e) {
+    fn(e);
+    write(LOG_KEY, log);
+  }
+  return log;
+};
+
+/** Flight `id`'s descent has begun (a flight left at the briefing was never flown). */
+export const logMissionFlown = (id) =>
+  update(id, (e) => {
+    e.flown = true;
+  });
+
+/** Flight `id`'s Earth reentry: splashdown or the capsule lost, the entry attempts, and its key values. */
+export const logMissionReentry = (id, r) =>
+  update(id, (e) => {
+    const n = (v) => (typeof v === "number" && Number.isFinite(v) ? +v.toFixed(2) : null);
+    e.reentry = {
+      success: !!r.splashdown,
+      outcome: r.outcome || null,
+      attempts: r.attempts || 1,
+      losses: (r.losses || []).slice(),
+      eiFpa: n(r.eiFpa),
+      peakG: n(r.peakG),
+      peakHeatRate: n(r.peakHeatRate),
+    };
+  });
+
+/**
+ * Flight `id`'s scoring: the phase snapshots it was scored from (so its debrief
+ * can be shown again, identically), the scores, the medal and how it ended.
+ * status: "complete" | "complete-after-loss" | "failed-landing" | "failed-docking" | "failed-reentry" | "aborted"
+ */
+export const logMissionScoring = (id, scoring) =>
+  update(id, (e) => {
+    e.scoring = { ...(e.scoring || {}), ...scoring };
+    if (scoring.status && !e.endedAt) e.endedAt = Date.now();
+  });
+
 /** The latest flight to a destination (for the mission cards). */
 export const lastFlight = (log, siteId) => [...log].reverse().find((e) => e.siteId === siteId) || null;

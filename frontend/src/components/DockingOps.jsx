@@ -899,6 +899,9 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           propLeft: +s.prop.toFixed(2),
           time: +((now - (firstStartRef.current || now)) / 1000).toFixed(1),
           attemptTime: +((now - (startedAtRef.current || now)) / 1000).toFixed(1),
+          // the capture judgement's own facts (judgeContact) and this attempt's bounced contacts (mission scoring)
+          capture: s.lastContact && s.lastContact.kind === "capture" ? { ...s.lastContact.facts } : null,
+          attemptContacts: s.contacts || 0,
         };
         onResult && onResult(result);
         setTimeout(() => setPhase("transfer"), 4200);
@@ -1421,7 +1424,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
               <button type="button" onClick={restartDocking} className="btn-hud btn-hud-primary min-h-[44px]" data-testid="dock-retry">
                 ↺ {ui.restart}
               </button>
-              <button type="button" onClick={() => onAbort && onAbort()} className="btn-hud min-h-[44px]" data-testid="dock-failed-abort">
+              <button type="button" onClick={() => onAbort && onAbort("failed")} className="btn-hud min-h-[44px]" data-testid="dock-failed-abort">
                 ABORT MISSION
               </button>
             </div>

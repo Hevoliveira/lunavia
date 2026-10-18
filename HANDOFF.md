@@ -2517,3 +2517,81 @@ The docking physics, thresholds, RCS authority and propellant are unchanged (§4
 - **Unchanged:** the docking physics, the target geometry, RCS authority and propellant, collisions, the thresholds, RESTART DOCKING (it keeps the current view), the guidance (its briefing names what each view shows), the difficulties, the ascent and rendezvous, and the return.
 - **Validation tooling:** `__lvDockCam` (the current view's camera), `__lvDock.view`, `__lvDock.viewSwitches`, `__lvDock.orbit`, `__lvCockpitShows` (what the instruments read), `__lvCockpitDrawn`, `__lvOrbitGestures`.
 
+
+## 47. Mission scoring, medals, achievements and personal records
+
+An official mission is now scored out of **1,000 points**: LUNAR LANDING 400, ORBITAL DOCKING 300, EARTH REENTRY 300. Everything is computed from what the simulations measured, at the end of each phase, by pure functions (`data/missionScoring.js`, `SCORING_VERSION = 1`). The same snapshots, difficulty, destination and version always give the same score. Nothing is scored or shown during flight; the four docking views, the guidance and the language never affect a score. No physics, limit or tolerance changed.
+
+**Where the numbers come from (phase snapshots, `data/flightScoring.js`):**
+- **Landing:** the graded touchdown (`landerSim gradeTouchdown`, which now also carries the raw `fuelLeft`, `initialFuel` and descent `time`; the /100 grade on the landing result screen is unchanged).
+- **Docking:** the capture judgement's own facts at the instant the probe tip crossed the drogue ring (`judgeContact`: lateral offset, axis angle, roll, closing and lateral speed, rotation rate), the RCS left, the capturing attempt's bounced contacts and the attempt history (DockingOps' hard-dock result now carries `capture` and `attemptContacts`).
+- **Reentry:** ReentryGame's measured entry (`resultData`: flown entry angle, peak heat rate, heat load, overheat, shield used, peak g, splashdown speed) plus the bank-control share (the Training Center's measure, now sampled in missions too; read-only predictions) and the entry attempts and capsules lost.
+- One snapshot per phase, from the attempt that ended it. `beginDescent()` (BEGIN PDI, also after RETRY DESCENT) drops everything earlier; nothing is summed across attempts.
+
+**Curves** (each against the pilot difficulty's own limit): `underLimit(r, free)` = full up to `free` of the limit, then down quadratically to 0 at the limit; `lowerBetter(v, full, zero)` and `higherBetter(v, zero, full)` are linear. Each component is rounded, and the phase score is their sum.
+
+| Phase | Component | Points | Rule |
+|---|---|---|---|
+| Landing 400 | vertical touchdown speed | 140 | `underLimit(vy / safeVy, 0.2)` |
+| | horizontal touchdown speed | 60 | `underLimit(vx / safeVx, 0.2)` |
+| | attitude (tilt) | 40 | `underLimit(tilt / safeTilt, 0.1)` |
+| | accuracy (from the primary LZ centre) | 100 | full ≤ 1 m, 0 at 30 m |
+| | fuel & descent efficiency | 60 | ideal-burn fuel ÷ fuel used: 0 at 0.35, full at 0.85 (a fuller tank earns nothing more) |
+| Docking 300 | contact speed | 70 | `underLimit(closing / vMax, 0.3)` |
+| | port alignment | 70 | `underLimit(lateral / tol.lateral, 0.1)` |
+| | lateral / vertical drift | 40 | `underLimit(vLat / tol.vLat, 0.1)` |
+| | angular alignment / roll / rotation | 30 / 10 / 10 | `underLimit(x / tol.x, 0.1)` |
+| | RCS efficiency | 40 | RCS left of the attempt's budget: 0 at 30 %, full at 85 % |
+| | clean capture | 30 | −15 per contact that bounced off before the capture |
+| | restarts and retries | −10 each, at most −30 | each extra attempt (RESTART DOCKING or a failed attempt) |
+| Reentry 300 | entry corridor | 90 | full within 0.15° of −6.50°, 0 at 0.9° |
+| | peak g | 70 | full ≤ 9 g, 0 at 12 g (the structural limit) |
+| | peak heating | 60 | full ≤ 188 W/cm², 0 at 200 (the design rate) or any overheat |
+| | heat shield used | 40 | full ≤ 60 %, 0 at 90 % |
+| | flight control | 40 | hypersonic flight with the lift vector on guidance: 0 at 50 %, full at 90 % |
+
+- **Gates:** a crash scores 0 for the landing; a docking scores only on the physics' capture; a reentry only on splashdown. Splashdown speed is set by the parachutes and there is no recovery target, so neither is scored. "Descent efficiency" and "fuel remaining" are one measurement here (fixed start, fixed tank), so they are scored once. The ideal-burn table (`LANDING_FUEL_REF`) is re-derived from `landerPilots idealBurn` in the tests.
+- **Medals:** BRONZE 500, SILVER 700, GOLD 850, PLATINUM 950. A medal needs a safe landing, the docking, a splashdown, and no capsule lost on an earlier entry (RETRY ENTRY finishes the flight, but a lost capsule is a failed mission). CADET and ASTRONAUT are capped at GOLD and the debrief says so ("950 points reached — awarded GOLD"); PLATINUM is COMMANDER only. A failed mission shows its partial score and no medal.
+- **Retries:** RETRY DESCENT restarts the scored mission (nothing has been flown before the descent, so it equals choosing the mission again). Docking restarts cost 10 each (capped at 30) and are never a first attempt. Phase ratings use the medals' shares: OUTSTANDING 95 %, EXCELLENT 85 %, GOOD 70 %, FAIR 50 %, NEEDS WORK below.
+- **Calibration** (reference pilots flying the real simulations, `missionScoring.test.js`): a precise flight scores 900–968 at every destination and difficulty (PLATINUM only on COMMANDER, at one destination), a looser one 745–832 (SILVER).
+
+**Achievements** (17, `ACHIEVEMENTS`; decided at the landing result, the hard dock, the splashdown or the end of a successful mission; official missions only; each unlocked once, with its flight, date and place):
+- **Landing:** FIRST FOOTPRINT (a safe landing), SOFT TOUCHDOWN (both touchdown speeds ≤ 30 % of their limits), PRECISION PILOT (≤ 1.0 m from the LZ centre), FUEL MASTER (≤ 1.14× the ideal burn's fuel).
+- **Docking:** FIRST CONTACT; PRECISION DOCKING (lateral ≤ 25 % and angle ≤ 25 % of tolerance, closing ≤ 50 % of the window, drift ≤ 30 %); FIRST-ATTEMPT DOCKING (one attempt, no restart, no failure); RENDEZVOUS MASTER (≥ 270/300).
+- **Earth return:** WELCOME HOME (a splashdown); REENTRY SPECIALIST (≥ 270/300).
+- **Destinations and elite:** FOUR DESTINATIONS, MOUNTAIN NAVIGATOR (Hadley), CRATER SPECIALIST (Tycho), SILENT HORIZON VETERAN (far side), COMMANDER QUALIFIED, PERFECT EXPEDITION (≥ 90 % in all three phases in one successful mission), LUNAVIA MASTER (PLATINUM at all four on COMMANDER).
+
+**Records and persistence** (`lib/missionRecords.js`, localStorage key `lunavia.mission.records.v1`, `schema: 1`):
+- Twelve categories (destination × difficulty): mission attempts (flights whose descent began), successful missions, best total and medal, best landing, docking, first-attempt docking and reentry, first-attempt and restarted docking counts, achievements earned there.
+- The history is the existing official-missions log (`lunavia.mission.log.v1`). Its entries gain `flown`, `reentry`, `scoring` (version, status, the phase snapshots, scores, medal, `newBest`, `prevBest`) and `endedAt`. Statuses: complete, complete-after-loss, failed-landing, failed-docking, failed-reentry, aborted.
+- Loading never destroys anything:
+  - damaged data is kept under `…records.v1.damaged`;
+  - a newer schema is read but never written;
+  - junk categories and achievements are dropped.
+- On the first load, flights logged before scoring are taken over only for what they prove: attempts, FIRST FOOTPRINT, FIRST CONTACT, FIRST-ATTEMPT DOCKING, WELCOME HOME and a "completed before scoring" count. No score or medal is invented for them.
+- Training records (`lunavia.training.v2`) are separate and untouched.
+
+**Screens:**
+- **MISSION COMPLETE** is unchanged over the splashdown, with a MISSION DEBRIEF button. After 5 s the debrief takes over by itself.
+- **The debrief** (`components/scoring/MissionDebrief.jsx`) reveals:
+  1. the phase scores, ratings and bars;
+  2. the total;
+  3. the medal (`MedalEmblem`);
+  4. the achievements this flight unlocked;
+  5. the personal record (NEW PERSONAL BEST / previous best);
+  6. one recommendation drawn from the flight's own numbers (`recommendation`).
+- A tap shows everything at once; the debrief never closes itself. DETAILED TELEMETRY lists every measured value, its points and the rule, the deductions, the medal gates and rules, and all unlocked achievements.
+- A failed mission's END MISSION (crash, failed docking, lost capsule) shows the partial debrief (state `DEBRIEF`). An in-flight ABORT is logged as aborted and returns to the menu.
+- **FLIGHT RECORDS** (`/records`, from MISSIONS and from the debrief) has three tabs:
+  - MEDALS & RECORDS: the 4 × 3 grid, each category's detail, and the medal rules;
+  - ACHIEVEMENTS: earned with date and place, locked with the exact requirement and progress where measurable;
+  - MISSION LOG: every official flight, with its debrief again.
+- The MISSIONS cards show each destination's best medal and score. ModeMenu (MISSIONS / TRAINING) is untouched. All four destinations stay open.
+- **Language:** every new text is in English and Brazilian Portuguese, following the subtitle language (`scoringText.js`).
+
+**Future exploration:** EVA and surface exploration are not playable and not scored. A future exploration phase comes with `SCORING_VERSION` 2; the log and records keep the version each result was scored with.
+
+**Tests:**
+- `data/missionScoring.test.js` (27): each phase's formula, the 1,000 maximum, determinism, medal thresholds and caps, failed missions, restarts, no inflation, no duplicate unlocks, personal bests, persistence (restart, damaged, newer), 12-category separation, training separation, legacy import, and real reference flights at all 12 combinations.
+- `pages/officialMissions.test.js`: the flow wiring; no score in the flight views; the menus unchanged.
+- `scripts/verify-ios-bundle.js` checks the debrief, the Portuguese debrief, the medal rule, the achievements and the records key in the packaged bundle.

@@ -82,6 +82,12 @@ const FEATURES = [
   ["360 view: the free camera's gesture layer", "dock-orbit-pad"],
   ["360 view: RESET CAMERA", "RESET CAMERA"],
   ["Game menu after START MISSIONS (MISSIONS / TRAINING)", "mode-missions"],
+  ["Mission scoring: the MISSION DEBRIEF and its detailed telemetry", "debrief-open-details"],
+  ["Mission debrief and achievements in Portuguese", "CONQUISTAS DESBLOQUEADAS"],
+  ["Medals: PLATINUM for COMMANDER only", "PLATINUM: COMMANDER only"],
+  ["Achievements (FIRST FOOTPRINT … LUNAVIA MASTER)", "LUNAVIA MASTER"],
+  ["Flight records kept on the device (versioned)", "lunavia.mission.records.v1"],
+  ["FLIGHT RECORDS: medals, achievements, mission log", "records-page"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar

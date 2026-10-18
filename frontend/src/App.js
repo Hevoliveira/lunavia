@@ -4,6 +4,7 @@ import Landing from "@/pages/Landing";
 import Mission from "@/pages/Mission";
 import Training from "@/pages/Training";
 import Manifesto from "@/pages/Manifesto";
+import Records from "@/pages/Records";
 import Navbar from "@/components/Navbar";
 import CommsSubtitles from "@/components/CommsSubtitles";
 import { Toaster } from "sonner";
@@ -28,6 +29,7 @@ function App() {
           <Route path="/home" element={<Landing />} />
           <Route path="/training" element={<Training />} />
           <Route path="/manifesto" element={<Manifesto />} />
+          <Route path="/records" element={<Records />} />
         </Routes>
         <CommsSubtitles />
         <Toaster

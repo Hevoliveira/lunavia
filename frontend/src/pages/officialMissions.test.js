@@ -173,3 +173,32 @@ describe("after the landing: lunar ascent, rendezvous and the player's docking, 
     expect(mission).toMatch(/onResult=\{handleDockingResult\}/);
   });
 });
+
+describe("mission scoring: measured at the end of each phase, shown only after the mission", () => {
+  const mission = read("pages/Mission.jsx");
+  test("each phase is scored from its own result, once, by the flight's scoring (never during flight)", () => {
+    expect(between(mission, "const handleConfirmMission", "// End of the Earth departure")).toMatch(/scoringRef\.current = createFlightScoring\(\{ id: flightIdRef\.current, \.\.\.next \}\)/);
+    expect(between(mission, "const enterDescent = () => {", "setState(STATES.MANUAL_DESCENT);")).toMatch(/sc\.beginDescent\(\);/);
+    expect(between(mission, "const handleDescentEnd", "// RESTART on the results")).toMatch(/const L = sc\.landed\(result\);/);
+    expect(between(mission, "const handleDockingResult", "// ABORT, END MISSION")).toMatch(/sc\.docking\(r\)/);
+    expect(between(mission, "const handleMissionComplete", "// A capsule lost on entry")).toMatch(/const R = sc\.splashdown\(data\);[\s\S]*const M = sc\.mission\(\);/);
+    expect(mission).toMatch(/onFailed=\{handleEntryLost\}/);
+    // the active flight views never see a score
+    ["components/DescentGame.jsx", "components/DockingOps.jsx", "components/ReentryGame.jsx", "components/DockingCabin.jsx", "data/dockingViews.js"].forEach((f) => {
+      expect(read(f)).not.toMatch(/missionScoring|flightScoring|missionRecords|MissionDebrief/);
+    });
+    // the debrief: after MISSION COMPLETE (which stays), or a failed mission's END MISSION
+    expect(mission).toMatch(/\{\(\(state === STATES\.COMPLETE && debriefOpen\) \|\| state === STATES\.DEBRIEF\) && debrief && \(/);
+    expect(mission).toMatch(/data-testid="complete-overlay"/);
+    expect(mission).toMatch(/MISSION COMPLETE/);
+    expect(read("components/scoring/MissionDebrief.jsx")).not.toMatch(/setTimeout\([^)]*on(Menu|Missions|Close|Records)/); // never dismisses itself
+  });
+  test("the approved menus stay as they were: MISSIONS / TRAINING, all four destinations open", () => {
+    const menu = read("components/missions/ModeMenu.jsx");
+    expect((menu.match(/choice\("/g) || []).length).toBe(2);
+    const select = read("components/missions/MissionSelect.jsx");
+    expect(select).toMatch(/to="\/records"/);
+    expect(select).not.toMatch(/\bLock\b|isLocked|locked:|unlockedBy|requires:|disabled=\{/);
+    expect(read("App.js")).toMatch(/<Route path="\/records" element=\{<Records \/>\} \/>/);
+  });
+});
