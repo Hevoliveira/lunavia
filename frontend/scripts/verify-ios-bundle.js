@@ -76,6 +76,11 @@ const FEATURES = [
   ["Live DOCKING GUIDANCE panel (step, correction, control)", "dock-guidance-control"],
   ["Guidance from the docking telemetry (one instruction at a time)", "BEGIN SLOW APPROACH"],
   ["GUIDANCE ON / OFF", "GUIDANCE OFF"],
+  ["Four docking views: the selector (NAV | WINDOW | COCKPIT | 360)", "dock-views"],
+  ["WINDOW view: the overhead docking window and its readout", "dock-window-strip"],
+  ["COCKPIT view: the 3D cabin and its live instruments", "LATERAL"],
+  ["360 view: the free camera's gesture layer", "dock-orbit-pad"],
+  ["360 view: RESET CAMERA", "RESET CAMERA"],
   ["Game menu after START MISSIONS (MISSIONS / TRAINING)", "mode-missions"],
 ];
 

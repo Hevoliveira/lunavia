@@ -30,6 +30,8 @@ import {
 } from "@/data/dockingSim";
 import { COAST, FINAL, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf } from "@/data/rendezvous";
 import { CONTROLS, GUIDANCE_VOICE, STEPS, UI as GUI, createGuidance, guidanceText, guidedPilot } from "@/data/dockingGuidance";
+import { FIRST_PERSON, ORBIT_DEFAULT, VIEWS, VIEW_LABEL, orbitDrag, orbitZoom, viewCamera } from "@/data/dockingViews";
+import { CabinLight, Cockpit, WindowFrame, rcsLevels } from "@/components/DockingCabin";
 import { VERBOSITY } from "@/audio/commsDirector";
 import { useAudioSettings } from "@/audio/audioSettings";
 
@@ -53,6 +55,18 @@ import { useAudioSettings } from "@/audio/audioSettings";
  * also on the pause and failure screens) puts the whole simulation back on
  * that checkpoint (dockingSim.restoreCheckpoint) at any time during the
  * approach. Each restart is a new attempt in the mission log.
+ *
+ * FOUR VIEWS (data/dockingViews; the selector under the top bar), all on the one
+ * simulation, none of them able to change it:
+ *   NAV      the docking navigation display it always had: the camera on the
+ *            port's axis with the reticle, the alignment display and the HUD;
+ *   WINDOW   first person through the overhead docking window (DockingCabin
+ *            WindowFrame), a compact readout and the guidance;
+ *   COCKPIT  the 3D cabin (DockingCabin Cockpit) with its live instruments;
+ *   360°     a free camera around the ascent stage: drag to orbit, pinch or
+ *            wheel to zoom, RESET CAMERA; the gesture layer sits under the
+ *            controls, so a drag never reaches a jet button and a jet button
+ *            never turns the camera.
  *
  * DOCKING GUIDANCE (bottom centre, between the controls): data/dockingGuidance
  * reads the same state and shows one instruction at a time — the step (1–5),
@@ -101,25 +115,6 @@ const smooth = (x) => {
   const u = Math.max(0, Math.min(1, x));
   return u * u * (3 - 2 * u);
 };
-
-/** Which LM RCS jets fire for a body command (translation t, rotation r), as puff levels. */
-function rcsLevels(t, r) {
-  return LM_RCS.map((th) => {
-    const push = [-th.dir[0], -th.dir[1], -th.dir[2]]; // the jet pushes the vehicle against its exhaust
-    let k = 0;
-    const tl = Math.hypot(t[0], t[1], t[2]);
-    if (tl > 0.01) k = Math.max(k, (push[0] * t[0] + push[1] * t[1] + push[2] * t[2]) / tl > 0.7 ? Math.min(1, tl) : 0);
-    const rl = Math.hypot(r[0], r[1], r[2]);
-    if (rl > 0.01) {
-      // torque about the ascent stage's centre (model units)
-      const p = [th.pos[0] - ASC_CENTRE_U[0], th.pos[1] - ASC_CENTRE_U[1], th.pos[2] - ASC_CENTRE_U[2]];
-      const tq = [p[1] * push[2] - p[2] * push[1], p[2] * push[0] - p[0] * push[2], p[0] * push[1] - p[1] * push[0]];
-      const tn = Math.hypot(...tq) || 1;
-      if ((tq[0] * r[0] + tq[1] * r[1] + tq[2] * r[2]) / (tn * rl) > 0.6) k = Math.max(k, Math.min(1, rl));
-    }
-    return k;
-  });
-}
 
 /* ---- the Moon below (camera-relative, turning with the orbit) -------------------------------- */
 // Fine relief (procedural, made once): craterlets and grain the 1k map cannot carry from 110 km.
@@ -197,7 +192,8 @@ function Vehicles({ simRef, viewRef }) {
     if (!s || !lm.current) return;
     lm.current.position.set(s.pos[0], s.pos[1], s.pos[2]);
     lm.current.quaternion.set(s.q[0], s.q[1], s.q[2], s.q[3]);
-    lm.current.visible = !(viewRef.current === "COAS" && s.status !== "docked" && s.mode === "docking");
+    // the first-person views are inside the ascent stage: its outside is not drawn there
+    lm.current.visible = !(FIRST_PERSON[viewRef.current] && s.status !== "docked" && s.mode === "docking");
     const f = s.fired || { t: [0, 0, 0], r: [0, 0, 0] };
     const lv = rcsLevels(f.t, f.r);
     lmLevels.current = lv;
@@ -229,7 +225,7 @@ function Corridor({ simRef, viewRef }) {
   useFrame(() => {
     const s = simRef.current;
     if (!grp.current || !s) return;
-    grp.current.visible = viewRef.current === "CHASE" && s.mode === "docking" && s.status === "approach";
+    grp.current.visible = viewRef.current === "ORBIT" && s.mode === "docking" && s.status === "approach";
     const { port, axis } = portState(s);
     const pos = lmAxisGeo.attributes.position;
     pos.setXYZ(0, port[0], port[1], port[2]);
@@ -251,7 +247,7 @@ function Corridor({ simRef, viewRef }) {
 
 /* ---- camera and the screen-space markers ------------------------------------------------------ */
 const FAR_AXIS = [0, DOCK_Y - 7, 0]; // a point on the probe's axis inside the CSM (the far mark of the alignment display)
-function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef }) {
+function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef, orbitRef }) {
   const { camera, size } = useThree();
   const pos = useRef(new THREE.Vector3(0, 60, 20));
   const look = useRef(new THREE.Vector3());
@@ -272,14 +268,44 @@ function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef }) {
     let L;
     let U = [0, 0, 1];
     let snap = false;
+    const dockingPhase = ph === "docking" || ph === "handover" || ph === "captured";
+    const v = viewRef.current;
+    let fov = 50;
+    if (dockingPhase && v !== "NAV") {
+      // WINDOW, COCKPIT and 360°: the view's own camera (data/dockingViews), placed directly
+      const cam = viewCamera(v, s, orbitRef.current);
+      camera.position.set(cam.pos[0], cam.pos[1], cam.pos[2]);
+      camera.quaternion.set(cam.q[0], cam.q[1], cam.q[2], cam.q[3]);
+      if (camera.fov !== cam.fov) {
+        camera.fov = cam.fov;
+        camera.updateProjectionMatrix();
+      }
+      camera.up.set(0, 1, 0).applyQuaternion(camera.quaternion);
+      camera.updateMatrixWorld();
+      // keep the smoothing state on this camera, so leaving the view later is seamless
+      pos.current.copy(camera.position);
+      look.current.set(0, 0, -10).applyQuaternion(camera.quaternion).add(camera.position);
+      up.current.copy(camera.up);
+      first.current = false;
+      const m = markRef.current;
+      if (m) {
+        m.csm = proj([0, DOCK_Y - 3, 0]);
+        m.tip = proj(PROBE_TIP);
+        m.far = proj(FAR_AXIS);
+      }
+      if (typeof window !== "undefined") window.__lvDockCam = { view: v, pos: cam.pos, q: cam.q, fov: cam.fov }; // validation tooling
+      sizeRef.current = { w: size.width, h: size.height };
+      clockRef.current = s.missionT || 0;
+      return;
+    }
     if (ph === "docked" || ph === "transfer" || ph === "jettison") {
       // the joined vehicles above the Moon: a slow orbit of the stack
       const a = 0.9 + now * 0.06;
       const mid = [0, DOCK_Y - 1.5, 0];
       P = [mid[0] + Math.cos(a) * 26, mid[1] + 4, mid[2] + 9 + Math.sin(a) * 6];
       L = ph === "jettison" ? [C[0] * 0.5, (C[1] + mid[1]) * 0.5, C[2] * 0.5] : mid;
-    } else if (viewRef.current === "COAS" && (ph === "docking" || ph === "handover" || ph === "captured")) {
-      // the crew's docking window: looking up the tunnel's axis, +Z up
+    } else if (v === "NAV" && dockingPhase) {
+      // NAV: the docking navigation camera, as it always was: on the port's axis, looking up it, +Z up
       const { port, axis } = portState(s);
       const zb = R([0, 0, 1]);
       P = [port[0] - axis[0] * 0.25, port[1] - axis[1] * 0.25, port[2] - axis[2] * 0.25];
@@ -318,10 +344,15 @@ function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef }) {
       look.current.lerp(_v.set(...L), Math.min(1, delta * 4));
       up.current.lerp(_v.set(...U), k).normalize();
     }
+    if (camera.fov !== fov) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
     camera.up.copy(up.current);
     camera.position.copy(pos.current);
     camera.lookAt(look.current);
     camera.updateMatrixWorld();
+    if (typeof window !== "undefined" && dockingPhase) window.__lvDockCam = { view: v, pos: camera.position.toArray(), q: camera.quaternion.toArray(), fov: camera.fov };
     // markers: the CSM far out (rendezvous), the probe tip and the far axis mark (alignment)
     const m = markRef.current;
     if (m) {
@@ -386,6 +417,57 @@ function SimLoop({ simRef, inputRef, phaseRef, difficulty, alignRef, pausedRef, 
     }
   });
   return null;
+}
+
+/* ---- 360°: the camera gestures (one finger orbits, two fingers pinch, the wheel zooms) ---------------- */
+function OrbitPad({ orbitRef }) {
+  const pts = useRef(new Map());
+  const pinch = useRef(null);
+  const spread = () => {
+    const [a, b] = [...pts.current.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+  const down = (e) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    pinch.current = pts.current.size >= 2 ? spread() : null;
+  };
+  const move = (e) => {
+    const p = pts.current.get(e.pointerId);
+    if (!p) return;
+    e.preventDefault();
+    const dx = e.clientX - p.x;
+    const dy = e.clientY - p.y;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    if (pts.current.size >= 2) {
+      const d = spread();
+      if (pinch.current) orbitRef.current = orbitZoom(orbitRef.current, d / pinch.current);
+      pinch.current = d;
+    } else {
+      orbitRef.current = orbitDrag(orbitRef.current, dx, dy);
+    }
+    if (typeof window !== "undefined") window.__lvOrbitGestures = (window.__lvOrbitGestures || 0) + 1; // validation tooling
+  };
+  const up = (e) => {
+    pts.current.delete(e.pointerId);
+    pinch.current = pts.current.size >= 2 ? spread() : null;
+  };
+  return (
+    <div
+      className="absolute inset-0 z-[15] touch-none select-none cursor-grab active:cursor-grabbing"
+      data-testid="dock-orbit-pad"
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={up}
+      onWheel={(e) => {
+        orbitRef.current = orbitZoom(orbitRef.current, Math.exp(-e.deltaY * 0.0015));
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+    />
+  );
 }
 
 /* ---- touch controls ----------------------------------------------------------------------------- */
@@ -595,12 +677,18 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
     phaseRef.current = p;
     setPhaseState(p);
   };
-  const [view, setViewState] = useState("COAS");
-  const viewRef = useRef("COAS");
+  // the docking view: NAV first; a view only moves the camera (data/dockingViews)
+  const [view, setViewState] = useState("NAV");
+  const viewRef = useRef("NAV");
+  const viewSwitches = useRef(0);
   const setView = (v) => {
+    if (!VIEWS.includes(v) || v === viewRef.current) return;
     viewRef.current = v;
+    viewSwitches.current += 1;
     setViewState(v);
   };
+  const orbitRef = useRef(ORBIT_DEFAULT); // the 360° camera: { az, el, dist }
+  const extraRef = useRef({}); // what the cockpit's displays show beyond the state (mode, auto align, step)
   const [mode, setMode] = useState("TRANSLATION");
   const modeRef = useRef("TRANSLATION");
   const [align, setAlignState] = useState(!!cfg.autoAlign);
@@ -666,7 +754,12 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   useEffect(() => {
     const MAP = {};
     Object.values(CONTROLS).forEach((c) => (MAP[c.key] = [c.axis, c.i, c.v]));
+    const VIEW_KEYS = { Digit1: "NAV", Digit2: "WINDOW", Digit3: "COCKPIT", Digit4: "ORBIT" };
     const dn = (e) => {
+      if (VIEW_KEYS[e.code] && (phaseRef.current === "docking" || phaseRef.current === "captured")) {
+        setView(VIEW_KEYS[e.code]);
+        return;
+      }
       const m = MAP[e.code];
       if (!m) return;
       keysDown.current.add(e.code);
@@ -889,6 +982,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           if (line && guideOnRef.current && ph === "docking") say(line, { relevant: () => lastGuideKey.current === key && guideOnRef.current });
         }
       }
+      extraRef.current = { mode: modeRef.current, align: alignRef.current, step: g && g.step };
       setHud({ tel, st, g, status: s.status, m: { ...markRef.current }, size: { ...sizeRef.current }, missionT: s.missionT || 0 });
       if (typeof window !== "undefined") {
         window.__lvDock = {
@@ -912,6 +1006,8 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           fired: s.fired ? { t: s.fired.t.slice(), r: s.fired.r.slice() } : null,
           guidance: g && { key: g.key, step: g.step, sev: g.sev, buttons: g.buttons, mode: g.mode, needMode: g.needMode, confirm: g.confirm },
           guidanceOn: guideOnRef.current,
+          viewSwitches: viewSwitches.current,
+          orbit: { ...orbitRef.current },
         };
         window.__lvDockState = s; // validation tooling (read-only)
       }
@@ -1060,7 +1156,10 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
             <Vehicles simRef={simRef} viewRef={viewRef} />
             <Corridor simRef={simRef} viewRef={viewRef} />
           </Suspense>
-          <Director simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} markRef={markRef} sizeRef={sizeRef} clockRef={clockRef} />
+          <WindowFrame simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} />
+          <Cockpit simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} difficulty={difficulty} extraRef={extraRef} />
+          <CabinLight simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} />
+          <Director simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} markRef={markRef} sizeRef={sizeRef} clockRef={clockRef} orbitRef={orbitRef} />
           <SimLoop simRef={simRef} inputRef={inputRef} phaseRef={phaseRef} difficulty={difficulty} alignRef={alignRef} pausedRef={pausedRef} onEvent={onEvent} plan={plan} />
           <AdaptiveResolution />
         </Canvas>
@@ -1120,6 +1219,9 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
       {/* Docking HUD (all from the simulation) */}
       {docking && tel && (
         <>
+          {/* 360°: the gesture layer (under the HUD and the controls: it only gets the touches they do not) */}
+          {view === "ORBIT" && <OrbitPad orbitRef={orbitRef} />}
+          {(view === "NAV" || view === "ORBIT") && (
           <div className="absolute top-14 short:top-[var(--hud-top)] left-4 md:left-8 safe-ml z-30 pointer-events-none bg-black/55 backdrop-blur-sm border border-white/10 px-3 py-2 short:px-2 short:py-1.5 font-mono tabular w-[188px] short:w-[172px]" data-testid="dock-hud">
             <div className="text-[8px] tracking-[0.35em] text-[#FF3B00]">● DOCKING · {difficulty}</div>
             <div className="text-white text-[10px] short:text-[9px] tracking-[0.12em] mt-0.5 truncate" data-testid="dock-status">{phase === "captured" ? "DOCKING CONTACT · CAPTURE" : st ? st.phase : ""}</div>
@@ -1158,8 +1260,34 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
               </div>
             )}
           </div>
+          )}
+
+          {/* WINDOW: a compact readout, so nothing big stands between the window and the target */}
+          {view === "WINDOW" && (
+            <div className="absolute top-14 short:top-[var(--hud-top)] left-4 md:left-8 safe-ml z-30 pointer-events-none bg-black/45 backdrop-blur-sm border border-white/10 px-2 py-1 font-mono tabular text-[10px] short:text-[9px] tracking-[0.12em] w-[150px]" data-testid="dock-window-strip">
+              <div className="text-[8px] tracking-[0.3em] text-[#4fd1c5]">● WINDOW · {difficulty}</div>
+              <div className="flex justify-between text-white">
+                <span className="text-zinc-400">RANGE</span>
+                <span data-testid="dock-window-range">{tel.axial.toFixed(tel.axial < 10 ? 2 : 1)} m</span>
+              </div>
+              <div className={`flex justify-between ${warnColor(tel.closing > tel.closingLimit)}`}>
+                <span className="text-zinc-400">CLOSING</span>
+                <span data-testid="dock-window-closing">{tel.closing.toFixed(3)}</span>
+              </div>
+              <div className={`flex justify-between ${warnColor(tel.vLatR > cfg.tol.vLat)}`}>
+                <span className="text-zinc-400">LATERAL</span>
+                <span>{tel.vLatR.toFixed(3)}</span>
+              </div>
+              {st && st.warnings.length > 0 && (
+                <div className="text-[8px] text-[#FF3B00] leading-tight mt-0.5" data-testid="dock-warnings">
+                  ▲ {st.warnings[0]}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Alignment display: offset dot and pointing cross, against the capture tolerance */}
+          {(view === "NAV" || view === "ORBIT") && (
           <div className="absolute top-14 short:top-[var(--hud-top)] right-4 md:right-8 safe-mr z-30 pointer-events-none flex flex-col items-end gap-1" data-testid="dock-align-display">
             <div className="relative bg-black/55 border border-white/10" style={{ width: box, height: box }} data-testid="dock-align-box">
               <div className="absolute inset-0 flex items-center justify-center">
@@ -1178,10 +1306,23 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
             <div className={`font-mono text-[8px] tracking-[0.2em] px-1.5 py-0.5 border ${ok ? "text-[#4fd1c5] border-[#4fd1c5]/60" : "text-zinc-400 border-white/20"}`} data-testid="dock-corridor">
               {ok ? "IN CORRIDOR" : "OUT OF CORRIDOR"}
             </div>
+            {view === "ORBIT" && (
+              <button
+                type="button"
+                data-testid="dock-camera-reset"
+                onClick={() => {
+                  orbitRef.current = ORBIT_DEFAULT;
+                }}
+                className="pointer-events-auto mt-1 min-h-[36px] px-2 font-mono text-[8px] tracking-[0.18em] text-white bg-black/60 border border-white/30"
+              >
+                ⌖ {ui.resetCam}
+              </button>
+            )}
           </div>
+          )}
 
           {/* COAS: the boresight, the probe tip and the far axis mark (projected from the real geometry) */}
-          {view === "COAS" && hud && hud.m.tip && (
+          {view === "NAV" && hud && hud.m.tip && (
             <div className="absolute inset-0 z-20 pointer-events-none" data-testid="dock-coas">
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <div className="w-16 h-16 rounded-full border border-[#FF3B00]/70" />
@@ -1198,11 +1339,6 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           {(phase === "docking" || phase === "captured") && <GuidancePanel g={g} text={g && guidanceText(g, difficulty, lang, { keyboard, view })} lang={lang} on={guideOn} onToggle={() => setGuideOn(!guideOn)} clearAlign={!!cfg.autoAlign} />}
           {/* the bar sits a little right of centre: clear of the HUD on the left at 667 pt */}
           <div className="absolute top-14 short:top-[var(--hud-top)] left-[calc(50%_+_24px)] -translate-x-1/2 z-30 flex gap-1.5 items-stretch">
-            <button type="button" data-testid="dock-view" onClick={() => setView(view === "COAS" ? "CHASE" : "COAS")} className="min-h-[44px] short:min-h-[40px] w-[76px] px-1 font-mono text-[9px] tracking-[0.16em] text-white bg-black/55 border border-white/25 leading-tight">
-              VIEW
-              <br />
-              <span className="text-[8px] text-zinc-300">{view === "COAS" ? "WINDOW" : "EXTERNAL"}</span>
-            </button>
             <button type="button" data-testid="dock-pause" onClick={togglePause} className="min-h-[44px] short:min-h-[40px] px-2 font-mono text-[9px] tracking-[0.18em] text-white bg-black/55 border border-white/25">
               {paused ? "RESUME" : "PAUSE"}
             </button>
@@ -1210,6 +1346,22 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
             <button type="button" data-testid="dock-abort" onClick={() => onAbort && onAbort()} className="min-h-[44px] short:min-h-[40px] px-2 font-mono text-[9px] tracking-[0.18em] text-zinc-300 bg-black/55 border border-white/25">
               ABORT
             </button>
+          </div>
+          {/* the four views: NAV | WINDOW | COCKPIT | 360°, under the top bar */}
+          <div className="absolute top-[6.75rem] short:top-[calc(var(--hud-top)_+_50px)] left-[calc(50%_+_24px)] -translate-x-1/2 z-30 flex border border-white/25 bg-black/55" role="tablist" data-testid="dock-views" data-view={view}>
+            {VIEWS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={view === v}
+                data-testid={`dock-view-${v === "ORBIT" ? "360" : v.toLowerCase()}`}
+                onClick={() => setView(v)}
+                className={`min-h-[36px] px-2.5 font-mono text-[9px] tracking-[0.16em] border-r last:border-r-0 border-white/15 touch-manipulation ${view === v ? "bg-[#4fd1c5]/25 text-[#4fd1c5]" : "text-zinc-300"}`}
+              >
+                {VIEW_LABEL[v]}
+              </button>
+            ))}
           </div>
           {toast && performance.now() - toast.at < 3500 && (
             <div className="absolute top-[45%] left-1/2 -translate-x-1/2 z-30 pointer-events-none font-mono text-[11px] tracking-[0.25em] text-[#FF3B00] bg-black/60 border border-[#FF3B00]/60 px-3 py-1.5 text-center" data-testid="dock-toast">

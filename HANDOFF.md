@@ -2415,7 +2415,7 @@ A mission is complete only at splashdown, which needs the docking.
   The reference pilot (0.25–0.4 s reaction time, pulses only) docks at all three.
 
 **UI** (DockingOps):
-- **Views:** WINDOW (COAS: looking up the tunnel, reticle, the probe tip and a far axis mark projected from the geometry) and EXTERNAL (the docking corridor drawn in space).
+- **Views:** see §46 (NAV, WINDOW, COCKPIT, 360°). Before §46 the docking had one navigation camera (the COAS boresight, labelled WINDOW) and a fixed chase camera (EXTERNAL).
 - **HUD:** range, closing, lateral and vertical rates, offset, attitude error, RCS %, status, warnings.
 - **Alignment display:** an offset dot (±1 m) and an attitude cross (±10°), against the tolerance ring; "IN CORRIDOR" when within tolerance.
 - **Controls:** a cross pad with FWD/AFT, switching between TRANSLATION and ATTITUDE (pitch/yaw, roll).
@@ -2484,4 +2484,36 @@ The docking physics, thresholds, RCS authority and propellant are unchanged (§4
 **Proof it teaches enough:** `guidedPilot` is a student that does only what the panel says (MODE when told, one tap, then a pause to see the effect; nothing while it says wait). It docks all three difficulties at reaction times from 0.25 s to 1.2 s in the unit tests. (Naming one rotation axis at a time used to fail COMMANDER from about 0.9 s: the other axes kept turning. Naming every axis that needs it fixed this.) In the browser, the same student reads the real panel and presses the real buttons with touch events in real time, with no autopilot and no time scale, and docks.
 
 **Validation tooling** (adds to §44): `__lvDock.guidance`, `__lvDock.restarts`, `__lvDockingTools.guidedPilot` and `checkpointState`.
+
+## 46. Four docking views: NAV, WINDOW, COCKPIT, 360°
+
+**Before this milestone** the docking had one real view, now called **NAV**: the camera on the docking port's own axis, looking up it at the probe. Over it are the reticle, the far axis mark, the projected probe-tip ring, the alignment display and the full HUD. Its button read "VIEW · WINDOW", but it was a navigation boresight, not a look through a window. The other setting, EXTERNAL, was a fixed chase camera with no control. Now there are four views. All of them look at the **one** simulation; a view only decides where the camera is and which way it looks.
+
+| View | Camera (`data/dockingViews.js`, tested) | Drawn over / around it |
+|---|---|---|
+| **NAV** (first) | unchanged: on the port's axis 0.25 m inside the port, along the docking axis, body +Z up, 50° | reticle, tip ring, far mark, HUD, alignment display, as before |
+| **WINDOW** | the commander's eye under the overhead docking window (body −0.30, 0.80, 0.22 m), along the docking axis, 62° | the window's 3D frame, gasket, bolts and glass (`DockingCabin WindowFrame`), lit by the Sun as the vehicle turns; a compact RANGE / CLOSING / LATERAL readout |
+| **COCKPIT** | further back in the cabin (−0.22, 0.45, 0.15 m), 72° | the 3D cabin (`DockingCabin Cockpit`); see below |
+| **360°** | orbits the ascent stage's centre in the CSM frame (still while the vehicle turns); starts on the old chase framing | the docking corridor lines, HUD and alignment display, RESET CAMERA |
+
+- **Cockpit:**
+  - The forward bulkhead (extruded, with the docking window and two flanking observation panes cut through it), window frames, display bezels, an overhead beam and grab handle, a cable run, side walls and ceiling.
+  - A breaker console (instanced knobs) and indicator lamps.
+  - A dim warm cabin light.
+  - Four instrument displays (canvas textures redrawn about 8 times a second from `telemetry`):
+    - RANGE · RATE (range, closing in red over the limit, the limit);
+    - LATERAL · ATTITUDE (lateral and vertical speed, pitch/yaw/roll, rate);
+    - ALIGNMENT (the port's offset dot and the attitude cross against the capture ring, IN/OUT CORRIDOR);
+    - RCS · STATUS (propellant, the 16 jets lit while firing, mode, auto align, guidance step, contact, capture, hard dock).
+  - Measured in the browser: the displays show exactly the simulation's range, closing, propellant and offset.
+- **One camera orientation for every first-person view:** they all look along body +Y with body +Z up (`MOUNT_Q`), so the pad's ▲ ▼ ◀ ▶ mean the same on screen in NAV, WINDOW and COCKPIT. The eye positions keep the probe in view, and inside the window openings, from the checkpoint to contact (tested along reference-pilot flights at every difficulty and iPhone aspect).
+- **Selector:** `NAV | WINDOW | COCKPIT | 360°`, under the top bar (36 pt tall). Keys 1–4 also switch views.
+  - Switching only sets the view state: the simulation, the held jets and the attempt are untouched.
+  - The cockpit, the window frame and the cabin light are always in the scene, hidden when not used. The light sits at zero intensity, so a switch never builds or compiles anything.
+- **360° gestures:**
+  - `OrbitPad` is a layer under the HUD and the controls: one finger orbits (about a full turn per 1000 px; over the top and under, to ±83°), two fingers pinch-zoom (3–90 m), and the wheel zooms.
+  - The controls sit above it, so a drag never reaches a jet button and a jet button never turns the camera; a finger on a jet and another dragging both work (separate pointers).
+  - The Moon is the existing `MoonBelow`, so it appears below whenever the camera looks down at it.
+- **Unchanged:** the docking physics, the target geometry, RCS authority and propellant, collisions, the thresholds, RESTART DOCKING (it keeps the current view), the guidance (its briefing names what each view shows), the difficulties, the ascent and rendezvous, and the return.
+- **Validation tooling:** `__lvDockCam` (the current view's camera), `__lvDock.view`, `__lvDock.viewSwitches`, `__lvDock.orbit`, `__lvCockpitShows` (what the instruments read), `__lvCockpitDrawn`, `__lvOrbitGestures`.
 

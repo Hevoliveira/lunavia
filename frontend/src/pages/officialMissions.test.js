@@ -150,6 +150,25 @@ describe("after the landing: lunar ascent, rendezvous and the player's docking, 
     expect(start).toMatch(/guidanceRef\.current\.reset\(\);/);
     // the guidance panel is drawn from data/dockingGuidance, which only reads the state
     expect(dock).toMatch(/<GuidancePanel g=\{g\}/);
+  });
+  test("four docking views on one simulation: NAV (as before), WINDOW, COCKPIT, 360°", () => {
+    const cabin = read("components/DockingCabin.jsx");
+    expect(dock).toMatch(/useState\("NAV"\)/); // NAV first
+    // NAV keeps the docking camera it always had: on the port's axis, looking up it
+    expect(dock).toMatch(/P = \[port\[0\] - axis\[0\] \* 0\.25, port\[1\] - axis\[1\] \* 0\.25, port\[2\] - axis\[2\] \* 0\.25\];/);
+    // the other three: their own cameras (data/dockingViews), their own 3D (DockingCabin), the 360° gestures
+    expect(dock).toMatch(/const cam = viewCamera\(v, s, orbitRef\.current\);/);
+    expect(dock).toMatch(/<WindowFrame simRef=\{simRef\}/);
+    expect(dock).toMatch(/<Cockpit simRef=\{simRef\}/);
+    expect(dock).toMatch(/view === "ORBIT" && <OrbitPad orbitRef=\{orbitRef\} \/>/);
+    expect(cabin).toMatch(/export function WindowFrame/);
+    expect(cabin).toMatch(/export function Cockpit/);
+    // a view switch only sets the view: it never touches the simulation, the inputs or the attempt
+    const setView = between(dock, "const setView = (v) => {", "\n  };");
+    expect(setView).not.toMatch(/simRef|held\.|startDocking|restore|stepDocking|press\(/);
+    // the gestures only move the camera
+    const pad = between(dock, "function OrbitPad({ orbitRef }) {", "\n}\n");
+    expect(pad).not.toMatch(/simRef|press\(|inputRef|held/);
     expect(mission).toMatch(/<DockingOps\s+difficulty=\{difficulty\}\s+farSide=\{mission\.comms\.farSide\}/);
     expect(mission).toMatch(/onResult=\{handleDockingResult\}/);
   });
