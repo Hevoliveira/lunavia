@@ -827,7 +827,10 @@ export default function Mission({ entry = "opening" }) {
             setState(STATES.SELECT);
           }}
           onRecords={() => {
-            resetMission();
+            // straight to FLIGHT RECORDS (the flight has already ended): no reset to the menu first, which
+            // would mount the lunar-orbit scene only to remove it in the same moment
+            audio.commsReset();
+            audio.stopRumble();
             navigate("/records");
           }}
           onMenu={resetMission}

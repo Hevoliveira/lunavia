@@ -192,6 +192,8 @@ describe("mission scoring: measured at the end of each phase, shown only after t
     expect(mission).toMatch(/data-testid="complete-overlay"/);
     expect(mission).toMatch(/MISSION COMPLETE/);
     expect(read("components/scoring/MissionDebrief.jsx")).not.toMatch(/setTimeout\([^)]*on(Menu|Missions|Close|Records)/); // never dismisses itself
+    // FLIGHT RECORDS leaves the page directly: no reset to the menu (which would mount the lunar-orbit scene) on the way out
+    expect(between(mission, "onRecords={() => {", "}}")).not.toMatch(/resetMission|setState/);
   });
   test("the approved menus stay as they were: MISSIONS / TRAINING, all four destinations open", () => {
     const menu = read("components/missions/ModeMenu.jsx");
