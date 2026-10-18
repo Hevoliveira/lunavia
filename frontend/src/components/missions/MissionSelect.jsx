@@ -1,11 +1,27 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft, Award, Play } from "lucide-react";
 import DifficultySelect from "@/components/DifficultySelect";
 import SitePreview, { SiteProfile } from "@/components/training/SitePreview";
+import MedalEmblem from "@/components/scoring/MedalEmblem";
+import { useAudioSettings } from "@/audio/audioSettings";
 import { SITE_DEFS, getSite } from "@/data/landingSites";
 import { OFFICIAL_MISSIONS } from "@/data/missionConfig";
+import { betterMedal } from "@/data/missionScoring";
 import { lastFlight } from "@/lib/missionSelection";
+import { category, loadRecords } from "@/lib/missionRecords";
+
+// A destination's best medal and score over the three pilot difficulties (the flight records).
+function bestAt(records, siteId) {
+  let medal = null;
+  let score = null;
+  ["CADET", "ASTRONAUT", "COMMANDER"].forEach((d) => {
+    const c = category(records, siteId, d);
+    medal = betterMedal(medal, c.bestMedal);
+    if (c.bestTotal && (score === null || c.bestTotal.score > score)) score = c.bestTotal.score;
+  });
+  return { medal, score };
+}
 
 /*
  * MISSIONS: the four official lunar missions. Choose a destination (its
@@ -32,7 +48,7 @@ function lastText(f) {
 }
 
 /** One official mission: number, name, description, terrain preview, environment level, piloting challenge, START MISSION. */
-function MissionCard({ mission, site, active, last, onSelect, onStart }) {
+function MissionCard({ mission, site, active, last, best, onSelect, onStart }) {
   const [img, setImg] = useState(true);
   const level = ENV_LEVEL[mission.environment];
   return (
@@ -61,6 +77,12 @@ function MissionCard({ mission, site, active, last, onSelect, onStart }) {
         </span>
         {site.earthLink === false && (
           <span className="absolute top-1.5 right-1.5 border border-[#9fb6cc]/50 bg-black/60 px-1 font-mono text-[7px] tracking-wider text-[#9fb6cc]" data-testid="mission-no-link">NO EARTH LINK</span>
+        )}
+        {best && best.score !== null && (
+          <span className="absolute bottom-1 left-1 flex items-center gap-1 bg-black/70 pr-1.5 font-mono tabular text-[9px] text-white" data-testid="mission-best" data-medal={best.medal || "none"}>
+            <MedalEmblem medal={best.medal} size={22} />
+            {best.score}
+          </span>
         )}
       </div>
       <div className="p-2.5 short:p-2 flex flex-col flex-1 min-w-0">
@@ -109,6 +131,8 @@ export default function MissionSelect({ selection, log = [], onConfirm, onBack }
   const [step, setStep] = useState("destination"); // destination | pilot
   const mission = OFFICIAL_MISSIONS.find((m) => m.siteId === siteId);
   const site = SITE_DEFS.find((s) => s.id === siteId);
+  const [records] = useState(() => loadRecords());
+  const pt = useAudioSettings().subLang === "pt";
 
   if (step === "pilot") {
     return (
@@ -149,6 +173,7 @@ export default function MissionSelect({ selection, log = [], onConfirm, onBack }
                 site={s}
                 active={m.siteId === siteId}
                 last={lastText(lastFlight(log, m.siteId))}
+                best={bestAt(records, m.siteId)}
                 onSelect={() => setSiteId(m.siteId)}
                 onStart={() => {
                   setSiteId(m.siteId);
@@ -184,6 +209,9 @@ export default function MissionSelect({ selection, log = [], onConfirm, onBack }
               <ArrowLeft size={14} /> MAIN MENU
             </Link>
           )}
+          <Link to="/records" className="btn-hud min-h-[44px]" data-testid="mission-select-records">
+            <Award size={14} /> {pt ? "REGISTROS DE VOO" : "FLIGHT RECORDS"}
+          </Link>
           <span className="font-mono text-[8px] tracking-[0.2em] text-zinc-600">
             ENVIRONMENT = THE DESTINATION&apos;S TERRAIN · PILOT DIFFICULTY = YOUR SPACECRAFT&apos;S MARGINS
           </span>

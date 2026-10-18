@@ -17,12 +17,16 @@ import DockingOps from "@/components/DockingOps";
 import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import MissionTitle from "@/components/MissionTitle";
+import MissionDebrief from "@/components/scoring/MissionDebrief";
+import { useAudioSettings } from "@/audio/audioSettings";
+import { createFlightScoring } from "@/data/flightScoring";
+import { applyDocking, applyFlightStart, applyLanding, applyMission, applyReentry, loadRecords, unlockedBy, updateRecords } from "@/lib/missionRecords";
 import { goForPdi } from "@/data/lunarOrbitShot";
 import { ORBIT_ENTRY, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, orbitClockAt, orbitShotAt } from "@/data/orbitSequence";
 import { TD } from "@/data/transposition";
 import { TITLE } from "@/data/titleReveal";
 import { MODE, createMissionConfig } from "@/data/missionConfig";
-import { loadMissionLog, loadSelection, logMissionComplete, logMissionDocking, logMissionLanding, logMissionStart, saveSelection } from "@/lib/missionSelection";
+import { loadMissionLog, loadSelection, logMissionComplete, logMissionDocking, logMissionFlown, logMissionLanding, logMissionReentry, logMissionScoring, logMissionStart, saveSelection } from "@/lib/missionSelection";
 
 /*
  * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
@@ -63,6 +67,14 @@ import { loadMissionLog, loadSelection, logMissionComplete, logMissionDocking, l
  * splashdown, never on the landing alone. TRAINING opens the Flight Training Center. ABORT, the end
  * of a mission and the training's MAIN MENU all come back to the menu (/menu),
  * never through the opening again.
+ *
+ * Mission scoring (data/missionScoring, data/flightScoring): each official
+ * flight is scored phase by phase from what the simulations measured — the
+ * graded touchdown, the docking's capture, the entry that splashed down — and
+ * kept on the device (lib/missionRecords: records and achievements; the
+ * mission log: the history). After MISSION COMPLETE, and after END MISSION on a
+ * failed mission, the MISSION DEBRIEF shows the scores, the medal, the
+ * achievements and the personal record. Nothing scored is shown during flight.
  */
 const STATES = {
   CONTROL: "control",          // startup: THE ROAD TO THE MOON, waiting for LAUNCH SEQUENCE — INITIATE
@@ -80,6 +92,7 @@ const STATES = {
   RETURN: "return",
   REENTRY: "reentry",
   COMPLETE: "complete",
+  DEBRIEF: "debrief",          // a failed mission's END MISSION: its partial score (no medal)
 };
 
 const STATE_LABELS = {
@@ -98,6 +111,7 @@ const STATE_LABELS = {
   return: { code: "T+140:00:00", name: "TRANS-EARTH INJECTION" },
   reentry: { code: "T+195:00:00", name: "REENTRY" },
   complete: { code: "T+195:15:00", name: "SPLASHDOWN · MISSION COMPLETE" },
+  debrief: { code: "", name: "MISSION DEBRIEF" },
 };
 
 // Mission time on arrival in lunar orbit (T+80 h). The lunar-orbit scene runs on its own
@@ -173,6 +187,11 @@ export default function Mission({ entry = "opening" }) {
   const difficulty = mission.difficulty;
   const flightIdRef = useRef(null); // this flight's entry in the official missions' log
   const [missionLog, setMissionLog] = useState(() => loadMissionLog());
+  // This flight's scoring (data/flightScoring) and, once it has ended, its debrief.
+  const scoringRef = useRef(null);
+  const [debrief, setDebrief] = useState(null);
+  const [debriefOpen, setDebriefOpen] = useState(false);
+  const lang = useAudioSettings().subLang === "pt" ? "pt" : "en";
   // Lunar orbit presentation (ORBIT, TITLE, BRIEFING): the orbit
   // clock, read every frame by the scene through the ref. It is real seconds
   // since orbit began until the title screen, then slows to a near stop
@@ -313,7 +332,9 @@ export default function Mission({ entry = "opening" }) {
     const next = saveSelection(sel);
     audio.padStop(2.5);
     setSelection(next);
+    endFlight("aborted"); // a flight left unfinished (CHANGE MISSION after a descent) ends as ABORTED
     flightIdRef.current = logMissionStart(next);
+    scoringRef.current = createFlightScoring({ id: flightIdRef.current, ...next });
     setDescentResult(null);
     setState(STATES.BRIEFING);
   };
@@ -370,6 +391,14 @@ export default function Mission({ entry = "opening" }) {
 
   // The descent itself, after the fade (or, on the far side, after loss of signal).
   const enterDescent = () => {
+    // a new scored attempt of the flight: nothing of an earlier descent is kept
+    const sc = scoringRef.current;
+    if (sc && flightIdRef.current) {
+      sc.beginDescent();
+      sc.flight.flown = true;
+      logMissionFlown(flightIdRef.current);
+      updateRecords((r) => applyFlightStart(r, sc.flight));
+    }
     setState(STATES.MANUAL_DESCENT);
     // the crew's call to Houston: not on the far side (no link)
     if (!missionRef.current.comms.farSide) audio.say("descent.pdiStart", { delay: 0.4 });
@@ -395,6 +424,13 @@ export default function Mission({ entry = "opening" }) {
   const handleDescentEnd = (result) => {
     setDescentResult(result);
     if (flightIdRef.current) setMissionLog(logMissionLanding(flightIdRef.current, result));
+    // the landing's score, from this touchdown only (a safe one sets its records and achievements)
+    const sc = scoringRef.current;
+    if (sc && flightIdRef.current) {
+      const L = sc.landed(result);
+      updateRecords((r) => applyLanding(r, sc.flight, L));
+      setMissionLog(logMissionScoring(flightIdRef.current, sc.summary(null)));
+    }
     setState(STATES.RESULT);
   };
 
@@ -405,10 +441,67 @@ export default function Mission({ entry = "opening" }) {
     setState(STATES.BRIEFING);
   };
 
-  const handleMissionComplete = () => {
+  const handleMissionComplete = (data) => {
+    // Splashdown: the reentry's score, then the mission's (gates, medal), the records and achievements.
+    const sc = scoringRef.current;
+    const id = flightIdRef.current;
+    let d = null;
+    if (sc && id && data && !sc.flight.ended) {
+      const R = sc.splashdown(data);
+      const M = sc.mission();
+      const status = sc.status();
+      sc.flight.ended = status;
+      const { records, out } = updateRecords((rec) => {
+        applyReentry(rec, sc.flight, R);
+        return applyMission(rec, sc.flight, M);
+      });
+      logMissionReentry(id, sc.flight.reentry);
+      const prevBest = out.prev ? { score: out.prev.score, medal: out.prev.medal || null } : null;
+      logMissionScoring(id, { ...sc.summary(status), newBest: out.newBest, prevBest });
+      d = { mission: M, status, prev: prevBest, newBest: out.newBest, unlocked: unlockedBy(records, id), records, number: missionRef.current.number, at: Date.now() };
+    }
     if (flightIdRef.current) setMissionLog(logMissionComplete(flightIdRef.current));
+    setDebrief(d);
+    setDebriefOpen(false);
     setState(STATES.COMPLETE);
   };
+
+  // A capsule lost on entry (the failure panel follows; RETRY ENTRY may finish the flight).
+  const handleEntryLost = (data) => {
+    const sc = scoringRef.current;
+    if (!sc || !flightIdRef.current || !data) return;
+    sc.entryLost(data);
+    logMissionReentry(flightIdRef.current, { splashdown: false, outcome: data.outcome, attempts: data.attempts, losses: data.losses, eiFpa: data.eiFpa, peakG: data.peakG, peakHeatRate: data.peakHeatRate });
+  };
+
+  // A failed or aborted flight ends: its partial score goes to the log (no medal, no mission record).
+  const endFlight = (how) => {
+    const sc = scoringRef.current;
+    const id = flightIdRef.current;
+    if (!sc || !id || !sc.flight.flown || sc.flight.ended) return null;
+    const status = sc.status(how);
+    sc.flight.ended = status;
+    setMissionLog(logMissionScoring(id, sc.summary(status)));
+    const records = loadRecords();
+    const best = (records.categories[`${sc.flight.siteId}|${sc.flight.difficulty}`] || {}).bestTotal || null;
+    return { mission: sc.mission(), status, prev: best ? { score: best.score, medal: best.medal || null } : null, newBest: false, unlocked: unlockedBy(records, id), records, number: missionRef.current.number, at: Date.now() };
+  };
+  // END MISSION after a crash, a failed docking or a lost capsule: the partial debrief, then the menu.
+  const handleEndFailedMission = () => {
+    const d = endFlight("ended");
+    if (!d) {
+      resetMission();
+      return;
+    }
+    audio.commsReset();
+    audio.stopRumble();
+    audio.roarStop(0.3);
+    audio.ambienceStop(0.5);
+    setDebrief(d);
+    setState(STATES.DEBRIEF);
+  };
+  // The docking's and the reentry's own ABORT, or END MISSION on their failure panels.
+  const handlePhaseAbort = (reason) => (reason === "failed" ? handleEndFailedMission() : resetMission());
 
   // CONTINUE MISSION after a successful landing: the lunar surface, ascent preparation.
   // A failed landing (crew lost) must NOT progress to the ascent, TEI, reentry or splashdown.
@@ -431,12 +524,23 @@ export default function Mission({ entry = "opening" }) {
   };
   const handleDockingResult = (r) => {
     if (flightIdRef.current) setMissionLog(logMissionDocking(flightIdRef.current, r));
+    // restarts and failed attempts are kept as the attempt history; the hard dock is scored from its capture
+    const sc = scoringRef.current;
+    const D = sc && flightIdRef.current ? sc.docking(r) : null;
+    if (D) {
+      updateRecords((rec) => applyDocking(rec, sc.flight, D));
+      setMissionLog(logMissionScoring(flightIdRef.current, sc.summary(null)));
+    }
   };
 
   // ABORT, END MISSION, MAIN MENU: back to the game menu, over lunar orbit as left by
   // the opening (the title screen's shot). The opening is not replayed; the next
   // mission is chosen afresh on MISSIONS.
   const resetMission = () => {
+    endFlight("aborted"); // a flight still under way ends as ABORTED (nothing if it already ended)
+    scoringRef.current = null;
+    setDebrief(null);
+    setDebriefOpen(false);
     audio.commsReset();
     audio.stopRumble();
     audio.roarStop(0.3);
@@ -495,6 +599,13 @@ export default function Mission({ entry = "opening" }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
+
+  // MISSION COMPLETE holds for 5 s over the splashdown, then the debrief takes over (MISSION DEBRIEF opens it at once).
+  useEffect(() => {
+    if (state !== STATES.COMPLETE || !debrief || debriefOpen) return undefined;
+    const id = setTimeout(() => setDebriefOpen(true), 5000);
+    return () => clearTimeout(id);
+  }, [state, debrief, debriefOpen]);
 
   // Active flight (not menus, results or the control room): lets phones hide
   // the website navbar so the flight view and HUD get the full screen.
@@ -581,7 +692,7 @@ export default function Mission({ entry = "opening" }) {
             siteName={mission.name}
             onRestart={handleRestartDescent}
             onContinue={handleContinueFromResult}
-            onEndMission={resetMission}
+            onEndMission={handleEndFailedMission}
           />
         </div>
       )}
@@ -604,7 +715,7 @@ export default function Mission({ entry = "opening" }) {
           farSide={mission.comms.farSide}
           audio={audio}
           onComplete={handleDockingComplete}
-          onAbort={resetMission}
+          onAbort={handlePhaseAbort}
           onResult={handleDockingResult}
         />
       )}
@@ -618,14 +729,15 @@ export default function Mission({ entry = "opening" }) {
           difficulty={difficulty}
           audio={audio}
           onComplete={handleMissionComplete}
-          onAbort={resetMission}
+          onFailed={handleEntryLost}
+          onAbort={handlePhaseAbort}
         />
       )}
 
       {state === STATES.COMPLETE && <ReentryScene final />}
 
       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
-      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && state !== STATES.ASCENT && state !== STATES.DOCKING && (
+      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && state !== STATES.ASCENT && state !== STATES.DOCKING && state !== STATES.DEBRIEF && (
         <div
           data-testid="mission-hud-min"
           className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
@@ -669,7 +781,7 @@ export default function Mission({ entry = "opening" }) {
         </button>
       )}
 
-      {state === STATES.COMPLETE && (
+      {state === STATES.COMPLETE && !debriefOpen && (
         <div
           data-testid="complete-overlay"
           className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-md z-50"
@@ -684,11 +796,16 @@ export default function Mission({ entry = "opening" }) {
             <p className="font-mono text-[11px] tracking-widest text-zinc-400 mb-10">
               LV-001 · MISSION {mission.number} · {landedOn} · {difficulty} · PACIFIC SPLASHDOWN
             </p>
-            <div className="flex gap-4 justify-center">
+            <div className="flex flex-wrap gap-4 short:gap-3 justify-center">
+              {debrief && (
+                <button onClick={() => setDebriefOpen(true)} data-testid="btn-debrief" className="btn-hud btn-hud-primary">
+                  {lang === "pt" ? "RELATÓRIO DA MISSÃO" : "MISSION DEBRIEF"} <ArrowUpRight size={14} />
+                </button>
+              )}
               <button
                 onClick={resetMission}
                 data-testid="btn-restart"
-                className="btn-hud btn-hud-primary"
+                className={`btn-hud ${debrief ? "" : "btn-hud-primary"}`}
               >
                 <RotateCcw size={14} /> MAIN MENU
               </button>
@@ -698,6 +815,26 @@ export default function Mission({ entry = "opening" }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* LUNAVIA — MISSION DEBRIEF: after MISSION COMPLETE (over the splashdown), or a failed mission's END MISSION */}
+      {((state === STATES.COMPLETE && debriefOpen) || state === STATES.DEBRIEF) && debrief && (
+        <MissionDebrief
+          data={debrief}
+          lang={lang}
+          onMissions={() => {
+            resetMission();
+            setState(STATES.SELECT);
+          }}
+          onRecords={() => {
+            // straight to FLIGHT RECORDS (the flight has already ended): no reset to the menu first, which
+            // would mount the lunar-orbit scene only to remove it in the same moment
+            audio.commsReset();
+            audio.stopRumble();
+            navigate("/records");
+          }}
+          onMenu={resetMission}
+        />
       )}
 
       {/* Global abort button — not shown during control, complete, or manual descent (which has its own) */}
@@ -711,7 +848,8 @@ export default function Mission({ entry = "opening" }) {
         state !== STATES.BRIEFING &&
         state !== STATES.REENTRY &&
         state !== STATES.DOCKING &&
-        state !== STATES.RESULT && (
+        state !== STATES.RESULT &&
+        state !== STATES.DEBRIEF && (
           <button
             onClick={() => setShowAbort(true)}
             data-testid="btn-abort"

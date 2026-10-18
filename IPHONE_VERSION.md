@@ -1,12 +1,14 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD f9b4dd4**.
+This folder installs **BUILD 4bd83f2**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD f9b4dd4 · 2026-10-18 16:40 UTC**
+> **LUNAVIA iOS · BUILD 4bd83f2 · 2026-10-18 21:33 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **f9b4dd4** is the previous release: the four docking views, but no mission scores, medals,
+  achievements, mission debrief or flight records;
 - **6bf030a** is the previous release: RESTART DOCKING and the docking guidance, but the docking
   had one view (the navigation display) and a fixed outside camera;
 - **af6a1c4** is the previous release: the lunar ascent, the rendezvous and the docking, but
@@ -72,17 +74,25 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Lunar ascent, orbital rendezvous and playable docking: after the landing, ascent preparation and liftoff (the descent stage stays on the Moon), the automatic rendezvous with the CSM, and the docking flown by the player (translation, attitude, closing speed), then crew transfer and the ascent stage's jettison before the return | #19 | 48420db, af6a1c4 |
 | RESTART DOCKING (hold, at any time in the approach; back to the final-approach checkpoint, never the ascent) and the live DOCKING GUIDANCE panel (one instruction at a time from the docking telemetry: step 1–5, the correction, the button to press, a confirmation; by difficulty; GUIDANCE ON/OFF; Mission Control calls) | #20 | 77c98e5, 6bf030a |
 | Four docking views: NAV (the navigation display, as before), WINDOW (first person through the overhead docking window), COCKPIT (the 3D cabin with live instruments) and 360° (a free camera around the ascent stage: drag, pinch, RESET CAMERA), all on the one docking simulation | #21 | f9b4dd4 |
+| Mission scoring, medals and achievements: 1,000 points (lunar landing 400, docking 300, reentry 300) from what each phase measured; BRONZE, SILVER, GOLD and PLATINUM (PLATINUM on COMMANDER); 17 achievements; personal records for each destination and difficulty; the MISSION DEBRIEF after splashdown; FLIGHT RECORDS (medals and records, achievements, mission log) | #22 | e0bf765, 4bd83f2 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at f9b4dd4** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release adds four docking views; the docking itself is unchanged.** Under the top bar: **NAV | WINDOW | COCKPIT | 360°**.
-  - **NAV** (the docking starts here): the navigation display the docking always had, with the reticle, the alignment display and the readouts.
-  - **WINDOW**: you look through the ascent stage's overhead docking window from the commander's seat. The CSM moves in the window as you fly; a small readout keeps range, closing speed and drift.
-  - **COCKPIT**: inside the cabin, with the docking window, two side panes and four live instrument displays (range and rate, lateral and attitude, alignment, RCS and status).
-  - **360°**: a camera around your ascent stage. Drag to go round and over it, pinch to zoom, **RESET CAMERA** to come back. Dragging never fires the jets; the controls work at the same time.
-  - The pad, FWD/AFT, MODE, RESTART DOCKING and the guidance work the same in every view. Switching views never changes the flight.
-- **The docking, as in the previous release:** **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel at the bottom (STEP 1–5, the correction, the button to press).
+- **Built from the clean tree at 4bd83f2** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release adds mission scoring, medals, achievements and flight records; the flying is unchanged.**
+  - **Nothing changes in flight:** no score is shown while you land, dock or re-enter.
+  - **After splashdown:** **MISSION COMPLETE** appears as before. After 5 seconds (or press **MISSION DEBRIEF**) comes **LUNAVIA — MISSION DEBRIEF**:
+    - the landing out of 400, the docking out of 300 and the reentry out of 300, each with a rating;
+    - the total out of 1,000 and the medal;
+    - the achievements this mission unlocked and your personal record;
+    - one tip for next time.
+  - Tap the debrief to show everything at once. It stays until you choose **MISSIONS**, **FLIGHT RECORDS** or **MAIN MENU**. **DETAILED TELEMETRY** shows every measured value, the points it earned and the rule.
+  - **Medals:** BRONZE 500, SILVER 700, GOLD 850, PLATINUM 950. A medal needs a safe landing, the docking and a splashdown with no capsule lost (after **RETRY ENTRY** the mission finishes, but without a medal). CADET and ASTRONAUT can earn up to GOLD; PLATINUM is for COMMANDER.
+  - **A failed mission:** END MISSION after a crash, a failed docking or a lost capsule shows the partial score, with no medal.
+  - **FLIGHT RECORDS** (on MISSIONS, and from the debrief): MEDALS & RECORDS (each destination and difficulty), ACHIEVEMENTS (earned and locked, with what each needs) and the MISSION LOG (every official flight; tap one to see its debrief again). The MISSIONS cards show each destination's best medal.
+  - English or Brazilian Portuguese, following the subtitle language in AUDIO.
+  - **Kept on the iPhone, offline:** no account and no leaderboard. Training flights are kept apart and never count.
+- **As in the previous releases:** the four docking views (**NAV | WINDOW | COCKPIT | 360°**), **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel.
 - **How a mission goes after the landing** (as in the previous release):
   1. After a successful landing, **CONTINUE MISSION** shows **LUNAR SURFACE — ASCENT PREPARATION**: the checklist ticks in, and nothing starts until you press **INITIATE LUNAR ASCENT**.
   2. A short countdown, then **PROCEED**. The ascent stage leaves the descent stage, which stays on the Moon with its legs, and climbs away. SKIP CINEMATIC goes on to orbit.
@@ -97,10 +107,10 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
      - Too fast, off the axis, misaligned or rotating: no capture, and the vehicles push apart. Back off and try again. A hard impact or a collision ends the attempt: **RESTART DOCKING** (no new landing or launch).
   5. **HARD DOCK CONFIRMED**, crew transfer, the ascent stage jettisoned, then the return and reentry as before. MISSION COMPLETE needs the docking.
   - Silent Horizon (far side): no Houston on the surface or after insertion, until the rendezvous brings you back into view of the Earth. The guidance panel works throughout.
-- **Records are kept.** The mission log on the iPhone records each flight's docking: attempts, restarts, success, whether it was a first-attempt docking, RCS left.
+- **Records are kept on the iPhone:** the mission log (every flight: landing, docking, reentry, score, medal, how it ended) and the flight records (best scores and medals, achievements). Flights from earlier releases stay in the log (marked as flown before mission scoring) and keep what they proved (for example FIRST FOOTPRINT), without an invented score.
 - **`yarn ios:verify` passes.** It checks that:
   - the label in the game and `frontend/ios/App/App/public/build-info.json` agree;
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
+  - every feature above is in the bundled game, including the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.

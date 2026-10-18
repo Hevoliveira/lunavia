@@ -179,12 +179,15 @@ function initialPrep(cfg, scenario) {
 }
 
 /**
- * Props: difficulty, audio, onComplete(summary), onAbort().
+ * Props: difficulty, audio, onComplete(data) at splashdown (the entry as
+ * measured: resultData), onFailed(data) when a capsule is lost (the mission's
+ * failure panel follows, with RETRY ENTRY), onAbort(reason) ("failed" from that
+ * panel's END MISSION).
  * Training Center only: scenario (start), coach(u) instructor line, and
  * onResult(data) — called for splashdown AND failure with the flown values,
  * replacing the mission's own failure panel.
  */
-export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplete, onAbort, scenario = null, coach = null, onResult = null, holdSeconds = 0 }) {
+export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplete, onAbort, onFailed = null, scenario = null, coach = null, onResult = null, holdSeconds = 0 }) {
   const cfg = ENTRY_DIFFICULTY[difficulty] || ENTRY_DIFFICULTY.ASTRONAUT;
   const simRef = useRef(null);
   if (!simRef.current) simRef.current = initialSim(scenario);
@@ -200,6 +203,9 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
   const commitRef = useRef(false);
   const doneRef = useRef(false);
   const realTRef = useRef(0);
+  // Entry attempts in this flight (RETRY ENTRY adds one) and the capsules lost (mission scoring).
+  const attemptsRef = useRef(1);
+  const lossesRef = useRef([]);
 
   const [phase, setPhase] = useState(viewRef.current.phase);
   // Training "starts in" hold: the simulation waits, the scene and HUD are live.
@@ -246,6 +252,8 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
       splashV: s.splashV,
       drogue: { ...s.drogue },
       main: { ...s.main },
+      attempts: attemptsRef.current,
+      losses: lossesRef.current.slice(),
     };
   };
 
@@ -256,12 +264,14 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
     v.phase = "ENTRY";
     v.phaseT = 0;
     guideRef.current = { cue: null, pred: null, lastCue: -1, lastPred: -1 };
+    bankRef.current = { rec: null, nextRec: 0, onT: 0, totalT: 0, rollDeg: 0, lastBank: null }; // this entry's own bank control
     commitRef.current = false;
     setPhase("ENTRY");
     if (audio) audio.startRumble && audio.startRumble(0.12);
   }, [audio]);
 
   const retryEntry = useCallback(() => {
+    attemptsRef.current += 1;
     prepRef.current = newPrep(cfg);
     simRef.current = createEntryState();
     Object.assign(viewRef.current, { phase: "PREP", phaseT: 0, sepT: 8, attitudeU: 1, prepBank: 0, approachAlt: 250e3, failT: 0 });
@@ -386,7 +396,8 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
           else s.rollInput = 0;
 
           const simDt = dt * timeScaleFor(s);
-          if (onResult) {
+          // Bank control (the training debrief's and the mission score's): read-only look-ahead, never steers.
+          {
             const b = bankRef.current;
             if (b.lastBank !== null) {
               let d = Math.abs(s.bank - b.lastBank);
@@ -430,6 +441,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
                 audio.splash && audio.splash();
               }
             } else {
+              lossesRef.current.push(s.outcome);
               v.phase = "FAILED";
               v.phaseT = 0;
               v.failT = 0;
@@ -443,16 +455,18 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
         } else if (v.phase === "SPLASHED") {
           if (v.phaseT > 4 && !doneRef.current) {
             doneRef.current = true;
-            const s = simRef.current;
             if (onResult) onResult(resultData());
-            else onComplete && onComplete({ peakG: s.peak.g, peakHeatRate: s.peak.heatRate, splashV: s.splashV });
+            else onComplete && onComplete(resultData()); // the entry as measured (peakG, peakHeatRate, splashV, …)
           }
         } else if (v.phase === "FAILED") {
           v.failT += dt;
           if (v.failT > 2.6 && !doneRef.current) {
             doneRef.current = true;
             if (onResult) onResult(resultData());
-            else setFailure(simRef.current.outcome);
+            else {
+              onFailed && onFailed(resultData());
+              setFailure(simRef.current.outcome);
+            }
           }
         }
       }
@@ -834,7 +848,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
               <button className="btn-hud btn-hud-primary" onClick={retryEntry} data-testid="reentry-retry">
                 <RotateCcw size={14} /> RETRY ENTRY
               </button>
-              <button className="btn-hud" onClick={() => onAbort && onAbort()} data-testid="reentry-end">
+              <button className="btn-hud" onClick={() => onAbort && onAbort("failed")} data-testid="reentry-end">
                 END MISSION
               </button>
             </div>

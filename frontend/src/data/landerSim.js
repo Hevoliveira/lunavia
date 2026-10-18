@@ -153,6 +153,10 @@ export function gradeTouchdown(p, cfg, site = getSite()) {
     safeTilt: cfg.safeTilt,
     fuelDepletedInFlight: p.fuelDepletedInFlight,
   });
+  // the raw propellant and descent time (mission scoring's descent efficiency; nothing here grades on them)
+  result.fuelLeft = p.fuel;
+  result.initialFuel = cfg.initialFuel;
+  result.time = p.t;
   result.terrain = {
     site: site.id,
     slope: g.slope,
