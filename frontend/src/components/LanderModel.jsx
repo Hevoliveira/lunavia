@@ -2,7 +2,7 @@ import { useRef, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { LM } from "@/data/touchdownFx";
-import { EXIT_R, EXIT_Y, PAD_H, PROBE_L, SLEEVE, buildBody, buildPad, legFrames } from "@/data/lmDesign";
+import { ASC_ENGINE, EXIT_R, EXIT_Y, PAD_H, PROBE_L, SLEEVE, buildBody, buildPad, buildStages, legFrames } from "@/data/lmDesign";
 
 /**
  * LUNAVIA's lunar module (shape: data/lmDesign.js).
@@ -23,6 +23,13 @@ import { EXIT_R, EXIT_Y, PAD_H, PROBE_L, SLEEVE, buildBody, buildPad, legFrames 
  * frame without React renders: { thrust 0..1, comp: [4] strut compression
  * (scene units), probe: [4] probe bend (radians) }. Without it the LM stands
  * at rest and `thrust` sets the engine.
+ *
+ * **Stages.** `ascent` (optional, a ref's current object) draws the two stages
+ * apart for the lunar liftoff: the descent stage, its legs and engine stay;
+ * the ascent stage (cabin, pods, tunnel, RCS and its own engine) moves by
+ * { x, y, z } (model units) and { rx, rz } (radians) from where it sat, its
+ * engine at `thrust` 0..1. `parts="ascent"` draws the ascent stage alone
+ * (lunar orbit, docking). Without either the LM is the joined vehicle.
  *
  * **iPhone cost.** About 15 draw calls:
  * - the body is one merged geometry per material (10);
@@ -196,9 +203,13 @@ function geometry() {
     rod: new THREE.CylinderGeometry(1, 1, 1, 10),
     plume: plume(EXIT_R * 0.96, 0.36),
     core: plume(EXIT_R * 0.72, 0.03),
+    ascPlume: plume(ASC_ENGINE.exitR * 0.96, 0.3),
+    ascCore: plume(ASC_ENGINE.exitR * 0.7, 0.02),
   };
   return GEO;
 }
+let STAGES = null;
+const stageGeometry = () => STAGES || (STAGES = buildStages());
 
 /* ---- plume: in vacuum it is short, faint and widens fast; it starts at the exit ---- */
 const PLUME_VERT = /* glsl */ `
@@ -281,10 +292,21 @@ const LADDER = (() => {
   return { rails, rungs };
 })();
 
-export default function LanderModel({ thrust = 0, scale = 1, fx = null }) {
+export default function LanderModel({ thrust = 0, scale = 1, fx = null, ascent = null, parts = "all" }) {
   const gl = useThree((s) => s.gl);
   const G = geometry();
+  const split = !!ascent || parts !== "all";
+  const ST = split ? stageGeometry() : null;
+  const withDescent = parts !== "ascent";
+  const withAscent = parts !== "descent";
+  const ascRef = useRef();
+  const ascPlumeRef = useRef();
+  const ascCoreRef = useRef();
+  const ascPlumeMat = useMemo(() => plumeMaterial(0.7, "#fff3dc", "#ffb07a", false), []);
+  const ascCoreMat = useMemo(() => plumeMaterial(1.5, "#ffffff", "#ffc27a", true), []);
   const M = useMemo(() => materials(lunarEnv(gl)), [gl]);
+  // The ascent engine's lining glows on its own (not with the descent engine's).
+  const ascInner = useMemo(() => M.engineInner.clone(), [M]);
   const plumeMat = useMemo(() => plumeMaterial(0.62, "#fff3dc", "#ffb07a", false), []);
   const coreMat = useMemo(() => plumeMaterial(1.5, "#ffffff", "#ffc27a", true), []);
   const plumeRef = useRef();
@@ -312,6 +334,24 @@ export default function LanderModel({ thrust = 0, scale = 1, fx = null }) {
     }
     M.engineInner.emissiveIntensity = 1.8 * k;
     if (lightRef.current) lightRef.current.intensity = 2.6 * k;
+
+    // The ascent stage, when it flies on its own.
+    if (ascRef.current && ascent) {
+      const a = ascent;
+      ascRef.current.position.set(a.x || 0, a.y || 0, a.z || 0);
+      ascRef.current.rotation.set(a.rx || 0, 0, a.rz || 0);
+      const ka = Math.max(0, a.thrust || 0);
+      const onA = ka > 0.03;
+      ascPlumeRef.current.visible = onA;
+      ascCoreRef.current.visible = onA;
+      ascPlumeRef.current.scale.set(0.8 + 0.3 * ka, (0.6 + 1.4 * ka) * (1 + 0.06 * Math.sin(t * 57)), 0.8 + 0.3 * ka);
+      ascCoreRef.current.scale.set(1, 0.1 + 0.35 * ka, 1);
+      ascPlumeMat.uniforms.uThrust.value = ka;
+      ascPlumeMat.uniforms.uTime.value = t;
+      ascCoreMat.uniforms.uThrust.value = ka;
+      ascCoreMat.uniforms.uTime.value = t;
+      ascInner.emissiveIntensity = 1.8 * ka;
+    }
 
     // Legs.
     const comp = f.comp || [0, 0, 0, 0];
@@ -356,18 +396,37 @@ export default function LanderModel({ thrust = 0, scale = 1, fx = null }) {
 
   return (
     <group scale={scale} name="LM">
-      {Object.entries(G.body).map(([part, geo]) => (
-        <mesh key={part} geometry={geo} material={M[part]} castShadow={part !== "glass"} receiveShadow />
-      ))}
-      <instancedMesh ref={rodsRef} args={[G.rod, undefined, ROD_COUNT]} frustumCulled={false} castShadow receiveShadow>
-        <meshStandardMaterial color="#ffffff" roughness={0.42} metalness={0.55} envMap={M.metal.envMap} envMapIntensity={0.9} />
-      </instancedMesh>
-      <instancedMesh ref={padsRef} args={[G.pad, undefined, 4]} frustumCulled={false} castShadow receiveShadow>
-        <meshStandardMaterial color="#aeb1b7" roughness={0.42} metalness={0.65} envMap={M.metal.envMap} envMapIntensity={0.9} />
-      </instancedMesh>
-      <mesh ref={plumeRef} geometry={G.plume} material={plumeMat} position={[0, EXIT_Y, 0]} visible={false} renderOrder={2} />
-      <mesh ref={coreRef} geometry={G.core} material={coreMat} position={[0, EXIT_Y, 0]} visible={false} renderOrder={2} />
-      <pointLight ref={lightRef} position={[0, EXIT_Y - 0.25, 0]} color="#FF8A4B" intensity={fx ? 0 : 2.5 * thrust} distance={3} />
+      {!split &&
+        Object.entries(G.body).map(([part, geo]) => (
+          <mesh key={part} geometry={geo} material={M[part]} castShadow={part !== "glass"} receiveShadow />
+        ))}
+      {split &&
+        withDescent &&
+        Object.entries(ST.descent).map(([part, geo]) => (
+          <mesh key={`d-${part}`} geometry={geo} material={M[part]} castShadow={part !== "glass"} receiveShadow />
+        ))}
+      {split && withAscent && (
+        <group ref={ascRef} name="LM-ascent">
+          {Object.entries(ST.ascent).map(([part, geo]) => (
+            <mesh key={`a-${part}`} geometry={geo} material={part === "engineInner" ? ascInner : M[part]} castShadow={part !== "glass"} receiveShadow />
+          ))}
+          <mesh ref={ascPlumeRef} geometry={G.ascPlume} material={ascPlumeMat} position={[0, ASC_ENGINE.exitY, -0.03]} visible={false} renderOrder={2} />
+          <mesh ref={ascCoreRef} geometry={G.ascCore} material={ascCoreMat} position={[0, ASC_ENGINE.exitY, -0.03]} visible={false} renderOrder={2} />
+        </group>
+      )}
+      {withDescent && (
+        <>
+          <instancedMesh ref={rodsRef} args={[G.rod, undefined, ROD_COUNT]} frustumCulled={false} castShadow receiveShadow>
+            <meshStandardMaterial color="#ffffff" roughness={0.42} metalness={0.55} envMap={M.metal.envMap} envMapIntensity={0.9} />
+          </instancedMesh>
+          <instancedMesh ref={padsRef} args={[G.pad, undefined, 4]} frustumCulled={false} castShadow receiveShadow>
+            <meshStandardMaterial color="#aeb1b7" roughness={0.42} metalness={0.65} envMap={M.metal.envMap} envMapIntensity={0.9} />
+          </instancedMesh>
+          <mesh ref={plumeRef} geometry={G.plume} material={plumeMat} position={[0, EXIT_Y, 0]} visible={false} renderOrder={2} />
+          <mesh ref={coreRef} geometry={G.core} material={coreMat} position={[0, EXIT_Y, 0]} visible={false} renderOrder={2} />
+          <pointLight ref={lightRef} position={[0, EXIT_Y - 0.25, 0]} color="#FF8A4B" intensity={fx ? 0 : 2.5 * thrust} distance={3} />
+        </>
+      )}
     </group>
   );
 }

@@ -1,4 +1,4 @@
-import { lastFlight, loadMissionLog, loadSelection, logMissionComplete, logMissionLanding, logMissionStart, saveSelection } from "./missionSelection";
+import { lastFlight, loadMissionLog, loadSelection, logMissionComplete, logMissionDocking, logMissionLanding, logMissionStart, saveSelection } from "./missionSelection";
 import { loadProgress } from "./trainingProgress";
 
 beforeEach(() => window.localStorage.clear());
@@ -44,5 +44,14 @@ describe("the official missions' log (separate from training records)", () => {
     expect(lastFlight(loadMissionLog(), "far-side")).toBe(null);
     // nothing written into the training records
     expect(loadProgress()).toEqual({});
+  });
+
+  test("the docking after the lunar ascent is logged with the flight: failed attempts, then success", () => {
+    const a = logMissionStart({ siteId: "tycho", difficulty: "COMMANDER" });
+    logMissionDocking(a, { success: false, failure: "collision", attempts: 1 });
+    expect(loadMissionLog()[0].docking).toMatchObject({ success: false, attempts: 1, failure: "collision" });
+    logMissionDocking(a, { success: true, attempts: 2, contacts: 1, propLeft: 6.2, time: 210 });
+    expect(loadMissionLog()[0].docking).toMatchObject({ success: true, attempts: 2, contacts: 1, propLeft: 6.2, failure: null });
+    expect(loadMissionLog()[0].completed).toBe(false); // complete only at splashdown
   });
 });

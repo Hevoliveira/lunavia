@@ -66,6 +66,11 @@ const FEATURES = [
   ["Direct cut: 2 s after TLI cutoff straight to lunar orbit", "__lvLaunchCut"],
   ["Startup screen THE ROAD TO THE MOON with LAUNCH SEQUENCE — INITIATE", "control-launch-btn"],
   ["The launch starts from the startup screen only", "data-opening"],
+  ["Lunar ascent: ascent preparation and liftoff (stages separate)", "INITIATE LUNAR ASCENT"],
+  ["Automatic lunar-orbit rendezvous with the CSM", "RENDEZVOUS RADAR"],
+  ["Playable docking with the CSM (LUNAVIA — DOCKING OPERATIONS)", "dock-closing"],
+  ["Docking retry from the rendezvous checkpoint", "RETRY FROM RENDEZVOUS CHECKPOINT"],
+  ["Hard dock, crew transfer, ascent stage jettison", "ASCENT STAGE JETTISONED"],
   ["Game menu after START MISSIONS (MISSIONS / TRAINING)", "mode-missions"],
 ];
 

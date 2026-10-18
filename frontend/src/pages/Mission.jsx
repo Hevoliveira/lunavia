@@ -12,6 +12,8 @@ import ModeMenu from "@/components/missions/ModeMenu";
 import FarSideIntro from "@/components/training/FarSideIntro";
 import PdiBriefing from "@/components/PdiBriefing";
 import MissionResult from "@/components/MissionResult";
+import LunarAscent from "@/components/LunarAscent";
+import DockingOps from "@/components/DockingOps";
 import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import MissionTitle from "@/components/MissionTitle";
@@ -20,7 +22,7 @@ import { ORBIT_ENTRY, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, orbitClockAt, or
 import { TD } from "@/data/transposition";
 import { TITLE } from "@/data/titleReveal";
 import { MODE, createMissionConfig } from "@/data/missionConfig";
-import { loadMissionLog, loadSelection, logMissionComplete, logMissionLanding, logMissionStart, saveSelection } from "@/lib/missionSelection";
+import { loadMissionLog, loadSelection, logMissionComplete, logMissionDocking, logMissionLanding, logMissionStart, saveSelection } from "@/lib/missionSelection";
 
 /*
  * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
@@ -51,7 +53,14 @@ import { loadMissionLog, loadSelection, logMissionComplete, logMissionLanding, l
  * descent (terrain, landing zones, hazards), its results, then the return,
  * reentry and splashdown. Silent Horizon (far side): after BEGIN PDI the
  * spacecraft go behind the Moon (FarSideIntro, loss of signal) and the descent
- * has no Earth link. TRAINING opens the Flight Training Center. ABORT, the end
+ * has no Earth link. After a successful landing: LUNAR SURFACE — ASCENT
+ * PREPARATION (LunarAscent; nothing starts before INITIATE LUNAR ASCENT), the
+ * lunar liftoff (the ascent stage leaves the descent stage on the Moon), orbit
+ * insertion and the automatic rendezvous with the same CSM, then the player's
+ * docking (DockingOps: the real docking simulation; a failed attempt retries
+ * from the rendezvous checkpoint), hard dock, crew transfer and the ascent
+ * stage's jettison; only then the return and reentry. A mission is complete at
+ * splashdown, never on the landing alone. TRAINING opens the Flight Training Center. ABORT, the end
  * of a mission and the training's MAIN MENU all come back to the menu (/menu),
  * never through the opening again.
  */
@@ -66,6 +75,8 @@ const STATES = {
   FAR_SIDE: "far_side",        // Silent Horizon: loss of signal behind the Moon, before the descent
   MANUAL_DESCENT: "manual_descent",
   RESULT: "result",
+  ASCENT: "ascent",            // LUNAR SURFACE — ASCENT PREPARATION, then the lunar liftoff
+  DOCKING: "docking",          // orbit insertion, rendezvous, the player's docking, crew transfer
   RETURN: "return",
   REENTRY: "reentry",
   COMPLETE: "complete",
@@ -82,6 +93,8 @@ const STATE_LABELS = {
   far_side: { code: "T+82:00:00", name: "LOSS OF SIGNAL" },
   manual_descent: { code: "T+82:00:00", name: "POWERED DESCENT · MANUAL" },
   result: { code: "T+82:12:00", name: "MISSION RATING" },
+  ascent: { code: "T+103:00:00", name: "LUNAR ASCENT" },
+  docking: { code: "T+104:30:00", name: "RENDEZVOUS & DOCKING" },
   return: { code: "T+140:00:00", name: "TRANS-EARTH INJECTION" },
   reentry: { code: "T+195:00:00", name: "REENTRY" },
   complete: { code: "T+195:15:00", name: "SPLASHDOWN · MISSION COMPLETE" },
@@ -136,6 +149,8 @@ const FLIGHT_STATES = new Set([
   STATES.MENU,
   STATES.FAR_SIDE,
   STATES.MANUAL_DESCENT,
+  STATES.ASCENT,
+  STATES.DOCKING,
   STATES.RETURN,
   STATES.REENTRY,
 ]);
@@ -395,12 +410,27 @@ export default function Mission({ entry = "opening" }) {
     setState(STATES.COMPLETE);
   };
 
+  // CONTINUE MISSION after a successful landing: the lunar surface, ascent preparation.
+  // A failed landing (crew lost) must NOT progress to the ascent, TEI, reentry or splashdown.
+  const landingRef = useRef(null); // the landing result (and the LM's pose) the ascent starts from
   const handleContinueFromResult = () => {
-    // Only allow the mission to continue if the landing was successful.
-    // A failed landing (crew lost) must NOT progress to TEI / reentry / splashdown.
     if (!descentResult || descentResult.crashed) return;
+    landingRef.current = descentResult;
     setDescentResult(null);
+    setState(STATES.ASCENT);
+  };
+  // Liftoff film over (or skipped): orbit insertion, rendezvous, docking.
+  const handleAscentComplete = () => {
+    if (stateRef.current !== STATES.ASCENT) return;
+    setState(STATES.DOCKING);
+  };
+  // Hard dock, crew transfer, ascent stage jettisoned: the CSM heads home (the existing return).
+  const handleDockingComplete = () => {
+    if (stateRef.current !== STATES.DOCKING) return;
     setState(STATES.RETURN);
+  };
+  const handleDockingResult = (r) => {
+    if (flightIdRef.current) setMissionLog(logMissionDocking(flightIdRef.current, r));
   };
 
   // ABORT, END MISSION, MAIN MENU: back to the game menu, over lunar orbit as left by
@@ -424,6 +454,7 @@ export default function Mission({ entry = "opening" }) {
     startedRef.current = true;
     setReturnTime(504000);
     setDescentResult(null);
+    landingRef.current = null;
     captionRef.current = null;
     setCaption(null);
     undockSoundRef.current = new Set(UNDOCK_SOUND.map((_, i) => i));
@@ -555,6 +586,29 @@ export default function Mission({ entry = "opening" }) {
         </div>
       )}
 
+      {/* Lunar surface: ascent preparation and liftoff, at the site and pose of the landing */}
+      {state === STATES.ASCENT && (
+        <LunarAscent
+          siteId={mission.siteId}
+          pose={landingRef.current && landingRef.current.pose}
+          audio={audio}
+          farSide={mission.comms.farSide}
+          onComplete={handleAscentComplete}
+        />
+      )}
+
+      {/* Lunar orbit: insertion, the automatic rendezvous, then the player's docking with the CSM */}
+      {state === STATES.DOCKING && (
+        <DockingOps
+          difficulty={difficulty}
+          farSide={mission.comms.farSide}
+          audio={audio}
+          onComplete={handleDockingComplete}
+          onAbort={resetMission}
+          onResult={handleDockingResult}
+        />
+      )}
+
       {state === STATES.RETURN && (
         <MissionScene missionTime={returnTime} cinematic={true} />
       )}
@@ -571,7 +625,7 @@ export default function Mission({ entry = "opening" }) {
       {state === STATES.COMPLETE && <ReentryScene final />}
 
       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
-      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && (
+      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && state !== STATES.ASCENT && state !== STATES.DOCKING && (
         <div
           data-testid="mission-hud-min"
           className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
@@ -656,6 +710,7 @@ export default function Mission({ entry = "opening" }) {
         state !== STATES.FAR_SIDE &&
         state !== STATES.BRIEFING &&
         state !== STATES.REENTRY &&
+        state !== STATES.DOCKING &&
         state !== STATES.RESULT && (
           <button
             onClick={() => setShowAbort(true)}

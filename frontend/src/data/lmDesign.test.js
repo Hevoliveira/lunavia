@@ -76,3 +76,35 @@ describe("the lunar module keeps its contact contract with the physics", () => {
     expect(legs.filter((L) => L.ladder).map((L) => LM.legAngles[legs.indexOf(L)])).toEqual([90]); // front leg, under the hatch
   });
 });
+
+describe("the two stages apart (lunar liftoff)", () => {
+  const { buildBody: body, buildStages, ASC_ENGINE: E, PARTS: parts } = require("./lmDesign");
+  const count = (g) => (g ? g.attributes.position.count : 0);
+  test("the joined vehicle is exactly the two stages (the ascent engine aside)", () => {
+    const B = body();
+    const { descent, ascent } = buildStages();
+    parts.forEach((k) => {
+      const sum = count(descent[k]) + count(ascent[k]);
+      if (k === "engine" || k === "engineInner") expect(sum).toBeGreaterThan(count(B[k])); // + the ascent engine
+      else expect(sum).toBe(count(B[k]));
+    });
+  });
+  test("the descent stage keeps the foil body, the descent engine and the interstage; the ascent stage the cabin, pods, tunnel and RCS", () => {
+    const { descent, ascent } = buildStages();
+    expect(descent.foilGold).toBeTruthy();
+    expect(ascent.foilGold).toBeFalsy();
+    expect(ascent.glass).toBeTruthy(); // windows
+    expect(descent.glass).toBeFalsy();
+    expect(ascent.accent).toBeTruthy(); // the pods' orange bands
+    descent.foilGold.computeBoundingBox();
+    expect(descent.foilGold.boundingBox.max.y).toBeLessThan(E.top);
+    ascent.paint.computeBoundingBox();
+    expect(ascent.paint.boundingBox.min.y).toBeGreaterThanOrEqual(E.top - 0.01);
+    // the ascent engine sits under the cabin, inside the interstage while joined
+    ascent.engine.computeBoundingBox();
+    expect(ascent.engine.boundingBox.min.y).toBeCloseTo(E.exitY, 2);
+    // hidden while joined: inside the interstage and the descent stage's top (as the real engine sits in its recess)
+    expect(E.exitR).toBeLessThan(0.31);
+    expect(E.exitY).toBeGreaterThan(0.2);
+  });
+});
