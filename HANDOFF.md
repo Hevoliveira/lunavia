@@ -2595,3 +2595,17 @@ An official mission is now scored out of **1,000 points**: LUNAR LANDING 400, OR
 - `data/missionScoring.test.js` (27): each phase's formula, the 1,000 maximum, determinism, medal thresholds and caps, failed missions, restarts, no inflation, no duplicate unlocks, personal bests, persistence (restart, damaged, newer), 12-category separation, training separation, legacy import, and real reference flights at all 12 combinations.
 - `pages/officialMissions.test.js`: the flow wiring; no score in the flight views; the menus unchanged.
 - `scripts/verify-ios-bundle.js` checks the debrief, the Portuguese debrief, the medal rule, the achievements and the records key in the packaged bundle.
+
+**In-app validation (headless Chromium, landscape iPhone sizes; not a physical iPhone).** Each mission was flown in full on the packaged bundle: landing by an in-page pilot on the keyboard controls, docking by the reference pilot through the docking simulation, reentry with the trim and roll keys.
+- **All 12 destination × difficulty combinations:**
+  - 11 successful missions at 906–932 points (GOLD) after reload;
+  - one COMMANDER flight lost its capsule (a deliberate skip-out), then RETRY ENTRY: completed, 933 points, NO MEDAL;
+  - a docking with RESTART DOCKING and one after a failed attempt each scored −10, with no FIRST-ATTEMPT DOCKING;
+  - achievements unlocked once each, FOUR DESTINATIONS on the fourth destination;
+  - all 12 categories were kept after a page reload; the training records were untouched.
+- **A crash and END MISSION** gave the partial debrief: MISSION FAILED, 0 points, no medal, and the gate as the recommendation.
+- **Personal bests:** a second mission at the same destination and difficulty showed NEW PERSONAL BEST with the previous best.
+- **No score in flight:** none was found on screen during the descent or the docking.
+- **The debrief** took over 3–5 s after MISSION COMPLETE and was still open 20 s after its reveal.
+- **The test pilot's reentry** agreed with the lift guidance only about 37 % of the time, so every flown entry scored 260/300 (flight control 0/40). The debrief named that component.
+- **PLATINUM in flight:** no in-browser flight reached it. Reference flights that follow the guidance reach it in `missionScoring.test.js` (COMMANDER at the Sea of Tranquility, 962).
