@@ -24,10 +24,14 @@ import {
   qNorm,
   qRot,
   referencePilot,
+  restoreCheckpoint,
   stepDocking,
   telemetry,
 } from "@/data/dockingSim";
 import { COAST, FINAL, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf } from "@/data/rendezvous";
+import { CONTROLS, GUIDANCE_VOICE, STEPS, UI as GUI, createGuidance, guidanceText, guidedPilot } from "@/data/dockingGuidance";
+import { VERBOSITY } from "@/audio/commsDirector";
+import { useAudioSettings } from "@/audio/audioSettings";
 
 /**
  * LUNAR ORBITAL RENDEZVOUS → LUNAVIA — DOCKING OPERATIONS → HARD DOCK →
@@ -44,6 +48,17 @@ import { COAST, FINAL, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf 
  * the 3D vehicles, the HUD and the alignment display are drawn from it, and
  * only its contact judgement can dock. A failed attempt restarts from the
  * same checkpoint; the landing and the launch are never replayed.
+ *
+ * RESTART DOCKING (top bar, held for RESTART_HOLD_MS so a brush cannot fire it;
+ * also on the pause and failure screens) puts the whole simulation back on
+ * that checkpoint (dockingSim.restoreCheckpoint) at any time during the
+ * approach. Each restart is a new attempt in the mission log.
+ *
+ * DOCKING GUIDANCE (bottom centre, between the controls): data/dockingGuidance
+ * reads the same state and shows one instruction at a time — the step (1–5),
+ * the correction, the button that makes it (lit on the pad for CADET and
+ * ASTRONAUT), and a confirmation when it is done. GUIDANCE ON/OFF hides it;
+ * the HUD's safety warnings and telemetry stay.
  *
  * Controls (iPhone landscape): a cross pad and a FWD/AFT pair, in TRANSLATION
  * or ATTITUDE mode (the pad becomes pitch/yaw, the pair roll). A tap is one
@@ -374,7 +389,9 @@ function SimLoop({ simRef, inputRef, phaseRef, difficulty, alignRef, pausedRef, 
 }
 
 /* ---- touch controls ----------------------------------------------------------------------------- */
-function JetButton({ label, sub, onDown, onUp, testId, className = "" }) {
+export const RESTART_HOLD_MS = 600;
+const HINT_RING = "shadow-[0_0_0_2px_#4fd1c5,0_0_16px_rgba(79,209,197,0.55)] border-[#4fd1c5]";
+function JetButton({ label, sub, onDown, onUp, testId, className = "", hint = false }) {
   const down = (e) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -393,7 +410,8 @@ function JetButton({ label, sub, onDown, onUp, testId, className = "" }) {
       onPointerCancel={up}
       onPointerLeave={(e) => e.buttons && up(e)}
       onContextMenu={(e) => e.preventDefault()}
-      className={`select-none touch-none flex flex-col items-center justify-center w-[52px] h-[52px] short:w-[46px] short:h-[46px] bg-black/55 border border-white/25 active:bg-[#FF3B00]/40 active:border-[#FF3B00] text-white font-mono text-[10px] tracking-[0.1em] backdrop-blur-sm ${className}`}
+      data-hint={hint ? "1" : undefined}
+      className={`select-none touch-none flex flex-col items-center justify-center w-[52px] h-[52px] short:w-[46px] short:h-[46px] bg-black/55 border border-white/25 active:bg-[#FF3B00]/40 active:border-[#FF3B00] text-white font-mono text-[10px] tracking-[0.1em] backdrop-blur-sm ${hint ? HINT_RING : ""} ${className}`}
     >
       <span className="text-[15px] leading-none">{label}</span>
       {sub && <span className="text-[7px] tracking-[0.15em] text-zinc-400 mt-0.5">{sub}</span>}
@@ -402,23 +420,167 @@ function JetButton({ label, sub, onDown, onUp, testId, className = "" }) {
 }
 
 /**
- * CADET's instructions: the next thing to do, read from the same telemetry as the HUD
- * (the pilot still flies every metre).
+ * RESTART DOCKING: one deliberate action — press and hold. The fill shows the hold;
+ * letting go early cancels and says how it works. Never fires from a brush or a
+ * thumb sliding off a jet button.
  */
-export function cadetHint(tel, cfg, align = true) {
-  if (!tel) return null;
-  if (tel.closing > tel.closingLimit) return "TOO FAST: TAP AFT TO SLOW THE CLOSING RATE";
-  if (tel.closing < -0.01) return "OPENING: TAP FWD TO CLOSE AGAIN";
-  if (tel.vLatR > cfg.tol.vLat * 1.5) return "DRIFTING: TAP AGAINST THE DRIFT (◀ ▶ ▲ ▼) TO STOP IT";
-  if (tel.offsetR > Math.max(cfg.tol.lateral * 0.8, 0.04 * tel.axial)) return "MOVE THE CYAN DOT TO THE CENTRE: TAP ◀ ▶ ▲ ▼, THEN WAIT";
-  if (tel.angle > cfg.tol.angle) return align ? "AUTO ALIGN IS TURNING YOU ONTO THE PORT: WAIT" : "TURN AUTO ALIGN ON, OR LEVEL THE + IN ATT MODE";
-  if (tel.closing < 0.03) return "LINED UP: TAP FWD ONCE OR TWICE TO CLOSE SLOWLY";
-  return `IN THE CORRIDOR: KEEP UNDER ${tel.closingLimit.toFixed(2)} m/s AND LET IT DRIFT IN`;
+function HoldButton({ label, sub, hintText, onFire, testId, disabled = false }) {
+  const [p, setP] = useState(0);
+  const [hint, setHint] = useState(false);
+  const raf = useRef(0);
+  const t0 = useRef(0);
+  const fired = useRef(false);
+  const stop = () => {
+    cancelAnimationFrame(raf.current);
+    raf.current = 0;
+  };
+  useEffect(() => stop, []);
+  const down = (e) => {
+    if (disabled) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    fired.current = false;
+    t0.current = performance.now();
+    const tick = () => {
+      const u = Math.min(1, (performance.now() - t0.current) / RESTART_HOLD_MS);
+      setP(u);
+      if (u >= 1) {
+        fired.current = true;
+        stop();
+        setP(0);
+        onFire();
+        return;
+      }
+      raf.current = requestAnimationFrame(tick);
+    };
+    stop();
+    raf.current = requestAnimationFrame(tick);
+  };
+  const up = (e) => {
+    e.preventDefault();
+    if (!raf.current) return;
+    stop();
+    setP(0);
+    if (!fired.current) {
+      setHint(true);
+      setTimeout(() => setHint(false), 1600);
+    }
+  };
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      disabled={disabled}
+      onPointerDown={down}
+      onPointerUp={up}
+      onPointerCancel={up}
+      onContextMenu={(e) => e.preventDefault()}
+      className="relative overflow-hidden select-none touch-none min-h-[44px] w-[96px] px-1.5 font-mono text-white bg-black/55 border border-[#f5c451]/70 disabled:opacity-40 flex flex-col items-center justify-center leading-tight"
+    >
+      <span className="absolute inset-y-0 left-0 bg-[#f5c451]/35" style={{ width: `${p * 100}%` }} aria-hidden />
+      <span className="relative text-[9px] tracking-[0.14em] text-[#f5c451]">↺ {label.split(" ")[0]}</span>
+      <span className="relative text-[9px] tracking-[0.14em]">{label.split(" ").slice(1).join(" ")}</span>
+      <span className="relative text-[6.5px] tracking-[0.18em] text-zinc-400 mt-0.5" data-testid={`${testId}-sub`}>
+        {hint ? hintText : sub}
+      </span>
+    </button>
+  );
+}
+
+const SEV = { safety: "#FF3B00", correct: "#f5c451", wait: "#9fb6cc", info: "#9fb6cc", go: "#4fd1c5", ok: "#4fd1c5" };
+/** The live DOCKING GUIDANCE panel: step, the one correction, how, and the numbers behind it. */
+function GuidancePanel({ g, text, lang, on, onToggle, clearAlign = false }) {
+  const ui = GUI[lang] || GUI.en;
+  // between the pad (left) and the FWD/AFT column (right); clear of CADET's AUTO ALIGN button too
+  const right = clearAlign ? "right-[calc(var(--sar,0px)_+_132px)] short:right-[calc(var(--sar,0px)_+_124px)]" : "right-[calc(var(--sar,0px)_+_92px)] short:right-[calc(var(--sar,0px)_+_84px)]";
+  const place = `absolute z-30 bottom-3 short:bottom-2 safe-mb left-[calc(var(--sal,0px)_+_196px)] short:left-[calc(var(--sal,0px)_+_172px)] ${right} flex justify-center pointer-events-none`;
+  if (!on || !g || !text) {
+    return (
+      <div className={place}>
+        <button type="button" data-testid="dock-guidance-toggle" onClick={onToggle} className="pointer-events-auto min-h-[34px] px-3 font-mono text-[8px] tracking-[0.25em] text-zinc-400 bg-black/50 border border-white/20">
+          {ui.off}
+        </button>
+      </div>
+    );
+  }
+  const color = g.confirm ? SEV.ok : SEV[g.sev] || SEV.info;
+  return (
+    <div className={place}>
+      <div
+        className="pointer-events-auto w-full max-w-[440px] bg-black/65 backdrop-blur-sm border border-white/10 border-l-2 px-2.5 py-1.5 short:py-1 font-mono"
+        style={{ borderLeftColor: color }}
+        data-testid="dock-guidance"
+        data-key={g.key}
+        data-step={g.step}
+        data-sev={g.sev}
+        data-confirm={g.confirm || ""}
+        data-buttons={(g.buttons || []).join(",")}
+      >
+        <div className="flex items-center gap-2">
+          <div className="text-[8px] tracking-[0.28em] whitespace-nowrap" style={{ color }} data-testid="dock-guidance-step">
+            {ui.header} — {ui.step} {g.step}/5
+          </div>
+          <div className="flex gap-0.5 flex-1 min-w-0" aria-hidden>
+            {STEPS.map((_, i) => (
+              <span key={i} className="h-[3px] flex-1" style={{ background: i < g.step ? color : "rgba(255,255,255,0.15)" }} />
+            ))}
+          </div>
+          <button type="button" data-testid="dock-guidance-toggle" onClick={onToggle} className="shrink-0 min-h-[26px] px-1.5 text-[7px] tracking-[0.2em] text-zinc-400 border border-white/15 bg-black/40">
+            {ui.on}
+          </button>
+        </div>
+        <div className="text-[7.5px] tracking-[0.22em] text-zinc-500 truncate">{text.stepName}</div>
+        <div className="text-white text-[12px] short:text-[11px] font-bold tracking-[0.05em] leading-tight mt-0.5" data-testid="dock-guidance-title">
+          {g.confirm ? `✓ ${text.confirm}` : text.title}
+        </div>
+        {!g.confirm && text.detail && (
+          <div className="text-zinc-300 text-[9.5px] short:text-[9px] leading-snug mt-0.5" data-testid="dock-guidance-detail">
+            {text.detail}
+          </div>
+        )}
+        {!g.confirm && (text.control || text.support) && (
+          <div className="flex flex-wrap items-baseline gap-x-2 mt-0.5">
+            {text.control && (
+              <span className="text-[10px] text-[#4fd1c5] tracking-[0.06em]" data-testid="dock-guidance-control">
+                ▸ {text.control}
+              </span>
+            )}
+            {text.support && (
+              <span className="text-[8px] text-zinc-500 tracking-[0.1em] tabular" data-testid="dock-guidance-support">
+                {text.support}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const GUIDE_KEY = "lunavia.dockGuidance";
+function loadGuidanceOn(difficulty) {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(GUIDE_KEY) || "{}")[difficulty];
+    return v == null ? true : !!v;
+  } catch (e) {
+    return true;
+  }
+}
+function saveGuidanceOn(difficulty, on) {
+  try {
+    const all = JSON.parse(window.localStorage.getItem(GUIDE_KEY) || "{}");
+    all[difficulty] = on;
+    window.localStorage.setItem(GUIDE_KEY, JSON.stringify(all));
+  } catch (e) {
+    /* storage unavailable: the choice lasts for this flight */
+  }
 }
 
 /* ---- the component -------------------------------------------------------------------------------- */
 export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, audio = null, onComplete, onAbort, onResult }) {
   const cfg = DOCKING[difficulty];
+  const lang = useAudioSettings().subLang === "pt" ? "pt" : "en";
+  const ui = GUI[lang];
   const plan = useMemo(() => planRendezvous(difficulty), [difficulty]);
   const makeCheckpoint = useCallback(() => checkpointState(difficulty), [difficulty]);
   const simRef = useRef(null);
@@ -453,8 +615,22 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   const sizeRef = useRef({ w: 1, h: 1 });
   const clockRef = useRef(0);
   const attemptsRef = useRef(1);
+  const restartsRef = useRef(0);
   const startedAtRef = useRef(null);
+  const firstStartRef = useRef(null);
+  const attemptOpen = useRef(false);
   const contactsRef = useRef(0);
+  // the guidance: one tracker per attempt (reset on restart), shown or hidden by the player
+  const guidanceRef = useRef(createGuidance(difficulty));
+  const lastGuideKey = useRef(null);
+  const [guideOn, setGuideOnState] = useState(() => loadGuidanceOn(difficulty));
+  const guideOnRef = useRef(guideOn);
+  const setGuideOn = (on) => {
+    guideOnRef.current = on;
+    setGuideOnState(on);
+    saveGuidanceOn(difficulty, on);
+  };
+  const keyboard = useMemo(() => typeof window !== "undefined" && !!window.matchMedia && !window.matchMedia("(pointer: coarse)").matches, []);
   const transferRef = useRef(0);
   const doneRef = useRef(false);
 
@@ -482,29 +658,26 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   }, []);
   const inputRef = useRef(readInput);
 
-  // keyboard (desktop): translation and attitude at once
+  // keyboard (desktop): translation and attitude at once, from the same table as the pad
+  // (data/dockingGuidance CONTROLS). Keys still down when a restart happens are ignored
+  // until released, so no jet carries over into the new attempt.
+  const keysDown = useRef(new Set());
+  const keysBlocked = useRef(new Set());
   useEffect(() => {
-    const MAP = {
-      KeyW: ["t", 2, 1],
-      KeyS: ["t", 2, -1],
-      KeyA: ["t", 0, -1],
-      KeyD: ["t", 0, 1],
-      KeyR: ["t", 1, 1],
-      KeyF: ["t", 1, -1],
-      ArrowUp: ["r", 0, 1],
-      ArrowDown: ["r", 0, -1],
-      ArrowLeft: ["r", 2, 1],
-      ArrowRight: ["r", 2, -1],
-      KeyQ: ["r", 1, -1],
-      KeyE: ["r", 1, 1],
-    };
+    const MAP = {};
+    Object.values(CONTROLS).forEach((c) => (MAP[c.key] = [c.axis, c.i, c.v]));
     const dn = (e) => {
       const m = MAP[e.code];
-      if (!m || phaseRef.current !== "docking") return;
+      if (!m) return;
+      keysDown.current.add(e.code);
+      if (phaseRef.current !== "docking") return;
       e.preventDefault();
+      if (keysBlocked.current.has(e.code)) return;
       if (!held.current.has("k" + e.code) || !held.current.get("k" + e.code).down) press("k" + e.code, ...m);
     };
     const upk = (e) => {
+      keysDown.current.delete(e.code);
+      keysBlocked.current.delete(e.code);
       if (MAP[e.code]) release("k" + e.code);
     };
     window.addEventListener("keydown", dn);
@@ -517,6 +690,11 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
 
   /* -- phases and comms -- */
   const say = (id, o) => audio && audio.say(id, o);
+  useEffect(() => {
+    // the docking calls follow the pilot's difficulty (coaching for CADET and ASTRONAUT)
+    if (audio && audio.setVerbosity) audio.setVerbosity(VERBOSITY[difficulty] || "full");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [difficulty]);
   useEffect(() => {
     // orbit insertion: the end of the ascent burn, told as a title over the scene
     if (farSide) audio && audio.setEarthLink(false);
@@ -554,13 +732,34 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  /**
+   * The final-approach checkpoint, for the first attempt and every restart: the whole
+   * simulation state rebuilt in place (position, velocity, attitude, rates, clock, RCS
+   * refilled, contacts, capture and failure state), no jet held, no key carried over,
+   * the guidance starting afresh.
+   */
   const startDocking = () => {
-    const cp = makeCheckpoint();
-    Object.assign(simRef.current, cp, { mode: "docking", checkpoint: cp, _apNext: null, _apCmd: null, propOutAt: null, capturePos: null, captureQ: null });
+    const s = simRef.current;
+    restoreCheckpoint(s, difficulty);
+    s.mode = "docking";
     held.current.clear();
+    keysBlocked.current = new Set(keysDown.current);
+    guidanceRef.current.reset();
+    lastGuideKey.current = null;
+    attemptOpen.current = true;
+    if (!firstStartRef.current) firstStartRef.current = performance.now();
     startedAtRef.current = performance.now();
+    pausedRef.current = false;
+    setPaused(false);
+    setToast(null);
     setFailure(null);
     setPhase("docking");
+  };
+  // an attempt ends (failure or restart): its contacts go into the flight's totals once
+  const closeAttempt = () => {
+    if (!attemptOpen.current) return;
+    attemptOpen.current = false;
+    contactsRef.current += simRef.current.contacts || 0;
   };
 
   const onEvent = useCallback(
@@ -597,7 +796,17 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
         for (let k = 0; k < 4; k++) setTimeout(() => audio && audio.clank(0.4 + 0.1 * (k % 2)), 120 * k);
         say("dock.hardCrew", { delay: 0.6 });
         if (!farSide || linkUp) say("dock.hard", { delay: 3.2 });
-        const result = { success: true, attempts: attemptsRef.current, contacts: contactsRef.current + (s.contacts || 0), propLeft: +s.prop.toFixed(2), time: +(((performance.now() - (startedAtRef.current || performance.now())) / 1000).toFixed(1)) };
+        closeAttempt();
+        const now = performance.now();
+        const result = {
+          success: true,
+          attempts: attemptsRef.current,
+          restarts: restartsRef.current,
+          contacts: contactsRef.current,
+          propLeft: +s.prop.toFixed(2),
+          time: +((now - (firstStartRef.current || now)) / 1000).toFixed(1),
+          attemptTime: +((now - (startedAtRef.current || now)) / 1000).toFixed(1),
+        };
         onResult && onResult(result);
         setTimeout(() => setPhase("transfer"), 4200);
         return;
@@ -611,10 +820,10 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
       if (s.status === "failed") {
         audio && audio.thud && audio.thud(0.6);
         if (e.kind === "collision" || e.kind === "damage") say("dock.collision");
-        contactsRef.current += s.contacts || 0;
+        closeAttempt();
         setFailure(e);
         setPhase("failed");
-        onResult && onResult({ success: false, failure: e.kind, attempts: attemptsRef.current });
+        onResult && onResult({ success: false, failure: e.kind, attempts: attemptsRef.current, restarts: restartsRef.current, contacts: contactsRef.current });
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -667,23 +876,71 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
       const s = simRef.current;
       if (!s) return;
       const tel = telemetry(s, difficulty);
-      const st = phaseRef.current === "docking" ? dockingStatus(s, difficulty) : null;
-      setHud({ tel, st, status: s.status, m: { ...markRef.current }, size: { ...sizeRef.current }, missionT: s.missionT || 0 });
+      const ph = phaseRef.current;
+      const st = ph === "docking" ? dockingStatus(s, difficulty) : null;
+      // the guidance reads the same state (it never writes it)
+      let g = null;
+      if ((ph === "docking" || ph === "captured") && s.mode === "docking") {
+        g = guidanceRef.current.update(s, { mode: modeRef.current, align: alignRef.current });
+        if (g.key !== lastGuideKey.current) {
+          lastGuideKey.current = g.key;
+          const line = GUIDANCE_VOICE[g.key];
+          const key = g.key;
+          if (line && guideOnRef.current && ph === "docking") say(line, { relevant: () => lastGuideKey.current === key && guideOnRef.current });
+        }
+      }
+      setHud({ tel, st, g, status: s.status, m: { ...markRef.current }, size: { ...sizeRef.current }, missionT: s.missionT || 0 });
       if (typeof window !== "undefined") {
-        window.__lvDock = { phase: phaseRef.current, status: s.status, difficulty, tel, st, contacts: s.contacts, prop: s.prop, attempts: attemptsRef.current, view: viewRef.current, mode: modeRef.current, align: alignRef.current, pos: s.pos.slice(), q: s.q.slice() };
+        window.__lvDock = {
+          phase: ph,
+          status: s.status,
+          difficulty,
+          tel,
+          st,
+          contacts: s.contacts,
+          prop: s.prop,
+          attempts: attemptsRef.current,
+          restarts: restartsRef.current,
+          view: viewRef.current,
+          mode: modeRef.current,
+          align: alignRef.current,
+          pos: s.pos.slice(),
+          vel: s.vel.slice(),
+          w: s.w.slice(),
+          t: s.t,
+          q: s.q.slice(),
+          fired: s.fired ? { t: s.fired.t.slice(), r: s.fired.r.slice() } : null,
+          guidance: g && { key: g.key, step: g.step, sev: g.sev, buttons: g.buttons, mode: g.mode, needMode: g.needMode, confirm: g.confirm },
+          guidanceOn: guideOnRef.current,
+        };
         window.__lvDockState = s; // validation tooling (read-only)
       }
       // the closing-rate warning, said once per breach
       if (st && st.warnings.includes("REDUCE CLOSING VELOCITY")) say("dock.closing");
     }, 100);
-    if (typeof window !== "undefined") window.__lvDockingTools = { referencePilot, telemetry };
+    if (typeof window !== "undefined") window.__lvDockingTools = { referencePilot, telemetry, guidedPilot, checkpointState };
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [difficulty]);
 
-  const retry = () => {
+  /**
+   * RESTART DOCKING: during the approach (not once the probe has captured), from the
+   * pause screen, or after a failed attempt. Only the docking restarts — never the
+   * rendezvous, the ascent or the landing. Each restart is a new attempt in the log.
+   */
+  const restartDocking = () => {
+    const ph = phaseRef.current;
+    const s = simRef.current;
+    if (!(ph === "failed" || (ph === "docking" && s.status === "approach"))) return false;
+    const fromFailure = ph === "failed";
+    closeAttempt();
+    restartsRef.current += 1;
+    if (!fromFailure) onResult && onResult({ success: false, failure: "restart", attempts: attemptsRef.current, restarts: restartsRef.current, contacts: contactsRef.current });
     attemptsRef.current += 1;
+    if (audio && audio.commsFlush) audio.commsFlush(); // nothing queued from the last attempt
+    say("dock.g.restart", { delay: 0.4 });
     startDocking();
+    return true;
   };
   const skipRendezvous = () => {
     if (phaseRef.current !== "rendezvous") return;
@@ -695,19 +952,36 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
     if (pausedRef.current) held.current.clear();
   };
 
-  /* -- control pad (TRANSLATION / ATTITUDE) -- */
-  const pad = (axisKey, label, sub, axis, i, v, cls) => (
-    <JetButton key={axisKey} testId={`dock-${axisKey}`} label={label} sub={sub} className={cls} onDown={() => press(axisKey, axis, i, v)} onUp={() => release(axisKey)} />
-  );
+  /* -- control pad (TRANSLATION / ATTITUDE), built from the guidance's own control table -- */
+  const g = hud && hud.g;
+  // the guidance lights the button it names (CADET and ASTRONAUT), or MODE first when needed
+  const lit = guideOn && g && !g.confirm && difficulty !== "COMMANDER" && phase === "docking" ? g.buttons : [];
+  const litMode = guideOn && g && !g.confirm && g.needMode && difficulty !== "COMMANDER" && phase === "docking";
+  const pad = (name, cls) => {
+    const c = CONTROLS[name];
+    const [icon, ...rest] = c.label.split(" ");
+    return (
+      <JetButton
+        key={name}
+        testId={`dock-${name}`}
+        label={icon}
+        sub={rest.join(" ")}
+        className={cls}
+        hint={!litMode && lit.includes(name)}
+        onDown={() => press(name, c.axis, c.i, c.v)}
+        onUp={() => release(name)}
+      />
+    );
+  };
   const tMode = mode === "TRANSLATION";
   const controls = (
     <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none flex items-end justify-between px-4 pb-4 short:px-3 short:pb-2 safe-ml safe-mr safe-mb" data-testid="dock-controls">
       {/* left: the cross pad */}
       <div className="pointer-events-auto grid grid-cols-3 gap-1.5" data-testid="dock-pad">
         <span />
-        {tMode ? pad("up", "▲", "UP", "t", 2, 1) : pad("pitch-up", "⤒", "PITCH", "r", 0, 1)}
+        {tMode ? pad("up") : pad("pitch-up")}
         <span />
-        {tMode ? pad("left", "◀", "LEFT", "t", 0, -1) : pad("yaw-left", "↺", "YAW", "r", 2, 1)}
+        {tMode ? pad("left") : pad("yaw-left")}
         <button
           type="button"
           data-testid="dock-mode"
@@ -717,15 +991,16 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
             setMode(m);
             held.current.clear();
           }}
-          className={`w-[52px] h-[52px] short:w-[46px] short:h-[46px] font-mono text-[7px] tracking-[0.12em] border ${tMode ? "border-[#4fd1c5]/70 text-[#4fd1c5]" : "border-[#f5c451]/70 text-[#f5c451]"} bg-black/60 touch-manipulation`}
+          data-hint={litMode ? "1" : undefined}
+          className={`w-[52px] h-[52px] short:w-[46px] short:h-[46px] font-mono text-[7px] tracking-[0.12em] border ${tMode ? "border-[#4fd1c5]/70 text-[#4fd1c5]" : "border-[#f5c451]/70 text-[#f5c451]"} bg-black/60 touch-manipulation ${litMode ? HINT_RING : ""}`}
         >
           {tMode ? "TRANS" : "ATT"}
           <br />
           MODE
         </button>
-        {tMode ? pad("right", "▶", "RIGHT", "t", 0, 1) : pad("yaw-right", "↻", "YAW", "r", 2, -1)}
+        {tMode ? pad("right") : pad("yaw-right")}
         <span />
-        {tMode ? pad("down", "▼", "DOWN", "t", 2, -1) : pad("pitch-down", "⤓", "PITCH", "r", 0, -1)}
+        {tMode ? pad("down") : pad("pitch-down")}
         <span />
       </div>
       {/* right: closing (forward / aft) or roll */}
@@ -743,8 +1018,8 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
             AUTO ALIGN {align ? "ON" : "OFF"}
           </button>
         )}
-        {tMode ? pad("fwd", "▲", "FWD", "t", 1, 1, "!w-[60px]") : pad("roll-left", "⟲", "ROLL", "r", 1, -1, "!w-[60px]")}
-        {tMode ? pad("aft", "▼", "AFT", "t", 1, -1, "!w-[60px]") : pad("roll-right", "⟳", "ROLL", "r", 1, 1, "!w-[60px]")}
+        {tMode ? pad("fwd", "!w-[60px]") : pad("roll-left", "!w-[60px]")}
+        {tMode ? pad("aft", "!w-[60px]") : pad("roll-right", "!w-[60px]")}
       </div>
     </div>
   );
@@ -848,11 +1123,6 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           <div className="absolute top-14 short:top-[var(--hud-top)] left-4 md:left-8 safe-ml z-30 pointer-events-none bg-black/55 backdrop-blur-sm border border-white/10 px-3 py-2 short:px-2 short:py-1.5 font-mono tabular w-[188px] short:w-[172px]" data-testid="dock-hud">
             <div className="text-[8px] tracking-[0.35em] text-[#FF3B00]">● DOCKING · {difficulty}</div>
             <div className="text-white text-[10px] short:text-[9px] tracking-[0.12em] mt-0.5 truncate" data-testid="dock-status">{phase === "captured" ? "DOCKING CONTACT · CAPTURE" : st ? st.phase : ""}</div>
-            {difficulty === "CADET" && phase === "docking" && (
-              <div className="text-[#4fd1c5] text-[8px] tracking-[0.08em] leading-tight mt-0.5" data-testid="dock-hint">
-                {cadetHint(tel, cfg, align)}
-              </div>
-            )}
             <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] short:text-[9px]">
               <span className="text-zinc-400">RANGE</span>
               <span className="text-right text-white" data-testid="dock-range">{tel.axial.toFixed(tel.axial < 10 ? 2 : 1)} m</span>
@@ -891,7 +1161,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
 
           {/* Alignment display: offset dot and pointing cross, against the capture tolerance */}
           <div className="absolute top-14 short:top-[var(--hud-top)] right-4 md:right-8 safe-mr z-30 pointer-events-none flex flex-col items-end gap-1" data-testid="dock-align-display">
-            <div className="relative bg-black/55 border border-white/10" style={{ width: box, height: box }}>
+            <div className="relative bg-black/55 border border-white/10" style={{ width: box, height: box }} data-testid="dock-align-box">
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="absolute w-full h-px bg-white/15" />
                 <div className="absolute h-full w-px bg-white/15" />
@@ -925,14 +1195,19 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
             </div>
           )}
           {phase === "docking" && controls}
-          <div className="absolute top-14 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 z-30 flex gap-1.5">
-            <button type="button" data-testid="dock-view" onClick={() => setView(view === "COAS" ? "CHASE" : "COAS")} className="min-h-[36px] px-2.5 font-mono text-[9px] tracking-[0.2em] text-white bg-black/55 border border-white/25">
-              VIEW · {view === "COAS" ? "WINDOW" : "EXTERNAL"}
+          {(phase === "docking" || phase === "captured") && <GuidancePanel g={g} text={g && guidanceText(g, difficulty, lang, { keyboard, view })} lang={lang} on={guideOn} onToggle={() => setGuideOn(!guideOn)} clearAlign={!!cfg.autoAlign} />}
+          {/* the bar sits a little right of centre: clear of the HUD on the left at 667 pt */}
+          <div className="absolute top-14 short:top-[var(--hud-top)] left-[calc(50%_+_24px)] -translate-x-1/2 z-30 flex gap-1.5 items-stretch">
+            <button type="button" data-testid="dock-view" onClick={() => setView(view === "COAS" ? "CHASE" : "COAS")} className="min-h-[44px] short:min-h-[40px] w-[76px] px-1 font-mono text-[9px] tracking-[0.16em] text-white bg-black/55 border border-white/25 leading-tight">
+              VIEW
+              <br />
+              <span className="text-[8px] text-zinc-300">{view === "COAS" ? "WINDOW" : "EXTERNAL"}</span>
             </button>
-            <button type="button" data-testid="dock-pause" onClick={togglePause} className="min-h-[36px] px-2.5 font-mono text-[9px] tracking-[0.2em] text-white bg-black/55 border border-white/25">
+            <button type="button" data-testid="dock-pause" onClick={togglePause} className="min-h-[44px] short:min-h-[40px] px-2 font-mono text-[9px] tracking-[0.18em] text-white bg-black/55 border border-white/25">
               {paused ? "RESUME" : "PAUSE"}
             </button>
-            <button type="button" data-testid="dock-abort" onClick={() => onAbort && onAbort()} className="min-h-[36px] px-2.5 font-mono text-[9px] tracking-[0.2em] text-zinc-300 bg-black/55 border border-white/25">
+            <HoldButton testId="dock-restart" label={ui.restart} sub={ui.hold} hintText={ui.holdHint} onFire={restartDocking} disabled={phase !== "docking"} />
+            <button type="button" data-testid="dock-abort" onClick={() => onAbort && onAbort()} className="min-h-[44px] short:min-h-[40px] px-2 font-mono text-[9px] tracking-[0.18em] text-zinc-300 bg-black/55 border border-white/25">
               ABORT
             </button>
           </div>
@@ -946,9 +1221,16 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
             <div className="absolute inset-0 z-40 bg-black/60 flex items-center justify-center" data-testid="dock-paused">
               <div className="text-center">
                 <div className="font-display font-black text-white text-4xl">PAUSED</div>
-                <button type="button" onClick={togglePause} className="btn-hud btn-hud-primary mt-4 min-h-[44px]" data-testid="dock-resume">
-                  RESUME
-                </button>
+                <div className="mt-4 flex flex-wrap gap-3 justify-center">
+                  <button type="button" onClick={togglePause} className="btn-hud btn-hud-primary min-h-[44px]" data-testid="dock-resume">
+                    RESUME
+                  </button>
+                  {phase === "docking" && (
+                    <button type="button" onClick={restartDocking} className="btn-hud min-h-[44px]" data-testid="dock-paused-restart">
+                      ↺ {ui.restart}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -980,10 +1262,12 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           <div className="text-center max-w-lg">
             <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00]">● DOCKING FAILED</div>
             <div className="font-display font-black text-white text-3xl short:text-2xl tracking-tight mt-1" data-testid="dock-failed-title">{failure.title}</div>
-            <div className="font-mono text-[10px] tracking-[0.18em] text-zinc-300 mt-2">THE ASCENT STAGE RETURNS TO THE RENDEZVOUS CHECKPOINT · RCS REFILLED FOR THE ATTEMPT</div>
+            <div className="font-mono text-[10px] tracking-[0.18em] text-zinc-300 mt-2">
+              {lang === "pt" ? "O ESTÁGIO DE ASCENSÃO VOLTA AO PONTO DE APROXIMAÇÃO DO ENCONTRO · RCS REABASTECIDO PARA A TENTATIVA" : "RETRY FROM RENDEZVOUS CHECKPOINT · THE ASCENT STAGE RETURNS TO THE FINAL-APPROACH CHECKPOINT · RCS REFILLED FOR THE ATTEMPT"}
+            </div>
             <div className="mt-5 flex flex-wrap gap-3 justify-center">
-              <button type="button" onClick={retry} className="btn-hud btn-hud-primary min-h-[44px]" data-testid="dock-retry">
-                RETRY FROM RENDEZVOUS CHECKPOINT
+              <button type="button" onClick={restartDocking} className="btn-hud btn-hud-primary min-h-[44px]" data-testid="dock-retry">
+                ↺ {ui.restart}
               </button>
               <button type="button" onClick={() => onAbort && onAbort()} className="btn-hud min-h-[44px]" data-testid="dock-failed-abort">
                 ABORT MISSION

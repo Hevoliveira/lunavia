@@ -71,6 +71,11 @@ const FEATURES = [
   ["Playable docking with the CSM (LUNAVIA — DOCKING OPERATIONS)", "dock-closing"],
   ["Docking retry from the rendezvous checkpoint", "RETRY FROM RENDEZVOUS CHECKPOINT"],
   ["Hard dock, crew transfer, ascent stage jettison", "ASCENT STAGE JETTISONED"],
+  ["RESTART DOCKING (hold) at any time during the approach", "dock-restart"],
+  ["REINICIAR DOCKING (Portuguese)", "REINICIAR DOCKING"],
+  ["Live DOCKING GUIDANCE panel (step, correction, control)", "dock-guidance-control"],
+  ["Guidance from the docking telemetry (one instruction at a time)", "BEGIN SLOW APPROACH"],
+  ["GUIDANCE ON / OFF", "GUIDANCE OFF"],
   ["Game menu after START MISSIONS (MISSIONS / TRAINING)", "mode-missions"],
 ];
 

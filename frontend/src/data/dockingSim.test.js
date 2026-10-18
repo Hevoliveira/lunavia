@@ -18,6 +18,7 @@ import {
   qAxisAngle,
   qMul,
   referencePilot,
+  restoreCheckpoint,
   stepDocking,
   telemetry,
 } from "./dockingSim";
@@ -256,6 +257,55 @@ describe("all three difficulties are achievable; mistakes are recoverable; retri
       expect(b.status).toBe("approach");
       expect(telemetry(b, d).axial).toBeCloseTo(DOCKING[d].start.range, 1);
     }
+  });
+  test("RESTART DOCKING restores the whole checkpoint in place: no residue of the last attempt", () => {
+    for (const d of DIFFICULTY_KEYS) {
+      // a messy attempt: jets held, a spin, a deflected contact, propellant spent, tooling fields
+      const s = { ...checkpointState(d), mode: "docking", missionT: 4321, play: 34, checkpoint: { q: [0, 0, 1, 0] } };
+      run(s, { t: [0.4, 1, -0.3], r: [0.5, -0.2, 0.3] }, d, 20);
+      s.contacts = 2;
+      s.lastContact = { kind: "deflected" };
+      s.propOutAt = 12;
+      s._apNext = 3;
+      s.capturePos = [1, 2, 3];
+      s.fired = { t: [1, 1, 1], r: [1, 1, 1] };
+      restoreCheckpoint(s, d);
+      const cp = checkpointState(d);
+      // exactly the checkpoint, plus only the scene's own clocks and mode
+      expect(s).toEqual({ ...cp, mode: "docking", missionT: 4321, play: 34, checkpoint: { q: [0, 0, 1, 0] } });
+      expect(s.vel).toEqual(cp.vel); // the checkpoint's slow drift, not the last attempt's velocity
+      expect(s.w).toEqual(cp.w);
+      expect(s.prop).toBe(DOCKING[d].prop); // refilled, as every retry
+      expect(s.fired).toEqual({ t: [0, 0, 0], r: [0, 0, 0] }); // no jet left firing
+      expect(s.t).toBe(0);
+      // and it then evolves exactly as a fresh checkpoint does
+      const fresh = checkpointState(d);
+      const inp = (x) => ({ t: [Math.sin(x.t), 0.5, -0.2], r: [0.1, 0, -0.1] });
+      run(s, inp, d, 8);
+      run(fresh, inp, d, 8);
+      ["pos", "vel", "q", "w", "prop", "t"].forEach((k) => expect(s[k]).toEqual(fresh[k]));
+    }
+  });
+  test("restarting from a capture or a failure leaves an approach that cannot dock by itself", () => {
+    const d = "ASTRONAUT";
+    const cap = nearContact(d, { axial: 0.2, closing: 0.08 });
+    run(cap, NONE, d, 2);
+    expect(cap.status).toBe("captured");
+    restoreCheckpoint(cap, d);
+    expect(cap.status).toBe("approach");
+    expect(cap.captureT).toBeNull();
+    expect(cap.capturePos).toBeUndefined();
+    // no stale capture finishes into a "docked": with no input it just coasts
+    const ev = run(cap, NONE, d, 30);
+    expect(ev.map((e) => e.kind)).not.toContain("docked");
+    expect(cap.status).toBe("approach");
+    const bad = nearContact(d, { axial: 0.2, closing: 0.9 });
+    run(bad, NONE, d, 2);
+    expect(bad.status).toBe("failed");
+    restoreCheckpoint(bad, d);
+    expect(bad.status).toBe("approach");
+    expect(bad.failure).toBeNull();
+    expect(flyDocking(d, referencePilot(d), { state: bad }).docked).toBe(true);
   });
   test("drifting away loses the target; running dry is a failure, not a hang", () => {
     const d = "ASTRONAUT";

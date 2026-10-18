@@ -132,8 +132,24 @@ describe("after the landing: lunar ascent, rendezvous and the player's docking, 
   test("docking is the simulation's: stepped every frame from the player's input, judged only by its contact rules; retries restart at the checkpoint", () => {
     expect(dock).toMatch(/const e = stepDocking\(s, inp, difficulty, dt, \{ align: alignRef\.current \}\);/);
     expect(dock).not.toMatch(/status = "docked"|phase: "docked"|kind: "docked"/); // the component never declares a dock itself
-    expect(between(dock, "const startDocking = () => {", "};")).toMatch(/const cp = makeCheckpoint\(\);/);
+    // every attempt (the first, a retry after a failure, RESTART DOCKING) starts from the full checkpoint state
+    expect(between(dock, "const startDocking = () => {", "};")).toMatch(/restoreCheckpoint\(s, difficulty\);/);
     expect(dock).toMatch(/RETRY FROM RENDEZVOUS CHECKPOINT/);
+  });
+  test("RESTART DOCKING: always there during the approach, guarded, and it restarts only the docking", () => {
+    expect(dock).toMatch(/<HoldButton testId="dock-restart" label=\{ui\.restart\}/);
+    const restart = between(dock, "const restartDocking = () => {", "\n  };");
+    expect(restart).toMatch(/ph === "failed" \|\| \(ph === "docking" && s\.status === "approach"\)/); // never once captured
+    expect(restart).toMatch(/startDocking\(\);/);
+    expect(restart).not.toMatch(/rendezvous|setPhase\(|plan\.|onComplete/); // no rendezvous, ascent or landing replay
+    expect(restart).toMatch(/attemptsRef\.current \+= 1/); // a new attempt in the log
+    // no jet carried over: held buttons cleared, keys still down ignored until released
+    const start = between(dock, "const startDocking = () => {", "\n  };");
+    expect(start).toMatch(/held\.current\.clear\(\);/);
+    expect(start).toMatch(/keysBlocked\.current = new Set\(keysDown\.current\);/);
+    expect(start).toMatch(/guidanceRef\.current\.reset\(\);/);
+    // the guidance panel is drawn from data/dockingGuidance, which only reads the state
+    expect(dock).toMatch(/<GuidancePanel g=\{g\}/);
     expect(mission).toMatch(/<DockingOps\s+difficulty=\{difficulty\}\s+farSide=\{mission\.comms\.farSide\}/);
     expect(mission).toMatch(/onResult=\{handleDockingResult\}/);
   });

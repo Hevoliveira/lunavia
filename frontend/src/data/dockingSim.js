@@ -229,6 +229,29 @@ export function checkpointState(difficulty = "ASTRONAUT", over = {}) {
   };
 }
 
+/**
+ * RESTART DOCKING (and the retry after a failure): put an existing state back on
+ * the final-approach checkpoint, in place. Every docking field is rebuilt from
+ * checkpointState — position, velocity, attitude, rates, the simulation clock,
+ * the RCS budget (refilled, as the retry always has: each attempt starts with
+ * the difficulty's full budget), the contact count, the capture and failure
+ * state — and anything else the last attempt left on the object (capture pose,
+ * propellant-out timer, tooling) is removed. Only the fields listed in `keep`
+ * survive: the scene's own clocks and mode, not physics. There is no damage
+ * carried between attempts: a damaging contact ends the attempt, and the next
+ * one starts on an intact vehicle.
+ */
+export const RESTART_KEEP = ["mode", "missionT", "play", "checkpoint"];
+export function restoreCheckpoint(s, difficulty = "ASTRONAUT", keep = RESTART_KEEP) {
+  const cp = checkpointState(difficulty);
+  const kept = {};
+  keep.forEach((k) => {
+    if (k in s) kept[k] = s[k];
+  });
+  Object.keys(s).forEach((k) => delete s[k]);
+  return Object.assign(s, cp, kept);
+}
+
 /** The drogue (ascent stage's port) and its axis, and the port's velocity, in the CSM frame. */
 export function portState(s) {
   const pB = qRot(s.q, PORT_B);
