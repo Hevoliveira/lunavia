@@ -373,8 +373,8 @@ export const STEP_NAMES = {
   pt: ["ADQUIRA O ALVO DE DOCKING", "ALINHE COM A PORTA DE DOCKING", "REDUZA A VELOCIDADE RELATIVA", "PROSSIGA COM A APROXIMAÇÃO FINAL", "CONTATO DE DOCKING"],
 };
 export const UI = {
-  en: { header: "DOCKING GUIDANCE", step: "STEP", on: "GUIDANCE ON", off: "GUIDANCE OFF", restart: "RESTART DOCKING", hold: "HOLD", holdHint: "HOLD TO RESTART", then: "then", mode: "MODE → " },
-  pt: { header: "GUIA DE DOCKING", step: "ETAPA", on: "GUIA LIGADO", off: "GUIA DESLIGADO", restart: "REINICIAR DOCKING", hold: "SEGURE", holdHint: "SEGURE PARA REINICIAR", then: "depois", mode: "MODE → " },
+  en: { header: "DOCKING GUIDANCE", step: "STEP", on: "GUIDANCE ON", off: "GUIDANCE OFF", restart: "RESTART DOCKING", hold: "HOLD", holdHint: "HOLD TO RESTART", then: "then", mode: "MODE → ", resetCam: "RESET CAMERA" },
+  pt: { header: "GUIA DE DOCKING", step: "ETAPA", on: "GUIA LIGADO", off: "GUIA DESLIGADO", restart: "REINICIAR DOCKING", hold: "SEGURE", holdHint: "SEGURE PARA REINICIAR", then: "depois", mode: "MODE → ", resetCam: "CENTRALIZAR CÂMERA" },
 };
 // where the port is, in words (screen terms)
 function where(off, lang) {
@@ -416,16 +416,21 @@ export function guidanceText(g, difficulty = "ASTRONAUT", lang = "en", ctx = {})
   const level = difficulty === "CADET" ? 2 : difficulty === "ASTRONAUT" ? 1 : 0;
   const ctl = controlText(g, L, !!ctx.keyboard);
   const many = d.axes && d.axes.length > 1;
-  const ax = many ? d.axes.map((i) => AXIS[L][i]).join(pt ? " E " : " AND ") : d.ax != null ? AXIS[L][d.ax] : "";
+  const andList = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")}${pt ? " E " : " AND "}${xs[xs.length - 1]}`);
+  const ax = many ? andList(d.axes.map((i) => AXIS[L][i])) : d.ax != null ? AXIS[L][d.ax] : "";
   const axErr = d.err && d.ax != null ? (many ? d.axes.map((i) => dg(d.err[i])).join("°/") : dg(d.err[d.ax])) : "";
   const T = {
     acquire: [
       pt ? "ALVO DE DOCKING À FRENTE" : "DOCKING TARGET AHEAD",
-      ctx.view === "CHASE"
+      ctx.view === "ORBIT"
         ? pt
           ? "O CSM está à frente. A linha ciano tracejada é o eixo da sonda; a laranja, o seu eixo de docking."
           : "The CSM is ahead. The dashed cyan line is its probe's axis; the orange line is your docking axis."
-        : pt
+        : ctx.view === "WINDOW" || ctx.view === "COCKPIT"
+          ? pt
+            ? "O CSM está à frente, pela janela de docking: a sonda aponta para você. Mantenha-a no meio da janela."
+            : "The CSM is ahead through the docking window, its probe pointing at you. Keep the probe in the middle of the window."
+          : pt
           ? "O CSM está à frente. O anel ciano é a ponta da sonda; o retículo laranja é o seu eixo de docking. Mantenha o anel no retículo."
           : "The CSM is ahead. The cyan ring is its probe tip; the orange reticle is your docking axis. Keep the ring in the reticle.",
       pt ? `Alvo a ${m ? m.axial.toFixed(1) : ""} m.` : `Target at ${m ? m.axial.toFixed(1) : ""} m.`,

@@ -1,12 +1,14 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 6bf030a**.
+This folder installs **BUILD f9b4dd4**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 6bf030a · 2026-10-18 11:56 UTC**
+> **LUNAVIA iOS · BUILD f9b4dd4 · 2026-10-18 16:40 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **6bf030a** is the previous release: RESTART DOCKING and the docking guidance, but the docking
+  had one view (the navigation display) and a fixed outside camera;
 - **af6a1c4** is the previous release: the lunar ascent, the rendezvous and the docking, but
   no RESTART DOCKING button and no DOCKING GUIDANCE panel;
 - **57770c4** is the previous release: the startup screen and the four missions, but a mission
@@ -69,13 +71,18 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Startup screen restored: LUNAVIA opens on THE ROAD TO THE MOON and the launch starts only when you press LAUNCH SEQUENCE — INITIATE | #18 | 57770c4 |
 | Lunar ascent, orbital rendezvous and playable docking: after the landing, ascent preparation and liftoff (the descent stage stays on the Moon), the automatic rendezvous with the CSM, and the docking flown by the player (translation, attitude, closing speed), then crew transfer and the ascent stage's jettison before the return | #19 | 48420db, af6a1c4 |
 | RESTART DOCKING (hold, at any time in the approach; back to the final-approach checkpoint, never the ascent) and the live DOCKING GUIDANCE panel (one instruction at a time from the docking telemetry: step 1–5, the correction, the button to press, a confirmation; by difficulty; GUIDANCE ON/OFF; Mission Control calls) | #20 | 77c98e5, 6bf030a |
+| Four docking views: NAV (the navigation display, as before), WINDOW (first person through the overhead docking window), COCKPIT (the 3D cabin with live instruments) and 360° (a free camera around the ascent stage: drag, pinch, RESET CAMERA), all on the one docking simulation | #21 | f9b4dd4 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 6bf030a** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release adds two things to the docking; its physics and everything else are unchanged.**
-  - **RESTART DOCKING** (in Portuguese, REINICIAR DOCKING), in the top bar between PAUSE and ABORT. **Press and hold** it for about half a second; a short tap only says HOLD TO RESTART. The ascent stage goes back to the final-approach checkpoint with full RCS, nothing moving or firing from before, and you try again at once. It never replays the ascent or the rendezvous. It is also on the PAUSE screen and on the failure screen. Each restart counts as a new attempt in the mission log.
-  - **DOCKING GUIDANCE**, the panel at the bottom between the controls. It shows **STEP 1–5**, the one correction to make now, how, and the button to press (lit on the pad for CADET and ASTRONAUT), then a ✓ when it is done. Everything it says comes from the docking's own numbers. CADET gets full explanations, ASTRONAUT short orders, COMMANDER only the essential ones. **GUIDANCE ON** hides it (the HUD's warnings stay). Mission Control adds a few spoken calls.
+- **Built from the clean tree at f9b4dd4** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release adds four docking views; the docking itself is unchanged.** Under the top bar: **NAV | WINDOW | COCKPIT | 360°**.
+  - **NAV** (the docking starts here): the navigation display the docking always had, with the reticle, the alignment display and the readouts.
+  - **WINDOW**: you look through the ascent stage's overhead docking window from the commander's seat. The CSM moves in the window as you fly; a small readout keeps range, closing speed and drift.
+  - **COCKPIT**: inside the cabin, with the docking window, two side panes and four live instrument displays (range and rate, lateral and attitude, alignment, RCS and status).
+  - **360°**: a camera around your ascent stage. Drag to go round and over it, pinch to zoom, **RESET CAMERA** to come back. Dragging never fires the jets; the controls work at the same time.
+  - The pad, FWD/AFT, MODE, RESTART DOCKING and the guidance work the same in every view. Switching views never changes the flight.
+- **The docking, as in the previous release:** **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel at the bottom (STEP 1–5, the correction, the button to press).
 - **How a mission goes after the landing** (as in the previous release):
   1. After a successful landing, **CONTINUE MISSION** shows **LUNAR SURFACE — ASCENT PREPARATION**: the checklist ticks in, and nothing starts until you press **INITIATE LUNAR ASCENT**.
   2. A short countdown, then **PROCEED**. The ascent stage leaves the descent stage, which stays on the Moon with its legs, and climbs away. SKIP CINEMATIC goes on to orbit.
@@ -84,7 +91,7 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
      - Left pad: **▲ ▼ ◀ ▶** move it up, down, left and right. Right buttons: **FWD / AFT** (closing speed).
      - **MODE** switches the pad to **ATTITUDE** (pitch and yaw; the right buttons roll).
      - A tap is one small RCS pulse; holding keeps the jets firing. Two fingers work together.
-     - **VIEW** switches between the docking window (reticle; the cyan circle is the probe tip) and an outside view.
+     - **NAV | WINDOW | COCKPIT | 360°** choose the view (in NAV, the cyan circle on the reticle is the probe tip).
      - The panel top right shows the port's offset (dot) and the attitude (cross) against the capture circle. **IN CORRIDOR** means a docking now would latch.
      - CADET: **AUTO ALIGN** holds the attitude for you. ASTRONAUT: the attitude holds still when you let go. COMMANDER: nothing holds; you stop what you start.
      - Too fast, off the axis, misaligned or rotating: no capture, and the vehicles push apart. Back off and try again. A hard impact or a collision ends the attempt: **RESTART DOCKING** (no new landing or launch).
@@ -96,4 +103,4 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
+  - every feature above is in the bundled game, including the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
