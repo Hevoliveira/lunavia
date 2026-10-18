@@ -87,10 +87,11 @@ function Director({ ctl, base, ascRef }) {
       camP = _c.set(P[0] + 9, P[1] + 0.7, P[2] + 7);
       camL = _b.copy(lmC).lerp(asc, smooth((t + 0.5) / 5));
     } else if (t < 14) {
-      // climbing away: the camera trails below and behind; the descent stage and its site drop away
+      // climbing away: the camera rides above and behind, looking down past the ascent stage at
+      // the site falling away below (the descent stage left on it)
       const u = smooth((t - 5.5) / 2);
-      camP = _c.set(asc.x - 10 - 4 * u, asc.y - 7 - 6 * u, asc.z + 11 + 6 * u);
-      camL = asc;
+      camP = _c.set(asc.x - 12 - 6 * u, asc.y + 5 + 4 * u, asc.z + 15 + 6 * u);
+      camL = _b.set(P[0], P[1], P[2]).lerp(asc, 0.62);
     } else {
       // high and wide: the ascent stage small against the black sky, the site far below
       camP = _c.set(P[0] + 60, P[1] + 30, P[2] + 90);
@@ -310,7 +311,7 @@ export default function LunarAscent({ siteId, pose = null, audio = null, farSide
         </button>
       )}
       {farSide && (
-        <div className="absolute top-16 short:top-[var(--hud-top)] right-28 short:right-24 safe-mr z-30 pointer-events-none font-mono text-[9px] tracking-[0.3em] text-[#9fb6cc] bg-black/40 border border-[#9fb6cc]/40 px-2 py-1" data-testid="earth-link">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none font-mono text-[9px] tracking-[0.3em] text-[#9fb6cc] bg-black/40 border border-[#9fb6cc]/40 px-2 py-1 whitespace-nowrap" data-testid="earth-link">
           ○ EARTH LINK UNAVAILABLE
         </div>
       )}

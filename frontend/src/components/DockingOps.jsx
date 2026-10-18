@@ -53,6 +53,8 @@ import { COAST, FINAL, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf 
  */
 
 const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
+// Loaded with the app, so lunar orbit is drawn from its first frame after the ascent.
+useTexture.preload(MOON_MAP);
 const MOON_SCALE = 1 / 1000; // the Moon drawn at 1/1000 around the camera: same angular size, no far-plane trouble
 const MOON_R = 1737.4;
 const MOON_D = 1737.4 + 110;
