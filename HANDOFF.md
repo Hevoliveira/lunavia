@@ -2381,11 +2381,16 @@ A mission is complete only at splashdown, which needs the docking.
 
 **Rendezvous** (`planRendezvous`):
 - In the CSM's LVLH frame. Insertion is co-elliptic, 14 km below and 46 km behind.
-- TPI: a two-point CW targeting burn over a 130° transfer, executed with a deterministic 1–2 % error.
-- A midcourse correction re-targets from the actual state.
-- A braking burn leaves exactly the docking checkpoint's state.
-- The total is ≈ 9 m/s and ≈ 1 h 7 min of mission time, played as a 34-s film whose clock slows near the end.
-- Tested: numerical integration of the docking sim's own dynamics lands on the checkpoint within centimetres.
+- TPI fires when the CSM is 27° above the ascent stage's horizon (≈ 1000 s after insertion, as on Apollo): a two-point CW targeting burn over a 130° transfer to a braking gate 1.2 km behind and 150 m below the CSM, executed with a deterministic 1–2 % error.
+- A midcourse correction re-targets the gate from the actual state.
+- At the gate: a short final approach from behind (840 s) to the docking checkpoint.
+- A braking burn leaves exactly the checkpoint's state.
+- The total is ≈ 1 h 14 min of mission time, played as a 34-s film whose clock slows near the end.
+- Tested:
+  - numerical integration of the docking sim's own dynamics lands on the checkpoint within centimetres;
+  - the path never comes closer to the CSM than the checkpoint;
+  - the last 1.5 km is flown from behind.
+- (A first version aimed the 130° arc straight at the checkpoint. It came in from ahead and passed 11 m from the CSM, so the gate was added.)
 
 **Docking** (`dockingSim`): the CSM's frame in metres; the CSM holds LVLH attitude with its probe pointing −V-bar.
 - **Translational motion:** Clohessy–Wiltshire plus the RCS in body axes.

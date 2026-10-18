@@ -1,4 +1,4 @@
-import { COAST, INSERTION, PERIOD, TRANSFER, cwPropagate, cwTarget, planRendezvous, playToMission, PLAY_S, rangeOf } from "./rendezvous";
+import { COAST, FINAL, GATE, INSERTION, PERIOD, TRANSFER, cwPropagate, cwTarget, planRendezvous, playToMission, PLAY_S, rangeOf } from "./rendezvous";
 import { DIFFICULTY_KEYS, checkpointState, cwAccel, frames } from "./dockingSim";
 
 // Numerical integration of the same dynamics as the docking simulator (CSM frame), burns applied as impulses.
@@ -51,24 +51,29 @@ describe("automatic rendezvous: insertion to the docking checkpoint", () => {
       }
     }
   });
-  test("a believable lunar rendezvous: lower and behind, catching up; three burns; a modest Δv; ~1 h 10 min", () => {
+  test("a believable lunar rendezvous: lower and behind, catching up; TPI, midcourse, gate and braking burns; a modest Δv", () => {
     const plan = planRendezvous("CADET");
     expect(plan.insertion[0]).toBe(INSERTION.x); // 14 km below
     expect(plan.insertion[4]).toBeGreaterThan(15); // faster: closing on the CSM along the orbit
-    expect(plan.burns.map((b) => b.kind)).toEqual(["TPI", "MCC", "BRAKING"]);
+    expect(plan.burns.map((b) => b.kind)).toEqual(["TPI", "MCC", "GATE", "BRAKING"]);
     expect(plan.totalDv).toBeGreaterThan(5); // Apollo-like terminal phase: a few m/s per burn
     expect(plan.totalDv).toBeLessThan(60);
     // the TPI executed with an error that the MCC corrects (not zero)
     const mcc = plan.burns[1].dv;
     expect(Math.hypot(...mcc)).toBeGreaterThan(0.05);
-    expect(plan.total).toBeCloseTo(COAST + TRANSFER, 6);
+    expect(plan.total).toBeCloseTo(COAST + TRANSFER + FINAL, 6);
     expect(TRANSFER / PERIOD).toBeCloseTo(130 / 360, 6);
     // range: tens of km at insertion, tens of metres at handover
     expect(rangeOf(plan.sample(0)).range).toBeGreaterThan(40000);
     expect(rangeOf(plan.sample(plan.total)).range).toBeLessThan(60);
-    // and it closes: range falls through the transfer
-    const r = [0.5, 0.7, 0.85, 0.95, 1].map((k) => rangeOf(plan.sample(COAST + k * TRANSFER)).range);
+    // and it closes: tens of km before TPI, ~1 km at the gate, then steadily down the final approach
+    expect(rangeOf(plan.sample(COAST)).range).toBeGreaterThan(20000);
+    expect(rangeOf(plan.sample(COAST + TRANSFER)).range).toBeLessThan(1300);
+    const r = [0, 0.25, 0.5, 0.75, 1].map((k) => rangeOf(plan.sample(COAST + TRANSFER + k * FINAL)).range);
     for (let i = 1; i < r.length; i++) expect(r[i]).toBeLessThan(r[i - 1]);
+    // TPI at the Apollo elevation angle: the CSM 27° above the ascent stage's horizon
+    const t = plan.sample(COAST);
+    expect((Math.atan2(-t[0], -t[1]) * 180) / Math.PI).toBeCloseTo(27, 3);
   });
   test("CW targeting solves its boundary problem", () => {
     const r0 = [-5000, -20000, 300];
@@ -86,5 +91,25 @@ describe("automatic rendezvous: insertion to the docking checkpoint", () => {
     const early = playToMission(1, plan) - playToMission(0, plan);
     const late = playToMission(PLAY_S, plan) - playToMission(PLAY_S - 1, plan);
     expect(late).toBeLessThan(early / 20);
+  });
+  test("safe: the path never comes closer to the CSM than the checkpoint, and the last kilometre is flown from behind", () => {
+    for (const d of DIFFICULTY_KEYS) {
+      const plan = planRendezvous(d);
+      const end = rangeOf(plan.sample(plan.total)).range;
+      let minR = Infinity;
+      for (let t = COAST; t <= plan.total; t += 2) {
+        const s = plan.sample(t);
+        const r = rangeOf(s).range;
+        minR = Math.min(minR, r);
+        if (r < 1500) expect(s[1]).toBeLessThan(0); // behind the CSM (−V-bar)
+      }
+      expect(minR).toBeGreaterThan(end - 0.5);
+      // the gate is reached on the transfer arc
+      const g = plan.sample(COAST + TRANSFER);
+      expect(Math.hypot(g[0] - GATE[0], g[1] - GATE[1], g[2] - GATE[2])).toBeLessThan(0.5);
+      // the final approach is slow
+      const v = plan.sample(COAST + TRANSFER + FINAL / 2).slice(3);
+      expect(Math.hypot(...v)).toBeLessThan(3);
+    }
   });
 });

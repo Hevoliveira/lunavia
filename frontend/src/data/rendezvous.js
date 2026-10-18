@@ -12,12 +12,16 @@
  *   1. INSERTION   ascent engine cutoff: 14 km below and ~45 km behind,
  *                  on a co-elliptic orbit (it closes at a constant ~18 m/s).
  *   2. TPI         terminal phase initiation: a burn that puts the ascent
- *                  stage on a 130° transfer arc to the final-approach
- *                  checkpoint (the CW targeting problem).
+ *                  stage on a 130° transfer arc to the braking gate, 1.2 km
+ *                  behind and 150 m below the CSM (the CW targeting problem).
  *   3. MCC         a midcourse correction re-targets from the actual state
  *                  (the TPI burn is executed with a small, deterministic error).
- *   4. BRAKING     at arrival, the burn that leaves exactly the checkpoint's
- *                  slow closing speed: the guidance hands over to the pilot.
+ *   4. GATE        at the gate, the burn onto the final approach: a short,
+ *                  nearly straight arc from behind, up the docking axis.
+ *   5. BRAKING     at the checkpoint, the burn that leaves exactly its slow
+ *                  closing speed: the guidance hands over to the pilot.
+ * The path never comes closer to the CSM than the checkpoint, and the last
+ * kilometre is flown from behind (tested).
  *
  * The final docking (dockingSim) is the pilot's. The guidance never docks.
  */
@@ -26,9 +30,13 @@ import { MEAN_MOTION, checkpointState, frames } from "./dockingSim";
 export const N = MEAN_MOTION;
 export const PERIOD = (2 * Math.PI) / N;
 export const INSERTION = { x: -14000, y: -46000 }; // m, LVLH relative to the CSM
-export const COAST = 1500; // s from insertion to TPI
+// TPI when the CSM stands 27° above the ascent stage's local horizon (as on Apollo)
+export const TPI_ELEVATION = 27;
+export const COAST = (INSERTION.x / Math.tan((TPI_ELEVATION * Math.PI) / 180) - INSERTION.y) / (1.5 * MEAN_MOTION * -INSERTION.x); // s, ≈ 1000
 export const TRANSFER = (130 / 360) * PERIOD; // s, TPI to arrival
 export const MCC_AT = 0.5; // share of the transfer
+export const GATE = [-150, -1200, 0]; // LVLH m: behind and below the CSM
+export const FINAL = 840; // s, gate to checkpoint (≈ 1.4 m/s, slowing)
 export const TPI_ERROR = [0.015, -0.01, 0.02]; // executed Δv error (fraction, per axis): deterministic
 
 /** Closed-form CW propagation of an LVLH state [x, y, z, vx, vy, vz] over t. */
@@ -81,28 +89,35 @@ export function planRendezvous(difficulty = "ASTRONAUT") {
   const burns = [];
   // coast to TPI
   const sTpi = cwPropagate(s0, COAST);
-  // TPI: aim at the checkpoint after TRANSFER; executed with an error
-  const vWant = cwTarget(sTpi.slice(0, 3), rC, TRANSFER);
+  // TPI: aim at the braking gate after TRANSFER; executed with an error
+  const vWant = cwTarget(sTpi.slice(0, 3), GATE, TRANSFER);
   const dvTpi = sub3(vWant, sTpi.slice(3));
   const dvExec = dvTpi.map((v, i) => v * (1 + TPI_ERROR[i]));
   burns.push({ t: COAST, kind: "TPI", dv: dvExec, planned: dvTpi });
   const afterTpi = [...sTpi.slice(0, 3), ...sTpi.slice(3).map((v, i) => v + dvExec[i])];
-  // MCC: re-target from the actual state
+  // MCC: re-target the gate from the actual state
   const tm = TRANSFER * MCC_AT;
   const sMcc = cwPropagate(afterTpi, tm);
-  const vMcc = cwTarget(sMcc.slice(0, 3), rC, TRANSFER - tm);
+  const vMcc = cwTarget(sMcc.slice(0, 3), GATE, TRANSFER - tm);
   const dvMcc = sub3(vMcc, sMcc.slice(3));
   burns.push({ t: COAST + tm, kind: "MCC", dv: dvMcc });
   const afterMcc = [...sMcc.slice(0, 3), ...vMcc];
-  // braking at arrival: leave exactly the checkpoint's velocity
-  const sArr = cwPropagate(afterMcc, TRANSFER - tm);
+  // at the gate: onto the final approach to the checkpoint, from behind
+  const sGate = cwPropagate(afterMcc, TRANSFER - tm);
+  const vFinal = cwTarget(sGate.slice(0, 3), rC, FINAL);
+  const dvGate = sub3(vFinal, sGate.slice(3));
+  burns.push({ t: COAST + TRANSFER, kind: "GATE", dv: dvGate });
+  const afterGate = [...sGate.slice(0, 3), ...vFinal];
+  // braking at the checkpoint: leave exactly its velocity
+  const sArr = cwPropagate(afterGate, FINAL);
   const dvBrk = sub3(vC, sArr.slice(3));
-  burns.push({ t: COAST + TRANSFER, kind: "BRAKING", dv: dvBrk });
-  const total = COAST + TRANSFER;
+  burns.push({ t: COAST + TRANSFER + FINAL, kind: "BRAKING", dv: dvBrk });
+  const total = COAST + TRANSFER + FINAL;
   const arcs = [
     { t0: 0, s: s0 },
     { t0: COAST, s: afterTpi },
     { t0: COAST + tm, s: afterMcc },
+    { t0: COAST + TRANSFER, s: afterGate },
   ];
   const sample = (t) => {
     const tt = Math.max(0, Math.min(total, t));

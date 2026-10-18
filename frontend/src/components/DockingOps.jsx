@@ -27,7 +27,7 @@ import {
   stepDocking,
   telemetry,
 } from "@/data/dockingSim";
-import { COAST, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf } from "@/data/rendezvous";
+import { COAST, FINAL, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf } from "@/data/rendezvous";
 
 /**
  * LUNAR ORBITAL RENDEZVOUS → LUNAVIA — DOCKING OPERATIONS → HARD DOCK →
@@ -546,7 +546,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
       });
       once("tpi", tm >= COAST, () => (farSide && tm < COAST + 0.3 * TRANSFER ? null : say("rdv.tpi")));
       once("mcc", tm >= COAST + 0.5 * TRANSFER, () => say("rdv.mcc"));
-      once("brk", tm >= COAST + 0.97 * TRANSFER, () => say("rdv.braking"));
+      once("brk", tm >= COAST + TRANSFER + 0.85 * FINAL, () => say("rdv.braking"));
     }, 120);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -798,7 +798,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
               {phase === "insertion" ? "ASCENT STAGE IN LUNAR ORBIT" : "CLOSING ON THE CSM"}
             </div>
             <div className="font-mono text-[10px] short:text-[9px] tracking-[0.18em] text-zinc-300 mt-0.5">
-              {phase === "insertion" ? "14 KM BELOW AND 46 KM BEHIND THE CSM · CO-ELLIPTIC" : "AUTOMATIC GUIDANCE · TPI → MIDCOURSE → BRAKING · FINAL DOCKING BY THE CREW"}
+              {phase === "insertion" ? "14 KM BELOW AND 46 KM BEHIND THE CSM · CO-ELLIPTIC" : "AUTOMATIC GUIDANCE · TPI → MIDCOURSE → GATE → BRAKING · FINAL DOCKING BY THE CREW"}
             </div>
           </div>
           {rendezvousRange && (
@@ -811,7 +811,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
               <div className="text-zinc-400 mt-0.5">
                 {(() => {
                   const tm = simRef.current.missionT || 0;
-                  return tm < COAST ? "CO-ELLIPTIC COAST" : tm < COAST + 0.5 * TRANSFER ? "TPI · TRANSFER" : tm < COAST + 0.97 * TRANSFER ? "MIDCOURSE · TRANSFER" : "BRAKING";
+                  return tm < COAST ? "CO-ELLIPTIC COAST" : tm < COAST + 0.5 * TRANSFER ? "TPI · TRANSFER" : tm < COAST + TRANSFER ? "MIDCOURSE · TRANSFER" : tm < COAST + TRANSFER + 0.85 * FINAL ? "GATE · FINAL APPROACH" : "BRAKING";
                 })()}
               </div>
               <div className="text-zinc-500">MET +{Math.floor((simRef.current.missionT || 0) / 60)} min</div>
