@@ -2458,7 +2458,7 @@ The docking physics, thresholds, RCS authority and propellant are unchanged (§4
   2. closing above `closingLimit` (BRAKE NOW);
   3. within 3 m and not lined up (BACK OFF);
   4. rotating faster than the capture's rate tolerance within 1.5 m;
-  5. attitude (per-axis error against the tolerance, the worst axis first; on COMMANDER, leftover turn rates down to about one tap);
+  5. attitude (per-axis error against the tolerance; the worst axis leads and any axis needing a comparable correction is named with it, two fingers on the pad, so no turn runs unwatched; on COMMANDER, leftover turn rates down to about one tap);
   6. lateral alignment and drift;
   7. closing speed (slow, begin the approach, too slow to latch, opening);
   8. CADET's auto align still turning;
@@ -2468,7 +2468,7 @@ The docking physics, thresholds, RCS authority and propellant are unchanged (§4
 - **One instruction at a time:**
   - an instruction stays on screen at least 1.5 s unless a safety rule outranks it (the hold counts from when it is visible);
   - "wait" instructions hold against their own rule's next order;
-  - a correction that is done is confirmed for 1.1 s (✓ CLOSING VELOCITY REDUCED, ✓ RELATIVE MOTION STABILIZED…);
+  - a correction that is done is confirmed for 1.1 s (✓ CLOSING VELOCITY REDUCED, ✓ RELATIVE MOTION STABILIZED…), and its rule then stays quiet for 1.5 s unless it is a safety order;
   - the opposite jet on the same axis is never ordered within 2.5 s of the last order (1 s when it only brakes motion the last order started), otherwise LET IT SETTLE.
 - **Difficulty** (amount of guidance only; physics untouched):
   - CADET: the briefing (step 1, 6 s), full explanations (which button, inertia, why), the named button lit on the pad (MODE lit first when needed), AUTO ALIGN wait states.
@@ -2481,7 +2481,7 @@ The docking physics, thresholds, RCS authority and propellant are unchanged (§4
   - Spoken only when the instruction changes, and only if it is still current when the channel is free. Corrective lines are `coach` (CADET and ASTRONAUT) in one `dockGuide` group with 20–60 s cooldowns. The director's priorities keep them under the critical calls. Far side: the panel is onboard and always there; Houston's calls follow the Earth link as before.
 - **The guidance only reads** (tested: evaluating it never changes the state). Docking is still decided only by `judgeContact`.
 
-**Proof it teaches enough:** `guidedPilot` is a student that does only what the panel says (MODE when told, one tap, then a pause to see the effect; nothing while it says wait). It docks all three difficulties at 0.25–0.4 s reaction time in the unit tests. In the browser, the same student reads the real panel and presses the real buttons with touch events in real time, with no autopilot and no time scale, and docks.
+**Proof it teaches enough:** `guidedPilot` is a student that does only what the panel says (MODE when told, one tap, then a pause to see the effect; nothing while it says wait). It docks all three difficulties at reaction times from 0.25 s to 1.2 s in the unit tests. (Naming one rotation axis at a time used to fail COMMANDER from about 0.9 s: the other axes kept turning. Naming every axis that needs it fixed this.) In the browser, the same student reads the real panel and presses the real buttons with touch events in real time, with no autopilot and no time scale, and docks.
 
 **Validation tooling** (adds to §44): `__lvDock.guidance`, `__lvDock.restarts`, `__lvDockingTools.guidedPilot` and `checkpointState`.
 

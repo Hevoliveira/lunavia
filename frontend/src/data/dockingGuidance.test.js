@@ -10,9 +10,10 @@ const at = (d, over) => {
 };
 
 describe("following the guidance alone docks", () => {
-  test.each(DIFFICULTY_KEYS.flatMap((d) => [[d, 0.25], [d, 0.4]]))("%s, reaction time %ss", (d, lag) => {
+  // from a quick pilot to a slow one (a second and more between seeing and tapping)
+  test.each(DIFFICULTY_KEYS.flatMap((d) => [[d, 0.25], [d, 0.4], [d, 0.9], [d, 1.2]]))("%s, reaction time %ss", (d, lag) => {
     const pilot = guidedPilot(d, { lag });
-    const r = flyDocking(d, pilot, { lag, maxT: 1500 });
+    const r = flyDocking(d, pilot, { lag, maxT: 1800 });
     if (!r.docked) console.log(d, lag, r.state.status, r.state.failure, r.events.slice(-3), pilot.log.slice(-5));
     expect(r.docked).toBe(true);
     expect(r.state.prop).toBeGreaterThan(0);

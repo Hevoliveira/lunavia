@@ -155,17 +155,22 @@ export function evaluate(s, difficulty = "ASTRONAUT", ctx = {}, active = null) {
     const need = wantR.map((w, i) => w - s.w[i]);
     // tap threshold with hysteresis: lower while a tap order is up, higher while waiting
     const tapAt = (is("att", "rot") ? 0.5 : is("attWait") ? 1.1 : 0.75) * akick;
-    // work the axis furthest out of tolerance first; another axis only once it is converging
+    // the axis furthest out of tolerance leads; any other axis that needs a comparable
+    // correction is named with it (the pad takes two fingers), so no turn runs on unwatched
     const order = [0, 1, 2].sort((a, b) => Math.abs(err[b]) / thrA[b] - Math.abs(err[a]) / thrA[a]);
     const ax = order.find((i) => Math.abs(need[i]) > tapAt);
+    const axes = ax == null ? [] : order.filter((i) => Math.abs(need[i]) > tapAt && Math.abs(need[i]) >= 0.5 * Math.abs(need[ax]));
     d.ax = ax != null ? ax : order[0];
+    d.axes = axes;
     // rotating faster than a capture accepts, with contact imminent: a safety order
     const unsafe = rate > tol.rate && axial < 1.5;
     if (ax != null) {
-      const btn = controlFor("r", ax, need[ax] > 0 ? 1 : -1);
-      // inside the attitude tolerance, what is left is a turn to stop
-      const key = attBad ? "att" : "rot";
-      add({ key, pri: unsafe ? 81 : 70, step: key === "rot" ? 3 : 2, sev: unsafe ? "safety" : "correct", buttons: [btn], mode: "ATTITUDE", d });
+      const buttons = axes.map((i) => controlFor("r", i, need[i] > 0 ? 1 : -1));
+      // inside the attitude tolerance, what is left is a turn to stop (its own hysteresis, so the
+      // title does not flicker between the two)
+      const errOut = err.some((e, i) => Math.abs(e) > (is("att") ? 0.35 : 0.7) * thrA[i]);
+      const key = errOut ? "att" : "rot";
+      add({ key, pri: unsafe ? 81 : 70, step: key === "rot" ? 3 : 2, sev: unsafe ? "safety" : "correct", buttons, mode: "ATTITUDE", d });
     } else {
       add({ key: "attWait", pri: unsafe ? 81 : 24, step: 2, sev: unsafe ? "safety" : "wait", d });
     }
@@ -282,11 +287,13 @@ export function createGuidance(difficulty = "ASTRONAUT", { minHold = 1.5, confir
   let cur = null; // { key, since, cand }
   let confirm = null; // { key, until }
   let lastDir = {}; // "t1" → { sign, t }: the last order on each control axis
+  let quiet = {}; // family → t: after a confirmed correction its rule keeps quiet a moment
   let switches = 0;
   const reset = () => {
     cur = null;
     confirm = null;
     lastDir = {};
+    quiet = {};
   };
   const dirsOf = (c) => (c.buttons || []).map((b) => ({ axis: CONTROLS[b].axis + CONTROLS[b].i, sign: CONTROLS[b].v, a: CONTROLS[b].axis, i: CONTROLS[b].i }));
   // Firing against motion already under way on that axis is braking (stopping a turn or a
@@ -299,7 +306,9 @@ export function createGuidance(difficulty = "ASTRONAUT", { minHold = 1.5, confir
   function update(s, ctx = {}) {
     const t = s.t;
     if (cur && t < cur.since) reset(); // the clock went back: a new attempt
-    const cands = evaluate(s, difficulty, ctx, cur && cur.key);
+    // a family just confirmed stays quiet a moment (the ✓ is not followed at once by a new order
+    // of the same kind), unless it is a safety order
+    const cands = evaluate(s, difficulty, ctx, cur && cur.key).filter((c) => c.pri >= SAFETY || !FAMILY[c.key] || !(quiet[FAMILY[c.key]] > t));
     let pick = cands[0];
     const curC = cur && cands.find((c) => c.key === cur.key);
     // hold the current instruction a moment once it is on screen (not behind a confirmation),
@@ -317,7 +326,10 @@ export function createGuidance(difficulty = "ASTRONAUT", { minHold = 1.5, confir
     // rule has no tap left to order): confirm it
     const actionLeft = cur && FAMILY[cur.key] && cands.some((c) => FAMILY[c.key] === FAMILY[cur.key] && c.buttons.length);
     const sameFamily = cur && FAMILY[cur.key] && FAMILY[pick.key] === FAMILY[cur.key];
-    if (cur && !curC && !actionLeft && !sameFamily && CONFIRM[cur.key] && cur.key !== pick.key && !confirm) confirm = { key: CONFIRM[cur.key], until: t + confirmS };
+    if (cur && !curC && !actionLeft && !sameFamily && CONFIRM[cur.key] && cur.key !== pick.key && !confirm) {
+      confirm = { key: CONFIRM[cur.key], until: t + confirmS };
+      if (FAMILY[cur.key]) quiet[FAMILY[cur.key]] = t + minHold;
+    }
     const switched = !cur || pick.key !== cur.key;
     if (switched) {
       cur = { key: pick.key, since: t, cand: pick, shown: null };
@@ -403,8 +415,9 @@ export function guidanceText(g, difficulty = "ASTRONAUT", lang = "en", ctx = {})
   const m = d.m;
   const level = difficulty === "CADET" ? 2 : difficulty === "ASTRONAUT" ? 1 : 0;
   const ctl = controlText(g, L, !!ctx.keyboard);
-  const ax = d.ax != null ? AXIS[L][d.ax] : "";
-  const axErr = d.err && d.ax != null ? dg(d.err[d.ax]) : "";
+  const many = d.axes && d.axes.length > 1;
+  const ax = many ? d.axes.map((i) => AXIS[L][i]).join(pt ? " E " : " AND ") : d.ax != null ? AXIS[L][d.ax] : "";
+  const axErr = d.err && d.ax != null ? (many ? d.axes.map((i) => dg(d.err[i])).join("°/") : dg(d.err[d.ax])) : "";
   const T = {
     acquire: [
       pt ? "ALVO DE DOCKING À FRENTE" : "DOCKING TARGET AHEAD",
