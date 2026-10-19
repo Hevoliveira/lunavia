@@ -1,12 +1,15 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 4bd83f2**.
+This folder installs **BUILD 4061929**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 4bd83f2 · 2026-10-18 21:33 UTC**
+> **LUNAVIA iOS · BUILD 4061929 · 2026-10-19 03:53 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **4bd83f2** is the previous release: mission scoring, medals and achievements, but the docking
+  ports were not marked (no TARGET DOCKING PORT marker, approach corridor, capture conditions or
+  FOCUS DOCKING PORTS);
 - **f9b4dd4** is the previous release: the four docking views, but no mission scores, medals,
   achievements, mission debrief or flight records;
 - **6bf030a** is the previous release: RESTART DOCKING and the docking guidance, but the docking
@@ -75,24 +78,22 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | RESTART DOCKING (hold, at any time in the approach; back to the final-approach checkpoint, never the ascent) and the live DOCKING GUIDANCE panel (one instruction at a time from the docking telemetry: step 1–5, the correction, the button to press, a confirmation; by difficulty; GUIDANCE ON/OFF; Mission Control calls) | #20 | 77c98e5, 6bf030a |
 | Four docking views: NAV (the navigation display, as before), WINDOW (first person through the overhead docking window), COCKPIT (the 3D cabin with live instruments) and 360° (a free camera around the ascent stage: drag, pinch, RESET CAMERA), all on the one docking simulation | #21 | f9b4dd4 |
 | Mission scoring, medals and achievements: 1,000 points (lunar landing 400, docking 300, reentry 300) from what each phase measured; BRONZE, SILVER, GOLD and PLATINUM (PLATINUM on COMMANDER); 17 achievements; personal records for each destination and difficulty; the MISSION DEBRIEF after splashdown; FLIGHT RECORDS (medals and records, achievements, mission log) | #22 | e0bf765, 4bd83f2 |
+| Docking ports made clear: the CSM's receiving port and your drogue marked on the real interfaces, the TARGET DOCKING PORT marker (hidden, out-of-window and off-screen conventions), the approach corridor, port-to-port alignment, the approach status, the FINAL APPROACH capture conditions from the physics' own tolerances, the cause of a failed contact, and FOCUS DOCKING PORTS in 360° | #23 | 4061929 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 4bd83f2** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release adds mission scoring, medals, achievements and flight records; the flying is unchanged.**
-  - **Nothing changes in flight:** no score is shown while you land, dock or re-enter.
-  - **After splashdown:** **MISSION COMPLETE** appears as before. After 5 seconds (or press **MISSION DEBRIEF**) comes **LUNAVIA — MISSION DEBRIEF**:
-    - the landing out of 400, the docking out of 300 and the reentry out of 300, each with a rating;
-    - the total out of 1,000 and the medal;
-    - the achievements this mission unlocked and your personal record;
-    - one tip for next time.
-  - Tap the debrief to show everything at once. It stays until you choose **MISSIONS**, **FLIGHT RECORDS** or **MAIN MENU**. **DETAILED TELEMETRY** shows every measured value, the points it earned and the rule.
-  - **Medals:** BRONZE 500, SILVER 700, GOLD 850, PLATINUM 950. A medal needs a safe landing, the docking and a splashdown with no capsule lost (after **RETRY ENTRY** the mission finishes, but without a medal). CADET and ASTRONAUT can earn up to GOLD; PLATINUM is for COMMANDER.
-  - **A failed mission:** END MISSION after a crash, a failed docking or a lost capsule shows the partial score, with no medal.
-  - **FLIGHT RECORDS** (on MISSIONS, and from the debrief): MEDALS & RECORDS (each destination and difficulty), ACHIEVEMENTS (earned and locked, with what each needs) and the MISSION LOG (every official flight; tap one to see its debrief again). The MISSIONS cards show each destination's best medal.
+- **Built from the clean tree at 4061929** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release shows where the two spacecraft connect; the docking itself is unchanged** (the same physics, limits, RCS and difficulties).
+  - **The two ports:** on the CSM, the docking ring (a light ring with four orange marks) and the probe sticking out of it; on your ascent stage, the drogue (the funnel the probe enters) on top of the tunnel. While you fly the approach the CSM's port has a thin cyan ring and yours an orange one.
+  - **TARGET DOCKING PORT:** a cyan bracket on the CSM's probe and ring (not the middle of the CSM), with the distance. It follows the port in every view and tightens as you close; in the last metres only its corners stay, so the port stays clear. When the port is behind a hull it is dashed and marked HIDDEN; outside the cockpit window, OUT OF WINDOW VIEW; off screen, an arrow points to it.
+  - **The approach corridor:** the line straight out of the probe, rings at 5, 10, 20 and 30 m and a small ring at the probe tip (where your port must arrive). Cyan when you are inside the corridor, amber when you are not.
+  - **The HUD measures port to port:** PORT–PORT distance, CLOSING, OFFSET R/L and U/D (your port from the probe's axis), DRIFT and PORT ANGLE. The status line says what to do: TARGET ACQUIRED, ALIGN DOCKING PORTS, CORRECT LATERAL OFFSET, CORRECT ATTITUDE, APPROACH CORRIDOR ALIGNED, REDUCE CLOSING VELOCITY, UNSAFE APPROACH, FINAL APPROACH AUTHORIZED, DOCKING CONTACT, HARD DOCK CONFIRMED.
+  - **FINAL APPROACH · CAPTURE CONDITIONS** (NAV; six dots in the other views): port alignment, lateral offset, lateral drift, closing velocity, rotation and the corridor, each against the docking's own limits. When all are green: **PROCEED WITH FINAL APPROACH**.
+  - **How to correct:** the guidance names the move (MOVE LEFT, TRANSLATE UP, REDUCE CLOSING VELOCITY…) and the button; in NAV an arrow on the reticle shows the same move; in 360° an amber arrow on your vehicle shows which way the jets will push it.
+  - **When a contact fails** the game says why, with the number: for example LATERAL OFFSET 0.33 m > 0.20 m, IMPACT VELOCITY too high, or contact with a part of the CSM that is not the port.
+  - **360°:** **FOCUS DOCKING PORTS** moves the camera to the side to show both ports together; drag and pinch still work, and **RESET CAMERA** goes back.
   - English or Brazilian Portuguese, following the subtitle language in AUDIO.
-  - **Kept on the iPhone, offline:** no account and no leaderboard. Training flights are kept apart and never count.
-- **As in the previous releases:** the four docking views (**NAV | WINDOW | COCKPIT | 360°**), **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel.
+- **As in the previous releases:** mission scoring, medals, achievements and FLIGHT RECORDS; the four docking views; **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel.
 - **How a mission goes after the landing** (as in the previous release):
   1. After a successful landing, **CONTINUE MISSION** shows **LUNAR SURFACE — ASCENT PREPARATION**: the checklist ticks in, and nothing starts until you press **INITIATE LUNAR ASCENT**.
   2. A short countdown, then **PROCEED**. The ascent stage leaves the descent stage, which stays on the Moon with its legs, and climbs away. SKIP CINEMATIC goes on to orbit.
@@ -102,7 +103,7 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
      - **MODE** switches the pad to **ATTITUDE** (pitch and yaw; the right buttons roll).
      - A tap is one small RCS pulse; holding keeps the jets firing. Two fingers work together.
      - **NAV | WINDOW | COCKPIT | 360°** choose the view (in NAV, the cyan circle on the reticle is the probe tip).
-     - The panel top right shows the port's offset (dot) and the attitude (cross) against the capture circle. **IN CORRIDOR** means a docking now would latch.
+     - The panel top right shows your port's offset (dot) and the attitude (cross) against the capture circle, INSIDE / OUTSIDE CORRIDOR, and the capture conditions (all green: PROCEED WITH FINAL APPROACH).
      - CADET: **AUTO ALIGN** holds the attitude for you. ASTRONAUT: the attitude holds still when you let go. COMMANDER: nothing holds; you stop what you start.
      - Too fast, off the axis, misaligned or rotating: no capture, and the vehicles push apart. Back off and try again. A hard impact or a collision ends the attempt: **RESTART DOCKING** (no new landing or launch).
   5. **HARD DOCK CONFIRMED**, crew transfer, the ascent stage jettisoned, then the return and reentry as before. MISSION COMPLETE needs the docking.
@@ -113,4 +114,4 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
+  - every feature above is in the bundled game, including the docking-port markers (English and Portuguese), FOCUS DOCKING PORTS, the capture conditions and the approach corridor, the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
