@@ -27,6 +27,7 @@
  * so the pad's ▲ ▼ ◀ ▶ mean the same on screen in NAV, WINDOW and COCKPIT.
  */
 import { PORT_B, qConj, qMul, qNorm, qRot } from "./dockingSim";
+import { portsMidpoint } from "./dockingPorts";
 
 export const VIEWS = ["NAV", "WINDOW", "COCKPIT", "ORBIT"];
 export const VIEW_LABEL = { NAV: "NAV", WINDOW: "WINDOW", COCKPIT: "COCKPIT", ORBIT: "360°" };
@@ -119,7 +120,8 @@ export function lookAtQ(pos, target, up = [0, 0, 1]) {
  */
 export function viewCamera(view, s, orbit = ORBIT_DEFAULT) {
   if (view === "ORBIT") {
-    const target = s.pos.slice();
+    // centred on the ascent stage, or (FOCUS DOCKING PORTS) on the point between the two ports
+    const target = orbit.focus === "ports" ? portsMidpoint(s) : s.pos.slice();
     const off = orbitOffset(orbit);
     const pos = [target[0] + off[0], target[1] + off[1], target[2] + off[2]];
     // near the poles the CSM frame's +Z stops being a usable "up": use the azimuth's own direction
