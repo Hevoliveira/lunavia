@@ -35,6 +35,7 @@
  * settle" instead).
  */
 import { DOCKING, PULSE, qConj, qRot, telemetry } from "./dockingSim";
+import { captureReadiness } from "./dockingPorts";
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -235,7 +236,8 @@ export function evaluate(s, difficulty = "ASTRONAUT", ctx = {}, active = null) {
   /* the good news: cleared for the approach, contact imminent */
   const attOk = m.angle < tol.angle && Math.abs(m.roll) < tol.roll;
   if (lined && attOk) {
-    const ready = m.closing >= tol.vMin && m.closing <= m.closingLimit && m.vLatR < tol.vLat && m.angle < tol.angle && Math.abs(m.roll) < tol.roll && m.rate < tol.rate && m.offsetR < tol.lateral;
+    // the same capture check as the FINAL APPROACH display (data/dockingPorts): every tolerance met
+    const ready = captureReadiness(s, difficulty).ready;
     if (ready && axial < (is("standby") ? 2 : 1.5)) add({ key: "standby", pri: 30, step: 4, sev: "ok", d });
     add({ key: "good", pri: 25, step: 4, sev: "ok", d });
   }

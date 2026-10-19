@@ -32,6 +32,9 @@ import { COAST, FINAL, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf 
 import { CONTROLS, GUIDANCE_VOICE, STEPS, UI as GUI, createGuidance, guidanceText, guidedPilot } from "@/data/dockingGuidance";
 import { FIRST_PERSON, ORBIT_DEFAULT, VIEWS, VIEW_LABEL, orbitDrag, orbitZoom, viewCamera } from "@/data/dockingViews";
 import { CabinLight, Cockpit, WindowFrame, rcsLevels } from "@/components/DockingCabin";
+import { ActivePortHardware, ApproachCorridor, PortMarkers, TargetPortHardware, placePortMarkers } from "@/components/DockingPorts";
+import { actionWords, approachStatus, contactCause, focusOrbit, portFrames } from "@/data/dockingPorts";
+import { PORT_TEXT, STATUS_SEV, readinessRows, statusText } from "@/data/dockingPortsText";
 import { VERBOSITY } from "@/audio/commsDirector";
 import { useAudioSettings } from "@/audio/audioSettings";
 
@@ -184,7 +187,7 @@ function MoonBelow({ clockRef }) {
 }
 
 /* ---- the vehicles --------------------------------------------------------------------------- */
-function Vehicles({ simRef, viewRef }) {
+function Vehicles({ simRef, viewRef, phaseRef }) {
   const lm = useRef();
   const lmLevels = useRef(LM_RCS.map(() => 0));
   useFrame(() => {
@@ -202,57 +205,33 @@ function Vehicles({ simRef, viewRef }) {
     <>
       <group name="CSM-lunar-orbit">
         <CsmModel castShadow receiveShadow />
+        <TargetPortHardware simRef={simRef} phaseRef={phaseRef} />
       </group>
       <group ref={lm} name="LM-ascent-stage">
         <group position={[-LM_CENTRE_M[0], -LM_CENTRE_M[1], -LM_CENTRE_M[2]]} scale={LM_UNIT}>
           <LanderModel parts="ascent" />
           <RcsPuffs thrusters={LM_RCS} levelsRef={lmLevels} length={0.32} />
         </group>
+        <ActivePortHardware simRef={simRef} phaseRef={phaseRef} />
       </group>
     </>
   );
 }
 
-/** The docking corridor drawn in space in the external view: the probe's axis and the ascent stage's port axis. */
-function Corridor({ simRef, viewRef }) {
-  const probeAxis = useMemo(() => {
-    const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...PROBE_TIP), new THREE.Vector3(PROBE_TIP[0], PROBE_TIP[1] + 60, PROBE_TIP[2])]);
-    return g;
-  }, []);
-  const lmAxisGeo = useMemo(() => new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 1, 0)]), []);
-  const lmAxis = useRef();
-  const grp = useRef();
-  useFrame(() => {
-    const s = simRef.current;
-    if (!grp.current || !s) return;
-    grp.current.visible = viewRef.current === "ORBIT" && s.mode === "docking" && s.status === "approach";
-    const { port, axis } = portState(s);
-    const pos = lmAxisGeo.attributes.position;
-    pos.setXYZ(0, port[0], port[1], port[2]);
-    pos.setXYZ(1, port[0] + axis[0] * 12, port[1] + axis[1] * 12, port[2] + axis[2] * 12);
-    pos.needsUpdate = true;
-    lmAxisGeo.computeBoundingSphere();
-  });
-  return (
-    <group ref={grp} visible={false}>
-      <line geometry={probeAxis}>
-        <lineDashedMaterial color="#4fd1c5" transparent opacity={0.55} dashSize={0.6} gapSize={0.4} />
-      </line>
-      <line ref={lmAxis} geometry={lmAxisGeo}>
-        <lineBasicMaterial color="#FF3B00" transparent opacity={0.7} />
-      </line>
-    </group>
-  );
-}
-
 /* ---- camera and the screen-space markers ------------------------------------------------------ */
 const FAR_AXIS = [0, DOCK_Y - 7, 0]; // a point on the probe's axis inside the CSM (the far mark of the alignment display)
-function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef, orbitRef }) {
+function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef, orbitRef, markerApiRef }) {
   const { camera, size } = useThree();
   const pos = useRef(new THREE.Vector3(0, 60, 20));
   const look = useRef(new THREE.Vector3());
   const up = useRef(new THREE.Vector3(0, 0, 1));
   const first = useRef(true);
+  // the port markers, from the camera just placed (none outside the flown approach)
+  const ports = (s, v) => {
+    const api = markerApiRef.current;
+    if (!api) return;
+    api(phaseRef.current === "docking" && s.mode === "docking" && s.status === "approach" ? placePortMarkers(s, v, camera, size) : null);
+  };
   const proj = (p) => {
     _w.set(p[0], p[1], p[2]).project(camera);
     return { x: (_w.x * 0.5 + 0.5) * size.width, y: (-_w.y * 0.5 + 0.5) * size.height, front: _w.z < 1 };
@@ -294,6 +273,7 @@ function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef, orbit
         m.far = proj(FAR_AXIS);
       }
       if (typeof window !== "undefined") window.__lvDockCam = { view: v, pos: cam.pos, q: cam.q, fov: cam.fov }; // validation tooling
+      ports(s, v);
       sizeRef.current = { w: size.width, h: size.height };
       clockRef.current = s.missionT || 0;
       return;
@@ -353,6 +333,7 @@ function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef, orbit
     camera.lookAt(look.current);
     camera.updateMatrixWorld();
     if (typeof window !== "undefined" && dockingPhase) window.__lvDockCam = { view: v, pos: camera.position.toArray(), q: camera.quaternion.toArray(), fov: camera.fov };
+    ports(s, v);
     // markers: the CSM far out (rendezvous), the probe tip and the far axis mark (alignment)
     const m = markRef.current;
     if (m) {
@@ -571,7 +552,7 @@ function HoldButton({ label, sub, hintText, onFire, testId, disabled = false }) 
 
 const SEV = { safety: "#FF3B00", correct: "#f5c451", wait: "#9fb6cc", info: "#9fb6cc", go: "#4fd1c5", ok: "#4fd1c5" };
 /** The live DOCKING GUIDANCE panel: step, the one correction, how, and the numbers behind it. */
-function GuidancePanel({ g, text, lang, on, onToggle, clearAlign = false }) {
+function GuidancePanel({ g, text, action = "", lang, on, onToggle, clearAlign = false }) {
   const ui = GUI[lang] || GUI.en;
   // between the pad (left) and the FWD/AFT column (right); clear of CADET's AUTO ALIGN button too
   const right = clearAlign ? "right-[calc(var(--sar,0px)_+_132px)] short:right-[calc(var(--sar,0px)_+_124px)]" : "right-[calc(var(--sar,0px)_+_92px)] short:right-[calc(var(--sar,0px)_+_84px)]";
@@ -624,7 +605,8 @@ function GuidancePanel({ g, text, lang, on, onToggle, clearAlign = false }) {
           <div className="flex flex-wrap items-baseline gap-x-2 mt-0.5">
             {text.control && (
               <span className="text-[10px] text-[#4fd1c5] tracking-[0.06em]" data-testid="dock-guidance-control">
-                ▸ {text.control}
+                ▸ {action && (g.mode === "TRANSLATION" || g.mode == null) ? `${action} — ` : ""}
+                {text.control}
               </span>
             )}
             {text.support && (
@@ -635,6 +617,62 @@ function GuidancePanel({ g, text, lang, on, onToggle, clearAlign = false }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The approach status (data/dockingPorts approachStatus), one line in the status's colour. */
+function StatusLine({ ap, phase, lang, small = false }) {
+  const key = phase === "captured" ? "contact" : ap ? ap.key : null;
+  const text = key ? statusText(key === "contact" ? { key } : ap, lang) : "";
+  const color = SEV[STATUS_SEV[key]] || "#ffffff";
+  return (
+    <div className={`${small ? "text-[8.5px]" : "text-[10px] short:text-[9px]"} tracking-[0.1em] mt-0.5 leading-tight`} style={{ color }} data-testid="dock-status" data-key={key || ""}>
+      {text}
+    </div>
+  );
+}
+
+/** The capture conditions (FINAL APPROACH), every one against the physics' tolerance (NAV). */
+function ReadinessPanel({ ap, lang }) {
+  if (!ap || !ap.readiness) return null;
+  const T = PORT_TEXT[lang] || PORT_TEXT.en;
+  const rows = readinessRows(ap.readiness, lang);
+  return (
+    <div className="bg-black/55 border border-white/10 px-1.5 py-1 font-mono w-[180px] short:w-[172px]" data-testid="dock-readiness" data-ready={ap.ready ? "1" : "0"}>
+      <div className="text-[6.5px] tracking-[0.14em] text-zinc-400 truncate">{T.readyHead}</div>
+      {rows.map((r) => (
+        <div key={r.id} className="flex justify-between gap-1 text-[7.5px] leading-[1.3] tabular" data-testid={`dock-ready-${r.id}`} data-ok={r.ok ? "1" : "0"}>
+          <span className="text-zinc-400 truncate">{r.label}</span>
+          <span className="whitespace-nowrap" style={{ color: r.ok ? SEV.ok : SEV.correct }}>
+            {r.ok ? "✓ " : ""}
+            {r.value}
+          </span>
+        </div>
+      ))}
+      {ap.ready && (
+        <div className="text-[8px] tracking-[0.1em] mt-0.5" style={{ color: SEV.ok }} data-testid="dock-proceed">
+          ▶ {T.proceed}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The same six conditions as dots, for the views that keep the screen clear (WINDOW, COCKPIT, 360°). */
+const DOT_LABEL = { en: ["ALN", "OFS", "DRF", "CLS", "ROT", "COR"], pt: ["ALI", "DES", "DER", "APX", "ROT", "COR"] };
+function ReadyDots({ ap, lang, boxed = false }) {
+  if (!ap || !ap.readiness) return null;
+  const rows = readinessRows(ap.readiness, lang);
+  const L = DOT_LABEL[lang] || DOT_LABEL.en;
+  return (
+    <div className={`flex gap-1 font-mono text-[7px] tracking-[0.06em] mt-0.5 ${boxed ? "bg-black/55 border border-white/10 px-1.5 py-0.5" : ""}`} data-testid="dock-ready-compact" data-ready={ap.ready ? "1" : "0"}>
+      {rows.map((r, i) => (
+        <span key={r.id} style={{ color: r.ok ? SEV.ok : SEV.correct }} title={`${r.label}: ${r.value}`}>
+          {r.ok ? "●" : "○"}
+          {L[i]}
+        </span>
+      ))}
     </div>
   );
 }
@@ -700,6 +738,11 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   const [toast, setToast] = useState(null);
   const [linkUp, setLinkUp] = useState(!farSide);
   const markRef = useRef({});
+  // the docking ports: the screen markers' painter, the approach status (hysteresis) and the
+  // guidance on display (the 360° arrow), all read from the one simulation
+  const markerApiRef = useRef(null);
+  const statusRef = useRef(null);
+  const guideRef = useRef(null);
   const sizeRef = useRef({ w: 1, h: 1 });
   const clockRef = useRef(0);
   const attemptsRef = useRef(1);
@@ -839,6 +882,8 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
     keysBlocked.current = new Set(keysDown.current);
     guidanceRef.current.reset();
     lastGuideKey.current = null;
+    statusRef.current = null; // the approach status starts afresh with the attempt
+    guideRef.current = null;
     attemptOpen.current = true;
     if (!firstStartRef.current) firstStartRef.current = performance.now();
     startedAtRef.current = performance.now();
@@ -908,7 +953,8 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
         return;
       }
       if (e.kind === "deflected" || e.kind === "outside" || (e.kind === "collision" && e.recoverable)) {
-        setToast({ text: e.title, at: performance.now(), tone: "warn" });
+        // the cause comes with it (data/dockingPorts contactCause, from the physics' own facts)
+        setToast({ text: e.title, e, snap: { pos: s.pos.slice(), q: s.q.slice(), vel: s.vel.slice(), w: s.w.slice() }, at: performance.now(), tone: "warn" });
         audio && audio.thud && audio.thud(0.35);
         say(e.kind === "collision" ? "dock.collision" : "dock.deflected");
         return;
@@ -917,7 +963,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
         audio && audio.thud && audio.thud(0.6);
         if (e.kind === "collision" || e.kind === "damage") say("dock.collision");
         closeAttempt();
-        setFailure(e);
+        setFailure({ ...e, snap: { pos: s.pos.slice(), q: s.q.slice(), vel: s.vel.slice(), w: s.w.slice() } });
         setPhase("failed");
         onResult && onResult({ success: false, failure: e.kind, attempts: attemptsRef.current, restarts: restartsRef.current, contacts: contactsRef.current });
       }
@@ -986,7 +1032,11 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
         }
       }
       extraRef.current = { mode: modeRef.current, align: alignRef.current, step: g && g.step };
-      setHud({ tel, st, g, status: s.status, m: { ...markRef.current }, size: { ...sizeRef.current }, missionT: s.missionT || 0 });
+      // the ports' approach status and the capture checklist (data/dockingPorts; read-only)
+      const ap = (ph === "docking" || ph === "captured") && s.mode === "docking" ? approachStatus(s, difficulty, statusRef.current) : null;
+      statusRef.current = ap;
+      guideRef.current = guideOnRef.current ? g : null;
+      setHud({ tel, st, g, ap, status: s.status, m: { ...markRef.current }, size: { ...sizeRef.current }, missionT: s.missionT || 0 });
       if (typeof window !== "undefined") {
         window.__lvDock = {
           phase: ph,
@@ -1011,13 +1061,14 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           guidanceOn: guideOnRef.current,
           viewSwitches: viewSwitches.current,
           orbit: { ...orbitRef.current },
+          ports: ap && { status: ap.key, corridor: ap.corridor, unsafe: ap.unsafe, ready: ap.ready, items: ap.readiness ? Object.fromEntries(Object.entries(ap.readiness.items).map(([k, v]) => [k, v.ok])) : null },
         };
         window.__lvDockState = s; // validation tooling (read-only)
       }
       // the closing-rate warning, said once per breach
       if (st && st.warnings.includes("REDUCE CLOSING VELOCITY")) say("dock.closing");
     }, 100);
-    if (typeof window !== "undefined") window.__lvDockingTools = { referencePilot, telemetry, guidedPilot, checkpointState };
+    if (typeof window !== "undefined") window.__lvDockingTools = { referencePilot, telemetry, guidedPilot, checkpointState, portFrames };
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [difficulty]);
@@ -1136,7 +1187,12 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   const offDot = tel ? [Math.max(-1, Math.min(1, tel.offset[0])) * (box / 2 - 6), -Math.max(-1, Math.min(1, tel.offset[1])) * (box / 2 - 6)] : [0, 0];
   const attCross = tel ? [Math.max(-1, Math.min(1, -deg(tel.yaw) / 10)) * (box / 2 - 6), -Math.max(-1, Math.min(1, deg(tel.pitch) / 10)) * (box / 2 - 6)] : [0, 0];
   const tolLat = cfg.tol.lateral;
-  const ok = tel && tel.offsetR < tolLat && tel.angle < cfg.tol.angle && tel.closing <= tel.closingLimit && tel.vLatR < cfg.tol.vLat;
+  const ap = hud && hud.ap;
+  const PT = PORT_TEXT[lang] || PORT_TEXT.en;
+  const lr = (v) => (v >= 0 ? (lang === "pt" ? "D" : "R") : lang === "pt" ? "E" : "L");
+  const ud = (v) => (v >= 0 ? (lang === "pt" ? "C" : "U") : lang === "pt" ? "B" : "D");
+  const action = guideOn && g && !g.confirm && phase === "docking" ? actionWords(g, lang) : "";
+  const navDirs = guideOn && g && !g.confirm && phase === "docking" ? (g.buttons || []).filter((b) => ["left", "right", "up", "down"].includes(b)) : [];
 
   return (
     <div className="absolute inset-0 bg-black" data-testid="docking-ops" data-phase={phase}>
@@ -1156,17 +1212,19 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           <Stars radius={2500} depth={300} count={4000} factor={60} saturation={0} fade speed={0} />
           <Suspense fallback={null}>
             <MoonBelow clockRef={clockRef} />
-            <Vehicles simRef={simRef} viewRef={viewRef} />
-            <Corridor simRef={simRef} viewRef={viewRef} />
+            <Vehicles simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} />
+            <ApproachCorridor simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} difficulty={difficulty} statusRef={statusRef} guideRef={guideRef} />
           </Suspense>
           <WindowFrame simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} />
           <Cockpit simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} difficulty={difficulty} extraRef={extraRef} />
           <CabinLight simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} />
-          <Director simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} markRef={markRef} sizeRef={sizeRef} clockRef={clockRef} orbitRef={orbitRef} />
+          <Director simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} markRef={markRef} sizeRef={sizeRef} clockRef={clockRef} orbitRef={orbitRef} markerApiRef={markerApiRef} />
           <SimLoop simRef={simRef} inputRef={inputRef} phaseRef={phaseRef} difficulty={difficulty} alignRef={alignRef} pausedRef={pausedRef} onEvent={onEvent} plan={plan} />
           <AdaptiveResolution />
         </Canvas>
       </div>
+      {/* the docking ports' screen markers, placed every frame from the real 3D ports */}
+      <PortMarkers apiRef={markerApiRef} lang={lang} />
 
       {/* Orbit insertion and the rendezvous: the guidance's own numbers */}
       {(phase === "insertion" || phase === "rendezvous") && (
@@ -1227,24 +1285,33 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           {(view === "NAV" || view === "ORBIT") && (
           <div className="absolute top-14 short:top-[var(--hud-top)] left-4 md:left-8 safe-ml z-30 pointer-events-none bg-black/55 backdrop-blur-sm border border-white/10 px-3 py-2 short:px-2 short:py-1.5 font-mono tabular w-[188px] short:w-[172px]" data-testid="dock-hud">
             <div className="text-[8px] tracking-[0.35em] text-[#FF3B00]">● DOCKING · {difficulty}</div>
-            <div className="text-white text-[10px] short:text-[9px] tracking-[0.12em] mt-0.5 truncate" data-testid="dock-status">{phase === "captured" ? "DOCKING CONTACT · CAPTURE" : st ? st.phase : ""}</div>
-            <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] short:text-[9px]">
-              <span className="text-zinc-400">RANGE</span>
-              <span className="text-right text-white" data-testid="dock-range">{tel.axial.toFixed(tel.axial < 10 ? 2 : 1)} m</span>
-              <span className="text-zinc-400">CLOSING</span>
+            <StatusLine ap={ap} phase={phase} lang={lang} />
+            <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 short:gap-y-0 text-[10px] short:text-[9px]">
+              <span className="text-zinc-400">{PT.portDist}</span>
+              <span className="text-right text-white" data-testid="dock-range">{tel.range.toFixed(tel.range < 10 ? 2 : 1)} m</span>
+              <span className="text-zinc-400">{PT.closing}</span>
               <span className={`text-right ${warnColor(tel.closing > tel.closingLimit)}`} data-testid="dock-closing">{tel.closing.toFixed(3)}</span>
-              <span className="text-zinc-400">LAT R/L</span>
-              <span className={`text-right ${warnColor(Math.abs(tel.vLat[0]) > cfg.tol.vLat)}`}>{tel.vLat[0].toFixed(3)}</span>
-              <span className="text-zinc-400">VERT U/D</span>
-              <span className={`text-right ${warnColor(Math.abs(tel.vLat[1]) > cfg.tol.vLat)}`}>{tel.vLat[1].toFixed(3)}</span>
-              <span className="text-zinc-400">OFFSET</span>
-              <span className={`text-right ${warnColor(tel.offsetR > Math.max(tolLat, 0.12 * tel.axial))}`} data-testid="dock-offset">
-                {tel.offset[0] >= 0 ? "R" : "L"}
-                {Math.abs(tel.offset[0]).toFixed(2)} {tel.offset[1] >= 0 ? "U" : "D"}
-                {Math.abs(tel.offset[1]).toFixed(2)}
+              <span className="text-zinc-400">{PT.offLR}</span>
+              <span className={`text-right ${warnColor(Math.abs(tel.offset[0]) > Math.max(tolLat, 0.12 * tel.axial))}`} data-testid="dock-offset">
+                {lr(tel.offset[0])}
+                {Math.abs(tel.offset[0]).toFixed(2)} m
               </span>
-              <span className="text-zinc-400">ATT P/Y/R</span>
-              <span className={`text-right ${warnColor(tel.angle > cfg.tol.angle)}`} data-testid="dock-att">
+              <span className="text-zinc-400">{PT.offUD}</span>
+              <span className={`text-right ${warnColor(Math.abs(tel.offset[1]) > Math.max(tolLat, 0.12 * tel.axial))}`} data-testid="dock-offset-v">
+                {ud(tel.offset[1])}
+                {Math.abs(tel.offset[1]).toFixed(2)} m
+              </span>
+              <span className="text-zinc-400">{PT.drift}</span>
+              <span className={`text-right whitespace-nowrap ${warnColor(tel.vLatR > cfg.tol.vLat)}`} data-testid="dock-drift">
+                {lr(tel.vLat[0])}
+                {Math.abs(tel.vLat[0]).toFixed(3)} {ud(tel.vLat[1])}
+                {Math.abs(tel.vLat[1]).toFixed(3)}
+              </span>
+              <span className="text-zinc-400">{PT.angle}</span>
+              <span className={`text-right ${warnColor(tel.angle > cfg.tol.angle)}`} data-testid="dock-angle">{deg(tel.angle).toFixed(1)}°</span>
+              {/* the three axes are on the alignment display's cross too: on short screens this row gives way */}
+              <span className="text-zinc-400 short:hidden">{PT.att}</span>
+              <span className={`text-right short:hidden ${warnColor(tel.angle > cfg.tol.angle)}`} data-testid="dock-att">
                 {deg(tel.pitch).toFixed(1)}/{deg(tel.yaw).toFixed(1)}/{deg(tel.roll).toFixed(1)}
               </span>
               <span className="text-zinc-400">RCS</span>
@@ -1267,20 +1334,22 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
 
           {/* WINDOW: a compact readout, so nothing big stands between the window and the target */}
           {view === "WINDOW" && (
-            <div className="absolute top-14 short:top-[var(--hud-top)] left-4 md:left-8 safe-ml z-30 pointer-events-none bg-black/45 backdrop-blur-sm border border-white/10 px-2 py-1 font-mono tabular text-[10px] short:text-[9px] tracking-[0.12em] w-[150px]" data-testid="dock-window-strip">
+            <div className="absolute top-14 short:top-[var(--hud-top)] left-4 md:left-8 safe-ml z-30 pointer-events-none bg-black/45 backdrop-blur-sm border border-white/10 px-2 py-1 font-mono tabular text-[10px] short:text-[9px] tracking-[0.12em] w-[164px]" data-testid="dock-window-strip">
               <div className="text-[8px] tracking-[0.3em] text-[#4fd1c5]">● WINDOW · {difficulty}</div>
+              <StatusLine ap={ap} phase={phase} lang={lang} small />
               <div className="flex justify-between text-white">
-                <span className="text-zinc-400">RANGE</span>
-                <span data-testid="dock-window-range">{tel.axial.toFixed(tel.axial < 10 ? 2 : 1)} m</span>
+                <span className="text-zinc-400">{PT.portDist}</span>
+                <span data-testid="dock-window-range">{tel.range.toFixed(tel.range < 10 ? 2 : 1)} m</span>
               </div>
               <div className={`flex justify-between ${warnColor(tel.closing > tel.closingLimit)}`}>
                 <span className="text-zinc-400">CLOSING</span>
                 <span data-testid="dock-window-closing">{tel.closing.toFixed(3)}</span>
               </div>
               <div className={`flex justify-between ${warnColor(tel.vLatR > cfg.tol.vLat)}`}>
-                <span className="text-zinc-400">LATERAL</span>
+                <span className="text-zinc-400">{lang === "pt" ? "DERIVA" : "DRIFT"}</span>
                 <span>{tel.vLatR.toFixed(3)}</span>
               </div>
+              <ReadyDots ap={ap} lang={lang} />
               {st && st.warnings.length > 0 && (
                 <div className="text-[8px] text-[#FF3B00] leading-tight mt-0.5" data-testid="dock-warnings">
                   ▲ {st.warnings[0]}
@@ -1303,23 +1372,35 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
                 +
               </div>
             </div>
-            <div className="font-mono text-[7px] tracking-[0.15em] text-zinc-400 text-right leading-tight">
-              <span className="text-[#4fd1c5]">●</span> PORT OFFSET ±1 m · <span className="text-[#f5c451]">+</span> ATTITUDE ±10°
+            <div className="font-mono text-[7px] tracking-[0.15em] text-zinc-400 text-right leading-tight short:hidden">{PT.legend}</div>
+            <div className={`font-mono text-[8px] tracking-[0.2em] px-1.5 py-0.5 border ${ap && ap.corridor === "inside" ? "text-[#4fd1c5] border-[#4fd1c5]/60" : "text-[#f5c451] border-[#f5c451]/50"}`} data-testid="dock-corridor" data-corridor={ap ? ap.corridor : ""}>
+              {ap && ap.corridor === "inside" ? PT.inside : PT.outside}
             </div>
-            <div className={`font-mono text-[8px] tracking-[0.2em] px-1.5 py-0.5 border ${ok ? "text-[#4fd1c5] border-[#4fd1c5]/60" : "text-zinc-400 border-white/20"}`} data-testid="dock-corridor">
-              {ok ? "IN CORRIDOR" : "OUT OF CORRIDOR"}
-            </div>
+            {view === "NAV" && <ReadinessPanel ap={ap} lang={lang} />}
+            {view === "ORBIT" && <ReadyDots ap={ap} lang={lang} boxed />}
             {view === "ORBIT" && (
-              <button
-                type="button"
-                data-testid="dock-camera-reset"
-                onClick={() => {
-                  orbitRef.current = ORBIT_DEFAULT;
-                }}
-                className="pointer-events-auto mt-1 min-h-[36px] px-2 font-mono text-[8px] tracking-[0.18em] text-white bg-black/60 border border-white/30"
-              >
-                ⌖ {ui.resetCam}
-              </button>
+              <div className="flex flex-col gap-1 items-end mt-0.5">
+                <button
+                  type="button"
+                  data-testid="dock-camera-focus"
+                  onClick={() => {
+                    orbitRef.current = focusOrbit(simRef.current);
+                  }}
+                  className="pointer-events-auto min-h-[34px] px-2 font-mono text-[8px] tracking-[0.16em] text-[#4fd1c5] bg-black/60 border border-[#4fd1c5]/60"
+                >
+                  ◎ {PT.focus}
+                </button>
+                <button
+                  type="button"
+                  data-testid="dock-camera-reset"
+                  onClick={() => {
+                    orbitRef.current = ORBIT_DEFAULT;
+                  }}
+                  className="pointer-events-auto min-h-[34px] px-2 font-mono text-[8px] tracking-[0.16em] text-white bg-black/60 border border-white/30"
+                >
+                  ⌖ {PT.reset}
+                </button>
+              </div>
             )}
           </div>
           )}
@@ -1338,8 +1419,29 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
               {hud.m.tip.front && <div className="absolute w-3.5 h-3.5 rounded-full border-2 border-[#4fd1c5]" style={{ left: hud.m.tip.x - 7, top: hud.m.tip.y - 7 }} data-testid="dock-tip-mark" />}
             </div>
           )}
+          {/* NAV: the translation the guidance asks for, as chevrons on the reticle (body axes: in NAV
+              screen right is body +X and screen up body +Z, so ◀ is the LEFT button's push) */}
+          {view === "NAV" && phase === "docking" && navDirs.length > 0 && (
+            <div className="absolute left-1/2 top-1/2 z-20 pointer-events-none" data-testid="dock-nav-arrows" data-dirs={navDirs.join(",")}>
+              {navDirs.map((d) => {
+                const at = { left: [-64, 0, 180], right: [64, 0, 0], up: [0, -64, -90], down: [0, 64, 90] }[d];
+                return (
+                  <span key={d} className="absolute font-mono text-[18px] leading-none" style={{ color: SEV[g.sev] || SEV.correct, transform: `translate(-50%,-50%) translate(${at[0]}px, ${at[1]}px) rotate(${at[2]}deg)`, textShadow: "0 0 6px rgba(0,0,0,0.9)" }}>
+                    ➤
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          {/* COCKPIT: no HUD over the cabin; the status and the capture conditions in one small chip */}
+          {view === "COCKPIT" && (
+            <div className="absolute top-14 short:top-[var(--hud-top)] left-4 md:left-8 safe-ml z-30 pointer-events-none bg-black/45 border border-white/10 px-2 py-1 font-mono w-[164px]" data-testid="dock-cockpit-chip">
+              <StatusLine ap={ap} phase={phase} lang={lang} small />
+              <ReadyDots ap={ap} lang={lang} />
+            </div>
+          )}
           {phase === "docking" && controls}
-          {(phase === "docking" || phase === "captured") && <GuidancePanel g={g} text={g && guidanceText(g, difficulty, lang, { keyboard, view })} lang={lang} on={guideOn} onToggle={() => setGuideOn(!guideOn)} clearAlign={!!cfg.autoAlign} />}
+          {(phase === "docking" || phase === "captured") && <GuidancePanel g={g} text={g && guidanceText(g, difficulty, lang, { keyboard, view })} action={action} lang={lang} on={guideOn} onToggle={() => setGuideOn(!guideOn)} clearAlign={!!cfg.autoAlign} />}
           {/* the bar sits a little right of centre: clear of the HUD on the left at 667 pt */}
           <div className="absolute top-14 short:top-[var(--hud-top)] left-[calc(50%_+_24px)] -translate-x-1/2 z-30 flex gap-1.5 items-stretch">
             <button type="button" data-testid="dock-pause" onClick={togglePause} className="min-h-[44px] short:min-h-[40px] px-2 font-mono text-[9px] tracking-[0.18em] text-white bg-black/55 border border-white/25">
@@ -1368,8 +1470,20 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           </div>
           {toast && performance.now() - toast.at < 3500 && (
             <div className="absolute top-[45%] left-1/2 -translate-x-1/2 z-30 pointer-events-none font-mono text-[11px] tracking-[0.25em] text-[#FF3B00] bg-black/60 border border-[#FF3B00]/60 px-3 py-1.5 text-center" data-testid="dock-toast">
-              {toast.text}
-              <div className="text-[9px] text-zinc-300 tracking-[0.18em] mt-0.5">BACK OFF · STABILIZE · TRY AGAIN</div>
+              {(() => {
+                const c = toast.e ? contactCause(toast.e, { ...simRef.current, ...toast.snap }, difficulty, lang) : null;
+                return (
+                  <>
+                    <div>{c && c.title ? c.title : toast.text}</div>
+                    {c && c.lines.slice(0, 3).map((l) => (
+                      <div key={l} className="text-[9px] text-white tracking-[0.12em] mt-0.5" data-testid="dock-toast-cause">
+                        {l}
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
+              <div className="text-[9px] text-zinc-300 tracking-[0.18em] mt-0.5">{lang === "pt" ? "RECUE · ESTABILIZE · TENTE DE NOVO" : "BACK OFF · STABILIZE · TRY AGAIN"}</div>
             </div>
           )}
           {paused && (
@@ -1417,6 +1531,17 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           <div className="text-center max-w-lg">
             <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00]">● DOCKING FAILED</div>
             <div className="font-display font-black text-white text-3xl short:text-2xl tracking-tight mt-1" data-testid="dock-failed-title">{failure.title}</div>
+            {(() => {
+              const c = contactCause(failure, { ...simRef.current, ...(failure.snap || {}) }, difficulty, lang);
+              return c.lines.length ? (
+                <div className="font-mono text-[10px] tracking-[0.14em] text-[#f5c451] mt-1.5 space-y-0.5" data-testid="dock-failed-cause">
+                  {c.title && c.title !== failure.title && <div className="text-white">{c.title}</div>}
+                  {c.lines.map((l) => (
+                    <div key={l}>{l}</div>
+                  ))}
+                </div>
+              ) : null;
+            })()}
             <div className="font-mono text-[10px] tracking-[0.18em] text-zinc-300 mt-2">
               {lang === "pt" ? "O ESTÁGIO DE ASCENSÃO VOLTA AO PONTO DE APROXIMAÇÃO DO ENCONTRO · RCS REABASTECIDO PARA A TENTATIVA" : "RETRY FROM RENDEZVOUS CHECKPOINT · THE ASCENT STAGE RETURNS TO THE FINAL-APPROACH CHECKPOINT · RCS REFILLED FOR THE ATTEMPT"}
             </div>

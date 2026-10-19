@@ -88,6 +88,11 @@ const FEATURES = [
   ["Achievements (FIRST FOOTPRINT … LUNAVIA MASTER)", "LUNAVIA MASTER"],
   ["Flight records kept on the device (versioned)", "lunavia.mission.records.v1"],
   ["FLIGHT RECORDS: medals, achievements, mission log", "records-page"],
+  ["Docking ports: the TARGET DOCKING PORT marker on the real receiving port", "dock-target-marker"],
+  ["Docking ports: the marker in Portuguese", "PORTA DE DOCKING ALVO"],
+  ["Docking ports: the 360° FOCUS DOCKING PORTS camera", "dock-camera-focus"],
+  ["Docking ports: the final-approach capture conditions", "PROCEED WITH FINAL APPROACH"],
+  ["Docking ports: the approach corridor attached to the port", "approach-corridor"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
