@@ -21,6 +21,7 @@ import {
   restoreCheckpoint,
   stepDocking,
   telemetry,
+  engageStabilize,
 } from "./dockingSim";
 import { CONTROLS, commandOf, createGuidance, evaluate, guidedPilot } from "./dockingGuidance";
 import { ORBIT_DEFAULT, VIEWS, orbitDrag, orbitZoom, project, throughCockpitWindow, viewCamera } from "./dockingViews";
@@ -257,7 +258,13 @@ describe("8. the directional words and the 360° arrow follow the flight control
       const roll = (r() - 0.5) * 80;
       const s = checkpointState(d, { range: 6 + r() * 20, offset: [(r() - 0.5) * 3, (r() - 0.5) * 3], drift: [0, 0], att: [0, roll, 0], rate: [0, 0, 0], closing: 0.03 });
       s.t = 20;
-      const g = createGuidance(d).update(s, { mode: "TRANSLATION", align: false });
+      if (d === "CADET") {
+        // CADET flies with STABILIZE holding (settled): its lateral orders are the same jets
+        engageStabilize(s, d);
+        s.stab.v = s.vel.slice();
+        s.stab.stableSince = 0;
+      }
+      const g = createGuidance(d).update(s, { mode: "TRANSLATION", align: d === "CADET" });
       if (g.key !== "align" && g.key !== "drift") continue;
       const dir = thrustDirection(s, g.buttons);
       // the arrow is the buttons' body push turned through the attitude
@@ -498,6 +505,7 @@ function flyCollect(d, pilot, { keep = 0 } = {}) {
     if (s.t >= next) {
       cmd = pilot(s);
       next = s.t + PULSE;
+      if (cmd.assist === "stabilize" && !s.stab) engageStabilize(s, d); // the pilot pressed STABILIZE
     }
     readyBefore = captureReadiness(s, d).ready;
     prev = approachStatus(s, d, prev);
@@ -510,12 +518,13 @@ function flyCollect(d, pilot, { keep = 0 } = {}) {
   return { event: null, readyBefore, statusBefore, samples };
 }
 
-describe("the docking physics is untouched by this milestone", () => {
+describe("the docking physics: RCS, propellant and tolerances are the documented values", () => {
   test("RCS authority, propellant, start states and capture tolerances are the documented values", () => {
-    expect(DOCKING.CADET).toMatchObject({ accel: 0.1, prop: 30, attHold: true, autoAlign: true, tol: { lateral: 0.3, vMin: 0.015, vMax: 0.4, vLat: 0.1 } });
+    // CADET's soft-capture envelope (assisted docking); ASTRONAUT and COMMANDER as before
+    expect(DOCKING.CADET).toMatchObject({ accel: 0.1, prop: 30, attHold: true, autoAlign: true, tol: { lateral: 0.36, vMin: 0.01, vMax: 0.45, vLat: 0.13 } });
     expect(DOCKING.ASTRONAUT).toMatchObject({ accel: 0.08, prop: 18, attHold: true, autoAlign: false, tol: { lateral: 0.2, vMin: 0.025, vMax: 0.3, vLat: 0.07 } });
     expect(DOCKING.COMMANDER).toMatchObject({ accel: 0.07, prop: 12, attHold: false, autoAlign: false, tol: { lateral: 0.14, vMin: 0.03, vMax: 0.22, vLat: 0.05 } });
-    expect([DOCKING.CADET.tol.angle, DOCKING.ASTRONAUT.tol.angle, DOCKING.COMMANDER.tol.angle].map((a) => +(a / DEG).toFixed(6))).toEqual([7, 5, 3.5]);
+    expect([DOCKING.CADET.tol.angle, DOCKING.ASTRONAUT.tol.angle, DOCKING.COMMANDER.tol.angle].map((a) => +(a / DEG).toFixed(6))).toEqual([9, 5, 3.5]);
     expect(DROGUE_R).toBeCloseTo(0.4224, 6);
     expect(PORT_B[1]).toBeCloseTo(1.464, 6);
   });

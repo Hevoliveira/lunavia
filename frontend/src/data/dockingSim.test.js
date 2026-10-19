@@ -133,7 +133,7 @@ describe("the pilot's RCS: translation, attitude, inertia", () => {
     }
   });
   test("CADET's docking-attitude hold brings the ascent stage onto the docking attitude by itself (translation stays the pilot's)", () => {
-    const s = checkpointState("CADET");
+    const s = checkpointState("CADET", { drift: [0.012, -0.01] });
     const before = telemetry(s, "CADET").angle;
     const p0 = s.pos.slice();
     run(s, NONE, "CADET", 30, { align: true });

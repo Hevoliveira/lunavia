@@ -101,6 +101,15 @@ const DEG = Math.PI / 180;
  * Per pilot difficulty: RCS authority, propellant, the autopilot's help, the start of the
  * final approach and the capture tolerances. All three are flown to a capture by the
  * reference pilot in the tests, with input lag and pulse-only commands.
+ *
+ * `assists` are the docking aids the pilot may switch on (see "assists" below):
+ *   - align: AUTO-ALIGN, the autopilot turns to and holds the docking attitude;
+ *   - stabilize: STABILIZE, the RCS nulls the relative motion — "hold" keeps holding the
+ *     velocity the pilot sets (CADET), "once" nulls it and hands back (ASTRONAUT);
+ *   - speed: APPROACH SPEED ASSIST, the RCS keeps the closing speed under assistLimit;
+ *   - default*: what is on at the start of an attempt.
+ * CADET's tolerances are its soft-capture envelope: what the probe's capture latches take
+ * in with the drogue's funnel (mouth DROGUE_R) guiding the probe tip in.
  */
 export const DOCKING = {
   CADET: {
@@ -110,8 +119,10 @@ export const DOCKING = {
     prop: 30, // RCS budget, m/s of Δv equivalent
     attHold: true, // rates damp when the pilot lets go
     autoAlign: true, // the autopilot can hold the docking attitude (the pilot still translates)
-    start: { range: 30, offset: [1.6, -1.2], drift: [0.012, -0.01], closing: 0.04, att: [3, -2, 4], rate: [0, 0, 0] },
-    tol: { lateral: 0.3, angle: 7 * DEG, roll: 15 * DEG, vMin: 0.015, vMax: 0.4, vLat: 0.1, rate: 1.5 * DEG },
+    assists: { align: true, stabilize: "hold", speed: true, defaultAlign: false, defaultSpeed: true },
+    // a calm final approach: on the probe's axis within a metre, barely drifting, a few degrees off
+    start: { range: 22, offset: [0.7, -0.5], drift: [0.004, -0.003], closing: 0.03, att: [3, -2, 4], rate: [0, 0, 0] },
+    tol: { lateral: 0.36, angle: 9 * DEG, roll: 18 * DEG, vMin: 0.01, vMax: 0.45, vLat: 0.13, rate: 2.5 * DEG },
   },
   ASTRONAUT: {
     accel: 0.08,
@@ -120,6 +131,7 @@ export const DOCKING = {
     prop: 18,
     attHold: true,
     autoAlign: false,
+    assists: { align: false, stabilize: "once", speed: false },
     start: { range: 34, offset: [2.6, -2.0], drift: [0.02, -0.018], closing: 0.05, att: [6, -5, 8], rate: [0, 0, 0] },
     tol: { lateral: 0.2, angle: 5 * DEG, roll: 10 * DEG, vMin: 0.025, vMax: 0.3, vLat: 0.07, rate: 1.0 * DEG },
   },
@@ -130,6 +142,7 @@ export const DOCKING = {
     prop: 12,
     attHold: false, // no rate damping: what the pilot starts, the pilot stops
     autoAlign: false,
+    assists: { align: false, stabilize: null, speed: false }, // no automation
     start: { range: 38, offset: [3.4, -2.8], drift: [0.03, -0.025], closing: 0.06, att: [9, -8, 12], rate: [0.25, -0.2, 0.3] },
     tol: { lateral: 0.14, angle: 3.5 * DEG, roll: 6 * DEG, vMin: 0.03, vMax: 0.22, vLat: 0.05, rate: 0.7 * DEG },
   },
@@ -140,6 +153,24 @@ export const DAMAGE_SPEED = 0.6;
 export const LOST_RANGE = 180; // beyond this the target is lost: back to the rendezvous checkpoint
 export const PULSE = 0.12; // a tap: one minimum-impulse RCS firing (s)
 export const STEP = 1 / 120;
+
+/* ---- the jet buttons: how a press becomes an RCS command --------------------------------- */
+/**
+ * The command a jet button gives after it has been held `held` seconds (0..1 of the
+ * axis' authority). A tap is one minimum-impulse firing at full thrust (PULSE), as
+ * before. Holding on gives a gentle 35 % for a moment, then builds to full thrust over
+ * the next 1.4 s: a press that lasts a little longer than meant (the usual thumb on
+ * glass) adds a little more, not a burst. FINE scales everything to 35 %: one fine tap
+ * is about a third of a normal one, for the last metres.
+ */
+export const JET_SOFT = 0.35;
+export const FINE_SCALE = 0.35;
+export function jetCommand(held, fine = false) {
+  const k = fine ? FINE_SCALE : 1;
+  if (held < PULSE) return k;
+  if (held < 0.6) return JET_SOFT * k;
+  return Math.min(1, JET_SOFT + ((1 - JET_SOFT) * (held - 0.6)) / 1.4) * k;
+}
 
 /* ---- small vector / quaternion maths ---------------------------------------------- */
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -310,7 +341,7 @@ export function closingLimit(axial, cfg) {
  */
 export function dockingStatus(s, difficulty = "ASTRONAUT") {
   if (s.status === "docked") return { phase: "HARD DOCK CONFIRMED", warnings: [] };
-  if (s.status === "captured") return { phase: "DOCKING CONTACT", warnings: [] };
+  if (s.status === "captured") return { phase: "SOFT CAPTURE", warnings: [] };
   if (s.status === "failed") return { phase: s.failure ? s.failure.title : "DOCKING FAILED", warnings: [] };
   const cfg = DOCKING[difficulty];
   const m = telemetry(s, difficulty);
@@ -327,6 +358,134 @@ export function dockingStatus(s, difficulty = "ASTRONAUT") {
   else if (m.offsetR > cfg.tol.lateral * 2 || m.angle > cfg.tol.angle * 1.5) phase = "ALIGN WITH DOCKING PORT";
   else phase = "FINAL APPROACH";
   return { phase, warnings };
+}
+
+/* ---- assists: AUTO-ALIGN, STABILIZE, APPROACH SPEED ASSIST --------------------------------- */
+/*
+ * Every assist flies the same RCS as the pilot: its commands are added to the pilot's,
+ * clipped to the same per-axis authority (accel, angAccel) and paid from the same
+ * propellant. Nothing is set: velocities and attitude change only through thrust, so
+ * the player sees each correction happen. None of them closes in: the forward push is
+ * always the pilot's.
+ *
+ * AUTO-ALIGN (opts.align): the autopilot turns the ascent stage onto the docking
+ * attitude (drogue axis along the probe's axis, no roll) and holds it. A held attitude
+ * button overrides it while held. It does not move the vehicle sideways.
+ *
+ * STABILIZE (engageStabilize): the RCS drives the vehicle's velocity to a held value —
+ * no sideways or vertical motion, and a closing speed kept between 0 and the safe
+ * approach speed — and damps any rotation.
+ *   - "hold" (CADET): once stable it keeps holding. The pilot's own translation still
+ *     fires, and moves the held velocity by exactly what it adds, so a tap sets a new
+ *     steady speed; what the assist cancels is the drift nobody commanded (the orbit's
+ *     Coriolis and tidal pull, a leftover push).
+ *   - "once" (ASTRONAUT): it nulls the motion, reports RELATIVE MOTION STABLE and hands
+ *     back; any translation command by the pilot cancels it.
+ *
+ * APPROACH SPEED ASSIST (opts.speed): a closing-speed limit that falls with the distance
+ * to the probe (assistLimit). Above it the RCS brakes (aft thrust); at it, a forward
+ * command is not fired. It never pushes forward.
+ */
+/** The assists available and switched on now: { align, stabilize, speed } (booleans / mode). */
+export function assistsOf(difficulty, opts = {}) {
+  const a = DOCKING[difficulty].assists || {};
+  return { align: !!(a.align && opts.align), stabilize: a.stabilize || null, speed: !!(a.speed && opts.speed) };
+}
+/** The approach speed assist's closing-speed limit at an axial distance from the probe tip (m/s). */
+export function assistLimit(axial) {
+  return Math.min(0.45, 0.08 + 0.025 * Math.max(0, axial));
+}
+const axialOf = (s) => s.pos[1] + qRot(s.q, PORT_B)[1] - PROBE_TIP[1];
+/** STABILIZE pressed: hold no sideways motion and a safe closing speed (see above). */
+export function engageStabilize(s, difficulty) {
+  const mode = (DOCKING[difficulty].assists || {}).stabilize;
+  if (!mode || s.status !== "approach") return false;
+  const closing = Math.max(0, Math.min(-s.vel[1], assistLimit(axialOf(s))));
+  s.stab = { mode, v: [0, -closing, 0], since: s.t, stableSince: null };
+  s.stabEnd = null;
+  return true;
+}
+/** STABILIZE switched off by the pilot. */
+export function disengageStabilize(s) {
+  if (s.stab) s.stabEnd = { t: s.t, kind: "off" };
+  s.stab = null;
+}
+const STAB_TIME = 1.2; // s: how fast the hold takes out a velocity error
+const STAB_DEAD = 0.0005; // m/s: below this no jet fires (no chatter, no waste)
+const STABLE_V = 0.004; // m/s and …
+const STABLE_W = 0.25 * DEG; // … rad/s: RELATIVE MOTION STABLE
+function translationAssists(s, tc, difficulty, as, h) {
+  const cfg = DOCKING[difficulty];
+  let out = tc.slice();
+  const pilotT = tc.some((v) => Math.abs(v) > 0.01);
+  const lim = as.speed ? assistLimit(axialOf(s)) : Infinity;
+  const toBody = (aF) => qRot(qConj(s.q), aF).map((v) => v / cfg.accel);
+  if (s.stab && s.stab.mode === "once" && pilotT) {
+    s.stab = null;
+    s.stabEnd = { t: s.t, kind: "override" };
+  }
+  if (s.stab) {
+    // the pilot's own Δv moves the held velocity ("hold"): what they command, they keep
+    if (s.stab.mode === "hold") {
+      s.stab.v = add(s.stab.v, scale(qRot(s.q, scale(tc, cfg.accel)), h));
+      // a manageable slide: the hold keeps at most 6 cm/s sideways (3 cm/s in the last 3 m);
+      // a longer push than that is taken back out instead of kept
+      const ax = axialOf(s);
+      const vmax = ax < 3 ? 0.03 : 0.06;
+      const vl = Math.hypot(s.stab.v[0], s.stab.v[2]);
+      if (vl > vmax) {
+        s.stab.v[0] *= vmax / vl;
+        s.stab.v[2] *= vmax / vl;
+      }
+    }
+    if (as.speed) s.stab.v[1] = Math.max(s.stab.v[1], -lim); // never hold a closing speed above the limit
+    const e = sub(s.vel, s.stab.v);
+    const want = e.map((v) => (Math.abs(v) < STAB_DEAD ? 0 : -v / STAB_TIME));
+    const c = toBody(want);
+    out = out.map((v, i) => Math.max(-1, Math.min(1, v + c[i])));
+    // stable: no sideways error and no rotation; along the axis, close to the held speed (the
+    // speed assist lowering it as the ports close is the plan, not instability)
+    const stable = Math.hypot(e[0], e[2]) < STABLE_V && Math.abs(e[1]) < 0.03 && len(s.w) < STABLE_W;
+    s.stab.stableSince = stable ? (s.stab.stableSince == null ? s.t : s.stab.stableSince) : null;
+    if (s.stab.mode === "once" && s.stab.stableSince != null && s.t - s.stab.stableSince > 1) {
+      s.stab = null;
+      s.stabEnd = { t: s.t, kind: "stable" };
+    }
+  }
+  s.speedLimiting = false;
+  if (as.speed) {
+    // the axial component of what is about to fire (CSM frame: +Y is away from the probe)
+    const aF = qRot(s.q, scale(out, cfg.accel));
+    const closing = -s.vel[1];
+    let wantY = aF[1];
+    if (closing > lim) wantY = Math.max(aF[1], Math.min(cfg.accel, (closing - lim) / 0.8)); // brake
+    else if (aF[1] < 0 && closing - aF[1] * h > lim) wantY = Math.min(0, (closing - lim) / h); // no push past the limit
+    if (Math.abs(wantY - aF[1]) > 1e-9) {
+      const c = toBody([0, wantY - aF[1], 0]);
+      out = out.map((v, i) => Math.max(-1, Math.min(1, v + c[i])));
+      s.speedLimiting = true;
+    }
+  }
+  return out;
+}
+/**
+ * What each assist is doing this step, for the HUD and the guidance:
+ * { align: off|active|aligned|override, stabilize: off|active|stable|override|done,
+ *   speed: off|ready|limiting }.
+ */
+function assistStatus(s, difficulty, as, { manualR }) {
+  const t = DOCKING[difficulty].tol;
+  const err = attitudeError(s.q);
+  const angle = Math.acos(Math.max(-1, Math.min(1, -qRot(s.q, [0, 1, 0])[1])));
+  const aligned = angle < 0.4 * t.angle && Math.abs(err[1]) < 0.4 * t.roll && len(s.w) < 0.2 * DEG;
+  let stab = "off";
+  if (s.stab) stab = s.stab.stableSince != null ? "stable" : "active";
+  else if (s.stabEnd && s.t - s.stabEnd.t < 3) stab = s.stabEnd.kind === "stable" ? "done" : s.stabEnd.kind === "override" ? "override" : "off";
+  return {
+    align: !as.align ? "off" : manualR ? "override" : aligned ? "aligned" : "active",
+    stabilize: stab,
+    speed: !as.speed ? "off" : s.speedLimiting ? "limiting" : "ready",
+  };
 }
 
 /* ---- contact ----------------------------------------------------------------------- */
@@ -406,16 +565,23 @@ export function stepDocking(s, input, difficulty = "ASTRONAUT", dt = STEP, opts 
     }
     const inp = input || { t: [0, 0, 0], r: [0, 0, 0] };
     const hasProp = s.prop > 0;
-    const tc = hasProp ? inp.t.map((v) => Math.max(-1, Math.min(1, v || 0))) : [0, 0, 0];
+    let tc = hasProp ? inp.t.map((v) => Math.max(-1, Math.min(1, v || 0))) : [0, 0, 0];
     let rc = hasProp ? inp.r.map((v) => Math.max(-1, Math.min(1, v || 0))) : [0, 0, 0];
-    // Autopilot: CADET's docking-attitude hold, or the rate damping of attitude hold.
+    const as = assistsOf(difficulty, opts);
+    // Autopilot: AUTO-ALIGN (the docking-attitude hold), or the rate damping of attitude hold.
+    // The pilot's own attitude command always wins while it is held.
     const manual = rc.some((v) => Math.abs(v) > 0.01);
-    if (hasProp && !manual && (cfg.attHold || (cfg.autoAlign && opts.align))) {
-      const err = cfg.autoAlign && opts.align ? attitudeError(s.q) : [0, 0, 0];
+    if (hasProp && !manual && (cfg.attHold || as.align || s.stab)) {
+      const err = as.align ? attitudeError(s.q) : [0, 0, 0];
       // PD towards the target attitude (or zero rate), within the RCS's authority.
       rc = [0, 1, 2].map((i) => Math.max(-1, Math.min(1, (-0.9 * err[i] - 1.6 * s.w[i]) / (cfg.angAccel * 1.0))));
       rc = rc.map((v) => (Math.abs(v) < 0.04 ? 0 : v));
     }
+    // STABILIZE and the approach speed assist: RCS translation added to the pilot's, within
+    // the same authority, from the same propellant.
+    const pilotT = tc.slice();
+    if (hasProp) tc = translationAssists(s, tc, difficulty, as, h);
+    s.assistOut = assistStatus(s, difficulty, as, { manualR: manual, manualT: pilotT.some((v) => Math.abs(v) > 0.01), pilotT, tc });
     // Translation (body → CSM frame) and the orbit's own pull.
     const aB = scale(tc, cfg.accel);
     const a = add(qRot(s.q, aB), cwAccel(s.pos, s.vel, n));
@@ -439,7 +605,7 @@ export function stepDocking(s, input, difficulty = "ASTRONAUT", dt = STEP, opts 
       s.lastContact = { ...j, t: s.t };
       if (j.kind === "capture") {
         s.status = "captured";
-        s.phase = "DOCKING CONTACT";
+        s.phase = "SOFT CAPTURE";
         s.captureT = s.t;
         s.capturePos = s.pos.slice();
         s.captureQ = s.q.slice();
@@ -455,15 +621,19 @@ export function stepDocking(s, input, difficulty = "ASTRONAUT", dt = STEP, opts 
       }
       continue;
     }
+    let touching = false;
     for (const hb of HULL_B) {
       const p = add(s.pos, qRot(s.q, hb));
       if (insideCsm(p)) {
+        touching = true;
         const pv = add(s.vel, cross(qRot(s.q, s.w), qRot(s.q, hb)));
         const speed = len(pv);
         const j = { kind: "collision", title: "COLLISION WITH THE COMMAND MODULE", recoverable: speed < 0.12, facts: { speed } };
-        s.lastContact = { ...j, t: s.t };
+        // still in the same glancing touch: push out, but it is one contact, not one per step
+        const same = j.recoverable && s.touching;
+        if (!same) s.lastContact = { ...j, t: s.t };
         if (j.recoverable) {
-          s.contacts += 1;
+          if (!same) s.contacts += 1;
           // Glancing touch: push the ascent stage back out along the hull's normal.
           const nrm = [p[0], 0, p[2]];
           const nl = len(nrm) || 1;
@@ -475,10 +645,11 @@ export function stepDocking(s, input, difficulty = "ASTRONAUT", dt = STEP, opts 
           s.status = "failed";
           s.failure = j;
         }
-        event = j;
+        if (!same) event = j;
         break;
       }
     }
+    s.touching = touching;
     if (!event && len(sub(s.pos, DOCKED_POS)) > LOST_RANGE) {
       s.status = "failed";
       s.failure = { kind: "lost", title: "TARGET LOST — OUT OF RANGE", recoverable: false };
@@ -552,7 +723,7 @@ export function referencePilot(difficulty = "ASTRONAUT", { bad = null, lag = 0.2
 }
 
 /** Fly a whole approach with a pilot function (tests and tooling). */
-export function flyDocking(difficulty, pilot, { lag = 0.25, maxT = 900, state = null, pulse = PULSE, align = DOCKING[difficulty].autoAlign } = {}) {
+export function flyDocking(difficulty, pilot, { lag = 0.25, maxT = 900, state = null, pulse = PULSE, align = DOCKING[difficulty].autoAlign, speed = false } = {}) {
   const s = state || checkpointState(difficulty);
   const hist = [];
   let cmd = { t: [0, 0, 0], r: [0, 0, 0] };
@@ -569,7 +740,9 @@ export function flyDocking(difficulty, pilot, { lag = 0.25, maxT = 900, state = 
       held = pulse;
     }
     held -= dt;
-    const e = stepDocking(s, cmd, difficulty, dt, { align });
+    if (cmd && cmd.assist === "stabilize" && !s.stab) engageStabilize(s, difficulty);
+    if (cmd && cmd.assist === "align") align = true;
+    const e = stepDocking(s, cmd, difficulty, dt, { align, speed });
     if (e) events.push({ ...e, t: s.t });
   }
   return { state: s, events, docked: s.status === "docked", t: s.t };

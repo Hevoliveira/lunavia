@@ -18,7 +18,10 @@ import {
   PROBE_TIP,
   PULSE,
   checkpointState,
+  disengageStabilize,
   dockingStatus,
+  engageStabilize,
+  jetCommand,
   frames,
   portState,
   qMul,
@@ -30,7 +33,7 @@ import {
   telemetry,
 } from "@/data/dockingSim";
 import { COAST, FINAL, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf } from "@/data/rendezvous";
-import { CONTROLS, GUIDANCE_VOICE, STEPS, UI as GUI, createGuidance, guidanceText, guidedPilot } from "@/data/dockingGuidance";
+import { ASSIST_UI, CONTROLS, GUIDANCE_VOICE, SEQUENCE, STEPS, UI as GUI, assistSequence, createGuidance, guidanceText, guidedPilot } from "@/data/dockingGuidance";
 import { FIRST_PERSON, ORBIT_DEFAULT, VIEWS, VIEW_LABEL, orbitDrag, orbitZoom, viewCamera } from "@/data/dockingViews";
 import { CabinLight, Cockpit, WindowFrame, rcsLevels } from "@/components/DockingCabin";
 import { ActivePortHardware, ApproachCorridor, PortMarkers, TargetPortHardware, placePortMarkers } from "@/components/DockingPorts";
@@ -306,7 +309,7 @@ function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef, orbit
 }
 
 /* ---- the simulation loop (fixed steps, inside the render loop) --------------------------------- */
-function SimLoop({ simRef, inputRef, phaseRef, difficulty, alignRef, pausedRef, onEvent, plan }) {
+function SimLoop({ simRef, inputRef, phaseRef, difficulty, alignRef, speedRef, pausedRef, onEvent, plan }) {
   const acc = useRef(0);
   useFrame((_, rawDelta) => {
     const s = simRef.current;
@@ -347,7 +350,7 @@ function SimLoop({ simRef, inputRef, phaseRef, difficulty, alignRef, pausedRef, 
         }
         inp = s._apCmd;
       }
-      const e = stepDocking(s, inp, difficulty, dt, { align: alignRef.current });
+      const e = stepDocking(s, inp, difficulty, dt, { align: alignRef.current, speed: speedRef.current });
       if (e) onEvent(e);
       if (s.status === "docked" || s.status === "failed") break;
     }
@@ -506,15 +509,78 @@ function HoldButton({ label, sub, hintText, onFire, testId, disabled = false }) 
 }
 
 const SEV = { safety: "#FF3B00", correct: "#f5c451", wait: "#9fb6cc", info: "#9fb6cc", go: "#4fd1c5", ok: "#4fd1c5" };
+
+/** An assist switch (AUTO-ALIGN, STABILIZE, SPEED ASSIST): its name and what it is doing now. */
+function AssistButton({ testId, label, state, on, hint = false, onClick }) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      data-on={on ? "1" : "0"}
+      data-state={state}
+      data-hint={hint ? "1" : undefined}
+      aria-pressed={on}
+      onClick={onClick}
+      className={`select-none touch-manipulation min-h-[34px] short:min-h-[31px] px-1 font-mono leading-tight border flex flex-col items-center justify-center ${on ? "bg-[#4fd1c5]/20 border-[#4fd1c5] text-[#4fd1c5]" : "bg-black/60 border-white/30 text-zinc-300"} ${hint ? HINT_RING : ""}`}
+    >
+      <span className="text-[7.5px] tracking-[0.1em] whitespace-nowrap">{label}</span>
+      <span className={`text-[7px] tracking-[0.12em] ${on ? "text-white" : "text-zinc-500"}`}>{state}</span>
+    </button>
+  );
+}
+
+/**
+ * Above the guidance panel: what the assists are doing (AUTO-ALIGN: ACTIVE · STABILIZE: …),
+ * the latest assist message, and CADET's six-step sequence with the current step.
+ */
+function AssistStrip({ AS, as, msg, seq, lang, hasAssists, ASSISTS, speedOn, align }) {
+  if (!hasAssists) return null;
+  const st = (k, v) => AS.state[v] || v;
+  const parts = [];
+  if (ASSISTS.align) parts.push(["align", `${AS.row.align}: ${st("align", align ? as.align : "off")}`, align]);
+  if (ASSISTS.stabilize) parts.push(["stabilize", `${AS.row.stabilize}: ${st("stabilize", { off: "off", active: "active", stable: as.stabMode === "hold" ? "holding" : "stable", done: "done", override: "cancelled" }[as.stabilize] || "off")}`, as.stabilize === "active" || as.stabilize === "stable"]);
+  if (ASSISTS.speed) parts.push(["speed", `${AS.row.speed}: ${st("speed", as.speed === "limiting" ? "limiting" : speedOn ? "active" : "off")}`, speedOn]);
+  const cur = seq && seq.find((x) => x.active);
+  return (
+    <div className="w-full max-w-[440px] font-mono pointer-events-none flex flex-col gap-0.5" data-testid="dock-assist-strip">
+      {msg && (
+        <div className="self-center px-2 py-0.5 text-[9px] tracking-[0.2em] text-[#0b0f14] bg-[#4fd1c5] font-bold" data-testid="dock-assist-msg" data-msg={msg}>
+          {AS.msg[msg]}
+        </div>
+      )}
+      <div className="flex flex-wrap justify-center gap-x-2 text-[7.5px] tracking-[0.14em] bg-black/50 px-1.5 py-0.5" data-testid="dock-assist-states">
+        {parts.map(([k, t, on]) => (
+          <span key={k} className={on ? "text-[#4fd1c5]" : "text-zinc-500"} data-testid={`dock-assist-state-${k}`}>
+            {t}
+          </span>
+        ))}
+        <span className="text-zinc-400">· {AS.yours}</span>
+      </div>
+      {seq && (
+        <div className="flex items-center gap-1.5 bg-black/50 px-1.5 py-0.5 text-[7.5px] tracking-[0.1em]" data-testid="dock-sequence" data-step={cur ? cur.step : 7}>
+          <div className="flex gap-0.5 shrink-0" aria-hidden>
+            {seq.map((x) => (
+              <span key={x.step} className={`w-3 h-3 text-[7px] leading-3 text-center border ${x.done ? "bg-[#4fd1c5] border-[#4fd1c5] text-black" : x.active ? "border-[#f5c451] text-[#f5c451]" : "border-white/25 text-zinc-500"}`}>
+                {x.done ? "✓" : x.step}
+              </span>
+            ))}
+          </div>
+          <span className="text-zinc-200 truncate">{cur ? `${AS.seq} ${cur.step}/6 · ${(SEQUENCE[lang] || SEQUENCE.en)[cur.step - 1]}` : (SEQUENCE[lang] || SEQUENCE.en)[5]}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 /** The live DOCKING GUIDANCE panel: step, the one correction, how, and the numbers behind it. */
-function GuidancePanel({ g, text, action = "", lang, on, onToggle, clearAlign = false }) {
+function GuidancePanel({ g, text, action = "", lang, on, onToggle, clearAlign = false, above = null }) {
   const ui = GUI[lang] || GUI.en;
-  // between the pad (left) and the FWD/AFT column (right); clear of CADET's AUTO ALIGN button too
-  const right = clearAlign ? "right-[calc(var(--sar,0px)_+_132px)] short:right-[calc(var(--sar,0px)_+_124px)]" : "right-[calc(var(--sar,0px)_+_92px)] short:right-[calc(var(--sar,0px)_+_84px)]";
-  const place = `absolute z-30 bottom-3 short:bottom-2 safe-mb left-[calc(var(--sal,0px)_+_196px)] short:left-[calc(var(--sal,0px)_+_172px)] ${right} flex justify-center pointer-events-none`;
+  // between the pad (left) and the FWD/AFT column (right); clear of the assist buttons too
+  const right = clearAlign ? "right-[calc(var(--sar,0px)_+_166px)] short:right-[calc(var(--sar,0px)_+_152px)]" : "right-[calc(var(--sar,0px)_+_92px)] short:right-[calc(var(--sar,0px)_+_84px)]";
+  const place = `absolute z-30 bottom-3 short:bottom-2 safe-mb left-[calc(var(--sal,0px)_+_196px)] short:left-[calc(var(--sal,0px)_+_172px)] ${right} flex flex-col items-center justify-end gap-1 pointer-events-none`;
   if (!on || !g || !text) {
     return (
       <div className={place}>
+        {above}
         <button type="button" data-testid="dock-guidance-toggle" onClick={onToggle} className="pointer-events-auto min-h-[34px] px-3 font-mono text-[8px] tracking-[0.25em] text-zinc-400 bg-black/50 border border-white/20">
           {ui.off}
         </button>
@@ -524,6 +590,7 @@ function GuidancePanel({ g, text, action = "", lang, on, onToggle, clearAlign = 
   const color = g.confirm ? SEV.ok : SEV[g.sev] || SEV.info;
   return (
     <div className={place}>
+      {above}
       <div
         className="pointer-events-auto w-full max-w-[440px] bg-black/65 backdrop-blur-sm border border-white/10 border-l-2 px-2.5 py-1.5 short:py-1 font-mono"
         style={{ borderLeftColor: color }}
@@ -684,8 +751,28 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   const extraRef = useRef({}); // what the cockpit's displays show beyond the state (mode, auto align, step)
   const [mode, setMode] = useState("TRANSLATION");
   const modeRef = useRef("TRANSLATION");
-  const [align, setAlignState] = useState(!!cfg.autoAlign);
-  const alignRef = useRef(!!cfg.autoAlign);
+  // the assists (data/dockingSim "assists"): AUTO-ALIGN and the APPROACH SPEED ASSIST are switches,
+  // STABILIZE lives on the simulation state (engage / disengage); FINE scales the jet buttons
+  const ASSISTS = cfg.assists || {};
+  const [align, setAlignState] = useState(!!ASSISTS.defaultAlign);
+  const alignRef = useRef(!!ASSISTS.defaultAlign);
+  const [speedOn, setSpeedState] = useState(!!ASSISTS.defaultSpeed);
+  const speedRef = useRef(!!ASSISTS.defaultSpeed);
+  const [fine, setFineState] = useState(false);
+  const fineRef = useRef(false);
+  const assistMsg = useRef({ text: null, until: 0, last: {} });
+  const setAlign = (on) => {
+    alignRef.current = on;
+    setAlignState(on);
+  };
+  const setSpeed = (on) => {
+    speedRef.current = on;
+    setSpeedState(on);
+  };
+  const setFine = (on) => {
+    fineRef.current = on;
+    setFineState(on);
+  };
   const pausedRef = useRef(false);
   const [paused, setPaused] = useState(false);
   const [hud, setHud] = useState(null);
@@ -722,7 +809,8 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
 
   /* -- input: held buttons and keys, with a minimum impulse per tap -- */
   const held = useRef(new Map()); // key → { axis: "t"|"r", i, v, until }
-  const press = (key, axis, i, v) => held.current.set(key, { axis, i, v, until: performance.now() + PULSE * 1000, down: true });
+  // a tap is one minimum-impulse firing; held, the jets build up gently (dockingSim.jetCommand)
+  const press = (key, axis, i, v) => held.current.set(key, { axis, i, v, t0: performance.now(), until: performance.now() + PULSE * 1000, down: true });
   const release = (key) => {
     const h = held.current.get(key);
     if (!h) return;
@@ -738,7 +826,8 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
         held.current.delete(k);
         continue;
       }
-      (h.axis === "t" ? t : r)[h.i] = Math.max(-1, Math.min(1, (h.axis === "t" ? t : r)[h.i] + h.v));
+      const level = jetCommand((now - (h.t0 || now)) / 1000, fineRef.current);
+      (h.axis === "t" ? t : r)[h.i] = Math.max(-1, Math.min(1, (h.axis === "t" ? t : r)[h.i] + h.v * level));
     }
     return { t, r };
   }, []);
@@ -771,11 +860,22 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
       keysBlocked.current.delete(e.code);
       if (MAP[e.code]) release("k" + e.code);
     };
+    // no jet stays on when the app loses the screen or the focus (a call, the app switcher, a
+    // notification): every held button and key is let go
+    const letGo = () => {
+      held.current.clear();
+      keysBlocked.current = new Set(keysDown.current);
+    };
+    const vis = () => document.hidden && letGo();
     window.addEventListener("keydown", dn);
     window.addEventListener("keyup", upk);
+    window.addEventListener("blur", letGo);
+    document.addEventListener("visibilitychange", vis);
     return () => {
       window.removeEventListener("keydown", dn);
       window.removeEventListener("keyup", upk);
+      window.removeEventListener("blur", letGo);
+      document.removeEventListener("visibilitychange", vis);
     };
   }, []);
 
@@ -834,6 +934,11 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
     restoreCheckpoint(s, difficulty);
     s.mode = "docking";
     held.current.clear();
+    // every attempt starts with the assists as the difficulty sets them (STABILIZE off: the
+    // checkpoint state carries none)
+    setAlign(!!ASSISTS.defaultAlign);
+    setSpeed(!!ASSISTS.defaultSpeed);
+    assistMsg.current = { text: null, until: 0, last: {} };
     keysBlocked.current = new Set(keysDown.current);
     guidanceRef.current.reset();
     lastGuideKey.current = null;
@@ -978,7 +1083,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
       // the guidance reads the same state (it never writes it)
       let g = null;
       if ((ph === "docking" || ph === "captured") && s.mode === "docking") {
-        g = guidanceRef.current.update(s, { mode: modeRef.current, align: alignRef.current });
+        g = guidanceRef.current.update(s, { mode: modeRef.current, align: alignRef.current, speed: speedRef.current });
         if (g.key !== lastGuideKey.current) {
           lastGuideKey.current = g.key;
           const line = GUIDANCE_VOICE[g.key];
@@ -991,7 +1096,32 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
       const ap = (ph === "docking" || ph === "captured") && s.mode === "docking" ? approachStatus(s, difficulty, statusRef.current) : null;
       statusRef.current = ap;
       guideRef.current = guideOnRef.current ? g : null;
-      setHud({ tel, st, g, ap, status: s.status, m: { ...markRef.current }, size: { ...sizeRef.current }, missionT: s.missionT || 0 });
+      // the assists' state, and a short message when one changes (AUTO-ALIGN ACTIVE, DOCKING AXIS
+      // ALIGNED, STABILIZATION ACTIVE, RELATIVE MOTION STABLE, APPROACH SPEED ASSIST ACTIVE)
+      const ao = s.assistOut || { align: alignRef.current ? "active" : "off", stabilize: s.stab ? "active" : "off", speed: speedRef.current ? "ready" : "off" };
+      const asx = { ...ao, stabMode: s.stab ? s.stab.mode : null };
+      const am = assistMsg.current;
+      const now = performance.now();
+      const say1 = (text) => {
+        am.text = text;
+        am.until = now + 2600;
+      };
+      if (ph === "docking" && s.status === "approach") {
+        if (ao.align !== am.last.align) {
+          if (ao.align === "active" && am.last.align === "off") say1("alignActive");
+          if (ao.align === "aligned") say1("aligned");
+        }
+        if (ao.stabilize !== am.last.stabilize) {
+          if (ao.stabilize === "active") say1("stabActive");
+          if ((ao.stabilize === "stable" && am.last.stabilize === "active") || ao.stabilize === "done") say1("stable");
+          if (ao.stabilize === "override") say1("stabCancelled");
+        }
+        if (ao.speed === "limiting" && am.last.speed !== "limiting") say1("speed");
+        am.last = { ...ao };
+      }
+      const msg = am.text && now < am.until ? am.text : null;
+      const seq = difficulty === "CADET" && ASSISTS.align ? assistSequence(s, difficulty, { align: alignRef.current, speed: speedRef.current }) : null;
+      setHud({ tel, st, g, ap, as: asx, msg, seq, status: s.status, m: { ...markRef.current }, size: { ...sizeRef.current }, missionT: s.missionT || 0 });
       if (typeof window !== "undefined") {
         window.__lvDock = {
           phase: ph,
@@ -1006,13 +1136,17 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           view: viewRef.current,
           mode: modeRef.current,
           align: alignRef.current,
+          speedAssist: speedRef.current,
+          fine: fineRef.current,
+          assist: asx,
+          stab: s.stab ? { mode: s.stab.mode, stable: s.stab.stableSince != null } : null,
           pos: s.pos.slice(),
           vel: s.vel.slice(),
           w: s.w.slice(),
           t: s.t,
           q: s.q.slice(),
           fired: s.fired ? { t: s.fired.t.slice(), r: s.fired.r.slice() } : null,
-          guidance: g && { key: g.key, step: g.step, sev: g.sev, buttons: g.buttons, mode: g.mode, needMode: g.needMode, confirm: g.confirm },
+          guidance: g && { key: g.key, step: g.step, sev: g.sev, buttons: g.buttons, assist: g.assist, alt: g.alt, mode: g.mode, needMode: g.needMode, confirm: g.confirm },
           guidanceOn: guideOnRef.current,
           viewSwitches: viewSwitches.current,
           orbit: { ...orbitRef.current },
@@ -1079,11 +1213,26 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
     );
   };
   const tMode = mode === "TRANSLATION";
+  const AS = ASSIST_UI[lang] || ASSIST_UI.en;
+  const as = (hud && hud.as) || { align: align ? "active" : "off", stabilize: "off", speed: speedOn ? "ready" : "off" };
+  const hasAssists = !!(ASSISTS.align || ASSISTS.stabilize || ASSISTS.speed);
+  // the guidance lights the assist it names (CADET's sequence; ASTRONAUT's optional STABILIZE)
+  const hintAssist = guideOn && g && !g.confirm && difficulty !== "COMMANDER" && phase === "docking" ? g.assist || g.alt : null;
   const controls = (
     <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none flex items-end justify-between px-4 pb-4 short:px-3 short:pb-2 safe-ml safe-mr safe-mb" data-testid="dock-controls">
       {/* left: the cross pad */}
       <div className="pointer-events-auto grid grid-cols-3 gap-1.5" data-testid="dock-pad">
-        <span />
+        <button
+          type="button"
+          data-testid="dock-fine"
+          aria-pressed={fine}
+          onClick={() => setFine(!fine)}
+          className={`self-start w-[52px] h-[34px] short:w-[46px] short:h-[30px] font-mono text-[7px] tracking-[0.14em] border bg-black/60 touch-manipulation ${fine ? "border-[#4fd1c5] text-[#4fd1c5]" : "border-white/25 text-zinc-400"}`}
+        >
+          {AS.fine}
+          <br />
+          {fine ? AS.state.on : AS.state.off}
+        </button>
         {tMode ? pad("up") : pad("pitch-up")}
         <span />
         {tMode ? pad("left") : pad("yaw-left")}
@@ -1109,22 +1258,40 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
         <span />
       </div>
       {/* right: closing (forward / aft) or roll */}
-      <div className="pointer-events-auto flex flex-col gap-1.5 items-end">
-        {cfg.autoAlign && (
-          <button
-            type="button"
-            data-testid="dock-align"
-            onClick={() => {
-              alignRef.current = !alignRef.current;
-              setAlignState(alignRef.current);
-            }}
-            className={`min-h-[36px] px-2 font-mono text-[8px] tracking-[0.15em] border bg-black/60 ${align ? "border-[#4fd1c5] text-[#4fd1c5]" : "border-white/30 text-zinc-400"}`}
-          >
-            AUTO ALIGN {align ? "ON" : "OFF"}
-          </button>
+      <div className="pointer-events-auto flex flex-row gap-1.5 items-end">
+        {hasAssists && (
+          <div className="flex flex-col gap-1.5 items-stretch w-[74px] short:w-[68px]" data-testid="dock-assists">
+            {ASSISTS.align && (
+              <AssistButton
+                testId="dock-align"
+                label={AS.align}
+                state={AS.state[as.align === "off" ? "off" : as.align]}
+                on={align}
+                hint={hintAssist === "align"}
+                onClick={() => setAlign(!align)}
+              />
+            )}
+            {ASSISTS.stabilize && (
+              <AssistButton
+                testId="dock-stabilize"
+                label={AS.stabilize}
+                state={AS.state[{ off: "off", active: "active", stable: as.stabMode === "hold" ? "holding" : "stable", done: "done", override: "cancelled" }[as.stabilize] || "off"]}
+                on={as.stabilize === "active" || as.stabilize === "stable"}
+                hint={hintAssist === "stabilize"}
+                onClick={() => {
+                  const sm = simRef.current;
+                  if (sm.stab) disengageStabilize(sm);
+                  else engageStabilize(sm, difficulty);
+                }}
+              />
+            )}
+            {ASSISTS.speed && <AssistButton testId="dock-speed-assist" label={AS.speed} state={AS.state[as.speed === "limiting" ? "limiting" : speedOn ? "ready" : "off"]} on={speedOn} onClick={() => setSpeed(!speedOn)} />}
+          </div>
         )}
-        {tMode ? pad("fwd", "!w-[60px]") : pad("roll-left", "!w-[60px]")}
-        {tMode ? pad("aft", "!w-[60px]") : pad("roll-right", "!w-[60px]")}
+        <div className="flex flex-col gap-1.5 items-end">
+          {tMode ? pad("fwd", "!w-[60px]") : pad("roll-left", "!w-[60px]")}
+          {tMode ? pad("aft", "!w-[60px]") : pad("roll-right", "!w-[60px]")}
+        </div>
       </div>
     </div>
   );
@@ -1174,7 +1341,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           <Cockpit simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} difficulty={difficulty} extraRef={extraRef} />
           <CabinLight simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} />
           <Director simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} markRef={markRef} sizeRef={sizeRef} clockRef={clockRef} orbitRef={orbitRef} markerApiRef={markerApiRef} />
-          <SimLoop simRef={simRef} inputRef={inputRef} phaseRef={phaseRef} difficulty={difficulty} alignRef={alignRef} pausedRef={pausedRef} onEvent={onEvent} plan={plan} />
+          <SimLoop speedRef={speedRef} simRef={simRef} inputRef={inputRef} phaseRef={phaseRef} difficulty={difficulty} alignRef={alignRef} pausedRef={pausedRef} onEvent={onEvent} plan={plan} />
           <AdaptiveResolution />
         </Canvas>
       </div>
@@ -1396,7 +1563,18 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
             </div>
           )}
           {phase === "docking" && controls}
-          {(phase === "docking" || phase === "captured") && <GuidancePanel g={g} text={g && guidanceText(g, difficulty, lang, { keyboard, view })} action={action} lang={lang} on={guideOn} onToggle={() => setGuideOn(!guideOn)} clearAlign={!!cfg.autoAlign} />}
+          {(phase === "docking" || phase === "captured") && (
+            <GuidancePanel
+              g={g}
+              text={g && guidanceText(g, difficulty, lang, { keyboard, view })}
+              action={action}
+              lang={lang}
+              on={guideOn}
+              onToggle={() => setGuideOn(!guideOn)}
+              clearAlign={hasAssists}
+              above={phase === "docking" ? <AssistStrip AS={AS} as={as} msg={hud && hud.msg} seq={hud && hud.seq} lang={lang} hasAssists={hasAssists} ASSISTS={ASSISTS} speedOn={speedOn} align={align} /> : null}
+            />
+          )}
           {/* the bar sits a little right of centre: clear of the HUD on the left at 667 pt */}
           <div className="absolute top-14 short:top-[var(--hud-top)] left-[calc(50%_+_24px)] -translate-x-1/2 z-30 flex gap-1.5 items-stretch">
             <button type="button" data-testid="dock-pause" onClick={togglePause} className="min-h-[44px] short:min-h-[40px] px-2 font-mono text-[9px] tracking-[0.18em] text-white bg-black/55 border border-white/25">

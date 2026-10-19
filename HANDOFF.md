@@ -2765,3 +2765,99 @@ An official mission is now scored out of **1,000 points**: LUNAR LANDING 400, OR
 - `scripts/verify-ios-bundle.js` §9: every texture the JS names is in the bundle, valid, identical to the source copy; retired textures absent; `SOURCES.md` bundled.
 
 **Unchanged:** gameplay, physics, trajectories, landing terrain, spacecraft models, docking logic and cameras, the direct cut into lunar orbit.
+
+## 50. Assisted docking: AUTO-ALIGN, STABILIZE, APPROACH SPEED ASSIST, soft capture
+
+**Why docking was too hard (Phase 0 audit).**
+- **Method:** simulated pilots flew the real `dockingSim` from each difficulty's checkpoint, pressing only what a player can press. There were six pilots:
+  - the reference pilot;
+  - the guidance follower at 0.25, 0.7 and 1.0 s reaction time;
+  - a "holder", who keeps the shown button down until the instruction changes (the usual touchscreen habit);
+  - an impatient pilot, who leans on FWD.
+- **The physics, geometry and guidance are sound.** The capture is judged on the real drogue and probe, the HUD and guidance agree with the physics, and the controls are body-axis and correct in every view. A pilot who follows the panel perfectly docks every difficulty.
+- **Too long and too fiddly.**
+  - Even a perfect pilot needed 3.5–6.5 minutes and 40–330 separate inputs (CADET 212 s; COMMANDER 378 s).
+  - The checkpoint was 30–38 m out at 4–6 cm/s with 2–4.5 m of lateral offset.
+- **Holding a button meant full RCS at once.** A tap is 0.012 m/s; a 1-second hold is 0.1 m/s, the whole lateral tolerance. The "holder" overshot, chased its own corrections, and drained the tanks:
+  - CADET used 85 % of its RCS;
+  - ASTRONAUT and COMMANDER ran out (RCS PROPELLANT DEPLETED). At ASTRONAUT the "reduce lateral drift" order alone burned 12 of the 18 m/s.
+- **Nothing nulled drift for the player.** The orbit's Coriolis coupling is real: at 0.3 m/s closing, it carries the vehicle about 1 m off the axis per minute. Hands off for 2 minutes, CADET drifted 3.6 m off the axis.
+- **The impatient approach:** a deflection, then a glancing touch of the command module counted every simulation step as a new contact (4,025 "contacts" in one run). That was a bug.
+- **Parameters before:**
+
+| | CADET | ASTRONAUT | COMMANDER |
+|---|---|---|---|
+| Start | 30 m, offset 2.0 m, drift 1.6 cm/s, 4 cm/s closing, 5° | 34 m, 3.4 m, 2.7 cm/s, 5 cm/s, 10° | 38 m, 4.5 m, 4.3 cm/s, 6 cm/s, 15°, 0.4°/s |
+| RCS | 0.10 m/s², 30 m/s | 0.08 m/s², 18 m/s | 0.07 m/s², 12 m/s |
+| Capture tolerances | 0.30 m, 7°, roll 15°, 0.015–0.40 m/s, lateral 0.10 m/s, 1.5°/s | 0.20 m, 5°, 10°, 0.025–0.30, 0.07, 1.0°/s | 0.14 m, 3.5°, 6°, 0.03–0.22, 0.05, 0.7°/s |
+| Help | attitude hold, AUTO ALIGN (on by default) | attitude hold | none |
+
+**The assists** (`dockingSim.js` "assists"; `assistsOf`, `engageStabilize`, `assistLimit`).
+- **The rules they all follow:**
+  - Every assist fires the same RCS as the pilot: its command is added to the pilot's, clipped to the same per-axis authority, and paid from the same propellant.
+  - Nothing is set or teleported. The tests check the acceleration never exceeds the RCS's and the turn rate never exceeds the attitude limit.
+  - No assist closes in, and nothing docks by itself.
+- **AUTO-ALIGN** (CADET):
+  - The autopilot turns onto the docking attitude (drogue axis along the probe, no roll) and holds it.
+  - A held attitude button overrides it while held.
+  - Its state shows as ACTIVE, ALIGNED or MANUAL. Messages: AUTO-ALIGN ACTIVE, DOCKING AXIS ALIGNED.
+  - It does not translate. It is now off at the start of a CADET attempt: the first step of the taught sequence is to press it.
+- **STABILIZE:**
+  - The RCS drives the velocity to a held value: no sideways or vertical motion, a closing speed between 0 and the safe approach speed. Rates are damped.
+  - Messages: STABILIZATION ACTIVE, then RELATIVE MOTION STABLE.
+  - **CADET ("hold"):** it keeps holding. The pilot's translation still fires and moves the held velocity by exactly the Δv it adds. A tap therefore sets a new steady slide, and the assist only cancels the drift nobody commanded (the orbit's pull). Hands off for a minute, CADET now stays within 5 cm of the axis; free, it drifts 0.3 m or more.
+  - **ASTRONAUT ("once"):** it nulls, says RELATIVE MOTION STABLE and hands back. Any translation command cancels it ("STABILIZE CANCELLED — YOUR RCS COMMAND"). The guidance offers it as the alternative to jets for a drift.
+  - **COMMANDER:** none.
+- **APPROACH SPEED ASSIST** (CADET, on by default, can be switched off):
+  - The closing limit is `assistLimit(axial)` = min(0.45, 0.08 + 0.025 × distance) m/s: 0.45 m/s from 15 m out, 0.33 at 10 m, 0.13 at 2 m, 0.08 at contact.
+  - Above the limit the RCS brakes (aft thrust, at most the RCS's 0.1 m/s²). At the limit, FWD is not fired.
+  - It never pushes forward: hands off at rest, nothing moves. Message: APPROACH SPEED ASSIST ACTIVE; the button reads BRAKING.
+- **Soft capture** (CADET's tolerances are its soft-capture envelope):
+  - **Envelope:** 0.36 m (the drogue's mouth is 0.42 m), 9°, roll 18°, 0.01–0.45 m/s, lateral 0.13 m/s, 2.5°/s.
+  - **Sequence:** the probe latches (SOFT CAPTURE), and over 6 s the mechanism draws the vehicles together and lines them up (pose interpolation from the capture pose, as before), then HARD DOCK CONFIRMED.
+  - **What it rejects:** 0.5 m off, 0.55 m/s, 14° or 0.2 m/s sideways (tested). ASTRONAUT and COMMANDER keep their tolerances and refuse the same contact that CADET captures.
+  - "DOCKING CONTACT" now reads SOFT CAPTURE in every difficulty (the captured state is the soft capture).
+- **CADET checkpoint:** 22 m out, within a metre of the axis (0.7 / −0.5 m), drift 0.5 cm/s, closing 3 cm/s, attitude 3/−2/4°, no rotation, facing the probe. ASTRONAUT and COMMANDER start as before. RESTART DOCKING rebuilds each difficulty's own checkpoint with STABILIZE off and the switches back to their defaults.
+- **Collisions:** a glancing touch is one contact for as long as it lasts, not one per step.
+
+**Controls** (`jetCommand`, `DockingOps`).
+- **Taps:** a tap is the same minimum impulse as before (0.12 s, full thrust).
+- **Holding:** gives 35 % until 0.6 s, then builds to full thrust by 2.0 s. A 0.5 s press now adds about half of what it did.
+- **FINE** (top-left of the pad, every difficulty: it is not automation) scales the jets to 35 %.
+- **No stuck thrust:** every held button and key is released when the app loses the screen or the focus (blur, visibilitychange).
+- **Unchanged:** the jet buttons' own pointer capture and cancel, the 360° gesture layer under the controls, and the camera views (they never touch the physics).
+
+**On screen.**
+- **Assist buttons:** a column beside FWD/AFT, each showing its state (CADET: AUTO-ALIGN, STABILIZE, SPEED ASSIST; ASTRONAUT: STABILIZE; COMMANDER: none).
+- **Above the guidance panel:**
+  - the assist states (AUTO-ALIGN: ACTIVE · STABILIZE: HOLDING · APPROACH ASSIST: ACTIVE · YOU FLY: TRANSLATION AND FWD/AFT);
+  - the latest assist message;
+  - in CADET, the six-step sequence with live ticks (`assistSequence`): press AUTO-ALIGN, press STABILIZE, check the target is aligned, use forward RCS carefully, keep a safe closing velocity, let soft capture happen.
+- **The guidance** teaches the same sequence:
+  - new instructions PRESS AUTO-ALIGN, PRESS STABILIZE, STABILIZATION ACTIVE — WAIT and APPROACH SPEED ASSIST BRAKING (nothing to press);
+  - the assist it names is highlighted;
+  - with the speed assist on, CADET's target closing speed is 70 % of the assisted limit.
+- **Languages:** everything is in English and Brazilian Portuguese.
+
+- **Final tuning found by those players:**
+  - With the speed assist on, CADET's guidance says "tap FWD up to about half the assisted limit", then hands off. As the ports close, the assist and STABILIZE brake along the falling limit, so there is no AFT order to chase.
+  - STABILIZE's "stable" judges the sideways motion and rotation, not the planned braking along the axis.
+  - The CADET hold keeps at most 6 cm/s sideways (3 cm/s in the last 3 m), so a long press is not kept as a fast slide.
+
+**Results: simulated players** (the real physics, input only; `dockingAssist.test.js`, 22 tests):
+
+| Pilot | CADET before | CADET now | ASTRONAUT now | COMMANDER now |
+|---|---|---|---|---|
+| Follows the panel, 0.7 s reaction | docks, 218 s, 42 inputs | docks, 133 s, 27 presses, 2 % RCS | docks, ~320 s, 8 % RCS | docks, ~390 s |
+| Holds the shown button | docks, 85 % RCS (old jets) | docks, 126 s, 16 % RCS | docks, 43 % RCS (before: out of RCS) | runs out of RCS (demanding by design) |
+| Impatient, leans on FWD | docks after a deflection | docks, 93 s, no contact | docks | docks, 85 % RCS |
+
+CADET also recovers from closing too fast (0.7 m/s at 18 m), sideways drift (9 cm/s) and an attitude 25° off: all three dock, with no contact.
+
+**Results: in the browser** (production build, a real mission flown to the docking, then only on-screen button presses following the panel, about 0.7 s between looking and pressing; headless Chromium, not a phone):
+- **CADET** (CDP touch events, the four views cycled every 20 s, RESTART DOCKING held at 45 s):
+  - The restart returned to the 22 m checkpoint with STABILIZE and AUTO-ALIGN off, the speed assist on, full RCS and attempt 2.
+  - The player pressed AUTO-ALIGN and STABILIZE again and reached soft capture: 61 presses in all, no contact, 98 % RCS left.
+- **ASTRONAUT:** soft capture after 569 s and 551 presses, no contact. The player took the optional STABILIZE 58 times.
+- **COMMANDER:** soft capture after 422 s and 303 presses, no assist, no contact.
+- No page errors in any run.

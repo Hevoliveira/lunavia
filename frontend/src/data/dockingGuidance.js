@@ -34,7 +34,7 @@
  * on the same axis within a few seconds of the last order (it says "let it
  * settle" instead).
  */
-import { DOCKING, PULSE, qConj, qRot, telemetry } from "./dockingSim";
+import { DOCKING, PULSE, assistLimit, qConj, qRot, telemetry } from "./dockingSim";
 import { captureReadiness } from "./dockingPorts";
 
 const DEG = Math.PI / 180;
@@ -95,7 +95,13 @@ export const BRIEFING_S = { CADET: 6, ASTRONAUT: 3.5, COMMANDER: 0 };
 
 /**
  * Every rule that applies to the state now, highest priority first. `active` is the
- * key on display (its rule uses its exit threshold: hysteresis). ctx: { mode, align }.
+ * key on display (its rule uses its exit threshold: hysteresis). ctx: { mode, align, speed }
+ * (the MODE on the pad, AUTO-ALIGN and the APPROACH SPEED ASSIST switched on; STABILIZE is
+ * on the state itself, s.stab).
+ *
+ * With the assists (CADET), the recommended sequence is taught in order: AUTO-ALIGN, then
+ * STABILIZE, then the slow approach on the pilot's own FWD taps. A rule with `assist` names
+ * the assist button to press instead of jets.
  */
 export function evaluate(s, difficulty = "ASTRONAUT", ctx = {}, active = null) {
   const cfg = DOCKING[difficulty];
@@ -120,7 +126,8 @@ export function evaluate(s, difficulty = "ASTRONAUT", ctx = {}, active = null) {
   const kick = cfg.accel * PULSE; // one tap's Δv (m/s)
   const akick = cfg.angAccel * PULSE; // one tap's rate change (rad/s)
   const axial = Math.max(0, m.axial);
-  const d = { m, axial, kick };
+  const d = { m, axial, kick, hold: !!(s.stab && s.stab.mode === "hold") };
+  const as = cfg.assists || {};
 
   if (s.prop <= 0) {
     add({ key: "noProp", pri: 95, step: 3, sev: "safety", restart: true, d });
@@ -150,6 +157,9 @@ export function evaluate(s, difficulty = "ASTRONAUT", ctx = {}, active = null) {
   if (cfg.autoAlign && ctx.align) {
     // the autopilot turns; outside the capture tolerance, wait for it before closing in
     if (attBad) add({ key: "autoAlign", pri: m.angle > tol.angle || Math.abs(m.roll) > tol.roll ? 48 : 22, step: 2, sev: "wait", d });
+  } else if (as.align && !ctx.align) {
+    // CADET: step one of the sequence is AUTO-ALIGN (the attitude is the autopilot's job)
+    add({ key: "useAlign", pri: 67, step: 2, sev: "correct", assist: "align", d });
   } else if (attBad || rateBad) {
     // turn towards the docking attitude at a rate that falls with the error (≤ 1°/s)
     const wantR = err.map((e) => clamp(-0.25 * e, -DEG, DEG));
@@ -176,6 +186,10 @@ export function evaluate(s, difficulty = "ASTRONAUT", ctx = {}, active = null) {
       add({ key: "attWait", pri: unsafe ? 81 : 24, step: 2, sev: unsafe ? "safety" : "wait", d });
     }
   }
+
+  /* STABILIZE: CADET presses it once the attitude is in hand; while it works, wait for it */
+  if (s.stab && s.stab.stableSince == null) add({ key: "stabWait", pri: 62, step: 3, sev: "wait", d });
+  else if (as.stabilize === "hold" && !s.stab && (ctx.align || !as.align) && !attBad) add({ key: "useStab", pri: 63, step: 3, sev: "correct", assist: "stabilize", d });
 
   /* lateral: towards the axis at a speed that falls with the offset, then stop.
      The speed is the vehicle's own (what the translation jets change), not the port's:
@@ -206,15 +220,21 @@ export function evaluate(s, difficulty = "ASTRONAUT", ctx = {}, active = null) {
     const toward = offLR > 0.8 * linedThr && dir2[0] * -offL[0] + dir2[1] * -offL[1] > 0;
     const unsafe = Math.hypot(vL[0], vL[1]) > tol.vLat && axial < 4;
     d.dir2 = dir2;
-    add({ key: toward ? "align" : "drift", pri: unsafe ? 82 : 60, step: toward ? 2 : 3, sev: unsafe ? "safety" : "correct", buttons, mode: "TRANSLATION", d });
+    // ASTRONAUT may null a drift with its one-shot STABILIZE instead of the jets
+    const alt = !toward && as.stabilize === "once" && !s.stab ? "stabilize" : null;
+    add({ key: toward ? "align" : "drift", pri: unsafe ? 82 : 60, step: toward ? 2 : 3, sev: unsafe ? "safety" : "correct", buttons, mode: "TRANSLATION", alt, d });
   } else if (!lined && offLR > 0.8 * linedThr) {
     add({ key: "lateralWait", pri: 24, step: 2, sev: "wait", d });
   }
 
   /* closing speed along the docking axis */
   const back = !lined && axial < (is("backoff") ? 4 : 3);
+  const assistLim = ctx.speed && as.speed ? assistLimit(axial) : null;
+  d.assistLim = assistLim;
   const want = lined
-    ? Math.max(tol.vMin * 1.6, Math.min(m.closingLimit * 0.6, 0.05 + 0.012 * axial, tol.vMax * 0.6))
+    ? assistLim != null
+      ? Math.max(tol.vMin * 1.6, 0.7 * assistLim) // the speed assist guards the limit: aim just under it
+      : Math.max(tol.vMin * 1.6, Math.min(m.closingLimit * 0.6, 0.05 + 0.012 * axial, tol.vMax * 0.6))
     : back
       ? -0.04
       : Math.min(0.03, Math.max(0, m.closing));
@@ -224,7 +244,19 @@ export function evaluate(s, difficulty = "ASTRONAUT", ctx = {}, active = null) {
   d.lim = m.closingLimit;
   const fwd = translationButtons([0, -1, 0], s.q, [1]); // towards the probe
   const aft = translationButtons([0, 1, 0], s.q, [1]);
-  if (m.closing > m.closingLimit * (is("brake") ? 0.95 : 1)) {
+  if (assistLim != null && m.closing > assistLim * 1.03) {
+    // the APPROACH SPEED ASSIST is braking: nothing to press
+    add({ key: "assistBrake", pri: 91, step: 3, sev: "wait", d });
+  } else if (assistLim != null && lined) {
+    // Lined up with the speed assist on: the pilot sets the pace with FWD taps up to about half
+    // the assisted limit; as the ports close, the assist (and STABILIZE's hold) brakes along the
+    // falling limit by itself, so there is no AFT order to chase it with.
+    const low = (is("begin", "latch") ? 0.6 : 0.45) * assistLim;
+    if (m.closing < Math.max(tol.vMin * 1.6, low)) {
+      const key = axial < 3 ? "latch" : "begin";
+      add({ key, pri: 45, step: 4, sev: "go", buttons: fwd, mode: "TRANSLATION", d });
+    }
+  } else if (m.closing > m.closingLimit * (is("brake") ? 0.95 : 1)) {
     add({ key: "brake", pri: 90, step: 3, sev: "safety", buttons: aft, mode: "TRANSLATION", confirm: "braked", d });
   } else if (eC > bandC * (is("slow", "backoff") ? 0.5 : 1)) {
     add({ key: back ? "backoff" : "slow", pri: back ? 85 : 50, step: back ? 4 : 3, sev: back ? "safety" : "correct", buttons: aft, mode: "TRANSLATION", d });
@@ -247,6 +279,10 @@ export function evaluate(s, difficulty = "ASTRONAUT", ctx = {}, active = null) {
 
 /* ---- the tracker: one instruction at a time, without chatter --------------------------- */
 const FAMILY = {
+  useAlign: "att",
+  useStab: "lat",
+  stabWait: "lat",
+  assistBrake: "cl",
   att: "att",
   rot: "att",
   attWait: "att",
@@ -261,8 +297,12 @@ const FAMILY = {
   latch: "cl",
   opening: "cl",
 };
-const WAITS = ["attWait", "lateralWait", "autoAlign", "settle"];
+const WAITS = ["attWait", "lateralWait", "autoAlign", "settle", "stabWait", "assistBrake"];
 const CONFIRM = {
+  useAlign: "alignOn",
+  useStab: "stabOn",
+  stabWait: "stabilized",
+  assistBrake: "braked",
   acquire: "acquired",
   brake: "braked",
   slow: "slowed",
@@ -348,6 +388,8 @@ export function createGuidance(difficulty = "ASTRONAUT", { minHold = 1.5, confir
       pri: pick.pri,
       sev: pick.sev,
       buttons: pick.buttons || [],
+      assist: pick.assist || null,
+      alt: pick.alt || null,
       mode,
       needMode: !!(mode && ctx.mode && ctx.mode !== mode),
       how: mode === "ATTITUDE" && cfg.attHold ? "taps" : "tap",
@@ -364,6 +406,81 @@ export function createGuidance(difficulty = "ASTRONAUT", { minHold = 1.5, confir
     return switches;
   } };
 }
+
+/* ---- CADET's recommended sequence (the checklist on screen) ------------------------------ */
+export const SEQUENCE = {
+  en: ["Press AUTO-ALIGN", "Press STABILIZE", "Check the target is aligned", "Use forward RCS carefully", "Keep a safe closing velocity", "Let soft capture happen"],
+  pt: ["Pressione AUTO-ALIGN", "Pressione STABILIZE", "Confira o alvo alinhado", "Use o RCS para frente com cuidado", "Mantenha a aproximação segura", "Deixe a captura suave acontecer"],
+};
+/**
+ * The six steps of the assisted docking, each { done, active } from the live state:
+ * 1 AUTO-ALIGN on (and the axis aligned), 2 STABILIZE on and stable, 3 the port on the
+ * probe's axis (the guidance's own "lined up"), 4 closing in, 5 the closing speed within
+ * the limit (the assist's when it is on), 6 captured; in order (a step counts once the
+ * ones before it are done). `active` is the first not done.
+ */
+export function assistSequence(s, difficulty = "CADET", ctx = {}) {
+  const cfg = DOCKING[difficulty];
+  const tol = cfg.tol;
+  const m = telemetry(s, difficulty);
+  const axial = Math.max(0, m.axial);
+  const captured = s.status === "captured" || s.status === "docked";
+  const lim = ctx.speed && cfg.assists && cfg.assists.speed ? assistLimit(axial) : m.closingLimit;
+  const done = [
+    captured || (!!ctx.align && m.angle < tol.angle && Math.abs(m.roll) < tol.roll),
+    captured || !!(s.stab && s.stab.stableSince != null),
+    captured || m.offsetR < Math.max(0.6 * tol.lateral, 0.03 * axial) * 1.25,
+    captured || m.closing >= tol.vMin,
+    captured || (m.closing >= tol.vMin && m.closing <= lim * 1.03),
+    captured,
+  ];
+  // a checklist: a step counts once the ones before it are done
+  for (let i = 1; i < done.length; i++) done[i] = done[i] && done[i - 1];
+  const first = done.indexOf(false);
+  return done.map((d, i) => ({ step: i + 1, done: d, active: i === first }));
+}
+
+/* ---- the assists on screen ------------------------------------------------------------- */
+export const ASSIST_UI = {
+  en: {
+    align: "AUTO-ALIGN",
+    stabilize: "STABILIZE",
+    speed: "SPEED ASSIST",
+    fine: "FINE",
+    state: { off: "OFF", active: "ACTIVE", aligned: "ALIGNED", override: "MANUAL", stable: "STABLE", holding: "HOLDING", done: "STABLE ✓", cancelled: "CANCELLED", ready: "ON", limiting: "BRAKING", on: "ON" },
+    msg: {
+      alignActive: "AUTO-ALIGN ACTIVE",
+      aligned: "DOCKING AXIS ALIGNED",
+      stabActive: "STABILIZATION ACTIVE",
+      stable: "RELATIVE MOTION STABLE",
+      stabCancelled: "STABILIZE CANCELLED — YOUR RCS COMMAND",
+      speed: "APPROACH SPEED ASSIST ACTIVE",
+      fine: "FINE CONTROL — ONE THIRD OF THE THRUST",
+    },
+    row: { align: "AUTO-ALIGN", stabilize: "STABILIZE", speed: "APPROACH ASSIST" },
+    yours: "YOU FLY: TRANSLATION AND FWD/AFT",
+    seq: "STEP",
+  },
+  pt: {
+    align: "AUTO-ALIGN",
+    stabilize: "STABILIZE",
+    speed: "ASSIST. VELOC.",
+    fine: "FINO",
+    state: { off: "DESL.", active: "ATIVO", aligned: "ALINHADO", override: "MANUAL", stable: "ESTÁVEL", holding: "MANTENDO", done: "ESTÁVEL ✓", cancelled: "CANCELADO", ready: "LIG.", limiting: "FREANDO", on: "LIG." },
+    msg: {
+      alignActive: "AUTO-ALIGN ATIVO",
+      aligned: "EIXO DE DOCKING ALINHADO",
+      stabActive: "ESTABILIZAÇÃO ATIVA",
+      stable: "MOVIMENTO RELATIVO ESTÁVEL",
+      stabCancelled: "STABILIZE CANCELADO — SEU COMANDO DE RCS",
+      speed: "ASSISTENTE DE VELOCIDADE DE APROXIMAÇÃO ATIVO",
+      fine: "CONTROLE FINO — UM TERÇO DO EMPUXO",
+    },
+    row: { align: "AUTO-ALIGN", stabilize: "STABILIZE", speed: "ASSIST. APROX." },
+    yours: "COM VOCÊ: TRANSLAÇÃO E FWD/AFT",
+    seq: "PASSO",
+  },
+};
 
 /* ---- words ----------------------------------------------------------------------------- */
 const f2 = (v) => Math.abs(v).toFixed(2);
@@ -437,6 +554,34 @@ export function guidanceText(g, difficulty = "ASTRONAUT", lang = "en", ctx = {})
           : "The CSM is ahead. The cyan ring is its probe tip; the orange reticle is your docking axis. Keep the ring in the reticle.",
       pt ? `Alvo a ${m ? m.axial.toFixed(1) : ""} m.` : `Target at ${m ? m.axial.toFixed(1) : ""} m.`,
     ],
+    useAlign: [
+      pt ? "PRESSIONE AUTO-ALIGN" : "PRESS AUTO-ALIGN",
+      pt
+        ? "Passo 1. O AUTO-ALIGN gira a nave para o eixo de docking com o próprio RCS e a mantém lá. Ele não move a nave para os lados nem para a frente: isso continua com você."
+        : "Step 1. AUTO-ALIGN turns the vehicle onto the docking axis with its own RCS and holds it there. It does not move you sideways or forward: that stays yours.",
+      pt ? "AUTO-ALIGN disponível." : "AUTO-ALIGN available.",
+    ],
+    useStab: [
+      pt ? "PRESSIONE STABILIZE" : "PRESS STABILIZE",
+      pt
+        ? "Passo 2. O STABILIZE dispara o RCS para anular a deriva lateral e o giro e mantém a aproximação numa velocidade segura. Seus toques continuam valendo: ele mantém a nova velocidade que você der."
+        : "Step 2. STABILIZE fires the RCS to cancel sideways drift and rotation and keeps the approach at a safe speed. Your taps still work: it holds whatever new speed you set.",
+      pt ? "STABILIZE disponível." : "STABILIZE available.",
+    ],
+    stabWait: [
+      pt ? "ESTABILIZAÇÃO ATIVA — AGUARDE" : "STABILIZATION ACTIVE — WAIT",
+      pt ? "O RCS está anulando o movimento relativo. Aguarde MOVIMENTO RELATIVO ESTÁVEL." : "The RCS is cancelling the relative motion. Wait for RELATIVE MOTION STABLE.",
+      pt ? "Aguarde." : "Wait.",
+    ],
+    assistBrake: [
+      pt ? "ASSISTENTE DE VELOCIDADE FREANDO" : "APPROACH SPEED ASSIST BRAKING",
+      m && pt
+        ? `Aproximação a ${f3(m.closing)} m/s, acima do limite assistido de ${f3(d.assistLim || 0)} m/s a ${m.axial.toFixed(1)} m: o RCS está freando por você. O FWD não passa do limite.`
+        : m
+          ? `Closing at ${f3(m.closing)} m/s, above the assisted limit of ${f3(d.assistLim || 0)} m/s at ${m.axial.toFixed(1)} m: the RCS is braking for you. FWD will not push past the limit.`
+          : "",
+      m ? `${f3(m.closing)} > ${f3(d.assistLim || 0)} m/s.` : "",
+    ],
     autoAlign: [
       pt ? "AUTO ALIGN ALINHANDO A ATITUDE" : "AUTO ALIGN IS ALIGNING THE ATTITUDE",
       pt ? "Aguarde: o piloto automático gira a nave para o eixo de docking. A translação continua com você." : "Wait: the autopilot is turning you onto the docking axis. Translation is still yours.",
@@ -462,9 +607,9 @@ export function guidanceText(g, difficulty = "ASTRONAUT", lang = "en", ctx = {})
     align: [
       pt ? "CORRIJA O ALINHAMENTO LATERAL" : "CORRECT LATERAL ALIGNMENT",
       m && pt
-        ? `A porta está ${f2(Math.hypot(...d.offL))} m ${where(d.offL, "pt")} do eixo. ${ctl} uma vez e aguarde: pela inércia, ela continua deslizando para o centro sozinha.`
+        ? `A porta está ${f2(Math.hypot(...d.offL))} m ${where(d.offL, "pt")} do eixo. ${ctl} uma vez e aguarde: ${d.hold ? "o STABILIZE mantém você deslizando nessa velocidade constante" : "pela inércia, ela continua deslizando para o centro sozinha"}.`
         : m
-          ? `The port is ${f2(Math.hypot(...d.offL))} m ${where(d.offL, "en")} of the axis. ${ctl} once, then wait: inertia keeps it sliding towards the centre on its own.`
+          ? `The port is ${f2(Math.hypot(...d.offL))} m ${where(d.offL, "en")} of the axis. ${ctl} once, then wait: ${d.hold ? "STABILIZE keeps you sliding at that steady speed" : "inertia keeps it sliding towards the centre on its own"}.`
           : "",
       m ? (pt ? `Porta ${f2(Math.hypot(...d.offL))} m ${where(d.offL, "pt")}.` : `Port ${f2(Math.hypot(...d.offL))} m ${where(d.offL, "en")}.`) : "",
     ],
@@ -546,7 +691,11 @@ export function guidanceText(g, difficulty = "ASTRONAUT", lang = "en", ctx = {})
     ],
     stable: [pt ? "MOVIMENTO RELATIVO ESTABILIZADO" : "RELATIVE MOTION STABILIZED", pt ? "Tudo dentro dos limites. Mantenha." : "Everything within limits. Hold it.", ""],
     settle: [pt ? "DEIXE ESTABILIZAR — AGUARDE" : "LET IT SETTLE — WAIT", pt ? "A última correção ainda está agindo. Aguarde um instante antes da próxima." : "The last correction is still taking effect. Wait a moment before the next.", ""],
-    capture: [pt ? "CONTATO — CAPTURA" : "CONTACT — CAPTURE", pt ? "Sonda travada, recolhendo. Mantenha-se parado." : "Probe latched and retracting. Hold still.", ""],
+    capture: [
+      pt ? "CAPTURA SUAVE" : "SOFT CAPTURE",
+      pt ? "A sonda travou no drogue: o mecanismo puxa as naves uma para a outra e as alinha. Mantenha-se parado." : "The probe has latched in the drogue: the mechanism draws the two vehicles together and lines them up. Hold still.",
+      "",
+    ],
     docked: [pt ? "ACOPLAMENTO FIRME CONFIRMADO" : "HARD DOCK CONFIRMED", "", ""],
     noProp: [
       pt ? "PROPELENTE DO RCS ESGOTADO" : "RCS PROPELLANT DEPLETED",
@@ -565,6 +714,9 @@ export function guidanceText(g, difficulty = "ASTRONAUT", lang = "en", ctx = {})
     driftStopped: pt ? "MOVIMENTO RELATIVO ESTABILIZADO" : "RELATIVE MOTION STABILIZED",
     attAligned: pt ? "ATITUDE ALINHADA" : "ATTITUDE ALIGNED",
     rotStopped: pt ? "ROTAÇÃO PARADA" : "ROTATION STOPPED",
+    alignOn: pt ? "AUTO-ALIGN ATIVO" : "AUTO-ALIGN ACTIVE",
+    stabOn: pt ? "ESTABILIZAÇÃO ATIVA" : "STABILIZATION ACTIVE",
+    stabilized: pt ? "MOVIMENTO RELATIVO ESTÁVEL" : "RELATIVE MOTION STABLE",
   };
   const row = T[g.key] || T.stable;
   const title = row[0];
@@ -572,15 +724,15 @@ export function guidanceText(g, difficulty = "ASTRONAUT", lang = "en", ctx = {})
   // the telemetry behind the instruction (one short line)
   let support = "";
   if (m) {
-    if (["brake", "slow", "begin", "latch", "opening", "backoff", "good", "standby"].includes(g.key))
+    if (["brake", "slow", "begin", "latch", "opening", "backoff", "good", "standby", "assistBrake"].includes(g.key))
       support = pt ? `DIST ${m.axial.toFixed(m.axial < 10 ? 2 : 1)} m · APROX ${f3(m.closing)} m/s` : `RANGE ${m.axial.toFixed(m.axial < 10 ? 2 : 1)} m · CLOSING ${f3(m.closing)} m/s`;
-    else if (["align", "drift", "lateralWait"].includes(g.key))
+    else if (["align", "drift", "lateralWait", "stabWait", "useStab"].includes(g.key))
       support = `${pt ? "PORTA" : "PORT"} ${m.offset[0] >= 0 ? "R" : "L"}${f2(m.offset[0])} ${m.offset[1] >= 0 ? "U" : "D"}${f2(m.offset[1])} m · LAT ${f3(Math.hypot(...d.vL))} m/s`;
-    else if (["att", "rot", "attWait", "autoAlign"].includes(g.key)) support = `P ${dg(m.pitch)}° · Y ${dg(m.yaw)}° · R ${dg(m.roll)}° · ${dg(d.rate || 0)}°/s`;
+    else if (["att", "rot", "attWait", "autoAlign", "useAlign"].includes(g.key)) support = `P ${dg(m.pitch)}° · Y ${dg(m.yaw)}° · R ${dg(m.roll)}° · ${dg(d.rate || 0)}°/s`;
   }
   if (g.key === "capture") {
     const pct = Math.round((d.retract || 0) * 100);
-    support = pt ? `✓ CONTATO · ✓ CAPTURA · RECOLHENDO ${pct}% · ${pct >= 100 ? "✓" : "◌"} ACOPLAMENTO FIRME` : `✓ CONTACT · ✓ CAPTURE · RETRACTING ${pct}% · ${pct >= 100 ? "✓" : "◌"} HARD DOCK`;
+    support = pt ? `✓ CONTATO · ✓ CAPTURA SUAVE · RECOLHENDO ${pct}% · ${pct >= 100 ? "✓" : "◌"} ACOPLAMENTO FIRME` : `✓ CONTACT · ✓ SOFT CAPTURE · RETRACTING ${pct}% · ${pct >= 100 ? "✓" : "◌"} HARD DOCK`;
   }
   return {
     title,
@@ -600,7 +752,7 @@ export function guidanceText(g, difficulty = "ASTRONAUT", lang = "en", ctx = {})
  * pulse) — and nothing while the panel says to wait or shows a confirmation.
  * If it docks, the instructions alone are enough to dock.
  */
-export function guidedPilot(difficulty = "ASTRONAUT", { lag = 0.25, align = DOCKING[difficulty].autoAlign } = {}) {
+export function guidedPilot(difficulty = "ASTRONAUT", { lag = 0.25, align = DOCKING[difficulty].autoAlign, speed = false } = {}) {
   const g = createGuidance(difficulty);
   let mode = "TRANSLATION";
   let next = -Infinity;
@@ -608,8 +760,14 @@ export function guidedPilot(difficulty = "ASTRONAUT", { lag = 0.25, align = DOCK
   const log = [];
   const pilot = (s) => {
     if (s.t < next - 1e-9 && log.length && s.t < log[log.length - 1].t) next = -Infinity; // a restart
-    const out = g.update(s, { mode, align });
-    log.push({ t: s.t, key: out.key, pri: out.pri, brakes: out.brakes, buttons: out.buttons.slice(), confirm: out.confirm, step: out.step });
+    const out = g.update(s, { mode, align, speed });
+    log.push({ t: s.t, key: out.key, pri: out.pri, brakes: out.brakes, buttons: out.buttons.slice(), confirm: out.confirm, step: out.step, assist: out.assist });
+    if (out.assist && !out.confirm && s.t >= next) {
+      // press the assist button the panel names (AUTO-ALIGN, STABILIZE)
+      if (out.assist === "align") align = true;
+      next = s.t + lag + 2 * PULSE;
+      return { ...idle, assist: out.assist };
+    }
     if (!out.buttons.length || out.confirm) return idle;
     if (out.needMode) {
       mode = out.mode; // one press of MODE

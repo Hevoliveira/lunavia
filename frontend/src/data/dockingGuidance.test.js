@@ -1,11 +1,18 @@
-import { DOCKING, DIFFICULTY_KEYS, PULSE, checkpointState, flyDocking, referencePilot, stepDocking, telemetry, qMul, qAxisAngle, qNorm } from "./dockingSim";
+import { DOCKING, DIFFICULTY_KEYS, PULSE, checkpointState, engageStabilize, flyDocking, referencePilot, stepDocking, telemetry, qMul, qAxisAngle, qNorm } from "./dockingSim";
 import { CONTROLS, commandOf, createGuidance, evaluate, guidanceText, guidedPilot, lateralVelocity, translationButtons, SAFETY } from "./dockingGuidance";
 
 const DEG = Math.PI / 180;
-const top = (s, d, ctx = {}) => evaluate(s, d, { mode: "TRANSLATION", align: false, ...ctx })[0];
+// CADET is evaluated as it is flown: AUTO-ALIGN on and STABILIZE holding (already settled on
+// the state's own velocity); its assist sequence is tested in dockingAssist.test.js
+const top = (s, d, ctx = {}) => evaluate(s, d, { mode: "TRANSLATION", align: d === "CADET", ...ctx })[0];
 const at = (d, over) => {
   const s = checkpointState(d, over);
   s.t = 30; // past the opening briefing
+  if (d === "CADET") {
+    engageStabilize(s, d);
+    s.stab.v = s.vel.slice();
+    s.stab.stableSince = 0;
+  }
   return s;
 };
 
@@ -65,7 +72,7 @@ describe("what the guidance detects", () => {
     expect(CONTROLS[c.buttons[0]].i).toBe(0); // pitch
   });
   test("CADET's auto align: wait, no attitude order", () => {
-    const s = at("CADET", { offset: [0, 0], drift: [0, 0], att: [6, 0, 0], range: 20, closing: 0.05 });
+    const s = at("CADET", { offset: [0, 0], drift: [0, 0], att: [8, 0, 0], range: 20, closing: 0.05 });
     const cs = evaluate(s, "CADET", { mode: "TRANSLATION", align: true });
     expect(cs.find((c) => c.key === "att")).toBeUndefined();
     expect(cs.find((c) => c.key === "autoAlign")).toBeDefined();
@@ -133,8 +140,8 @@ describe("what the guidance detects", () => {
     const o = createGuidance("ASTRONAUT").update(s, {});
     expect(o.step).toBe(5);
     const x = guidanceText(o, "ASTRONAUT", "en");
-    expect(x.title).toBe("CONTACT — CAPTURE");
-    expect(x.support).toMatch(/✓ CONTACT · ✓ CAPTURE · RETRACTING 50% · ◌ HARD DOCK/);
+    expect(x.title).toBe("SOFT CAPTURE");
+    expect(x.support).toMatch(/✓ CONTACT · ✓ SOFT CAPTURE · RETRACTING 50% · ◌ HARD DOCK/);
   });
   test("captured, docked, no propellant", () => {
     const s = at("ASTRONAUT", {});
