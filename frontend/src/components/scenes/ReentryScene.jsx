@@ -1,8 +1,9 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Stars } from "@react-three/drei";
-import { useRef, useMemo, useEffect, useState } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import * as THREE from "three";
 import { R_EARTH, CAPSULE, CHUTES, OUTCOME } from "@/data/reentryPhysics";
+import { PlanetEarth } from "@/components/planets/Planets";
 import { plasmaLevel } from "@/data/reentryGuidance";
 import CsmModel, { csmMaterials } from "@/components/spacecraft/CsmModel";
 import { CM_R, PARTS as CSM_PARTS, buildCM } from "@/data/csmDesign";
@@ -16,8 +17,6 @@ import { CM_R, PARTS as CSM_PARTS, buildCM } from "@/data/csmDesign";
  * Capsule diameter = 1 unit (3.9 m).
  */
 
-const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
-const CLOUD_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_clouds_1024.png";
 
 const EARTH_RS = 400; // scene radius of the Earth sphere (altitude scaled 1:1 in angle)
 const LOW_SCALE = 25; // metres per scene unit in the low-altitude world
@@ -28,27 +27,6 @@ const smooth = (x) => {
   return c * c * (3 - 2 * c);
 };
 
-// Texture loads that fail quietly (no Suspense throw) — the planet falls back to a flat material.
-function useOptionalTexture(url) {
-  const [tex, setTex] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    new THREE.TextureLoader().load(
-      url,
-      (t) => {
-        if (!alive) return;
-        t.colorSpace = THREE.SRGBColorSpace;
-        setTex(t);
-      },
-      undefined,
-      () => {}
-    );
-    return () => {
-      alive = false;
-    };
-  }, [url]);
-  return tex;
-}
 
 /* ------------------------------ helpers ------------------------------ */
 
@@ -502,15 +480,13 @@ function SkyDome({ simRef }) {
   );
 }
 
+// The Sun of this scene (the directional light below): it lights the capsule and the Earth alike.
+const REENTRY_SUN = [-6, 7, 5];
 function OrbitalEarth({ simRef, viewRef }) {
   const group = useRef();
-  const surface = useRef();
-  const clouds = useRef();
-  const shell = useRef();
-  const map = useOptionalTexture(EARTH_MAP);
-  const cloudMap = useOptionalTexture(CLOUD_MAP);
-  const shellUniforms = useMemo(() => ({ uFade: { value: 1 } }), []);
-  useFrame((_, dt) => {
+  const fade = useRef(1);
+  const limb = useRef(1);
+  useFrame(() => {
     const s = simRef.current;
     if (!group.current || !s) return;
     const v = viewRef.current;
@@ -522,40 +498,14 @@ function OrbitalEarth({ simRef, viewRef }) {
     group.current.rotation.z = -(s.s / R_EARTH) - 0.35;
     const vis = smooth((h / 1000 - 12) / 10);
     group.current.visible = vis > 0.01;
-    if (surface.current) surface.current.material.opacity = vis;
-    if (clouds.current) {
-      clouds.current.rotation.y += dt * 0.003;
-      clouds.current.material.opacity = 0.75 * vis;
-    }
-    if (shell.current) {
-      // The limb glow is seen from outside the atmosphere only; inside it, the sky dome takes over.
-      const outside = smooth((hs - EARTH_RS * 0.018 - 0.3) / 2);
-      shell.current.visible = outside > 0.01;
-      shellUniforms.uFade.value = vis * outside;
-    }
+    fade.current = vis;
+    // The limb glow is seen from outside the atmosphere only; inside it, the sky dome takes over.
+    limb.current = smooth((hs - EARTH_RS * 0.018 - 0.3) / 2);
   });
+  // The shared NASA Earth (components/planets), as in every other scene.
   return (
     <group ref={group}>
-      <mesh ref={surface} rotation={[0.4, 0, 0]}>
-        <sphereGeometry args={[EARTH_RS, 96, 64]} />
-        <meshStandardMaterial map={map || null} color={map ? "#ffffff" : "#1d4f86"} roughness={0.85} metalness={0.05} transparent />
-      </mesh>
-      <mesh ref={clouds} rotation={[0.4, 0, 0]}>
-        <sphereGeometry args={[EARTH_RS * 1.0025, 96, 64]} />
-        <meshStandardMaterial map={cloudMap || null} color="#ffffff" transparent opacity={cloudMap ? 0.75 : 0} depthWrite={false} />
-      </mesh>
-      <mesh ref={shell}>
-        <sphereGeometry args={[EARTH_RS * 1.018, 64, 48]} />
-        <shaderMaterial
-          transparent
-          side={THREE.BackSide}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          uniforms={shellUniforms}
-          vertexShader={`varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);} `}
-          fragmentShader={`uniform float uFade; varying vec3 vN; void main(){ float i = pow(0.72 - dot(vN, vec3(0.0,0.0,1.0)), 3.0); gl_FragColor = vec4(0.35,0.62,1.0,1.0) * i * 1.4 * uFade; }`}
-        />
-      </mesh>
+      <PlanetEarth radius={EARTH_RS} sun={REENTRY_SUN} rotation={[0.4, 0, 0]} cloudDrift={0.0002} segments={160} opacityRef={fade} limbRef={limb} />
     </group>
   );
 }

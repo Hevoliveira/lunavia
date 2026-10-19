@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Stars, useTexture } from "@react-three/drei";
+import { Stars } from "@react-three/drei";
+import { PlanetEarth } from "@/components/planets/Planets";
 import * as THREE from "three";
 import { WORLD_X } from "@/data/touchdownFx";
 import { FOOT_RADIUS } from "@/data/landingSites";
@@ -25,7 +26,6 @@ import { buildTerrain, hazardStrip, rockInstances, skyDirection } from "@/data/t
  *                 safe and red when it is not.
  */
 
-const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
 
 /* ---- regolith detail (procedural, tileable) --------------------------------------------- */
 let regolith = null;
@@ -308,21 +308,11 @@ function Horizon({ site }) {
   );
 }
 
-function Earth({ dir }) {
-  const [tex] = useTexture([EARTH_MAP]);
-  useEffect(() => () => tex.dispose(), [tex]);
-  const ref = useRef();
-  useFrame((_, dt) => {
-    if (ref.current) ref.current.rotation.y += dt * 0.01;
-  });
-  // ~2x the Earth's real 1.9° from the Moon, so it reads on a phone
+function Earth({ dir, sun }) {
+  // ~2x the Earth's real 1.9° from the Moon, so it reads on a phone. Lit by this site's Sun
+  // (its phase follows from the geometry); no glow of its own. The shared NASA Earth.
   const r = SKY_R * Math.tan(1.9 * (Math.PI / 180));
-  return (
-    <mesh ref={ref} position={dir.map((v) => v * SKY_R)}>
-      <sphereGeometry args={[r, 48, 48]} />
-      <meshStandardMaterial map={tex} roughness={1} emissive="#0a1830" emissiveIntensity={0.12} />
-    </mesh>
-  );
+  return <PlanetEarth radius={r} sun={sun} spin={0.01} segments={64} small position={dir.map((v) => v * SKY_R)} />;
 }
 
 /** Stars and the Earth travel with the camera (they are at infinity); the horizon stays put. */
@@ -331,6 +321,7 @@ export function SiteSky({ site }) {
   const sky = useRef();
   // On the far side the Earth is below the horizon: there is none to draw.
   const earthDir = useMemo(() => (site.earth ? skyDirection(site.earth) : null), [site]);
+  const sunDir = useMemo(() => skyDirection(site.sun), [site]);
   useFrame(() => {
     if (sky.current) sky.current.position.copy(camera.position);
   });
@@ -338,7 +329,7 @@ export function SiteSky({ site }) {
     <>
       <group ref={sky}>
         <Stars radius={SKY_R} depth={200} count={4000} factor={40} saturation={0} fade speed={0.05} />
-        {earthDir && <Earth dir={earthDir} />}
+        {earthDir && <Earth dir={earthDir} sun={sunDir} />}
       </group>
       <Horizon site={site} />
     </>

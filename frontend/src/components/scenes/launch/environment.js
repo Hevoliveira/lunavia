@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { planetTexture } from "@/components/planets/planetMaterials";
 
 /*
  * Environment layer of the launch cinematic, at true scale.
@@ -21,7 +22,6 @@ const ATM_TOP_KM = 100;
 const SITE_LAT = (28.57 * Math.PI) / 180;
 const SITE_LON = (-80.65 * Math.PI) / 180;
 
-const PUB = process.env.PUBLIC_URL || "";
 
 // Env frame (east, up, south) → Earth-fixed axes, for texture lookups.
 function siteToEcef() {
@@ -59,9 +59,8 @@ const SKY_FRAG = `
   uniform float uHaze;     // extra low-altitude haze (Mie) multiplier
   uniform float uDetail;   // 0..1: procedural cloud / land detail below texture resolution
   uniform mat3 uToEcef;
-  uniform sampler2D uDay;
-  uniform sampler2D uSpec;
-  uniform sampler2D uClouds;
+  uniform sampler2D uDay;   // NASA Blue Marble (sRGB, decoded by the GPU)
+  uniform sampler2D uAux;   // R water, G city lights, B clouds (NASA; components/planets)
   varying vec2 vNdc;
 
   const vec3 BR = vec3(5.8e-3, 13.5e-3, 33.1e-3);
@@ -168,7 +167,7 @@ const SKY_FRAG = `
     // thin it and let the surface carry the image, as in orbital photography.
     float orb = smoothstep(30.0, 150.0, uCamH * uKm);
     if (hitP) {
-      col *= mix(1.0, 0.55, orb);
+      col *= mix(1.0, 0.4, orb);
       vec3 p = ro + rd * tp.x;
       vec3 n = normalize(p);
       vec3 e = uToEcef * n;
@@ -180,10 +179,10 @@ const SKY_FRAG = `
       vec2 dx = dFdx(uv), dy = dFdy(uv), dx2 = dFdx(uv2), dy2 = dFdy(uv2);
       if (abs(dx2.x) + abs(dy2.x) < abs(dx.x) + abs(dy.x)) { dx = dx2; dy = dy2; }
       vec3 day = textureGrad(uDay, uv, dx, dy).rgb;
-      day = pow(day, vec3(2.2));
-      float ocean = textureGrad(uSpec, uv, dx, dy).r;
-      vec4 cl = textureGrad(uClouds, uv, dx * 2.0, dy * 2.0);
-      float cloud = clamp(cl.r * cl.a * 1.15, 0.0, 1.0);
+      vec3 aux = textureGrad(uAux, uv, dx, dy).rgb;
+      float ocean = aux.r;
+      // NASA cloud density, kept soft (the map is ~10 km a texel: hard edges would read as cut-outs)
+      float cloud = smoothstep(0.02, 0.92, textureGrad(uAux, uv, dx * 2.0, dy * 2.0).b);
       // Detail below the textures' resolution, seen from orbit: break the
       // blurred cloud map into crisp formations (~15 km and ~4 km features)
       // and add relief to the land. px: size of a pixel on the sphere.
@@ -196,7 +195,10 @@ const SKY_FRAG = `
         n2 = octave(e, 1500.0, px);
         float n3 = octave(e, 90.0, px);
         float dn = (n3 - 0.5) * 0.5 + (n1 - 0.5) * 0.35 + (n2 - 0.5) * 0.15;
-        cloud = mix(cloud, smoothstep(0.3, 0.7, cloud + dn * 0.9), uDetail);
+        // break the soft fields into formations: texture inside, frayed edges, never new cloud
+        // where the map has none
+        float frm = clamp(0.62 + dn * 1.7, 0.0, 1.0);
+        cloud = mix(cloud, cloud * frm * smoothstep(0.0, 0.25, cloud + dn * 0.3), uDetail);
         cloudLit = mix(1.0, 0.82 + 0.3 * n1, uDetail);
         day *= mix(1.0, 0.82 + 0.36 * n2, land * uDetail);
       }
@@ -213,16 +215,12 @@ const SKY_FRAG = `
       float k = 1.0 / max(ndl + 0.12, 0.03);
       vec3 sunT = exp(-(BR * HR + BM * 1.1 * HM * uHaze) * k);
       col += surf * sunT * trans * uSunI * 0.085 * mix(1.0, 1.3, orb);
-      // City lights on the night side: land only, not deserts or ice, dimmed
-      // under cloud; clustered by a regional density field.
+      // City lights on the night side (NASA Earth's City Lights): land only,
+      // dimmed under cloud, never in daylight.
       float night = 1.0 - smoothstep(-0.14, 0.02, sdl);
       if (night > 0.0 && land > 0.0) {
-        float lum = dot(day, vec3(0.3, 0.59, 0.11));
-        float pop = smoothstep(0.52, 0.8, octave(e, 160.0, px) * 0.65 + octave(e, 45.0, px) * 0.35);
-        float town = smoothstep(0.62, 0.92, octave(e, 2600.0, px));
-        float lights = land * pop * mix(0.22, town, 1.0 - smoothstep(0.2, 0.6, px * 2600.0));
-        lights *= (1.0 - smoothstep(0.06, 0.16, lum)) * (1.0 - cloud * 0.85);
-        col += vec3(1.0, 0.72, 0.4) * lights * night * trans * 0.55;
+        float lights = aux.g * aux.g * land * (1.0 - cloud * 0.85);
+        col += vec3(1.0, 0.72, 0.4) * lights * night * trans * 0.9;
       }
     } else {
       // Single scattering over-yellows long, low horizontal paths; real skies
@@ -383,17 +381,9 @@ function buildClouds() {
 export function createEnvironment() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, 1, 0.002, 12000);
-  const loader = new THREE.TextureLoader();
-  const tex = (f, srgb) => {
-    const t = loader.load(`${PUB}/textures/planets/${f}`);
-    t.colorSpace = THREE.NoColorSpace; // decoded manually in the shader
-    t.wrapS = THREE.RepeatWrapping;
-    t.anisotropy = 4;
-    return t;
-  };
-  const day = tex("earth_atmos_2048.jpg");
-  const spec = tex("earth_specular_2048.jpg");
-  const clouds = tex("earth_clouds_1024.png");
+  // The shared NASA Earth (components/planets): the same textures as every other scene.
+  const day = planetTexture("earthDay");
+  const aux = planetTexture("earthAux");
   const skyMat = new THREE.ShaderMaterial({
     vertexShader: SKY_VERT,
     fragmentShader: SKY_FRAG,
@@ -414,8 +404,7 @@ export function createEnvironment() {
       uDetail: { value: 0 },
       uToEcef: { value: siteToEcef() },
       uDay: { value: day },
-      uSpec: { value: spec },
-      uClouds: { value: clouds },
+      uAux: { value: aux },
     },
   });
   const sky = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), skyMat);
@@ -466,7 +455,8 @@ export function createEnvironment() {
       cloudMesh.visible = altKm < 35;
     },
     dispose() {
-      [day, spec, clouds, cloudMesh.material.uniforms.uTex.value].forEach((t) => t.dispose());
+      // the planet textures are shared (and kept for the rest of the mission): only this layer's own
+      cloudMesh.material.uniforms.uTex.value.dispose();
       skyMat.dispose();
       sky.geometry.dispose();
       cloudMesh.geometry.dispose();
