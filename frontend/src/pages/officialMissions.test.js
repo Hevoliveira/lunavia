@@ -130,7 +130,7 @@ describe("after the landing: lunar ascent, rendezvous and the player's docking, 
     expect(ascent).toMatch(/<LanderModel scale=\{LM\.scale\} fx=\{fx\} ascent=\{ascRef\.current\} \/>/);
   });
   test("docking is the simulation's: stepped every frame from the player's input, judged only by its contact rules; retries restart at the checkpoint", () => {
-    expect(dock).toMatch(/const e = stepDocking\(s, inp, difficulty, dt, \{ align: alignRef\.current \}\);/);
+    expect(dock).toMatch(/const e = stepDocking\(s, inp, difficulty, dt, \{ align: alignRef\.current, speed: speedRef\.current \}\);/);
     expect(dock).not.toMatch(/status = "docked"|phase: "docked"|kind: "docked"/); // the component never declares a dock itself
     // every attempt (the first, a retry after a failure, RESTART DOCKING) starts from the full checkpoint state
     expect(between(dock, "const startDocking = () => {", "};")).toMatch(/restoreCheckpoint\(s, difficulty\);/);
@@ -149,7 +149,7 @@ describe("after the landing: lunar ascent, rendezvous and the player's docking, 
     expect(start).toMatch(/keysBlocked\.current = new Set\(keysDown\.current\);/);
     expect(start).toMatch(/guidanceRef\.current\.reset\(\);/);
     // the guidance panel is drawn from data/dockingGuidance, which only reads the state
-    expect(dock).toMatch(/<GuidancePanel g=\{g\}/);
+    expect(dock).toMatch(/<GuidancePanel\s+g=\{g\}/);
   });
   test("four docking views on one simulation: NAV (as before), WINDOW, COCKPIT, 360°", () => {
     const cabin = read("components/DockingCabin.jsx");

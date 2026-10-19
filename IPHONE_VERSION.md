@@ -1,12 +1,15 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD af797cc**.
+This folder installs **BUILD 96a87a6**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD af797cc · 2026-10-19 17:06 UTC**
+> **LUNAVIA iOS · BUILD 96a87a6 · 2026-10-19 19:02 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **af797cc** is the previous release: the photorealistic Earth and Moon, but the docking had no
+  assists (no AUTO-ALIGN on demand, STABILIZE, APPROACH SPEED ASSIST or soft capture), and a held
+  jet button fired at full thrust at once;
 - **4061929** is the previous release: the docking ports made clear, but the Earth and the Moon
   still used the old low-resolution textures (a glowing halo round the Earth, a Moon lit from all
   sides with no true terminator);
@@ -83,16 +86,29 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Mission scoring, medals and achievements: 1,000 points (lunar landing 400, docking 300, reentry 300) from what each phase measured; BRONZE, SILVER, GOLD and PLATINUM (PLATINUM on COMMANDER); 17 achievements; personal records for each destination and difficulty; the MISSION DEBRIEF after splashdown; FLIGHT RECORDS (medals and records, achievements, mission log) | #22 | e0bf765, 4bd83f2 |
 | Docking ports made clear: the CSM's receiving port and your drogue marked on the real interfaces, the TARGET DOCKING PORT marker (hidden, out-of-window and off-screen conventions), the approach corridor, port-to-port alignment, the approach status, the FINAL APPROACH capture conditions from the physics' own tolerances, the cause of a failed contact, and FOCUS DOCKING PORTS in 360° | #23 | 4061929 |
 | Photorealistic Earth and Moon: NASA imagery shipped in the app (Blue Marble, City Lights and Blue Marble clouds for the Earth; the LRO colour mosaic and LOLA relief for the Moon), a thin sunlit atmospheric limb, a dark night side with city lights, a true lunar terminator, one Sun per scene, in every scene (launch, lunar orbit, docking, landing-site sky, far-side intro, return, reentry) | #24 | af797cc |
+| Assisted docking: AUTO-ALIGN, STABILIZE and the APPROACH SPEED ASSIST (CADET; STABILIZE on ASTRONAUT), a forgiving but real soft capture for CADET, a calmer CADET starting point, gentler held jet buttons and FINE control, and the six-step CADET docking sequence on screen | #25 | 96a87a6 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at af797cc** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release changes how the Earth and the Moon look; nothing about how the game plays** (the same physics, trajectories, landing terrain, spacecraft, docking and cameras).
-  - **The Earth:** NASA's Blue Marble (real land, oceans, ice), NASA's cloud map on its own drifting layer with soft shadows, a narrow sun glint on the oceans, and a thin blue limb of atmosphere where the Sun lights it (warm at the day–night line, none on the night side) instead of the old glowing halo. The night side is dark, with NASA's city lights only where the Sun has set.
-  - **The Moon:** NASA's Lunar Reconnaissance Orbiter colour map (the dark maria, bright highlands and rayed craters in their real places) with relief from the LOLA laser altimeter. One Sun lights it: a sharp, natural day–night line, a black night side (a trace of earthshine), no glow.
-  - **Everywhere:** the launch and Earth orbit, lunar orbit, undocking, the landing sites' sky (the Earth shows its phase; none at the far side, Silent Horizon), the far-side approach, all four docking views (the Moon below is kept about as bright as before, so the corridor and markers stay clear), the return and reentry.
-  - **Offline:** every image is in the app (`textures/planets/`, with their NASA sources in `SOURCES.md`); nothing is downloaded while you play.
-- **As in the previous releases:** the docking ports made clear (TARGET DOCKING PORT, the approach corridor, the capture conditions, FOCUS DOCKING PORTS); mission scoring, medals, achievements and FLIGHT RECORDS; the four docking views; **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel.
+- **Built from the clean tree at 96a87a6** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release makes the docking playable on the iPhone; nothing else changes** (the landing, the ascent, the spacecraft, the planets, the return and reentry are as before).
+  - **CADET**, the recommended sequence, shown on screen with ticks:
+    1. Press **AUTO-ALIGN**: the RCS turns the ascent stage onto the docking axis and holds it (AUTO-ALIGN ACTIVE, then DOCKING AXIS ALIGNED). It does not move you sideways or forward.
+    2. Press **STABILIZE**: the RCS cancels the sideways drift and the rotation (STABILIZATION ACTIVE, then RELATIVE MOTION STABLE), and then keeps holding. Your taps still work: a tap sets a steady slide, and STABILIZE keeps it.
+    3. Check that the target is aligned (the guidance says which way to tap).
+    4. Tap **FWD** a few times.
+    5. The **APPROACH SPEED ASSIST** (on by default) keeps the closing speed safe for the distance and brakes as you get close. FWD will not push past the limit, and the assist never pushes you forward.
+    6. **SOFT CAPTURE**: the probe latches even with small errors, and the mechanism pulls the two vehicles together and lines them up, then HARD DOCK CONFIRMED.
+  - **CADET starts closer and calmer:** 22 m out, within a metre of the axis, barely drifting.
+  - **ASTRONAUT:** STABILIZE is there when you want it. It cancels the drift once and hands control back; any translation command cancels it. The tolerances are as before.
+  - **COMMANDER:** fully manual, as before (no assists).
+  - **Jet buttons, all difficulties:**
+    - A tap is one small pulse, as before.
+    - Holding starts gently (about a third of the thrust) and builds to full in about 2 s.
+    - **FINE** (top-left of the pad) makes every press a third as strong, for the last metres.
+    - No jet stays on if the app loses the screen.
+  - **On screen:** the assists' state above the guidance panel (AUTO-ALIGN: ACTIVE · STABILIZE: HOLDING · APPROACH ASSIST: ACTIVE · you fly the translation and FWD/AFT). Each assist button shows what it is doing. The four views, the port markers, the approach corridor and RESTART DOCKING are unchanged. RESTART DOCKING also switches the assists back to how the attempt starts.
+- **As in the previous releases:** the photorealistic Earth and Moon; the docking ports made clear (TARGET DOCKING PORT, the approach corridor, the capture conditions, FOCUS DOCKING PORTS); mission scoring, medals, achievements and FLIGHT RECORDS; the four docking views; **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel.
 - **How a mission goes after the landing** (as in the previous release):
   1. After a successful landing, **CONTINUE MISSION** shows **LUNAR SURFACE — ASCENT PREPARATION**: the checklist ticks in, and nothing starts until you press **INITIATE LUNAR ASCENT**.
   2. A short countdown, then **PROCEED**. The ascent stage leaves the descent stage, which stays on the Moon with its legs, and climbs away. SKIP CINEMATIC goes on to orbit.
@@ -103,7 +119,7 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
      - A tap is one small RCS pulse; holding keeps the jets firing. Two fingers work together.
      - **NAV | WINDOW | COCKPIT | 360°** choose the view (in NAV, the cyan circle on the reticle is the probe tip).
      - The panel top right shows your port's offset (dot) and the attitude (cross) against the capture circle, INSIDE / OUTSIDE CORRIDOR, and the capture conditions (all green: PROCEED WITH FINAL APPROACH).
-     - CADET: **AUTO ALIGN** holds the attitude for you. ASTRONAUT: the attitude holds still when you let go. COMMANDER: nothing holds; you stop what you start.
+     - CADET: **AUTO-ALIGN**, **STABILIZE** and the **APPROACH SPEED ASSIST** help (see above). ASTRONAUT: the attitude holds still when you let go, and **STABILIZE** cancels a drift once. COMMANDER: nothing holds; you stop what you start.
      - Too fast, off the axis, misaligned or rotating: no capture, and the vehicles push apart. Back off and try again. A hard impact or a collision ends the attempt: **RESTART DOCKING** (no new landing or launch).
   5. **HARD DOCK CONFIRMED**, crew transfer, the ascent stage jettisoned, then the return and reentry as before. MISSION COMPLETE needs the docking.
   - Silent Horizon (far side): no Houston on the surface or after insertion, until the rendezvous brings you back into view of the Earth. The guidance panel works throughout.
@@ -114,4 +130,4 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
   - every planet texture the game loads is in the bundle, is a valid image and is identical to the source copy; the old textures are gone; the NASA sources (`SOURCES.md`) are bundled;
-  - every feature above is in the bundled game, including the photorealistic Earth and Moon, the docking-port markers (English and Portuguese), FOCUS DOCKING PORTS, the capture conditions and the approach corridor, the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
+  - every feature above is in the bundled game, including the docking assists (AUTO-ALIGN, STABILIZE, the speed assist, soft capture, FINE, the CADET sequence in Portuguese), the photorealistic Earth and Moon, the docking-port markers (English and Portuguese), FOCUS DOCKING PORTS, the capture conditions and the approach corridor, the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.

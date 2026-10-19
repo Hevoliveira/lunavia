@@ -95,6 +95,12 @@ const FEATURES = [
   ["Docking ports: the approach corridor attached to the port", "approach-corridor"],
   ["Photorealistic planets: the shared Earth (NASA Blue Marble, clouds, limb)", "earth-atmosphere"],
   ["Photorealistic planets: the Moon (NASA LRO colour, LOLA relief)", "moon_normal_2k.jpg"],
+  ["Assisted docking: AUTO-ALIGN and STABILIZE buttons", "dock-stabilize"],
+  ["Assisted docking: the approach speed assist", "dock-speed-assist"],
+  ["Assisted docking: RELATIVE MOTION STABLE / DOCKING AXIS ALIGNED", "RELATIVE MOTION STABLE"],
+  ["Assisted docking: soft capture", "SOFT CAPTURE"],
+  ["Assisted docking: CADET's six-step sequence (Portuguese)", "Deixe a captura suave acontecer"],
+  ["Docking controls: FINE", "dock-fine"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
