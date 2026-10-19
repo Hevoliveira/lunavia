@@ -2609,3 +2609,87 @@ An official mission is now scored out of **1,000 points**: LUNAR LANDING 400, OR
 - **The debrief** took over 3–5 s after MISSION COMPLETE and was still open 20 s after its reveal.
 - **The test pilot's reentry** agreed with the lift guidance only about 37 % of the time, so every flown entry scored 260/300 (flight control 0/40). The debrief named that component.
 - **PLATINUM in flight:** no in-browser flight reached it. Reference flights that follow the guidance reach it in `missionScoring.test.js` (COMMANDER at the Sea of Tranquility, 962).
+
+## 48. Docking ports: where the two spacecraft connect
+
+**The problem:** the docking worked, but the screen never said *where* the two vehicles connect. Both ports were small and dark (a black ring and a thin probe on the CSM; a black ring on the ascent stage). Nothing labelled them. The 360° view started behind the ascent stage, whose port faces away from the camera. And the rendezvous marker pointed at the CSM's middle.
+
+**Audit (before any change):** the physics and the 3D models agree, so no geometry was changed.
+
+| Interface | Physics (`dockingSim`) | 3D model | Agreement (tested in `dockingPorts.test.js`) |
+|---|---|---|---|
+| **Target port** (CSM, receiving) | docking ring at `[0, DOCK_Y, 0]` = 2.98 m; probe tip `PROBE_TIP` 0.78 m beyond, on the CSM's +Y | `csmDesign buildCM`: ring torus r 0.40 m at the tunnel top; probe cone apex at `CM_TOP + PROBE_L` | the model's highest probe vertex is `PROBE_TIP` (< 1 µm) |
+| **Active port** (ascent stage, flown) | drogue `PORT_B` = 1.464 m up body +Y from the stage's centre; mouth `DROGUE_R` 0.42 m | `lmDesign`: drogue torus r 0.088 u at (0, 0.905, −0.03) u, × 4.8 m/u | the torus centre maps to `PORT_B` within 1 cm; 0.088 × 4.8 = `DROGUE_R` |
+| Contact | judged when the probe tip crosses the drogue's ring plane (`judgeContact`); docked, the drogue ring sits on the CSM ring, face to face | `dockedLmPose` | tested |
+| Approach axis | the CSM's +Y (the approach comes from behind along the orbit) | — | — |
+
+**What the player sees now** (`data/dockingPorts.js` pure and tested; `components/DockingPorts.jsx`; `DockingOps`):
+- **The ports themselves** (docking scene only; the canonical CSM and LM models are unchanged, so no other scene changes):
+  - CSM: a light anodised docking-ring face, four orange alignment index marks, a dark capture collar under a bright probe tip.
+  - Ascent stage: the drogue's funnel face (radius = `DROGUE_R`, the real capture boundary) with its receptacle and four index marks.
+  - While the approach is flown: a thin cyan perimeter on the target port, orange on yours.
+- **TARGET DOCKING PORT marker:** projected every frame from the probe tip through the live camera (in tests and in the browser, within 0.06 px of the real projection).
+  - It is not the CSM's centre: 5.8 m away in space, and 50–175 px apart on screen from the side.
+  - The bracket tightens on the ring as the range closes. In the last 3 m only the corner ticks remain, outside the ring.
+  - When the port is not in plain view, the marker uses a convention instead:
+    - behind a hull: dashed, "HIDDEN" (tested with occlusion by the CSM's and the ascent stage's hulls);
+    - outside the window (COCKPIT/WINDOW): dashed, "OUT OF WINDOW VIEW";
+    - off screen: an edge arrow.
+    - These are kept between the top bar and the controls, with an arrow pointing at the real port.
+  - 360°: a second marker, YOUR PORT, on the drogue. From the default camera behind the stage it reads "YOUR PORT · HIDDEN", because the port faces the CSM.
+- **Approach corridor** (attached to the receiving port, from `corridorGeometry`):
+  - the probe's axis;
+  - a translucent cone whose radius is the guidance's own lined-up threshold, max(0.6 × lateral tolerance, 0.03 × range) — one corridor, not a second rule;
+  - distance rings at 5, 10, 20 and 30 m;
+  - the capture ring (the lateral capture tolerance) at the probe tip;
+  - the ascent stage's own axis;
+  - in 360°, an amber arrow for the translation the guidance asks for (the buttons' body push turned through the attitude).
+  - Cyan inside the corridor, amber outside.
+  - Shown by view: 360° everything; NAV the rings ahead of the camera and the capture ring; WINDOW/COCKPIT the capture ring only, fading as it gets close.
+- **Port-frame HUD (NAV, 360°):** PORT–PORT distance (drogue to probe tip), CLOSING (the drogue's speed along the axis), OFFSET R/L and U/D (the drogue from the probe's axis), DRIFT, PORT ANGLE, attitude and RCS. Everything is measured at the ports, not the vehicles' centres.
+- **Approach status** (`approachStatus`), one line:
+  - TARGET ACQUIRED;
+  - ALIGN DOCKING PORTS;
+  - CORRECT LATERAL OFFSET;
+  - CORRECT ATTITUDE;
+  - APPROACH CORRIDOR ALIGNED;
+  - REDUCE CLOSING VELOCITY;
+  - UNSAFE APPROACH (the drogue not facing the probe / beside the probe / drifting outside the drogue in the last 3 m);
+  - FINAL APPROACH AUTHORIZED;
+  - DOCKING CONTACT;
+  - HARD DOCK CONFIRMED.
+- **FINAL APPROACH · CAPTURE CONDITIONS** (`captureReadiness`):
+  - The checks are judgeContact's own, each against the difficulty's tolerance: port alignment (angle and roll), lateral offset, lateral drift, closing velocity (vMin–vMax, and under the closing limit), rotation, plus the docking corridor.
+  - Each is green only with a 5 % margin inside the tolerance. All green: PROCEED WITH FINAL APPROACH.
+  - Shown in full in NAV, and as six dots in WINDOW, COCKPIT and 360°.
+  - The guidance's STAND BY FOR CONTACT uses the same check.
+- **Directions:** they come only from the guidance (`dockingGuidance`, body axes through the current attitude, inertia, no flip-flop).
+  - The panel's control line now starts with the order in words: MOVE LEFT/RIGHT, TRANSLATE UP/DOWN, CLOSE IN, REDUCE CLOSING VELOCITY.
+  - NAV shows the same order as chevrons on the reticle (in NAV screen right is body +X).
+- **Why a contact failed** (`contactCause`, from the physics' facts):
+  - every deflection reason with its measured value against the limit (e.g. LATERAL OFFSET 0.33 m > 0.20 m);
+  - outside the drogue (offset vs the 0.42 m mouth);
+  - excessive impact velocity (vs 0.60 m/s);
+  - contact with a non-docking surface (which part of the ascent stage against the CM cone or the SM; and an incorrect approach direction when the drogue was not facing the probe);
+  - target lost; RCS depleted.
+  - Shown on the contact toast and the failure screen.
+- **360° FOCUS DOCKING PORTS** (`focusOrbit`): the camera moves to the sunlit side, perpendicular to the docking axis, centred between the two ports, far enough to hold both. It stays freely draggable and pinchable; RESET CAMERA returns to the default.
+- **Languages:** everything new is in English and Brazilian Portuguese (`dockingPortsText.js`).
+
+**Unchanged:** `dockingSim.js` (not edited): RCS authority, propellant, relative motion, tolerances, collisions, difficulties, RESTART DOCKING, the rendezvous, ascent, crew transfer and return. The four views' cameras are unchanged; only the 360° camera can now centre on the ports.
+
+**Tests** (`data/dockingPorts.test.js`, 31):
+- the model's ports equal the physics' ports;
+- the marker sits on the projected port, not the centre, follows motion and tightens with range;
+- off-screen, hidden and outside-window states;
+- the corridor is attached to and turns with the port frame, and is the guidance's own radius;
+- offsets and angle respond to real displacement and rotation;
+- closing is the port's speed;
+- words and the 3D arrow follow the buttons (400 rolled states);
+- unsafe "miss" approaches never capture;
+- readiness: never green one step before a contact the physics rejects (2,345 random final approaches), and green at 79 % of the captures made inside the corridor;
+- reference and guided pilots' flights are authorized at capture on all difficulties;
+- failure causes from real physics contacts;
+- FOCUS frames both ports along whole approaches at three iPhone sizes;
+- restart resets the status;
+- the physics values are unchanged.
