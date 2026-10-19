@@ -1,12 +1,15 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 4061929**.
+This folder installs **BUILD af797cc**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 4061929 · 2026-10-19 03:53 UTC**
+> **LUNAVIA iOS · BUILD af797cc · 2026-10-19 17:06 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **4061929** is the previous release: the docking ports made clear, but the Earth and the Moon
+  still used the old low-resolution textures (a glowing halo round the Earth, a Moon lit from all
+  sides with no true terminator);
 - **4bd83f2** is the previous release: mission scoring, medals and achievements, but the docking
   ports were not marked (no TARGET DOCKING PORT marker, approach corridor, capture conditions or
   FOCUS DOCKING PORTS);
@@ -79,21 +82,17 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Four docking views: NAV (the navigation display, as before), WINDOW (first person through the overhead docking window), COCKPIT (the 3D cabin with live instruments) and 360° (a free camera around the ascent stage: drag, pinch, RESET CAMERA), all on the one docking simulation | #21 | f9b4dd4 |
 | Mission scoring, medals and achievements: 1,000 points (lunar landing 400, docking 300, reentry 300) from what each phase measured; BRONZE, SILVER, GOLD and PLATINUM (PLATINUM on COMMANDER); 17 achievements; personal records for each destination and difficulty; the MISSION DEBRIEF after splashdown; FLIGHT RECORDS (medals and records, achievements, mission log) | #22 | e0bf765, 4bd83f2 |
 | Docking ports made clear: the CSM's receiving port and your drogue marked on the real interfaces, the TARGET DOCKING PORT marker (hidden, out-of-window and off-screen conventions), the approach corridor, port-to-port alignment, the approach status, the FINAL APPROACH capture conditions from the physics' own tolerances, the cause of a failed contact, and FOCUS DOCKING PORTS in 360° | #23 | 4061929 |
+| Photorealistic Earth and Moon: NASA imagery shipped in the app (Blue Marble, City Lights and Blue Marble clouds for the Earth; the LRO colour mosaic and LOLA relief for the Moon), a thin sunlit atmospheric limb, a dark night side with city lights, a true lunar terminator, one Sun per scene, in every scene (launch, lunar orbit, docking, landing-site sky, far-side intro, return, reentry) | #24 | af797cc |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 4061929** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release shows where the two spacecraft connect; the docking itself is unchanged** (the same physics, limits, RCS and difficulties).
-  - **The two ports:** on the CSM, the docking ring (a light ring with four orange marks) and the probe sticking out of it; on your ascent stage, the drogue (the funnel the probe enters) on top of the tunnel. While you fly the approach the CSM's port has a thin cyan ring and yours an orange one.
-  - **TARGET DOCKING PORT:** a cyan bracket on the CSM's probe and ring (not the middle of the CSM), with the distance. It follows the port in every view and tightens as you close; in the last metres only its corners stay, so the port stays clear. When the port is behind a hull it is dashed and marked HIDDEN; outside the cockpit window, OUT OF WINDOW VIEW; off screen, an arrow points to it.
-  - **The approach corridor:** the line straight out of the probe, rings at 5, 10, 20 and 30 m and a small ring at the probe tip (where your port must arrive). Cyan when you are inside the corridor, amber when you are not.
-  - **The HUD measures port to port:** PORT–PORT distance, CLOSING, OFFSET R/L and U/D (your port from the probe's axis), DRIFT and PORT ANGLE. The status line says what to do: TARGET ACQUIRED, ALIGN DOCKING PORTS, CORRECT LATERAL OFFSET, CORRECT ATTITUDE, APPROACH CORRIDOR ALIGNED, REDUCE CLOSING VELOCITY, UNSAFE APPROACH, FINAL APPROACH AUTHORIZED, DOCKING CONTACT, HARD DOCK CONFIRMED.
-  - **FINAL APPROACH · CAPTURE CONDITIONS** (NAV; six dots in the other views): port alignment, lateral offset, lateral drift, closing velocity, rotation and the corridor, each against the docking's own limits. When all are green: **PROCEED WITH FINAL APPROACH**.
-  - **How to correct:** the guidance names the move (MOVE LEFT, TRANSLATE UP, REDUCE CLOSING VELOCITY…) and the button; in NAV an arrow on the reticle shows the same move; in 360° an amber arrow on your vehicle shows which way the jets will push it.
-  - **When a contact fails** the game says why, with the number: for example LATERAL OFFSET 0.33 m > 0.20 m, IMPACT VELOCITY too high, or contact with a part of the CSM that is not the port.
-  - **360°:** **FOCUS DOCKING PORTS** moves the camera to the side to show both ports together; drag and pinch still work, and **RESET CAMERA** goes back.
-  - English or Brazilian Portuguese, following the subtitle language in AUDIO.
-- **As in the previous releases:** mission scoring, medals, achievements and FLIGHT RECORDS; the four docking views; **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel.
+- **Built from the clean tree at af797cc** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release changes how the Earth and the Moon look; nothing about how the game plays** (the same physics, trajectories, landing terrain, spacecraft, docking and cameras).
+  - **The Earth:** NASA's Blue Marble (real land, oceans, ice), NASA's cloud map on its own drifting layer with soft shadows, a narrow sun glint on the oceans, and a thin blue limb of atmosphere where the Sun lights it (warm at the day–night line, none on the night side) instead of the old glowing halo. The night side is dark, with NASA's city lights only where the Sun has set.
+  - **The Moon:** NASA's Lunar Reconnaissance Orbiter colour map (the dark maria, bright highlands and rayed craters in their real places) with relief from the LOLA laser altimeter. One Sun lights it: a sharp, natural day–night line, a black night side (a trace of earthshine), no glow.
+  - **Everywhere:** the launch and Earth orbit, lunar orbit, undocking, the landing sites' sky (the Earth shows its phase; none at the far side, Silent Horizon), the far-side approach, all four docking views (the Moon below is kept about as bright as before, so the corridor and markers stay clear), the return and reentry.
+  - **Offline:** every image is in the app (`textures/planets/`, with their NASA sources in `SOURCES.md`); nothing is downloaded while you play.
+- **As in the previous releases:** the docking ports made clear (TARGET DOCKING PORT, the approach corridor, the capture conditions, FOCUS DOCKING PORTS); mission scoring, medals, achievements and FLIGHT RECORDS; the four docking views; **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel.
 - **How a mission goes after the landing** (as in the previous release):
   1. After a successful landing, **CONTINUE MISSION** shows **LUNAR SURFACE — ASCENT PREPARATION**: the checklist ticks in, and nothing starts until you press **INITIATE LUNAR ASCENT**.
   2. A short countdown, then **PROCEED**. The ascent stage leaves the descent stage, which stays on the Moon with its legs, and climbs away. SKIP CINEMATIC goes on to orbit.
@@ -114,4 +113,5 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
   - no old bundles are left;
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
-  - every feature above is in the bundled game, including the docking-port markers (English and Portuguese), FOCUS DOCKING PORTS, the capture conditions and the approach corridor, the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
+  - every planet texture the game loads is in the bundle, is a valid image and is identical to the source copy; the old textures are gone; the NASA sources (`SOURCES.md`) are bundled;
+  - every feature above is in the bundled game, including the photorealistic Earth and Moon, the docking-port markers (English and Portuguese), FOCUS DOCKING PORTS, the capture conditions and the approach corridor, the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
