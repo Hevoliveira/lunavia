@@ -8,14 +8,16 @@ import {
   checkpointState,
   disengageStabilize,
   dockingStatus,
+  engageCenter,
   engageStabilize,
+  fineStep,
   jetCommand,
   restoreCheckpoint,
   stepDocking,
   telemetry,
   vec,
 } from "./dockingSim";
-import { SEQUENCE, assistSequence, createGuidance, commandOf, evaluate, guidanceText, guidedPilot } from "./dockingGuidance";
+import { copilotSteps, copilotText, createGuidance, commandOf, evaluate, guidanceText, guidedPilot } from "./dockingGuidance";
 
 /*
  * Assisted docking: AUTO-ALIGN, STABILIZE, the APPROACH SPEED ASSIST, CADET's soft capture,
@@ -41,9 +43,9 @@ const run = (s, cmd, d, secs, opts = {}, each = null) => {
 
 describe("the assists by difficulty", () => {
   test("CADET has all three, ASTRONAUT a one-shot STABILIZE, COMMANDER nothing (switching them on does nothing)", () => {
-    expect(assistsOf("CADET", { align: true, speed: true })).toEqual({ align: true, stabilize: "hold", speed: true });
-    expect(assistsOf("ASTRONAUT", { align: true, speed: true })).toEqual({ align: false, stabilize: "once", speed: false });
-    expect(assistsOf("COMMANDER", { align: true, speed: true })).toEqual({ align: false, stabilize: null, speed: false });
+    expect(assistsOf("CADET", { align: true, speed: true })).toEqual({ align: true, center: "hold", stabilize: "hold", speed: true });
+    expect(assistsOf("ASTRONAUT", { align: true, speed: true })).toEqual({ align: false, center: "once", stabilize: "once", speed: false });
+    expect(assistsOf("COMMANDER", { align: true, speed: true })).toEqual({ align: false, center: null, stabilize: null, speed: false });
     const c = checkpointState("COMMANDER");
     expect(engageStabilize(c, "COMMANDER")).toBe(false);
     expect(c.stab).toBeUndefined();
@@ -92,7 +94,8 @@ describe("STABILIZE: the RCS cancels the relative motion", () => {
     const s = checkpointState("CADET", { drift: [0.08, -0.06], closing: 0.9, range: 30 });
     expect(engageStabilize(s, "CADET")).toBe(true);
     const lim = assistLimit(telemetry(s, "CADET").axial);
-    expect(-s.stab.v[1]).toBeCloseTo(lim, 6); // the held closing speed is the safe one
+    expect(lim).toBeGreaterThan(0.3);
+    expect(s.stab.v).toEqual([0, 0, 0]); // matched to the CSM: no sideways motion and no closing (the pilot sets the approach)
     let maxAcc = 0;
     const seen = new Set();
     run(s, NONE, "CADET", 15, {}, (st, before) => {
@@ -103,7 +106,7 @@ describe("STABILIZE: the RCS cancels the relative motion", () => {
     expect([...seen]).toEqual(expect.arrayContaining(["active", "stable"]));
     const m = telemetry(s, "CADET");
     expect(Math.hypot(s.vel[0], s.vel[2])).toBeLessThan(0.005);
-    expect(m.closing).toBeLessThan(assistLimit(m.axial) + 0.01);
+    expect(m.closing).toBeLessThan(0.01);
     expect(s.prop).toBeLessThan(DOCKING.CADET.prop - 0.5); // paid in propellant
   });
   test("CADET's hold keeps the orbit's drift away for minutes, and a tap sets a new steady slide", () => {
@@ -266,9 +269,10 @@ describe("the jet buttons", () => {
 // or "hold" (keeps the shown button down until the order changes, with the progressive jets)
 function play(d, { lag = 0.7, kind = "tap", assists = true, state = null, maxT = 600, impatient = false } = {}) {
   const s = state || checkpointState(d);
-  const ctx = { align: false, speed: assists && !!DOCKING[d].assists.speed };
+  const ctx = { align: false, speed: assists && !!DOCKING[d].assists.speed, fine: false };
   const g = createGuidance(d);
-  const tapper = guidedPilot(d, { lag, align: false, speed: ctx.speed });
+  const tapper = guidedPilot(d, { lag, align: false, speed: ctx.speed, alt: kind === "tap" ? false : true });
+  let lastFine = -9;
   let mode = "TRANSLATION";
   let since = {};
   let lastAssist = -9;
@@ -289,15 +293,22 @@ function play(d, { lag = 0.7, kind = "tap", assists = true, state = null, maxT =
       }
       hold -= dt;
     } else {
-      const out = g.update(seen, { mode, align: ctx.align, speed: ctx.speed });
+      const out = g.update(seen, { mode, align: ctx.align, speed: ctx.speed, fine: ctx.fine });
       const as = assists && (out.assist || out.alt);
+      const pressed = (a) => (a === "stabilize" && s.stab) || (a === "center" && s.center) || (a === "fine" && ctx.fine) || (a === "align" && ctx.align);
       cmd = NONE;
       if (out.needMode) {
         mode = out.mode;
         since = {};
-      } else if (as && seen.t - lastAssist > 2 && !s.stab) {
+      } else if (as && seen.t - lastAssist > 2 && !pressed(as)) {
         lastAssist = seen.t;
         cmd = { ...NONE, assist: as };
+      } else if (out.fine && !out.confirm) {
+        // FINE APPROACH with FWD held down: a step every 0.35 s (as the buttons repeat)
+        if (seen.t - lastFine > 0.35) {
+          lastFine = seen.t;
+          cmd = { ...NONE, fine: out.fine };
+        }
       } else if (out.buttons.length && !out.confirm) {
         const c = commandOf(out.buttons);
         const now = {};
@@ -306,9 +317,17 @@ function play(d, { lag = 0.7, kind = "tap", assists = true, state = null, maxT =
         const k = jetCommand(s.t - Math.min(...Object.values(now)));
         cmd = { t: c.t.map((v) => v * k), r: c.r.map((v) => v * k) };
       } else since = {};
-      if (impatient && !cmd.assist && !cmd.t.some((v) => v) && !cmd.r.some((v) => v)) {
-        if (fwdSince == null) fwdSince = s.t;
-        cmd = { t: [0, jetCommand(s.t - fwdSince), 0], r: [0, 0, 0] };
+      if (impatient && !cmd.assist && !cmd.fine && !cmd.t.some((v) => v) && !cmd.r.some((v) => v)) {
+        if (ctx.fine && s.stab) {
+          // leaning on FWD in FINE APPROACH: a step up every 0.35 s
+          if (seen.t - lastFine > 0.35) {
+            lastFine = seen.t;
+            cmd = { ...NONE, fine: 1 };
+          }
+        } else {
+          if (fwdSince == null) fwdSince = s.t;
+          cmd = { t: [0, jetCommand(s.t - fwdSince), 0], r: [0, 0, 0] };
+        }
       } else fwdSince = null;
     }
     if (cmd.assist === "stabilize" && assists) {
@@ -317,6 +336,17 @@ function play(d, { lag = 0.7, kind = "tap", assists = true, state = null, maxT =
     if (cmd.assist === "align" && assists) {
       if (!ctx.align) presses++;
       ctx.align = true;
+    }
+    if (cmd.assist === "center" && assists && !s.center) {
+      if (engageCenter(s, d)) presses++;
+    }
+    if (cmd.assist === "fine" && assists) {
+      if (!ctx.fine) presses++;
+      ctx.fine = true;
+    }
+    if (cmd.fine && assists) {
+      fineStep(s, d, cmd.fine, { speed: ctx.speed });
+      presses++;
     }
     if (cmd.t.some((v) => v) || cmd.r.some((v) => v)) presses++;
     const e = stepDocking(s, cmd, d, dt, { align: ctx.align, speed: ctx.speed });
@@ -355,7 +385,7 @@ describe("input-driven docking: what a player can actually do", () => {
     expect(t.docked).toBe(true);
     const h = play("ASTRONAUT", { kind: "hold", lag: 0.8 });
     expect(h.docked).toBe(true);
-    expect(h.propUsed).toBeGreaterThan(0.3); // it still costs real effort
+    expect(h.propUsed).toBeGreaterThan(0.15); // it still costs real effort
   });
   test("COMMANDER stays manual and demanding: careful taps dock it; holding buttons runs the RCS dry", () => {
     const t = play("COMMANDER", { lag: 0.7 });
@@ -366,59 +396,260 @@ describe("input-driven docking: what a player can actually do", () => {
   });
 });
 
-describe("the guidance teaches the assisted sequence (CADET)", () => {
-  test("AUTO-ALIGN first, then STABILIZE, a wait while it works, then the pilot's own approach; the speed assist's braking needs no button", () => {
+describe("CADET's docking copilot: AUTO-ALIGN → AUTO-CENTER → MATCH VELOCITY → FINE APPROACH → SOFT CAPTURE", () => {
+  const ctx0 = { mode: "TRANSLATION", speed: true };
+  test("the guidance asks for each assist in turn, waits while it works, and never asks for sideways taps while AUTO-CENTER flies", () => {
     const s = checkpointState("CADET");
     s.t = 10; // after the briefing
-    const g = createGuidance("CADET");
-    const o1 = g.update(s, { mode: "TRANSLATION", align: false, speed: true });
-    expect(o1.key).toBe("useAlign");
-    expect(o1.assist).toBe("align");
-    expect(o1.buttons).toEqual([]);
-    // AUTO-ALIGN on: the attitude settles, then STABILIZE is next
-    run(s, NONE, "CADET", 20, { align: true, speed: true });
-    const keys = [];
-    const g2 = createGuidance("CADET");
-    keys.push(g2.update(s, { mode: "TRANSLATION", align: true, speed: true }).key);
-    expect(keys).toContain("useStab");
-    engageStabilize(s, "CADET");
-    s.vel = [0.03, s.vel[1], -0.02]; // a drift for it to take out
-    expect(createGuidance("CADET").update(s, { mode: "TRANSLATION", align: true, speed: true }).key).toBe("stabWait");
+    const ctx = { ...ctx0, align: false, fine: false };
+    const top = () => createGuidance("CADET").update(s, ctx);
+    expect(top().key).toBe("useAlign");
+    expect(top().assist).toBe("align");
+    ctx.align = true;
     run(s, NONE, "CADET", 15, { align: true, speed: true });
-    const after = createGuidance("CADET").update(s, { mode: "TRANSLATION", align: true, speed: true });
-    expect(["align", "drift", "begin", "good", "lateralWait"]).toContain(after.key);
-    // too fast with the assist on: it brakes; the panel says so, and asks for nothing
-    const f = checkpointState("CADET", { closing: 0.8, att: [0, 0, 0], offset: [0, 0], drift: [0, 0] });
-    f.t = 10;
-    const b = createGuidance("CADET").update(f, { mode: "TRANSLATION", align: true, speed: true });
-    expect(b.key).toBe("assistBrake");
-    expect(b.buttons).toEqual([]);
+    // oriented, but still off the centreline: AUTO-CENTER is next
+    expect(telemetry(s, "CADET").angle).toBeLessThan(1 * DEG);
+    expect(telemetry(s, "CADET").offsetR).toBeGreaterThan(0.5);
+    expect(top().key).toBe("useCenter");
+    expect(top().assist).toBe("center");
+    engageCenter(s, "CADET");
+    const keys = new Set();
+    for (let k = 0; k < 40 && !(s.center && s.center.centeredSince != null); k++) {
+      run(s, NONE, "CADET", 1, { align: true, speed: true });
+      const o = top();
+      keys.add(o.key);
+      expect(["align", "drift", "lateralWait"]).not.toContain(o.key);
+    }
+    expect(keys.has("centerWait")).toBe(true);
+    expect(s.center.centeredSince).not.toBeNull();
+    expect(top().key).toBe("useStab");
+    engageStabilize(s, "CADET");
+    run(s, NONE, "CADET", 6, { align: true, speed: true });
+    expect(top().key).toBe("useFine");
+    ctx.fine = true;
+    const b = top();
+    expect(b.key).toBe("begin");
+    expect(b.fine).toBe(1);
+    expect(b.buttons).toEqual(["fwd"]);
   });
-  test("ASTRONAUT is offered STABILIZE as the alternative to jets for a drift; COMMANDER never", () => {
-    const a = checkpointState("ASTRONAUT", { drift: [0.06, 0.05], offset: [0, 0], att: [0, 0, 0] });
+  test("ASTRONAUT is offered AUTO-CENTER and MATCH VELOCITY as alternatives to the jets; COMMANDER never anything", () => {
+    const a = checkpointState("ASTRONAUT", { att: [0, 0, 0] });
     a.t = 10;
-    const ev = evaluate(a, "ASTRONAUT", { mode: "TRANSLATION" }).find((c) => c.key === "drift");
-    expect(ev.alt).toBe("stabilize");
-    expect(ev.buttons.length).toBeGreaterThan(0);
-    const c = checkpointState("COMMANDER", { drift: [0.06, 0.05], offset: [0, 0], att: [0, 0, 0], rate: [0, 0, 0] });
+    const ev = evaluate(a, "ASTRONAUT", { mode: "TRANSLATION" });
+    const al = ev.find((c) => c.key === "align");
+    expect(al.alt).toBe("center");
+    expect(al.buttons.length).toBeGreaterThan(0);
+    const dr = checkpointState("ASTRONAUT", { drift: [0.06, 0.05], offset: [0, 0], att: [0, 0, 0] });
+    dr.t = 10;
+    expect(evaluate(dr, "ASTRONAUT", { mode: "TRANSLATION" }).find((c) => c.key === "drift").alt).toBe("stabilize");
+    const c = checkpointState("COMMANDER", { drift: [0.06, 0.05], att: [0, 0, 0], rate: [0, 0, 0] });
     c.t = 10;
     expect(evaluate(c, "COMMANDER", { mode: "TRANSLATION" }).every((x) => !x.alt && !x.assist)).toBe(true);
+    expect(engageCenter(checkpointState("COMMANDER"), "COMMANDER")).toBe(false);
   });
-  test("the six-step checklist ticks off from the live state", () => {
+  test("the five steps come from the telemetry, say why a step is not done, and step back when the vehicle drifts out of tolerance", () => {
     const s = checkpointState("CADET");
-    expect(assistSequence(s, "CADET", { align: false, speed: true }).map((x) => x.done)).toEqual([false, false, false, false, false, false]);
-    const r = play("CADET", { lag: 0.7 });
-    expect(r.docked).toBe(true);
-    expect(assistSequence(r.s, "CADET", { align: true, speed: true }).every((x) => x.done)).toBe(true);
-    // all six have words in both languages
-    expect(SEQUENCE.en).toHaveLength(6);
-    expect(SEQUENCE.pt).toHaveLength(6);
-    for (const k of ["useAlign", "useStab", "stabWait", "assistBrake", "capture"]) {
+    let cp = copilotSteps(s, "CADET", { speed: true });
+    expect(cp.active).toBe(1);
+    expect(cp.reason.key).toBe("align");
+    expect(copilotText(cp, "en").why).toMatch(/Docking axis .*° off/);
+    // aligned: step 2, with the offset and the side
+    run(s, NONE, "CADET", 15, { align: true, speed: true });
+    cp = copilotSteps(s, "CADET", { speed: true });
+    expect(cp.active).toBe(2);
+    expect(copilotText(cp, "en").why).toMatch(/Port 0\.\d\d m (right|left)/);
+    expect(copilotText(cp, "pt").why).toMatch(/Porta 0,?\.?\d+/);
+    engageCenter(s, "CADET");
+    run(s, NONE, "CADET", 40, { align: true, speed: true });
+    engageStabilize(s, "CADET");
+    run(s, NONE, "CADET", 8, { align: true, speed: true });
+    cp = copilotSteps(s, "CADET", { speed: true }, cp.done);
+    expect(cp.active).toBe(4);
+    expect(cp.reason.key).toBe("approach");
+    // knocked off the centreline (a stray push): back to step 2 at once — no timer, no stickiness
+    disengageStabilize(s);
+    s.center = null;
+    s.pos[0] += 0.8;
+    cp = copilotSteps(s, "CADET", { speed: true }, cp.done);
+    expect(cp.active).toBe(2);
+    // a fresh drift with the port centred: step 3 says what is wrong
+    const d = checkpointState("CADET", { offset: [0, 0], att: [0, 0, 0], drift: [0.04, 0], closing: 0.05 });
+    const c3 = copilotSteps(d, "CADET", { speed: true });
+    expect(c3.active).toBe(3);
+    expect(c3.reason.key).toBe("matchDrift");
+    // words for every step in both languages
+    for (const key of ["align", "center", "matchFast", "matchOpening", "matchRotating", "matchDrift", "approach", "capture"]) {
       for (const lang of ["en", "pt"]) {
-        const d0 = { ...evaluate(s, "CADET", { mode: "TRANSLATION", speed: true })[0].d, assistLim: 0.2 };
-        const t = guidanceText({ key: k, step: 2, d: d0 }, "CADET", lang);
-        expect([k, lang, t.title.length > 3, t.detail.length > 10]).toEqual([k, lang, true, true]);
+        const t = copilotText({ active: 2, reason: { key, angle: 0.1, need: 0.05, off: [0.3, -0.1], r: 0.32, closing: 0.1, lim: 0.2, rate: 0.01, vLat: 0.02, axial: 5, set: 0.08, retract: 0.4 } }, lang);
+        expect([key, lang, t.why.length > 8]).toEqual([key, lang, true]);
       }
+    }
+  });
+});
+
+describe("AUTO-CENTER and FINE APPROACH: translation by the RCS, never a jump", () => {
+  test("the assists never fly the final approach: every assist on, no FWD from the pilot, and the vehicle holds station (even from a fast, drifting start)", () => {
+    for (const over of [{}, { offset: [1.4, -1.1], drift: [0.035, -0.025], closing: 0.18, att: [9, -6, 10] }]) {
+      const s = checkpointState("CADET", over);
+      const ctx = { align: true, speed: true, fine: true };
+      engageCenter(s, "CADET");
+      engageStabilize(s, "CADET");
+      const ax0 = telemetry(s, "CADET").axial;
+      run(s, NONE, "CADET", 180, ctx);
+      const m = telemetry(s, "CADET");
+      expect(s.status).toBe("approach");
+      expect(Math.abs(m.closing)).toBeLessThan(0.005);
+      expect(ax0 - m.axial).toBeLessThan(ax0 * 0.25); // it stopped the closing, it did not finish it
+      expect(m.offsetR).toBeLessThan(0.1); // but it is centred and ready
+    }
+  });
+  test("AUTO-CENTER slides the port onto the axis through thrust, within the RCS's authority, and keeps it there", () => {
+    const s = checkpointState("CADET", { att: [0, 0, 0], drift: [0, 0], offset: [0.9, -0.7], closing: 0 });
+    const r0 = telemetry(s, "CADET").offsetR;
+    engageCenter(s, "CADET");
+    let maxAcc = 0;
+    let maxV = 0;
+    const seen = new Set();
+    const ax0 = telemetry(s, "CADET").axial;
+    run(s, NONE, "CADET", 40, { align: true }, (st, before) => {
+      maxAcc = Math.max(maxAcc, vec.len(vec.sub(st.vel, before.vel)) / DT);
+      maxV = Math.max(maxV, Math.hypot(st.vel[0], st.vel[2]));
+      seen.add(st.assistOut.center);
+    });
+    expect(r0).toBeGreaterThan(1);
+    expect(telemetry(s, "CADET").offsetR).toBeLessThan(0.1);
+    expect(maxAcc).toBeLessThan(DOCKING.CADET.accel * Math.sqrt(3) + 0.002);
+    expect(maxV).toBeLessThan(0.065);
+    expect([...seen]).toEqual(expect.arrayContaining(["active", "centered"]));
+    expect(Math.abs(telemetry(s, "CADET").axial - ax0)).toBeLessThan(0.3); // no forward motion from it
+    expect(s.prop).toBeLessThan(DOCKING.CADET.prop);
+    // it keeps the port centred for minutes against the orbit's drift
+    run(s, NONE, "CADET", 120, { align: true });
+    expect(telemetry(s, "CADET").offsetR).toBeLessThan(0.1);
+  });
+  test("a sideways command from the pilot switches AUTO-CENTER off; ASTRONAUT's centres once and hands back", () => {
+    const s = checkpointState("CADET", { att: [0, 0, 0], drift: [0, 0] });
+    engageCenter(s, "CADET");
+    run(s, { t: [1, 0, 0], r: [0, 0, 0] }, "CADET", 0.2, { align: true });
+    expect(s.center).toBeNull();
+    expect(s.assistOut.center).toBe("override");
+    const a = checkpointState("ASTRONAUT", { att: [0, 0, 0], drift: [0, 0], offset: [0.8, 0.5] });
+    engageCenter(a, "ASTRONAUT");
+    const seen = new Set();
+    let atDone = null;
+    run(a, NONE, "ASTRONAUT", 60, {}, (st) => {
+      seen.add(st.assistOut.center);
+      if (st.assistOut.center === "done" && atDone == null) atDone = telemetry(st, "ASTRONAUT").offsetR;
+    });
+    expect(seen.has("done")).toBe(true);
+    expect(a.center).toBeNull();
+    expect(atDone).toBeLessThan(0.1); // centred when it handed back (the orbit then drifts it again: ASTRONAUT's to manage)
+  });
+  test("FINE APPROACH: each press sets the held closing speed exactly 0.02 m/s, never past the safe speed; the RCS reaches it", () => {
+    const s = checkpointState("CADET", { att: [0, 0, 0], drift: [0, 0], offset: [0, 0], closing: 0 });
+    expect(fineStep(s, "CADET", 1, { speed: true })).toBeNull(); // no MATCH VELOCITY hold: nothing to set
+    engageStabilize(s, "CADET");
+    expect(fineStep(s, "CADET", 1, { speed: true })).toBeCloseTo(0.02, 9);
+    expect(fineStep(s, "CADET", 1, { speed: true })).toBeCloseTo(0.04, 9);
+    expect(fineStep(s, "CADET", -1, { speed: true })).toBeCloseTo(0.02, 9);
+    for (let k = 0; k < 4; k++) fineStep(s, "CADET", 1, { speed: true });
+    expect(fineStep(s, "CADET", 1, { speed: true })).toBeCloseTo(0.12, 9);
+    let maxAcc = 0;
+    run(s, NONE, "CADET", 10, { speed: true, align: true }, (st, before) => (maxAcc = Math.max(maxAcc, Math.abs(st.vel[1] - before.vel[1]) / DT)));
+    expect(telemetry(s, "CADET").closing).toBeCloseTo(0.12, 2);
+    expect(maxAcc).toBeLessThan(DOCKING.CADET.accel * 1.05);
+    // never above the safe speed for the distance
+    for (let k = 0; k < 40; k++) fineStep(s, "CADET", 1, { speed: true });
+    expect(-s.stab.v[1]).toBeLessThanOrEqual(assistLimit(telemetry(s, "CADET").axial) + 1e-9);
+    // never below zero
+    for (let k = 0; k < 40; k++) fineStep(s, "CADET", -1, { speed: true });
+    expect(-s.stab.v[1]).toBe(0);
+    // ASTRONAUT and COMMANDER: FINE scales the jets instead
+    const a = checkpointState("ASTRONAUT");
+    engageStabilize(a, "ASTRONAUT");
+    expect(fineStep(a, "ASTRONAUT", 1, {})).toBeNull();
+  });
+});
+
+describe("the straightforward beginner sequence, from the real checkpoint", () => {
+  // Five presses and then FWD: AUTO-ALIGN, AUTO-CENTER (once aligned), MATCH VELOCITY (once
+  // centred), FINE APPROACH, then FWD presses up to a modest speed — and nothing else.
+  function beginner(lag = 1.0) {
+    const s = checkpointState("CADET");
+    const ctx = { align: false, speed: true, fine: false };
+    let t = 0;
+    const log = [];
+    const step = (secs) => {
+      for (let i = 0; i < Math.round(secs * 30); i++) {
+        stepDocking(s, NONE, "CADET", 1 / 30, ctx);
+        t += 1 / 30;
+        if (s.status === "docked" || s.status === "failed") return true;
+      }
+      return false;
+    };
+    ctx.align = true;
+    log.push(["AUTO-ALIGN", +s.t.toFixed(1)]);
+    step(lag);
+    let cp;
+    while (s.t < 120 && (cp = copilotSteps(s, "CADET", ctx)).active < 2) step(0.5);
+    engageCenter(s, "CADET");
+    log.push(["AUTO-CENTER", +s.t.toFixed(1)]);
+    while (s.t < 240 && copilotSteps(s, "CADET", ctx).done[1] !== true) step(0.5);
+    step(lag);
+    engageStabilize(s, "CADET");
+    log.push(["MATCH VELOCITY", +s.t.toFixed(1)]);
+    while (s.t < 300 && !(s.stab && s.stab.stableSince != null)) step(0.5);
+    step(lag);
+    ctx.fine = true;
+    log.push(["FINE APPROACH", +s.t.toFixed(1)]);
+    let fwd = 0;
+    // FWD presses to about a fifth of a metre per second, one per second; then hands off
+    while (s.t < 600 && s.status === "approach" && -s.stab.v[1] < 0.2 - 1e-9) {
+      fineStep(s, "CADET", 1, ctx);
+      fwd++;
+      if (step(1)) break;
+    }
+    log.push([`FWD × ${fwd}`, +s.t.toFixed(1)]);
+    step(600 - s.t);
+    return { s, log, fwd };
+  }
+  test("AUTO-ALIGN → AUTO-CENTER → MATCH VELOCITY → FINE APPROACH and a few FWD presses dock CADET from its real checkpoint, with no contact and little RCS", () => {
+    for (const lag of [0.5, 1.5]) {
+      const { s, log, fwd } = beginner(lag);
+      expect([lag, s.status]).toEqual([lag, "docked"]);
+      expect(s.contacts).toBe(0);
+      expect(fwd).toBeLessThanOrEqual(10);
+      expect(s.prop / DOCKING.CADET.prop).toBeGreaterThan(0.9);
+      expect(s.t).toBeLessThan(240);
+      expect(s.lastContact.facts.closing).toBeLessThan(DOCKING.CADET.tol.vMax);
+      // the capture is the physics' own judgement: inside the soft-capture envelope
+      expect(s.lastContact.facts.lateral).toBeLessThan(DOCKING.CADET.tol.lateral);
+      if (lag === 0.5) console.log("beginner sequence", JSON.stringify(log), "docked at", s.t.toFixed(0), "s, RCS left", ((100 * s.prop) / DOCKING.CADET.prop).toFixed(0), "%");
+    }
+  });
+  test("the assists never make an impossible state: no capture outside the envelope, no speed above the RCS's reach, prop never negative", () => {
+    // random starts around the CADET checkpoint, the beginner sequence each time
+    let seed = 7;
+    const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 2;
+    for (let k = 0; k < 12; k++) {
+      const s = checkpointState("CADET", { offset: [1.5 * r(), 1.5 * r()], drift: [0.03 * r(), 0.03 * r()], att: [8 * r(), 8 * r(), 8 * r()], closing: 0.05 + 0.05 * r() });
+      const ctx = { align: true, speed: true, fine: true };
+      engageCenter(s, "CADET");
+      engageStabilize(s, "CADET");
+      let last = null;
+      for (let i = 0; i < 400 * 30 && s.status === "approach"; i++) {
+        if (i % 30 === 0 && copilotSteps(s, "CADET", ctx).active >= 4 && -s.stab.v[1] < 0.15) fineStep(s, "CADET", 1, ctx);
+        const before = s.vel.slice();
+        stepDocking(s, NONE, "CADET", 1 / 30, ctx);
+        expect(vec.len(vec.sub(s.vel, before)) * 30).toBeLessThan(DOCKING.CADET.accel * Math.sqrt(3) + 0.003);
+        expect(s.prop).toBeGreaterThanOrEqual(0);
+        last = s;
+      }
+      for (let i = 0; i < 20 * 30 && s.status === "captured"; i++) stepDocking(s, NONE, "CADET", 1 / 30, ctx);
+      expect([k, last.status]).toEqual([k, "docked"]);
+      const f = s.lastContact.facts;
+      const t = DOCKING.CADET.tol;
+      expect(f.lateral <= t.lateral && f.angle <= t.angle && f.closing <= t.vMax && f.closing >= t.vMin && f.vLat <= t.vLat).toBe(true);
     }
   });
 });
