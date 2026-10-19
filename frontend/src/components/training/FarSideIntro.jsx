@@ -1,6 +1,7 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Stars, useTexture } from "@react-three/drei";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Stars } from "@react-three/drei";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { PlanetEarth, PlanetMoon } from "@/components/planets/Planets";
 import * as THREE from "three";
 import { SkipForward } from "lucide-react";
 
@@ -16,8 +17,6 @@ import { SkipForward } from "lucide-react";
  * voices.
  */
 
-const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
-const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
 const DEG = Math.PI / 180;
 const LENGTH = 12.5; // s
 const LOS = 6.6; // s: the Earth is fully behind the horizon
@@ -33,14 +32,32 @@ const EARTH_R = EARTH_D * Math.tan(1.9 * DEG);
 // Earth elevation (deg) over time: above the limb (-3.7°) at first, fully hidden by LOS.
 const earthEl = (t) => 5 - 10.6 * smooth(t / LOS);
 
+// The far side is in daylight, so the Sun is behind the spacecraft: a near-full Earth.
+const SUN = [-3, 1.4, 4];
+// The ground in view: beyond the western limb, where the spacecraft goes out of contact
+// (data/missionConfig orbitViewFor), in the southern far-side highlands. The globe is turned
+// so that point faces the camera, with the poles off to the side (no pinched seam in view).
+const NADIR = { lat: -40, lon: -100 };
+function farSideQuaternion() {
+  const ll = (lat, lon) => {
+    const phi = ((lon + 180) / 360) * Math.PI * 2;
+    const th = ((90 - lat) * Math.PI) / 180;
+    return new THREE.Vector3(-Math.cos(phi) * Math.sin(th), Math.cos(th), Math.sin(phi) * Math.sin(th));
+  };
+  const d = new THREE.Vector3(0, 0, 0).sub(MOON.c).normalize(); // from the Moon's centre towards the camera
+  const q = new THREE.Quaternion().setFromUnitVectors(ll(NADIR.lat, NADIR.lon), d);
+  // twist about d so the north pole lies towards +X (the side)
+  const n = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+  const want = new THREE.Vector3(1, 0, 0).projectOnPlane(d).normalize();
+  const have = n.clone().projectOnPlane(d).normalize();
+  const ang = Math.atan2(new THREE.Vector3().crossVectors(have, want).dot(d), have.dot(want));
+  return new THREE.Quaternion().setFromAxisAngle(d, ang).multiply(q);
+}
+
 function Scene({ clock }) {
-  const [moonTex, earthTex] = useTexture([MOON_MAP, EARTH_MAP]);
   const earth = useRef();
   const { camera } = useThree();
-  useEffect(() => {
-    moonTex.colorSpace = THREE.SRGBColorSpace;
-    earthTex.colorSpace = THREE.SRGBColorSpace;
-  }, [moonTex, earthTex]);
+  const moonQ = useMemo(() => farSideQuaternion(), []);
   useFrame(() => {
     const t = clock.current;
     const e = earthEl(t) * DEG;
@@ -57,18 +74,11 @@ function Scene({ clock }) {
     <>
       <color attach="background" args={["#000000"]} />
       <Stars radius={4000} depth={500} count={2500} factor={60} saturation={0} fade={false} speed={0} />
-      <ambientLight intensity={0.03} />
-      {/* The far side is in daylight, so the Sun is behind the spacecraft: a near-full Earth */}
-      <directionalLight position={[-3, 1.4, 4]} intensity={3.2} color="#fffaf1" />
-      {/* Texture poles turned to the side (out of view): no pinched seam on the visible limb */}
-      <mesh position={MOON.c} rotation={[0.2, 0, Math.PI / 2]}>
-        <sphereGeometry args={[MOON.r, 128, 96]} />
-        <meshStandardMaterial map={moonTex} bumpMap={moonTex} bumpScale={2} roughness={1} metalness={0} color="#bdbab4" />
-      </mesh>
-      <mesh ref={earth}>
-        <sphereGeometry args={[EARTH_R, 48, 48]} />
-        <meshStandardMaterial map={earthTex} roughness={1} emissive="#0a1830" emissiveIntensity={0.12} />
-      </mesh>
+      {/* The shared NASA Moon and Earth (components/planets), lit by the one Sun */}
+      <PlanetMoon radius={MOON.r} sun={SUN} position={MOON.c} quaternion={moonQ} segments={160} detail={() => 0.35} />
+      <group ref={earth}>
+        <PlanetEarth radius={EARTH_R} sun={SUN} segments={64} small />
+      </group>
     </>
   );
 }

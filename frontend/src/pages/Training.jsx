@@ -86,7 +86,7 @@ function Backdrop() {
           height: "min(16vmin, 120px)",
           right: "5%",
           top: "56%",
-          backgroundImage: `url(${process.env.PUBLIC_URL}/textures/planets/moon_1024.jpg)`,
+          backgroundImage: `url(${process.env.PUBLIC_URL}/textures/planets/moon_color_4k.jpg)`,
           backgroundSize: "cover",
           boxShadow: "inset -14px -6px 24px rgba(0,0,0,0.85)",
         }}

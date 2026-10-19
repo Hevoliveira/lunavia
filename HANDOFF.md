@@ -443,29 +443,10 @@ FastAPI service.
 
 ### Textures — hosted, fetched at runtime
 
-Earth and Moon textures are loaded at runtime from the public three.js
-examples CDN. Referenced from:
-
-- `frontend/src/components/EarthMoonHero.jsx`
-- `frontend/src/components/MissionScene.jsx`
-- `frontend/src/components/scenes/DescentScene.jsx`
-- `frontend/src/components/scenes/ReentryScene.jsx`
-- `frontend/src/components/DescentGame.jsx`
-
-URLs:
-
-- `https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg`
-- `https://threejs.org/examples/textures/planets/earth_normal_2048.jpg`
-- `https://threejs.org/examples/textures/planets/earth_specular_2048.jpg`
-- `https://threejs.org/examples/textures/planets/earth_clouds_1024.png`
-- `https://threejs.org/examples/textures/planets/moon_1024.jpg`
-
-**Consequences**
-- These URLs must be reachable at runtime. There is no offline fallback.
-- License: three.js's `examples/textures/planets/*` are derived from NASA
-  Visible Earth imagery (public domain). If you want to self-host, mirror
-  the five files into `frontend/public/textures/` and update the five
-  const declarations above. No other code changes are needed.
+**Superseded (§49).** The Earth and the Moon now use NASA textures shipped in
+`frontend/public/textures/planets/` (see `SOURCES.md` there), drawn by the shared
+renderer in `frontend/src/components/planets/`. Nothing is fetched at run time; the
+three.js example textures listed here before were removed.
 
 ### Local assets
 
@@ -2693,3 +2674,94 @@ An official mission is now scored out of **1,000 points**: LUNAR LANDING 400, OR
 - FOCUS frames both ports along whole approaches at three iPhone sizes;
 - restart resets the status;
 - the physics values are unchanged.
+
+## 49. Photorealistic Earth and Moon (NASA textures, one planet renderer)
+
+**The problem (audit before any change):**
+- **Earth:**
+  - three.js example textures (2048 day map, 1024 clouds) drawn as `MeshPhong`;
+  - a fresnel shell `pow(0.68 − n·v, 2.6)` that glowed all round the disc like neon;
+  - a second "atmosphere" sphere at R × 1.055 (about 350 km: four times too thick);
+  - on the Moon's sky, a self-lit Earth (`emissive #0a1830`).
+- **Moon:**
+  - the 1k three.js map, blurred further at load;
+  - a bump map taken from the albedo, so dark maria became pits and craters looked like stickers;
+  - `MeshStandard` lit by the scene's ambient and hemisphere fills, so there was no true terminator and the night side glowed.
+- **Duplication:** seven separate planet implementations, some loading the same textures twice.
+- **Launch:** the launch already had a ray-traced atmosphere, but hazy oceans, procedural city lights and its own copy of the old maps.
+
+**Textures** (`frontend/public/textures/planets/`, sources and rights in `SOURCES.md` there; built by `scripts/planets/prepare_textures.py`, checked by `scripts/planets/check_textures.py`):
+
+| File | Size | Content |
+|---|---|---|
+| `earth_day_4k.jpg` | 4096 × 2048 | NASA Blue Marble (land, shallow water, relief shading) |
+| `earth_aux_4k.jpg` | 4096 × 2048 | data channels: R water mask, G NASA city lights, B NASA Blue Marble clouds |
+| `earth_day_1k.jpg`, `earth_aux_1k.jpg` | 1024 × 512 | the same two maps, smaller, for an Earth that is only a small disc (the lunar sky, the far-side intro: `PlanetEarth small`), so those scenes never upload the 4k maps |
+| `moon_color_4k.jpg` | 4096 × 2048 | NASA CGI Moon Kit: LRO Camera (WAC) colour mosaic |
+| `moon_normal_2k.jpg` | 2048 × 1024 | normals computed from the LOLA elevation (relief × 2), local east/north/up frame |
+
+- **Download path:** NASA's servers are blocked by this build environment's network policy, so the unmodified NASA files came from public GitHub mirrors (listed in `SOURCES.md`). Everything ships in the app and works offline. Nothing is fetched at run time.
+- **Projection:** all four maps share one projection, the same as before (longitude −180° at the left edge, north up; three.js sphere UVs). The Moon's per-mission orientation (`moonQuaternionFor`) is unchanged.
+
+**The renderer** (`components/planets/`): `planetMaterials.js` holds the shaders and the shared texture cache; `Planets.jsx` holds `PlanetEarth` and `PlanetMoon`.
+- **One Sun, no ambient:**
+  - Each planet is lit only by the `sun` direction it is given, the same vector that lights that scene's spacecraft.
+  - The materials are `ShaderMaterial`s with `lights: false`, so the scenes' ambient and hemisphere fills (which the spacecraft still need) never reach the planets.
+- **Earth surface:**
+  - day map × Sun light, with a slightly warmer colour near the terminator;
+  - cloud shadows offset from the clouds;
+  - a narrow sun glint on water only;
+  - a thin blue aerial haze growing towards the limb.
+  - The night side is dark: city lights (the NASA map, squared to keep only real cities) show only where the Sun is below the horizon, on land, dimmed under cloud.
+- **Clouds:** a separate shell at R × 1.004 that drifts slowly. It is lit by the same Sun, has a soft terminator and thins at the limb.
+- **Atmosphere:**
+  - A thin limb, not a halo: a back-face shell at R × 1.018 (about 115 km).
+  - It is shaded per pixel by the ray's closest approach to the planet: an exponential density, blue on the day side, a warm twilight band at the terminator, forward scattering towards the Sun. It is invisible on the night side.
+  - Rays that hit the planet are discarded, so the limb never covers the disc.
+- **Moon:**
+  - LRO colour × a lunar-Lambert reflectance (Lommel–Seeliger blended with Lambert): the full Moon stays bright to the limb, and the terminator falls off naturally.
+  - The LOLA normal map gives the relief, with soft wrapping so texel steps never draw black dashes.
+  - The terminator follows the true sphere, so relief cannot light the night side.
+  - Earthshine is 0.4 % (a trace), with no other ambient light.
+  - Optional fine regolith detail for close views.
+- **Memory:**
+  - Each texture is loaded once and shared by every scene (`planetTexture`): mipmaps, anisotropy 4, sRGB for the colour maps and linear for the data maps. Textures are never disposed by a scene; materials are.
+  - GPU memory with mipmaps: the four large maps about 145 MB, the two 1k Earth maps about 6 MB (before: about 40 MB for the old maps, and some were loaded twice).
+  - Each scene has its own WebGL context, so it holds only the maps it draws: the launch the two 4k Earth maps, lunar orbit and the return up to all four (about 145 MB; a map is uploaded only once something using it is drawn), docking the Moon's two (about 56 MB), the landing sites the 1k Earth (about 6 MB).
+  - JPEG, not KTX2/Basis: no compressed-texture pipeline in this project yet.
+
+**Scenes:**
+
+| Scene | Change |
+|---|---|
+| Launch (`scenes/launch/environment.js`) | keeps its ray-traced atmosphere; now uses the shared Blue Marble day map (decoded as sRGB, no manual gamma), the real water mask, NASA clouds with the launch's formation detail, a lighter haze veil from orbit, and NASA city lights in place of the procedural ones |
+| Lunar orbit and the mission's Earth (`MissionScene`) | `PlanetMoon` / `PlanetEarth` with the scene's `SUN_DIR`; regolith detail fades in only for the close lunar-orbit framings |
+| Undocking, descent setup | the same `PlanetMoon` |
+| Docking, all four views (`DockingOps`) | `PlanetMoon` with the docking scene's Sun, darker (exposure 0.55, about the old Moon's brightness here) and light detail, so the corridor, markers and NAV text stay readable over it |
+| Landing sites (`LunarSite`) | the Earth in the sky is `PlanetEarth` lit by the site's Sun (its phase follows from the geometry), shown about 2× its real 1.9° as before; **no Earth at the far side** (Silent Horizon: `site.earth` is null) |
+| Far-side intro (`FarSideIntro`) | the far side really faces the camera (`farSideQuaternion`), lit by one Sun; the Earth sets behind the limb |
+| Return and reentry (`ReentryScene`) | `PlanetEarth` with the reentry Sun; the limb fades out once the camera is inside the air |
+| Training background | `moon_color_4k.jpg` |
+
+`components/scenes/DescentScene.jsx` (unused, still on the old textures) was deleted.
+
+**Tests:**
+- `components/planets/planets.test.js` (9):
+  - every texture exists, is credited and is local;
+  - the old textures are gone and unreferenced;
+  - the textures are shared, with the right colour spaces and mipmaps;
+  - every scene uses the shared renderer;
+  - one Sun by reference and no ambient term;
+  - the thin limb with its discard;
+  - each scene passes its spacecraft's Sun;
+  - no Earth on the far side and an Earth above the horizon elsewhere;
+  - the Moon's orientation is kept.
+- `scripts/planets/check_textures.py`:
+  - sizes and blank maps;
+  - Earth geography (Sahara, oceans, ice, water mask, city lights in London/New York/Tokyo, none in mid-ocean);
+  - Moon geography (Imbrium and Crisium darker than the highlands, near side darker than the far side);
+  - seams;
+  - normals pointing outwards.
+- `scripts/verify-ios-bundle.js` §9: every texture the JS names is in the bundle, valid, identical to the source copy; retired textures absent; `SOURCES.md` bundled.
+
+**Unchanged:** gameplay, physics, trajectories, landing terrain, spacecraft models, docking logic and cameras, the direct cut into lunar orbit.

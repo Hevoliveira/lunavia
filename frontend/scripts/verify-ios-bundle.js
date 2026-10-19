@@ -93,6 +93,8 @@ const FEATURES = [
   ["Docking ports: the 360° FOCUS DOCKING PORTS camera", "dock-camera-focus"],
   ["Docking ports: the final-approach capture conditions", "PROCEED WITH FINAL APPROACH"],
   ["Docking ports: the approach corridor attached to the port", "approach-corridor"],
+  ["Photorealistic planets: the shared Earth (NASA Blue Marble, clouds, limb)", "earth-atmosphere"],
+  ["Photorealistic planets: the Moon (NASA LRO colour, LOLA relief)", "moon_normal_2k.jpg"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -201,6 +203,31 @@ if (js) {
   for (const [name, marker] of REMOVED) {
     js.includes(marker) ? fail(`${name} is still in the bundled game`) : ok(`removed: ${name}`);
   }
+}
+
+// 9. The planets play offline: every texture the game asks for is in the app, decodable, and
+// identical to the source copy; the retired textures are gone.
+if (js) {
+  const asked = [...new Set([...js.matchAll(/textures\/planets\/([\w.-]+\.(?:jpg|png))/g)].map((m) => m[1]))];
+  asked.length ? ok(`the game loads ${asked.length} planet textures: ${asked.join(", ")}`) : fail("the game script names no planet textures");
+  for (const f of asked) {
+    const p = path.join(pub, "textures/planets", f);
+    const src = path.join(root, "public/textures/planets", f);
+    if (!fs.existsSync(p)) {
+      fail(`textures/planets/${f} is not in the iOS bundle (it would be missing offline)`);
+      continue;
+    }
+    const b = fs.readFileSync(p);
+    const jpeg = b[0] === 0xff && b[1] === 0xd8;
+    const png = b[0] === 0x89 && b[1] === 0x50;
+    if (!(jpeg || png) || b.length < 100000) fail(`textures/planets/${f} is not a valid image (${b.length} bytes)`);
+    else if (fs.existsSync(src) && !fs.readFileSync(src).equals(b)) fail(`textures/planets/${f} differs from the source copy`);
+    else ok(`textures/planets/${f} (${(b.length / 1e6).toFixed(2)} MB) bundled`);
+  }
+  ["earth_atmos_2048.jpg", "earth_clouds_1024.png", "earth_normal_2048.jpg", "earth_specular_2048.jpg", "moon_1024.jpg"].forEach((f) =>
+    fs.existsSync(path.join(pub, "textures/planets", f)) ? fail(`retired texture ${f} is still in the bundle`) : ok(`retired texture ${f} not bundled`)
+  );
+  fs.existsSync(path.join(pub, "textures/planets/SOURCES.md")) ? ok("planet texture sources and rights (SOURCES.md) bundled") : fail("textures/planets/SOURCES.md is missing");
 }
 
 console.log(failures.length ? `\n${failures.length} problem(s): the iOS app would not match this source.` : `\nThe iOS app will run BUILD ${info.commit}.`);

@@ -1,10 +1,11 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Stars, useTexture } from "@react-three/drei";
+import { Stars } from "@react-three/drei";
 import * as THREE from "three";
 import CsmModel, { RcsPuffs } from "@/components/spacecraft/CsmModel";
 import LanderModel from "@/components/LanderModel";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
+import { PlanetMoon } from "@/components/planets/Planets";
 import { RCS_THRUSTERS as LM_RCS } from "@/data/lmDesign";
 import {
   ASC_CENTRE_U,
@@ -84,9 +85,7 @@ import { useAudioSettings } from "@/audio/audioSettings";
  * forward/aft, arrows pitch/yaw, Q/E roll.
  */
 
-const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
-// Loaded with the app, so lunar orbit is drawn from its first frame after the ascent.
-useTexture.preload(MOON_MAP);
+// The Moon below is the shared NASA LRO/LOLA Moon (components/planets), loaded long before the docking.
 const MOON_SCALE = 1 / 1000; // the Moon drawn at 1/1000 around the camera: same angular size, no far-plane trouble
 const MOON_R = 1737.4;
 const MOON_D = 1737.4 + 110;
@@ -120,67 +119,23 @@ const smooth = (x) => {
 };
 
 /* ---- the Moon below (camera-relative, turning with the orbit) -------------------------------- */
-// Fine relief (procedural, made once): craterlets and grain the 1k map cannot carry from 110 km.
-let RELIEF = null;
-function reliefTexture() {
-  if (RELIEF) return RELIEF;
-  const c = document.createElement("canvas");
-  c.width = c.height = 256;
-  const g = c.getContext("2d");
-  g.fillStyle = "#808080";
-  g.fillRect(0, 0, 256, 256);
-  let seed = 11;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 1400; i++) {
-    const v = Math.floor(90 + rnd() * 80);
-    g.fillStyle = `rgba(${v},${v},${v},0.5)`;
-    g.fillRect(rnd() * 256, rnd() * 256, 1 + rnd() * 2, 1 + rnd() * 2);
-  }
-  for (let i = 0; i < 90; i++) {
-    const x = rnd() * 256;
-    const y = rnd() * 256;
-    const r = 2 + rnd() * 9;
-    const gr = g.createRadialGradient(x, y, r * 0.2, x, y, r);
-    gr.addColorStop(0, "rgba(40,40,40,0.55)");
-    gr.addColorStop(0.75, "rgba(110,110,110,0.2)");
-    gr.addColorStop(0.9, "rgba(200,200,200,0.45)");
-    gr.addColorStop(1, "rgba(128,128,128,0)");
-    g.fillStyle = gr;
-    g.beginPath();
-    g.arc(x, y, r, 0, Math.PI * 2);
-    g.fill();
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(260, 130);
-  t.anisotropy = 4;
-  RELIEF = t;
-  return t;
-}
-
+// From 110 km the fine regolith detail is part of the picture.
+const MOON_DETAIL = () => 0.3;
 function MoonBelow({ clockRef }) {
-  const map = useTexture(MOON_MAP);
-  const relief = useMemo(() => reliefTexture(), []);
   const ref = useRef();
   const spin = useRef();
   const { camera } = useThree();
-  useMemo(() => {
-    map.colorSpace = THREE.SRGBColorSpace;
-    map.anisotropy = 4;
-  }, [map]);
   useFrame(() => {
     if (!ref.current) return;
     ref.current.position.set(camera.position.x, camera.position.y, camera.position.z - MOON_D * MOON_SCALE * 1000);
     // the surface turns under the orbit (about the orbit normal, the CSM frame's X)
     spin.current.rotation.x = -MEAN_MOTION * (clockRef.current || 0) + 0.6;
   });
+  // Lit by the same Sun as the two spacecraft (SUN_DIR, the scene's directional light).
   return (
     <group ref={ref}>
       <group ref={spin}>
-        <mesh scale={MOON_R * MOON_SCALE * 1000}>
-          <sphereGeometry args={[1, 96, 64]} />
-          <meshStandardMaterial map={map} bumpMap={relief} bumpScale={1.2} roughness={1} metalness={0} color="#b9b6b0" />
-        </mesh>
+        <PlanetMoon radius={1} scale={MOON_R * MOON_SCALE * 1000} sun={SUN_DIR} detail={MOON_DETAIL} exposure={0.55} segments={128} />
       </group>
     </group>
   );

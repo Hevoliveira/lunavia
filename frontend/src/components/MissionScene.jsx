@@ -1,5 +1,5 @@
 import { Canvas, createPortal, useFrame, useThree } from "@react-three/fiber";
-import { Stars, OrbitControls, useTexture } from "@react-three/drei";
+import { Stars, OrbitControls } from "@react-three/drei";
 import { useRef, useMemo, Suspense, useEffect } from "react";
 import * as THREE from "three";
 import { MOON_RADIUS_KM, trajectoryPosition } from "@/data/missionPhases";
@@ -10,6 +10,8 @@ import { payloadMaterials } from "@/components/RocketModel";
 import { lunarEnv } from "@/components/LanderModel";
 import { COAST, undocking } from "@/data/undocking";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
+import { PlanetEarth, PlanetMoon } from "@/components/planets/Planets";
+import { preloadPlanetTextures } from "@/components/planets/planetMaterials";
 import {
   ASSEMBLY_ROTATION,
   ASSEMBLY_X,
@@ -47,20 +49,13 @@ import { LZ_UP, MOON_ROTATION, craftPose, landingSite, moonRotationFor, orbitCam
  * pixel, show it as a sunlit glint on its path.
  */
 
-// Public-domain planet textures hosted by three.js examples.
-const EARTH_MAP = process.env.PUBLIC_URL + "/textures/planets/earth_atmos_2048.jpg";
-const EARTH_NORMAL = process.env.PUBLIC_URL + "/textures/planets/earth_normal_2048.jpg";
-const EARTH_SPEC = process.env.PUBLIC_URL + "/textures/planets/earth_specular_2048.jpg";
-const EARTH_CLOUDS = process.env.PUBLIC_URL + "/textures/planets/earth_clouds_1024.png";
-const MOON_MAP = process.env.PUBLIC_URL + "/textures/planets/moon_1024.jpg";
-
 /**
  * Load the planets' textures ahead of time (during the launch), so the cut from
  * TLI cutoff to lunar orbit lands on a drawn scene, not on a frame waiting for them.
+ * (NASA imagery, one shared copy: components/planets.)
  */
 export function preloadMissionScene() {
-  useTexture.preload([EARTH_MAP, EARTH_NORMAL, EARTH_SPEC, EARTH_CLOUDS]);
-  useTexture.preload([MOON_MAP]);
+  preloadPlanetTextures();
 }
 
 const SUN_POS = [30, 10, -20];
@@ -73,53 +68,9 @@ const smooth01 = (x) => {
 };
 
 export function Earth({ small }) {
-  const [colorMap, normalMap, specMap, cloudMap] = useTexture([EARTH_MAP, EARTH_NORMAL, EARTH_SPEC, EARTH_CLOUDS]);
-  const surfaceRef = useRef();
-  const cloudRef = useRef();
-
-  useFrame((_, delta) => {
-    if (surfaceRef.current) surfaceRef.current.rotation.y += delta * 0.02;
-    if (cloudRef.current) cloudRef.current.rotation.y += delta * 0.025;
-  });
-
   // Drawn 10x oversized in the Earth-Moon views; seen from lunar orbit, at its true size in the sky.
-  return (
-    <group position={[0, 0, 0]} scale={small ? 0.1 : 1}>
-      <mesh ref={surfaceRef}>
-        <sphereGeometry args={[EARTH_UNITS, 128, 128]} />
-        <meshPhongMaterial map={colorMap} normalMap={normalMap} specularMap={specMap} shininess={22} specular={new THREE.Color("#557799")} />
-      </mesh>
-      <mesh ref={cloudRef}>
-        <sphereGeometry args={[EARTH_UNITS * 1.012, 96, 96]} />
-        <meshPhongMaterial map={cloudMap} transparent opacity={0.75} depthWrite={false} />
-      </mesh>
-      {/* Atmosphere fresnel — sharp limb glow, dramatic terminator */}
-      <mesh>
-        <sphereGeometry args={[EARTH_UNITS * 1.055, 64, 64]} />
-        <shaderMaterial
-          transparent
-          side={THREE.BackSide}
-          depthWrite={false}
-          uniforms={{ uColor: { value: new THREE.Color("#63a5ff") } }}
-          vertexShader={`
-            varying vec3 vNormal;
-            void main() {
-              vNormal = normalize(normalMatrix * normal);
-              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-          `}
-          fragmentShader={`
-            varying vec3 vNormal;
-            uniform vec3 uColor;
-            void main() {
-              float intensity = pow(0.68 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.6);
-              gl_FragColor = vec4(uColor, 1.0) * intensity;
-            }
-          `}
-        />
-      </mesh>
-    </group>
-  );
+  // Lit by the scene's one Sun (SUN_DIR, which also lights the spacecraft layer).
+  return <PlanetEarth radius={EARTH_UNITS} sun={SUN_DIR} spin={0.02} scale={small ? 0.1 : 1} />;
 }
 
 // The Moon keeps one fixed orientation in every shot (it is tidally locked and
@@ -138,119 +89,18 @@ const RING_QUATERNION = new THREE.Quaternion().setFromUnitVectors(new THREE.Vect
 const _mc = new THREE.Vector3();
 
 /*
- * Close to the surface (the spacecraft shots in lunar orbit) the 1k map is
- * magnified many times, and its JPEG blocks would show. Two cheap remedies,
- * invisible in the wide views: the map is softened by about a texel when it
- * loads, and a fine tiling regolith detail fades in as the camera nears the
- * surface (moonDetailTexture).
+ * The Moon: NASA LRO colour and LOLA relief (components/planets), lit only by the
+ * scene's Sun. Close to the surface (the spacecraft shots in lunar orbit) a fine
+ * tiling regolith detail fades in as the camera nears it.
  */
-const MOON_SOFT = new WeakMap();
-function softMoonMap(raw) {
-  if (MOON_SOFT.has(raw)) return MOON_SOFT.get(raw);
-  const img = raw.image;
-  let out = raw;
-  try {
-    const c = document.createElement("canvas");
-    c.width = img.width;
-    c.height = img.height;
-    const g = c.getContext("2d");
-    g.filter = "blur(1.1px)";
-    g.drawImage(img, 0, 0);
-    out = new THREE.CanvasTexture(c);
-    out.colorSpace = raw.colorSpace;
-    out.wrapS = raw.wrapS;
-    out.wrapT = raw.wrapT;
-  } catch {
-    // keep the original map
-  }
-  MOON_SOFT.set(raw, out);
-  return out;
-}
-let DETAIL_TEX = null;
-function moonDetailTexture() {
-  if (DETAIL_TEX) return DETAIL_TEX;
-  const N = 256;
-  const c = document.createElement("canvas");
-  c.width = c.height = N;
-  const g = c.getContext("2d");
-  g.fillStyle = "rgb(128,128,128)";
-  g.fillRect(0, 0, N, N);
-  let s = 19;
-  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  // Small craters (a dark floor, a bright sunward rim) and speckle, wrapping at the edges.
-  for (let i = 0; i < 260; i++) {
-    const x = r() * N;
-    const y = r() * N;
-    const rad = 1.5 + Math.pow(r(), 3) * 14;
-    for (const [ox, oy] of [[0, 0], [N, 0], [-N, 0], [0, N], [0, -N]]) {
-      const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
-      gr.addColorStop(0, "rgba(70,70,70,0.55)");
-      gr.addColorStop(0.75, "rgba(110,110,110,0.25)");
-      gr.addColorStop(0.92, "rgba(190,190,190,0.45)");
-      gr.addColorStop(1, "rgba(128,128,128,0)");
-      g.fillStyle = gr;
-      g.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2);
-    }
-  }
-  for (let i = 0; i < 9000; i++) {
-    const v = 100 + Math.floor(r() * 60);
-    g.fillStyle = `rgba(${v},${v},${v},0.35)`;
-    g.fillRect(r() * N, r() * N, 1, 1);
-  }
-  DETAIL_TEX = new THREE.CanvasTexture(c);
-  DETAIL_TEX.wrapS = DETAIL_TEX.wrapT = THREE.RepeatWrapping;
-  return DETAIL_TEX;
-}
-
+const moonDetail = (position) => (camera) => {
+  const d = camera.position.distanceTo(_mc.set(position[0], position[1], position[2])) / MOON_UNITS;
+  return 1 - Math.min(1, Math.max(0, (d - 1.25) / 0.45));
+};
 export function Moon({ position, view = null }) {
   const quaternion = useMemo(() => moonQuaternionFor(view), [view]);
-  const [raw] = useTexture([MOON_MAP]);
-  const map = useMemo(() => softMoonMap(raw), [raw]);
-  const gl = useThree((st) => st.gl);
-  const mat = useRef();
-  const detail = useMemo(() => ({ value: 0 }), []);
-  useEffect(() => {
-    // The close shots look across the surface at grazing angles: keep its detail there.
-    // 4x is most of the gain; 16x cost a quarter of the frame in fill (measured).
-    const n = gl.capabilities.getMaxAnisotropy();
-    map.anisotropy = Math.min(4, n);
-    map.needsUpdate = true;
-    const d = moonDetailTexture();
-    d.anisotropy = Math.min(2, n);
-    d.needsUpdate = true;
-  }, [map, gl]);
-  const onBeforeCompile = useMemo(
-    () => (shader) => {
-      shader.uniforms.uDetail = detail;
-      shader.uniforms.uDetailMap = { value: moonDetailTexture() };
-      shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", "#include <common>\nuniform sampler2D uDetailMap;\nuniform float uDetail;")
-        .replace(
-          "#include <map_fragment>",
-          `#include <map_fragment>
-          #ifdef USE_MAP
-            float dA = texture2D(uDetailMap, vMapUv * vec2(360.0, 180.0)).r;
-            float dB = texture2D(uDetailMap, vMapUv * vec2(1500.0, 750.0)).r;
-            diffuseColor.rgb *= mix(1.0, 0.55 + 0.9 * (dA * 0.6 + dB * 0.4), uDetail);
-          #endif`
-        );
-    },
-    [detail]
-  );
-  useFrame(({ camera }) => {
-    // Relief from the bump map at a distance; close to the surface the bumps of a
-    // magnified 1k map turn blocky, so they fade out as the regolith detail fades in.
-    if (!mat.current) return;
-    const d = camera.position.distanceTo(_mc.set(position[0], position[1], position[2])) / MOON_UNITS;
-    mat.current.bumpScale = 0.05 * Math.min(1, Math.max(0.06, (d - 1.2) / 0.8));
-    detail.value = 1 - Math.min(1, Math.max(0, (d - 1.25) / 0.45));
-  });
-  return (
-    <mesh position={position} quaternion={quaternion}>
-      <sphereGeometry args={[MOON_UNITS, 160, 120]} />
-      <meshStandardMaterial ref={mat} map={map} roughness={1} metalness={0} bumpMap={map} bumpScale={0.05} onBeforeCompile={onBeforeCompile} />
-    </mesh>
-  );
+  const detail = useMemo(() => moonDetail(position), [position]);
+  return <PlanetMoon radius={MOON_UNITS} sun={SUN_DIR} position={position} quaternion={quaternion} detail={detail} />;
 }
 
 /* ---- the spacecraft in wide shots: a sunlit point on its path ------------------------------- */
