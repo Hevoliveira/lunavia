@@ -197,3 +197,75 @@ en/reentry.corridorLost.0.mp3,CAPCOM,NORMAL,somber,en,"Copy, LUNAVIA... we've lo
 pt/reentry.corridorLost.0.mp3,CAPCOM,NORMAL,somber,pt,"Entendido, LUNAVIA... perdemos o corredor."
 en/reentry.los.0.mp3,FLIGHT,NORMAL,somber,en,"Loss of signal... All stations, hold your data."
 pt/reentry.los.0.mp3,FLIGHT,NORMAL,somber,pt,"Perda de sinal... Todas as estações, guardem os seus dados."
+en/ascent.goLiftoff.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. You are go for lunar liftoff. The CSM is in good shape overhead."
+pt/ascent.goLiftoff.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Liberados para a decolagem lunar. O CSM está em ótimas condições lá em cima."
+en/ascent.armed.0.mp3,CREW,NORMAL,focused,en,Ascent engine armed. Abort stage set. Guidance is aligned.
+pt/ascent.armed.0.mp3,CREW,NORMAL,focused,pt,Motor de ascensão armado. Abort stage acionado. Guiagem alinhada.
+en/ascent.proceed.0.mp3,CREW,HIGH,urgent,en,Proceed. Ascent engine on. We're off.
+pt/ascent.proceed.0.mp3,CREW,HIGH,urgent,pt,Proceder. Motor de ascensão ligado. Decolamos.
+en/ascent.liftoff.0.mp3,CAPCOM,NORMAL,calm,en,We have liftoff. The descent stage stays at the site.
+pt/ascent.liftoff.0.mp3,CAPCOM,NORMAL,calm,pt,Decolagem confirmada. O estágio de descida fica no local.
+en/ascent.pitchover.0.mp3,GUIDANCE,NORMAL,focused,en,Pitchover. Climbing to orbit.
+pt/ascent.pitchover.0.mp3,GUIDANCE,NORMAL,focused,pt,Inclinação. Subindo para a órbita.
+en/ascent.insertion.0.mp3,CAPCOM,NORMAL,calm,en,Orbit insertion confirmed. You're fourteen kilometres below the CSM and closing.
+pt/ascent.insertion.0.mp3,CAPCOM,NORMAL,calm,pt,Inserção em órbita confirmada. Vocês estão catorze quilômetros abaixo do CSM e se aproximando.
+en/ascent.insertionCrew.0.mp3,CREW,NORMAL,calm,en,Engine stop. We're in orbit. Rendezvous radar has the CSM.
+pt/ascent.insertionCrew.0.mp3,CREW,NORMAL,calm,pt,Motor desligado. Estamos em órbita. O radar de encontro tem o CSM.
+en/rdv.tpi.0.mp3,GUIDANCE,NORMAL,focused,en,Terminal phase initiation. Burn complete.
+pt/rdv.tpi.0.mp3,GUIDANCE,NORMAL,focused,pt,Início da fase terminal. Queima concluída.
+en/rdv.mcc.0.mp3,GUIDANCE,NORMAL,focused,en,Midcourse correction complete. On track.
+pt/rdv.mcc.0.mp3,GUIDANCE,NORMAL,focused,pt,Correção de trajetória concluída. Na rota.
+en/rdv.aos.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. We have you again. The rendezvous looks good."
+pt/rdv.aos.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Temos vocês de novo. O encontro está ótimo."
+en/rdv.braking.0.mp3,GUIDANCE,NORMAL,focused,en,Braking. Station-keeping on the docking axis.
+pt/rdv.braking.0.mp3,GUIDANCE,NORMAL,focused,pt,Frenagem. Mantendo posição no eixo de acoplamento.
+en/rdv.handover.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, you are go for docking. She's all yours."
+pt/rdv.handover.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, liberados para o acoplamento. Está com vocês."
+en/rdv.handoverCrew.0.mp3,CREW,NORMAL,calm,en,Rendezvous complete. Taking manual control for docking.
+pt/rdv.handoverCrew.0.mp3,CREW,NORMAL,calm,pt,Encontro concluído. Assumindo o controle manual para o acoplamento.
+en/dock.closing.0.mp3,COMPUTER,HIGH,neutral,en,Closing rate high.
+pt/dock.closing.0.mp3,COMPUTER,HIGH,neutral,pt,Velocidade de aproximação alta.
+en/dock.contact.0.mp3,CREW,HIGH,focused,en,Contact.
+pt/dock.contact.0.mp3,CREW,HIGH,focused,pt,Contato.
+en/dock.capture.0.mp3,CREW,HIGH,focused,en,Capture. Probe retracting.
+pt/dock.capture.0.mp3,CREW,HIGH,focused,pt,Captura. Recolhendo a sonda.
+en/dock.hard.0.mp3,CAPCOM,NORMAL,calm,en,"Hard dock confirmed. Welcome back, LUNAVIA."
+pt/dock.hard.0.mp3,CAPCOM,NORMAL,calm,pt,"Acoplamento firme confirmado. Bem-vindos de volta, LUNAVIA."
+en/dock.hardCrew.0.mp3,CREW,NORMAL,calm,en,Hard dock. All latches locked.
+pt/dock.hardCrew.0.mp3,CREW,NORMAL,calm,pt,Acoplamento firme. Todas as travas fechadas.
+en/dock.deflected.0.mp3,CREW,HIGH,focused,en,No capture. Backing off.
+pt/dock.deflected.0.mp3,CREW,HIGH,focused,pt,Sem captura. Recuando.
+en/dock.collision.0.mp3,CREW,CRITICAL,urgent,en,We hit the CSM!
+pt/dock.collision.0.mp3,CREW,CRITICAL,urgent,pt,Batemos no CSM!
+en/dock.transfer.0.mp3,CREW,NORMAL,calm,en,Crew transfer complete. Hatch closed. Samples are aboard.
+pt/dock.transfer.0.mp3,CREW,NORMAL,calm,pt,Transferência da tripulação concluída. Escotilha fechada. As amostras estão a bordo.
+en/dock.jettison.0.mp3,CAPCOM,NORMAL,calm,en,Ascent stage jettison confirmed. Stand by for trans-Earth injection.
+pt/dock.jettison.0.mp3,CAPCOM,NORMAL,calm,pt,Descarte do estágio de ascensão confirmado. Aguardem a injeção trans-Terra.
+en/return.goTei.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. You are GO for TEI."
+pt/return.goTei.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Vocês estão liberados para a TEI."
+en/return.teiIgnition.0.mp3,GUIDANCE,NORMAL,focused,en,Ignition. TEI burn is underway.
+pt/return.teiIgnition.0.mp3,GUIDANCE,NORMAL,focused,pt,Ignição. Queima de TEI em andamento.
+en/return.teiCutoff.0.mp3,GUIDANCE,NORMAL,focused,en,Cutoff. Good burn.
+pt/return.teiCutoff.0.mp3,GUIDANCE,NORMAL,focused,pt,Corte. Boa queima.
+en/return.coast.0.mp3,CAPCOM,NORMAL,calm,en,"LUNAVIA, Houston. Good burn. You're on your way home."
+pt/return.coast.0.mp3,CAPCOM,NORMAL,calm,pt,"LUNAVIA, Houston. Boa queima. Vocês estão a caminho de casa."
+en/dock.g.acquired.0.mp3,GUIDANCE,NORMAL,calm,en,"Flight, docking target acquired."
+pt/dock.g.acquired.0.mp3,GUIDANCE,NORMAL,calm,pt,"Diretor, alvo de acoplamento adquirido."
+en/dock.g.reduce.0.mp3,CAPCOM,HIGH,focused,en,"LUNAVIA, reduce relative velocity."
+pt/dock.g.reduce.0.mp3,CAPCOM,HIGH,focused,pt,"LUNAVIA, reduzam a velocidade relativa."
+en/dock.g.offAxis.0.mp3,CAPCOM,NORMAL,focused,en,You're drifting off axis. Correct your position.
+pt/dock.g.offAxis.0.mp3,CAPCOM,NORMAL,focused,pt,Vocês estão saindo do eixo. Corrijam a posição.
+en/dock.g.attitude.0.mp3,CAPCOM,NORMAL,focused,en,Check your attitude. Bring it back onto the axis.
+pt/dock.g.attitude.0.mp3,CAPCOM,NORMAL,focused,pt,Verifiquem a atitude. Voltem para o eixo.
+en/dock.g.backoff.0.mp3,CAPCOM,HIGH,focused,en,Not lined up. Back off and set it up again.
+pt/dock.g.backoff.0.mp3,CAPCOM,HIGH,focused,pt,Fora de alinhamento. Recuem e alinhem de novo.
+en/dock.g.opening.0.mp3,CAPCOM,NORMAL,focused,en,You're opening the range. Close it back up.
+pt/dock.g.opening.0.mp3,CAPCOM,NORMAL,focused,pt,A distância está aumentando. Voltem a se aproximar.
+en/dock.g.alignGood.0.mp3,CAPCOM,NORMAL,calm,en,Alignment looks good. You're cleared for the approach.
+pt/dock.g.alignGood.0.mp3,CAPCOM,NORMAL,calm,pt,O alinhamento está bom. Liberados para a aproximação.
+en/dock.g.continue.0.mp3,CAPCOM,NORMAL,calm,en,Nice and easy. Continue your approach.
+pt/dock.g.continue.0.mp3,CAPCOM,NORMAL,calm,pt,Com calma. Continuem a aproximação.
+en/dock.g.standby.0.mp3,CAPCOM,NORMAL,focused,en,Stand by for contact.
+pt/dock.g.standby.0.mp3,CAPCOM,NORMAL,focused,pt,Aguardem o contato.
+en/dock.g.restart.0.mp3,CAPCOM,NORMAL,calm,en,"Copy, back at the approach checkpoint. Take your time."
+pt/dock.g.restart.0.mp3,CAPCOM,NORMAL,calm,pt,"Entendido, de volta ao ponto de aproximação. Sem pressa."

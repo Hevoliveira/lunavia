@@ -380,13 +380,11 @@ export function deployState(tau) {
 /** Undocking choreography time for orbit time tau (negative = still docked). */
 export const undockTime = (tau) => tau - ORBIT_SEQ.undock;
 
-/* ---- the return: close on the spacecraft (mission time) ---------- */
+/* ---- planets at their true apparent size --------------------------------------------- */
 /*
- * The return opens close on the CSM alone, the Moon behind it at its true
- * apparent size for the spacecraft's real distance. (The scene's map-scale
- * planets, 10x oversized for the Earth-Moon views, are never seen from close
- * by.) No translunar travel is shown on the way out: the mission cuts from TLI
- * cutoff straight to lunar orbit (ORBIT_ENTRY).
+ * The scene's map-scale planets are drawn 10x oversized for the Earth-Moon views; a
+ * shot close to the spacecraft stands back by the matching factor so the planet keeps
+ * its true apparent size (the return to Earth: data/earthReturn).
  *
  * radialFrame: Z away from the planet behind the shot, Y the orbit-plane normal
  * (world +Y), X = Y × Z along the stack. The planet is at -Z, beyond the stack.
@@ -398,14 +396,5 @@ export function radialFrame(awayFromPlanet) {
 }
 /** Where to stand so that a planet of drawn radius R appears as it does from distanceKm (radius radiusKm). */
 export const trueSizeDistance = (R, distanceKm, radiusKm) => (R * distanceKm) / radiusKm;
-
-/** Distance from the Moon's centre (km) as the CSM leaves it after TEI (close return shot). */
-export const returnDistanceKm = (t) => 1837 + 2.2 * Math.pow(Math.max(0, t - 504000), 0.95);
-
-export const RETURN_CLOSE_END = 560000; // mission s
-export const RETURN_SHOT = { caption: "TRANSEARTH COAST", sub: "THE CSM HEADS HOME · THE LUNAR MODULE STAYED BEHIND" };
-export function returnCamera(u) {
-  return { pos: lerp([5, 4, 22], [2.5, 3, 17], ease(u)), look: [-2.4, -0.8, 0] };
-}
 
 export const _test = { norm, cross, dot };

@@ -107,6 +107,10 @@ const FEATURES = [
   ["Assisted docking: soft capture", "SOFT CAPTURE"],
   ["Docking copilot in Portuguese", "LINHA CENTRAL ADQUIRIDA"],
   ["Docking controls: FINE", "dock-fine"],
+  ["Earth return: the TEI burn on the service propulsion engine", "THRUST ALONG THE AXIS"],
+  ["Earth return: engine off, passive thermal control on the coast", "PASSIVE THERMAL CONTROL ROLL"],
+  ["Earth return: the entry attitude before the SM separation", "SM SEPARATION NEXT"],
+  ["Earth return: SKIP CINEMATIC to the reentry", "skip-return"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -119,6 +123,7 @@ const REMOVED = [
   ["Lunar approach turn", "TURNING ENGINE FIRST ON RCS"],
   ["Lunar orbit insertion burn shot", "RETROGRADE BURN · OUT OF CONTACT WITH EARTH"],
   ["Four destinations as training exercises", "training-mission-start-"],
+  ["The old return shot (the CSM broadside, no burn)", "THE LUNAR MODULE STAYED BEHIND"],
 ];
 
 function sourceText(dir) {

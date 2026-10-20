@@ -2,8 +2,8 @@ import { Canvas, createPortal, useFrame, useThree } from "@react-three/fiber";
 import { Stars, OrbitControls } from "@react-three/drei";
 import { useRef, useMemo, Suspense, useEffect } from "react";
 import * as THREE from "three";
-import { MOON_RADIUS_KM, trajectoryPosition } from "@/data/missionPhases";
-import { EARTH_UNITS, MOON_UNITS, SCENE_SCALE, craftScenePos } from "@/data/sceneTrack";
+import { trajectoryPosition } from "@/data/missionPhases";
+import { EARTH_UNITS, MOON_UNITS, SCENE_SCALE } from "@/data/sceneTrack";
 import SpacecraftStack from "@/components/spacecraft/SpacecraftStack";
 import PayloadSection from "@/components/spacecraft/PayloadSection";
 import { payloadMaterials } from "@/components/RocketModel";
@@ -19,22 +19,18 @@ import {
   M_PER_UNIT,
   ORBIT_ANCHOR,
   ORBIT_SEQ,
-  RETURN_CLOSE_END,
   STACK,
   STACK_ROTATION,
   deployState,
   orbitShotAt,
   orbitShotCamera,
-  radialFrame,
-  returnCamera,
-  returnDistanceKm,
   toVehicle,
   toWorld,
-  trueSizeDistance,
   undockTime,
   vehicleFrame,
 } from "@/data/orbitSequence";
 import { LZ_UP, MOON_ROTATION, craftPose, landingSite, moonRotationFor, orbitCamera, orbitPoint, smoother } from "@/data/lunarOrbitShot";
+import { earthFrame, returnCamera, returnShotAt, returnState, teiFrame } from "@/data/earthReturn";
 
 /*
  * Lunar orbit and the return, in two layers composited every frame: the
@@ -62,10 +58,6 @@ const SUN_POS = [30, 10, -20];
 const SUN_DIR = new THREE.Vector3(...SUN_POS).normalize();
 const SUN_W = [SUN_DIR.x, SUN_DIR.y, SUN_DIR.z];
 
-const smooth01 = (x) => {
-  const c = Math.min(1, Math.max(0, x));
-  return c * c * (3 - 2 * c);
-};
 
 export function Earth({ small }) {
   // Drawn 10x oversized in the Earth-Moon views; seen from lunar orbit, at its true size in the sky.
@@ -172,36 +164,6 @@ function OrbitGuides({ clock, moonPos, marker = true }) {
   );
 }
 
-function buildLeg(t0, t1, steps) {
-  const pts = [];
-  const tmp = [0, 0, 0];
-  for (let i = 0; i <= steps; i++) {
-    craftScenePos(t0 + (i / steps) * (t1 - t0), tmp);
-    pts.push(new THREE.Vector3(tmp[0], tmp[1], tmp[2]));
-  }
-  return new THREE.BufferGeometry().setFromPoints(pts);
-}
-
-// Outbound + return legs only — the dense lunar-orbit loops would read as scribble
-function TrajectoryPath({ viewRef }) {
-  const group = useRef();
-  const [outbound, inbound] = useMemo(() => [buildLeg(0, 270000, 220), buildLeg(504000, 702000, 140)], []);
-  useFrame(() => {
-    // Not while the camera rides with the spacecraft: the path would run through the lens.
-    if (group.current) group.current.visible = !viewRef.current.vehicle;
-  });
-  return (
-    <group ref={group}>
-      <line geometry={outbound}>
-        <lineBasicMaterial color="#FF3B00" transparent opacity={0.3} />
-      </line>
-      <line geometry={inbound}>
-        <lineBasicMaterial color="#FF3B00" transparent opacity={0.3} />
-      </line>
-    </group>
-  );
-}
-
 /* ---- the spacecraft layer (metres, vehicle frame) ----------------------------------------- */
 const _sunV = new THREE.Vector3();
 /**
@@ -220,6 +182,8 @@ export function VehicleLayer({ viewRef, lm = true, assembly = false }) {
   const target = useRef();
   const group = useRef();
   const yawGroup = useRef();
+  const yawInner = useRef();
+  const rollGroup = useRef();
   const stackRoot = useRef();
   const asmYaw = useRef();
   const asmInner = useRef();
@@ -258,9 +222,18 @@ export function VehicleLayer({ viewRef, lm = true, assembly = false }) {
     if (!v.vehicle) return;
     Object.assign(stackState.current, v.stack);
     stackState.current.yawRcs = v.yawRcs || 0;
-    stackState.current.sps = 0;
-    // The stack turned about the local vertical through its middle.
-    if (yawGroup.current) yawGroup.current.rotation.y = v.yaw || 0;
+    stackState.current.rollRcs = v.rollRcs || 0;
+    stackState.current.sps = v.sps || 0;
+    // The stack turned about the local vertical through its middle (or, for the CSM alone
+    // on the way home, through its centre of mass: v.pivot), rolled about its long axis
+    // and moved along X (the TEI burn).
+    const pivot = v.pivot != null ? v.pivot : STACK.mid;
+    if (yawGroup.current) {
+      yawGroup.current.rotation.y = v.yaw || 0;
+      yawGroup.current.position.x = pivot + (v.x || 0);
+    }
+    if (yawInner.current) yawInner.current.position.x = -pivot;
+    if (rollGroup.current) rollGroup.current.rotation.x = v.roll || 0;
     if (stackRoot.current) stackRoot.current.visible = v.stackOn !== false;
     // The outbound assembly: turned about the vertical, its payload frame laid along X.
     const a = v.asm;
@@ -318,8 +291,10 @@ export function VehicleLayer({ viewRef, lm = true, assembly = false }) {
       <group ref={group}>
         <group ref={stackRoot}>
           <group ref={yawGroup} position={[STACK.mid, 0, 0]}>
-            <group position={[-STACK.mid, 0, 0]} rotation={STACK_ROTATION}>
-              <SpacecraftStack stateRef={stackState} lm={lm} shadows />
+            <group ref={rollGroup}>
+              <group ref={yawInner} position={[-STACK.mid, 0, 0]} rotation={STACK_ROTATION}>
+                <SpacecraftStack stateRef={stackState} lm={lm} shadows />
+              </group>
             </group>
           </group>
         </group>
@@ -400,17 +375,14 @@ export function vehicleView(v, frame, origin, vcam, camera) {
 }
 
 /* ---- the director: which shot, and where both cameras are --------------------------------- */
-const _dp = new THREE.Vector3();
-const _dl = new THREE.Vector3();
-const _S = new THREE.Vector3();
-const _M = new THREE.Vector3();
-const _dir = new THREE.Vector3();
-const _tmp = new THREE.Vector3();
-const _origin = new THREE.Vector3(0, 0, 0);
 
 export { LM_CENTRE_X };
 
-function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitReal, viewRef }) {
+// The CSM's centre of mass along the stack's X (the CM and the fuelled service module):
+// the point it turns about on the way home.
+const CSM_PIVOT = -2.0;
+
+function Director({ missionTime, cinematic, moonPos, orbitClock, orbitReal, returnClock, viewRef }) {
   const { camera } = useThree();
   const pos = useRef(new THREE.Vector3(0, 12, 28));
   const look = useRef(new THREE.Vector3(0, 0, 0));
@@ -427,6 +399,12 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitRea
 
     v.yaw = 0;
     v.yawRcs = 0;
+    v.roll = 0;
+    v.rollRcs = 0;
+    v.sps = 0;
+    v.x = 0;
+    v.pivot = null;
+    v.step = null;
     v.only = null;
     v.asm = null;
     v.stackOn = true;
@@ -472,60 +450,33 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitRea
       return;
     }
 
-    const t = missionTime;
-    _S.set(scPos[0], scPos[1], scPos[2]);
-    _M.set(moonPos[0], moonPos[1], moonPos[2]);
-    v.origin = scPos;
-
-    // ---- Leaving the Moon: close on the CSM ----
-    // The Moon behind it is seen at its true apparent size (the planets are drawn
-    // 10x oversized for the Earth-Moon views, so the planet camera stands back by
-    // the same factor): it only shrinks. (No translunar travel is shown on the way
-    // out: the mission cuts from TLI cutoff straight to lunar orbit.)
-    if (t >= 504000 && t < RETURN_CLOSE_END) {
-      const away = [scPos[0] - moonPos[0], 0, scPos[2] - moonPos[2]];
-      const frame = radialFrame(away);
-      const d = trueSizeDistance(MOON_UNITS, returnDistanceKm(t), MOON_RADIUS_KM);
-      const origin = [moonPos[0] + frame.z[0] * d, 0, moonPos[2] + frame.z[2] * d];
-      const cam = returnCamera(smooth01((t - 504000) / (RETURN_CLOSE_END - 504000)));
-      v.shot = "returnClose";
+    // ---- The return to Earth (data/earthReturn): the CSM alone, the same one that waited in
+    // lunar orbit. TEI over the Moon, the coast, the Earth approach; the planets at their true
+    // apparent size for the spacecraft's distance, and only the one the shot is about.
+    if (returnClock) {
+      const rt = returnClock.current;
+      const { shot, step } = returnShotAt(rt);
+      const st = returnState(rt);
+      const F = shot === "tei" ? teiFrame(rt, moonPos, SUN_W) : earthFrame(rt, SUN_W);
+      v.shot = shot === "tei" ? "tei" : shot === "coast" ? "transearthCoast" : "earthApproach";
+      v.step = step;
+      v.only = shot === "tei" ? "moon" : "earth";
       v.stack = undocking(COAST);
-      v.focus = [0, 0, 0];
-      vehicleView(v, frame, origin, cam, camera);
+      v.yaw = st.yaw;
+      v.yawRcs = st.yawRcs;
+      v.roll = st.roll;
+      v.rollRcs = st.rollRcs;
+      v.sps = st.sps;
+      v.x = st.x;
+      v.pivot = CSM_PIVOT;
+      v.focus = [CSM_PIVOT + st.x, 0, 0];
+      v.shadowR = 9;
+      vehicleView(v, F.frame, F.origin, returnCamera(rt), camera);
       snap.current = true;
       return;
     }
 
-    v.glint = true;
-    v.shot = "wide";
-    if (t < 620000) {
-      // Return: looking back at the receding Moon, then home
-      const u = smooth01((t - 504000) / 90000);
-      _dp.set(_S.x + 0.8, _S.y + 0.4, _S.z + 0.9);
-      _dl.lerpVectors(_M, _origin, u);
-    } else if (t < 702000) {
-      // Earth approach
-      _dir.copy(_S).normalize();
-      _dp.copy(_S).addScaledVector(_dir, 1.1).add(_tmp.set(0, 0.5, 0));
-      _dl.copy(_origin);
-    } else {
-      // Splashdown framing
-      _dp.set(5.0, 1.6, 4.6);
-      _dl.copy(_origin);
-    }
-
-    if (snap.current) {
-      pos.current.copy(_dp);
-      look.current.copy(_dl);
-      snap.current = false;
-    } else {
-      const k = Math.min(1, delta * 1.1);
-      pos.current.lerp(_dp, k);
-      look.current.lerp(_dl, k);
-    }
-    camera.position.copy(pos.current);
-    camera.lookAt(look.current);
-    camera.updateProjectionMatrix();
+    // (Nothing else is flown on this scene: lunar orbit and the return are the only shots.)
   });
 
   // Camera, Moon and shot each frame, for the validation tooling.
@@ -543,6 +494,7 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitRea
     w.vehicle = v.vehicle;
     w.stack = v.stack ? { gap: +v.stack.gap.toFixed(3), lmRoll: +v.stack.lmRoll.toFixed(3), phase: v.stack.phase } : null;
     w.yaw = v.yaw || 0;
+    w.ret = returnClock ? { t: +returnClock.current.toFixed(2), step: v.step, yaw: +(v.yaw || 0).toFixed(4), roll: +(v.roll || 0).toFixed(4), sps: +(v.sps || 0).toFixed(3), yawRcs: v.yawRcs || 0, rollRcs: v.rollRcs || 0, x: +(v.x || 0).toFixed(2), only: v.only } : null;
     w.stackOn = v.vehicle ? v.stackOn !== false : null;
     w.asm = v.vehicle && v.asm ? { yaw: +v.asm.yaw.toFixed(4), craft: v.asm.craft, phase: v.asm.td ? v.asm.td.phase : "mated", x: +(v.asm.x || 0).toFixed(3), engines: +(v.asm.engines || 0).toFixed(3), retro: +(v.asm.retro || 0).toFixed(3), yawRcs: +(v.asm.yawRcs || 0).toFixed(3) } : null;
   });
@@ -564,16 +516,15 @@ function Director({ missionTime, cinematic, scPos, moonPos, orbitClock, orbitRea
 // the end of the cruise, so nothing drifts while the player reads.
 const ORBIT_EPOCH = 270000;
 
-function Scene({ missionTime, cinematic, orbitClock, orbitReal, orbitView }) {
+function Scene({ missionTime, cinematic, orbitClock, orbitReal, returnClock, orbitView }) {
   const t = orbitClock ? ORBIT_EPOCH : missionTime;
-  const scPos = craftScenePos(t, [0, 0, 0]);
   const p = trajectoryPosition(t);
   const moonPos = useMemo(() => [p.moonX * SCENE_SCALE, 0, p.moonZ * SCENE_SCALE], [p.moonX, p.moonZ]);
   const viewRef = useRef({ vehicle: false, glint: false, origin: [0, 0, 0], stack: undocking(COAST), focus: [0, 0, 0], sunV: [0, 1, 0] });
   const vScene = useMemo(() => new THREE.Scene(), []);
   const vCam = useMemo(() => new THREE.PerspectiveCamera(45, 1, 0.1, 4000), []);
   // The lunar module flies out docked and stays on the Moon: the way home is the CSM alone.
-  const lmAboard = !!orbitClock || missionTime < 504000;
+  const lmAboard = !!orbitClock;
   const earthGroup = useRef();
   const moonGroup = useRef();
 
@@ -595,9 +546,9 @@ function Scene({ missionTime, cinematic, orbitClock, orbitReal, orbitView }) {
         <Moon position={moonPos} view={orbitClock ? orbitView : null} />
       </group>
       <Glint viewRef={viewRef} />
-      {orbitClock ? <OrbitGuides clock={orbitClock} moonPos={moonPos} marker={!orbitView || orbitView.marker} /> : <TrajectoryPath viewRef={viewRef} />}
+      {orbitClock && <OrbitGuides clock={orbitClock} moonPos={moonPos} marker={!orbitView || orbitView.marker} />}
       {!cinematic && <OrbitControls enablePan={false} enableZoom={true} minDistance={2} maxDistance={60} dampingFactor={0.06} />}
-      <Director missionTime={missionTime} cinematic={cinematic} scPos={scPos} moonPos={moonPos} orbitClock={orbitClock} orbitReal={orbitReal} viewRef={viewRef} />
+      <Director missionTime={missionTime} cinematic={cinematic} moonPos={moonPos} orbitClock={orbitClock} orbitReal={orbitReal} returnClock={returnClock} viewRef={viewRef} />
       {/* after the Director: this frame's shot decides which planets are drawn */}
       <PlanetFilter viewRef={viewRef} earth={earthGroup} moon={moonGroup} />
       {createPortal(<VehicleLayer viewRef={viewRef} lm={lmAboard} assembly />, vScene)}
@@ -611,13 +562,13 @@ function LoadingFallback() {
 }
 
 /**
- * missionTime drives the cruise and return shots. orbitClock (a ref holding
- * the orbit clock, data/orbitSequence orbitClockAt) switches to the lunar-orbit
- * presentation used before the descent; orbitReal (optional, a ref holding real
- * seconds since lunar orbit began) paces the title screen's slow drift. Keep the
- * same element mounted across the switch so the camera hands over without a cut.
+ * orbitClock (a ref holding the orbit clock, data/orbitSequence orbitClockAt): the
+ * lunar-orbit presentation used before the descent; orbitReal (optional, a ref holding
+ * real seconds since lunar orbit began) paces the title screen's slow drift.
+ * returnClock (a ref holding real seconds since the return began): the return to Earth
+ * (data/earthReturn). missionTime places the Moon on its orbit round the Earth.
  */
-export default function MissionScene({ missionTime, cinematic = false, orbitClock = null, orbitReal = null, orbitView = null }) {
+export default function MissionScene({ missionTime, cinematic = false, orbitClock = null, orbitReal = null, returnClock = null, orbitView = null }) {
   return (
     <div className="absolute inset-0 canvas-host" data-testid="mission-canvas">
       <Canvas
@@ -634,7 +585,7 @@ export default function MissionScene({ missionTime, cinematic = false, orbitCloc
         onCreated={({ gl }) => gl.setClearColor("#050505")}
       >
         <Suspense fallback={<LoadingFallback />}>
-          <Scene missionTime={missionTime} cinematic={cinematic} orbitClock={orbitClock} orbitReal={orbitReal} orbitView={orbitView} />
+          <Scene missionTime={missionTime} cinematic={cinematic} orbitClock={orbitClock} orbitReal={orbitReal} returnClock={returnClock} orbitView={orbitView} />
         </Suspense>
         {/* Stars outside the texture suspense so deep space never goes blank */}
         <Stars radius={100} depth={50} count={8000} factor={3.5} saturation={0} fade speed={0.1} />

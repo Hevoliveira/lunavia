@@ -7,6 +7,8 @@ import CoachCard from "@/components/training/CoachCard";
 import { liftAgrees } from "@/data/trainingDebrief";
 import { createReentryMonitor } from "@/audio/reentryComms";
 import { VERBOSITY } from "@/audio/commsDirector";
+import { ATTITUDE_TURN, SEP_LONG_AGO } from "@/data/earthReturn";
+
 
 const CTRL_BTN = "border border-white/40 hover:border-[#FF3B00] flex items-center justify-center text-white";
 import {
@@ -168,7 +170,7 @@ function initialSim(scenario) {
 }
 function initialView(scenario) {
   if (!scenario) return { phase: "APPROACH", phaseT: 0, sepT: 0, attitudeU: 0, prepBank: 0, approachAlt: 1500e3, approachFpa: -0.11, failT: 0 };
-  if (scenario.phase === "ENTRY") return { phase: "ENTRY", phaseT: 0, sepT: 8, attitudeU: 1, prepBank: scenario.bank, approachAlt: 0, approachFpa: scenario.fpa * DEG, failT: 0 };
+  if (scenario.phase === "ENTRY") return { phase: "ENTRY", phaseT: 0, sepT: SEP_LONG_AGO, attitudeU: 1, prepBank: scenario.bank, approachAlt: 0, approachFpa: scenario.fpa * DEG, failT: 0 };
   return { phase: "PREP", phaseT: 0, sepT: 0, attitudeU: 0, prepBank: scenario.bank || 0, approachAlt: 250e3, approachFpa: -0.11, failT: 0 };
 }
 function initialPrep(cfg, scenario) {
@@ -274,7 +276,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
     attemptsRef.current += 1;
     prepRef.current = newPrep(cfg);
     simRef.current = createEntryState();
-    Object.assign(viewRef.current, { phase: "PREP", phaseT: 0, sepT: 8, attitudeU: 1, prepBank: 0, approachAlt: 250e3, failT: 0 });
+    Object.assign(viewRef.current, { phase: "PREP", phaseT: 0, sepT: SEP_LONG_AGO, attitudeU: 1, prepBank: 0, approachAlt: 250e3, failT: 0 });
     doneRef.current = false;
     commsRef.current = createReentryMonitor();
     if (audio && audio.commsFlush) audio.commsFlush();
@@ -368,7 +370,8 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
         } else if (v.phase === "PREP") {
           const p = prepRef.current;
           v.sepT += dt;
-          v.attitudeU = Math.min(1, Math.max(0, (v.sepT - 1.2) / 3.2));
+          // The command module turns heat shield forward once the service module is clear.
+          v.attitudeU = Math.min(1, Math.max(0, (v.sepT - ATTITUDE_TURN.after) / ATTITUDE_TURN.len));
           p.timeLeft -= dt;
           v.approachAlt = 250e3 * Math.max(0, p.timeLeft / PREP_SECONDS);
           const trim = (inp.up ? 1 : 0) - (inp.down ? 1 : 0);
@@ -388,6 +391,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
           if (p.timeLeft <= 0 || (commitRef.current && v.attitudeU >= 1)) startEntry();
           commitRef.current = false;
         } else if (v.phase === "ENTRY") {
+          if (v.sepT < SEP_LONG_AGO) v.sepT += dt; // the separated service module keeps drifting out of the frame
           const s = simRef.current;
           const g = guideRef.current;
           const manual = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);

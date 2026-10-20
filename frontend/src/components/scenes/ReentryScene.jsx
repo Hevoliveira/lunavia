@@ -7,6 +7,7 @@ import { PlanetEarth } from "@/components/planets/Planets";
 import { plasmaLevel } from "@/data/reentryGuidance";
 import CsmModel, { csmMaterials } from "@/components/spacecraft/CsmModel";
 import { CM_R, PARTS as CSM_PARTS, buildCM } from "@/data/csmDesign";
+import { SM_SEP, smOffset } from "@/data/earthReturn";
 
 /*
  * ReentryScene — rendered entirely from the live reentry simulation state
@@ -95,19 +96,23 @@ function CapsuleModel({ shieldMatRef, bodyOpacityRef }) {
   );
 }
 
-// Service module (approach only) — the same SM as at launch and in lunar orbit;
-// separated at ENTRY PREP, it backs away along its own axis and drifts off.
+// Service module (approach only) — the same SM as at launch and in lunar orbit. At ENTRY
+// PREP it separates: it backs away along its own axis (behind the capsule, which flies
+// on), drifting a little down and away from the camera, faster as the shot compresses
+// time, and leaves the frame (data/earthReturn smOffset). It is never swapped or popped.
 const _smOff = new THREE.Vector3();
+const _smo = [0, 0, 0];
 function ServiceModule({ viewRef, smQuatRef }) {
   const ref = useRef();
   useFrame(() => {
     if (!ref.current) return;
     const v = viewRef.current;
-    const sep = v.phase === "APPROACH" ? 0 : Math.min(8, v.sepT || 0);
-    ref.current.visible = v.phase === "APPROACH" || (v.phase === "PREP" && sep < 7.5);
+    const sep = v.phase === "APPROACH" ? 0 : v.sepT || 0;
+    ref.current.visible = v.phase === "APPROACH" || ((v.phase === "PREP" || v.phase === "ENTRY") && sep < SM_SEP.gone);
     // SM keeps its approach attitude and backs away along its own axis after separation.
     ref.current.quaternion.copy(smQuatRef.current);
-    _smOff.set(0.12 * sep, -0.45 * sep, -0.3 * sep).applyQuaternion(smQuatRef.current);
+    smOffset(sep, _smo);
+    _smOff.set(_smo[0], _smo[1], _smo[2]).applyQuaternion(smQuatRef.current);
     ref.current.position.copy(_smOff);
   });
   return (
@@ -762,11 +767,14 @@ function CameraRig({ simRef, viewRef }) {
     const t = state.clock.elapsedTime;
     const L = plasmaLevel(s);
     if (v.phase === "APPROACH") {
-      _p.set(3.4, 1.4, 5.2);
-      _l.set(0, -0.4, 0);
+      // Ahead and to the sunlit side, as the return's approach shot: the CSM flies screen-left.
+      _p.set(-1.2, 1.3, 5.6);
+      _l.set(0.5, -0.4, 0);
     } else if (v.phase === "PREP") {
-      _p.set(2.6 + Math.sin(t * 0.1) * 0.2, 0.9, 4.4);
-      _l.set(0.2, -0.3, 0);
+      // The service module backs away behind (screen right, away from the camera) and the
+      // command module turns its heat shield forward.
+      _p.set(-1.9 + Math.sin(t * 0.1) * 0.2, 0.85, 4.6);
+      _l.set(0.7, -0.3, 0);
     } else if (v.phase === "SPLASHED") {
       _p.set(4.5, 1.1, 7.5);
       _l.set(0, 0.6, 0);

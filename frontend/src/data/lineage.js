@@ -65,7 +65,12 @@ export const LINEAGE = [
   // The LM lands and stays on the Moon (its ascent stage's rendezvous with the CSM is not flown);
   // the CSM flies home alone.
   { id: "descent", event: "touchdown", removes: ["lm"], shot: { mission: "descent" }, drawnBy: "LanderModel" },
-  { id: "return", shot: { mission: "returnClose" }, drawnBy: "SpacecraftStack" },
+  // The way home (data/earthReturn): the same CSM, alone. TEI on its service propulsion
+  // engine over the Moon, the coast with the engine off, the Earth approach and the turn to
+  // the entry attitude; then the service module separates, on screen, in the reentry.
+  { id: "tei", event: "teiBurn", burn: "sps", shot: { mission: "tei" }, drawnBy: "SpacecraftStack" },
+  { id: "transearthCoast", shot: { mission: "transearthCoast" }, drawnBy: "SpacecraftStack" },
+  { id: "earthApproach", shot: { mission: "earthApproach" }, drawnBy: "SpacecraftStack" },
   { id: "smJettison", event: "separation", removes: ["sm"], shot: { mission: "reentry" }, drawnBy: "ReentryScene" },
 ];
 

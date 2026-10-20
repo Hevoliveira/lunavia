@@ -22,7 +22,9 @@ import { PROBE_STOWED, probeSet } from "@/data/payloadDesign";
  *   The LM's contact probes stay folded, as launched, until lmProbe swings them down.
  *   yawRcs (-1..1): the service module's couple that turns the stack about the
  *   CSM's X axis (+: the +Z quad's aft and the -Z quad's forward thrusters).
- *   sps (0..1): the service module's main engine (lunar orbit insertion).
+ *   rollRcs (-1..1): the side thrusters' couple that rolls the CSM about its long axis
+ *   (+: torque about +Y).
+ *   sps (0..1): the service module's main engine (the trans-Earth injection).
  * `lm` / `csm`: draw either vehicle (false hides it; e.g. the CSM alone after
  * the lunar module has left the scene).
  */
@@ -31,6 +33,14 @@ const FWD = CSM_RCS.map((t) => t.dir[1] > 0.5); // forward-facing thrusters: exh
 // The turning couple about the CSM's X axis: quads 0 (+Z) and 2 (-Z), firing fore and aft in opposition.
 const YAW_POS = CSM_RCS.map((t) => (t.quad === 0 && t.dir[1] < -0.5) || (t.quad === 2 && t.dir[1] > 0.5));
 const YAW_NEG = CSM_RCS.map((t) => (t.quad === 0 && t.dir[1] > 0.5) || (t.quad === 2 && t.dir[1] < -0.5));
+// The roll couple about the long axis: in every quad, the side thruster whose exhaust runs
+// one way round the drum (exhaust along +side gives a torque about -Y; data/csmDesign).
+const SIDE = (t) => {
+  const a = Math.atan2(t.pos[0], t.pos[2]);
+  return [Math.cos(a), 0, -Math.sin(a)];
+};
+const ROLL_NEG = CSM_RCS.map((t) => Math.abs(t.dir[1]) < 0.5 && t.dir[0] * SIDE(t)[0] + t.dir[2] * SIDE(t)[2] > 0.5);
+const ROLL_POS = CSM_RCS.map((t) => Math.abs(t.dir[1]) < 0.5 && t.dir[0] * SIDE(t)[0] + t.dir[2] * SIDE(t)[2] < -0.5);
 
 /**
  * The SPS engine's plume, from its exit plane down the CSM's -Y: in vacuum a
@@ -91,7 +101,15 @@ export default function SpacecraftStack({ stateRef = null, lm = true, csm = true
     if (lmRollRef.current) lmRollRef.current.rotation.y = s ? s.lmRoll : 0;
     const k = s ? s.csmRcs : 0;
     const yaw = (s && s.yawRcs) || 0;
-    FWD.forEach((on, i) => (csmRcs.current[i] = Math.max(on ? k : 0, yaw > 0 && YAW_POS[i] ? yaw : yaw < 0 && YAW_NEG[i] ? -yaw : 0)));
+    const roll = (s && s.rollRcs) || 0;
+    FWD.forEach(
+      (on, i) =>
+        (csmRcs.current[i] = Math.max(
+          on ? k : 0,
+          yaw > 0 && YAW_POS[i] ? yaw : yaw < 0 && YAW_NEG[i] ? -yaw : 0,
+          roll > 0 && ROLL_POS[i] ? roll : roll < 0 && ROLL_NEG[i] ? -roll : 0
+        ))
+    );
     sps.current = (s && s.sps) || 0;
     const b = s && s.lmProbe != null ? s.lmProbe : PROBE_STOWED;
     if (lmFx.current.probe[0] !== b) lmFx.current.probe = probeSet(b);

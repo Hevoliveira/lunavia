@@ -6,7 +6,7 @@ import { ORBIT_SHOTS } from "./orbitSequence";
 
 const SRC = path.resolve(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
-const MISSION_SHOTS = ["returnClose", "descent", "reentry"];
+const MISSION_SHOTS = ["tei", "transearthCoast", "earthApproach", "descent", "reentry"];
 
 describe("spacecraft lineage: one launch vehicle, one spacecraft, one mission", () => {
   const pad = LINEAGE[0].parts;
