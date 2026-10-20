@@ -8,6 +8,7 @@ import { liftAgrees } from "@/data/trainingDebrief";
 import { createReentryMonitor } from "@/audio/reentryComms";
 import { VERBOSITY } from "@/audio/commsDirector";
 import { ATTITUDE_TURN, SEP_LONG_AGO } from "@/data/earthReturn";
+import { CONFIRM } from "@/data/descentScene";
 
 
 const CTRL_BTN = "border border-white/40 hover:border-[#FF3B00] flex items-center justify-center text-white";
@@ -457,7 +458,8 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
             }
           }
         } else if (v.phase === "SPLASHED") {
-          if (v.phaseT > 4 && !doneRef.current) {
+          // the splashdown and the floating capsule are seen before MISSION COMPLETE (CONFIRM.done s)
+          if (v.phaseT > CONFIRM.done && !doneRef.current) {
             doneRef.current = true;
             if (onResult) onResult(resultData());
             else onComplete && onComplete(resultData()); // the entry as measured (peakG, peakHeatRate, splashV, …)
@@ -526,6 +528,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
           cue: guideRef.current.cue,
           pred: guideRef.current.pred,
           simT: s.t,
+          splashT: v.phase === "SPLASHED" ? v.phaseT : 0,
           ts: v.phase === "ENTRY" ? timeScaleFor(s) : 1,
           climbing: s.gamma > 0 && s.v > 7800,
           ei: s.ei,
@@ -634,6 +637,19 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
           <X size={12} /> ABORT
         </button>
       </div>
+
+      {/* Splashdown: confirmed only once the simulation has the capsule safely in the water */}
+      {u && phase === "SPLASHED" && u.splashT >= CONFIRM.splashdown && (
+        <div className="absolute inset-x-0 bottom-14 short:bottom-6 flex flex-col items-center pointer-events-none z-30 scan-in" data-testid="splashdown-confirmed">
+          <div className="font-mono text-[10px] tracking-[0.45em] text-[#FF3B00]">● PACIFIC RECOVERY AREA</div>
+          <div className="font-display font-black text-white text-3xl md:text-4xl short:text-2xl tracking-tight mt-1">SPLASHDOWN CONFIRMED</div>
+          {u.splashT >= CONFIRM.crewSafe && (
+            <div className="font-mono text-[12px] tracking-[0.4em] text-emerald-400 mt-1 scan-in" data-testid="crew-safe">
+              CREW SAFE
+            </div>
+          )}
+        </div>
+      )}
 
       {/* LEFT: primary telemetry */}
       {u && phase !== "SPLASHED" && (

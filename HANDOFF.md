@@ -3025,3 +3025,89 @@ no contact) → return → reentry → splashdown. MISSION COMPLETE after 328 s,
   12.1 s and 21 s and 0 in every later frame.
 - The reentry took over at the end of the return, and the capsule entered heat shield first.
 
+
+## 53. Phase 2: clouds, open sea, parachutes and splashdown (presentation only)
+
+**Audit (why it looked artificial).**
+- **Scale.** The capsule was drawn at 3.9 m per unit, but the low world (sea and clouds) at 25 m
+  per unit. Next to its sea and clouds the capsule was 6.4× too big, and the waves, clouds and
+  parachutes could never read at their true size.
+- **Clouds.** 40 flat ellipses made from one radial-gradient texture, turned to face the camera,
+  with no lighting, in one layer at 2.6 km.
+- **Sea.** One flat 100 km plane with a three-sine colour shimmer: no wave geometry, normals,
+  reflection or sun glint, and its edge was visible from altitude. During the parachute descent
+  the camera looked up, so the sea first appeared at splashdown.
+- **Splashdown.** A white ring and a foam disc. The capsule sat on the plane, the parachutes
+  vanished, and MISSION COMPLETE remounted a frozen scene with a camera reset.
+
+**What changed** (`data/descentScene.js` is pure and tested; the drawing is in
+`components/scenes/descent/`). The reentry physics, controls, timings and success rules are
+untouched: the descent only reads the simulation's state.
+- **One scale** (1 unit = 3.9 m). The sea lies at −h/3.9 below the capsule, so the heat shield
+  meets the waves exactly when the simulation's altitude reaches zero.
+- **Ocean.js:**
+  - a polar grid that follows the camera, from 1 unit to 450 km, curving with the Earth; its rim
+    lies beyond the horizon, lost in the haze;
+  - four Gerstner waves of a recovery sea state (Hs ≈ 1.2 m, swell 96 m), displaced near the
+    camera; the floating capsule rides the same sum;
+  - two scales of procedural detail normals, faded with distance;
+  - Fresnel sky reflection, and a sun glint that widens into a glitter path far away;
+  - deep-navy water;
+  - the cumulus shadows, baked once into a 512² map;
+  - beyond 18 km, the NASA Blue Marble cloud cover from the map the Earth already uses;
+  - haze into the sky's own horizon colour;
+  - the splash's ripple ring and broken foam.
+- **CloudField.jsx:**
+  - 52 cumulus formations, a little over 1,000 puffs, in one instanced draw, sorted back to front;
+  - bases 650–950 m, tops 1.2–2.6 km;
+  - each puff is shaded per pixel as a sphere of vapour lit by the scene's Sun in world space:
+    lit tops, darker bases, flat condensation-level bases, a noise-broken edge;
+  - its alpha reaches zero inside the quad, so no straight edges show;
+  - haze with distance, and fades near the camera and at the field's rim, so nothing pops or
+    fills the screen;
+  - two formations are placed in shot so the capsule descends between them; its own path stays
+    clear (tested).
+- **Chutes.jsx:**
+  - the drogues (5 m) and three ringsail mains (25.4 m, 32 orange and white gores, a dark band,
+    a vent) on 41 m suspension lines converging on the riser above the apex;
+  - inflation comes from the simulation's deployment times; the canopies breathe and sway;
+  - at splashdown the mains are released, come down, collapse and lie wet on the sea, downwind.
+- **Splash.jsx:**
+  - starts only when the simulation reports the splashdown, at the heat shield's lowest point;
+  - droplets thrown out ballistically under real gravity, and a ragged spray crown rising out of
+    the water;
+  - the ripple ring and the foam are on the sea.
+- **Flotation:**
+  - the capsule plunges 0.9 m, bobs and settles;
+  - it floats apex up, its waterline 1.1 m above the heat shield's lowest point;
+  - it follows the slope of the drawn waves.
+- **Sky:** the dome gives the sea and the clouds their colours (one atmosphere) and has a soft
+  glow around the Sun.
+- **Cameras:**
+  - under the parachutes, the camera keeps the canopies, the capsule, the clouds and the sea in
+    shot, and stays above the waves;
+  - the drogue framing hands over to the mains framing by a slow drift;
+  - the recovery shot draws back slowly, and the MISSION COMPLETE scene continues it with no
+    reset.
+- **ReentryGame:** SPLASHDOWN CONFIRMED appears 0.6 s after contact and CREW SAFE at 2.4 s, only
+  in the SPLASHED state. SPLASHED lasts 6.5 s (was 4 s) before MISSION COMPLETE. Houston's
+  splashdown call still waits for that state.
+- **Mission:** LUNAVIA — MISSION COMPLETE, over a lighter overlay that leaves the floating capsule
+  visible.
+- **AdaptiveResolution** (as in the other scenes) on the reentry canvas.
+- **Tooling:** `window.__lvReentryView` (read-only): the camera, the sea level, the splash and the
+  draw calls.
+
+**Measured** (headless Chromium with SwiftShader, CPU rendering at 852 × 393, not an iPhone GPU):
+
+| | Before | After |
+|---|---|---|
+| Draw calls (max) | 33 | 17 |
+| Triangles (max) | 7.4k | 36k |
+| JS heap | 13.6 MB | 14.5 MB |
+| Median frame time, SwiftShader | 16.7 ms | 50 ms |
+
+The frame-time increase is per-pixel shading on a CPU rasterizer: the sea shader covers half the
+screen, and cloud puffs overlap. On a GPU this workload (17 draws, 36k triangles, about 6 texture
+reads per sea pixel) is light, and AdaptiveResolution lowers the pixel ratio if a device cannot
+hold 45 fps. There is no network use: the textures are procedural or the bundled NASA map.

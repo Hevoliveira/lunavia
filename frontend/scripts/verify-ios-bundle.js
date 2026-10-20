@@ -111,6 +111,10 @@ const FEATURES = [
   ["Earth return: engine off, passive thermal control on the coast", "PASSIVE THERMAL CONTROL ROLL"],
   ["Earth return: the entry attitude before the SM separation", "SM SEPARATION NEXT"],
   ["Earth return: SKIP CINEMATIC to the reentry", "skip-return"],
+  ["Splashdown: SPLASHDOWN CONFIRMED, then CREW SAFE", "splashdown-confirmed"],
+  ["Descent: the cumulus field (one instanced draw)", "cloud-field"],
+  ["Descent: the open-sea renderer (Fresnel, glint, haze, curvature)", "the waves' normal (analytic)"],
+  ["Descent: the splash at contact", "the quad's corners: never inside the puff"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -124,6 +128,7 @@ const REMOVED = [
   ["Lunar orbit insertion burn shot", "RETROGRADE BURN · OUT OF CONTACT WITH EARTH"],
   ["Four destinations as training exercises", "training-mission-start-"],
   ["The old return shot (the CSM broadside, no burn)", "THE LUNAR MODULE STAYED BEHIND"],
+  ["The old low world at 25 m per unit (the capsule 6x too big)", "metres per scene unit in the low-altitude world"],
 ];
 
 function sourceText(dir) {
