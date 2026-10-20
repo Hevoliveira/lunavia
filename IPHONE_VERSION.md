@@ -1,12 +1,14 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD a50700b**.
+This folder installs **BUILD 6a528b7**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD a50700b · 2026-10-19 23:05 UTC**
+> **LUNAVIA iOS · BUILD 6a528b7 · 2026-10-20 22:02 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **a50700b** is the previous release: the docking copilot and docking training, but after the docking
+  the CSM drifted home broadside with no engine burn (no TEI burn, coast or Earth approach shots);
 - **96a87a6** is the previous release: AUTO-ALIGN, STABILIZE and the speed assist, but no AUTO-CENTER,
   no MATCH VELOCITY, no step-by-step docking copilot with reasons, no FINE APPROACH closing-speed steps,
   and no DOCKING TRAINING in the Training Center;
@@ -91,28 +93,23 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Photorealistic Earth and Moon: NASA imagery shipped in the app (Blue Marble, City Lights and Blue Marble clouds for the Earth; the LRO colour mosaic and LOLA relief for the Moon), a thin sunlit atmospheric limb, a dark night side with city lights, a true lunar terminator, one Sun per scene, in every scene (launch, lunar orbit, docking, landing-site sky, far-side intro, return, reentry) | #24 | af797cc |
 | Assisted docking: AUTO-ALIGN, STABILIZE and the APPROACH SPEED ASSIST (CADET; STABILIZE on ASTRONAUT), a forgiving but real soft capture for CADET, a calmer CADET starting point, gentler held jet buttons and FINE control, and the six-step CADET docking sequence on screen | #25 | 96a87a6 |
 | Docking copilot: AUTO-CENTER (the RCS slides the port onto the centreline), MATCH VELOCITY (cancels the relative motion and holds station), FINE APPROACH (FWD/AFT set the closing speed in 0.02 m/s steps on CADET), the right control highlighted, the five-step CADET copilot with the reason a step is not done yet, and ORBITAL DOCKING TRAINING in the Training Center | #26 | a50700b |
+| Earth return: TEI on the service propulsion engine (an RCS turn to prograde, a finite burn along the axis, cutoff), an engine-off coast in passive thermal control, the Earth approach at true size, the turn to the entry attitude, then a clean service-module separation and a heat-shield-first capsule in the reentry | — | 6a528b7 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at a50700b** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release adds a docking copilot and docking training; nothing else changes** (the landing, the ascent, the spacecraft, the planets, the return and reentry are as before).
-  - **Why beginners failed before:** AUTO-ALIGN turns the ship but does not move it. With AUTO-ALIGN and STABILIZE on, the port could sit almost 0.9 m off the centreline (capture needs about 0.36 m), and nothing said so clearly. A beginner then needed dozens of sideways and FWD/AFT presses.
-  - **CADET copilot** (the panel above the guidance shows the step and, when it is not done, why):
-    1. **AUTO-ALIGN:** the RCS turns the ascent stage onto the docking axis and holds it.
-    2. **AUTO-CENTER:** the RCS slides your port onto the CSM's centreline, using the real port positions and the same jets and propellant. The button shows the progress (%), then CENTERLINE ACQUIRED. A sideways tap cancels it.
-    3. **MATCH VELOCITY:** the RCS cancels the drift and rotation and holds station (you are not moving towards the CSM yet). RELATIVE MOTION STABLE when done.
-    4. **FINAL APPROACH:** you fly it. FWD/AFT set the closing speed in small steps (+0.02 / −0.02 m/s); the readout shows the closing speed and the safe speed for the distance. The assists never push you forward.
-    5. **SOFT CAPTURE**, then HARD DOCK CONFIRMED.
-    - The steps follow the telemetry, not timers, and go back a step if something drifts out.
-  - **The right control is highlighted:** the sideways jet to press, BRAKE when closing too fast, RELEASE when to let go, and when the alignment is good enough.
-  - **ASTRONAUT:** AUTO-CENTER and MATCH VELOCITY are offered when they would help; each acts once and hands control back. Less detail in the panel. FINE makes the jets a third as strong.
-  - **COMMANDER:** manual and strict, as before.
-  - **DOCKING TRAINING** (TRAINING → ORBITAL DOCKING TRAINING, beside lunar landing and Earth reentry):
-    - three scenarios: Final Approach, Drifting Target and Commander Docking;
-    - it starts at the docking checkpoint (no landing, ascent or rendezvous);
-    - a debrief with the capture facts, RETRY straight back to the start, and training records;
-    - no mission score, medal or achievement.
-- **Checked in a browser on the packaged files** (headless Chromium, by touch input only, never by forcing a result): a CADET mission and a CADET training run docked using the copilot steps; ASTRONAUT and COMMANDER docked; the four views, RESTART DOCKING, phone layouts and full missions as before. This is not a test on a real iPhone.
+- **Built from the clean tree at 6a528b7** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release fixes the return to Earth after the docking. Nothing else changes:** the landing, the ascent, the docking and its copilot, the planets, and the reentry's controls and physics are as before.
+  - **Before:** after the docking, the CSM drifted away from the Moon broadside, at 90° to its own axis, with no engine burn. It then vanished into a dot while the Earth grew.
+  - **Now** (about 42 s; SKIP CINEMATIC goes straight to the reentry):
+    1. **LEAVING LUNAR ORBIT**: the same CSM over the Moon. Houston: "GO for TEI".
+    2. **MANEUVER TO BURN ATTITUDE**: the RCS turns the CSM 180°, nose along its orbit.
+    3. **TEI BURN**: the service propulsion engine fires. The plume comes from the engine bell, and the CSM pulls ahead nose first.
+    4. **ENGINE CUTOFF**: the engine stops and does not fire again.
+    5. **COASTING HOME**: engine off. The CSM holds an attitude side-on to the Sun and rolls slowly (passive thermal control). It does not have to point where it is going.
+    6. **EARTH APPROACH**: the Earth grows. The RCS stops the roll and turns the nose along the flight path.
+    7. **The reentry**: the service module separates and backs away behind the capsule, and the capsule turns its heat shield forward. Then the reentry is flown as before.
+  - The HUD clock runs from T+139:48 through TEI at T+140:00 to entry interface at T+193 h. Mission Control has four new calls, in English and Portuguese.
+- **Checked in a browser on the packaged files** (headless Chromium, by input only). A full CADET mission ran from the docking through the return and the reentry to MISSION COMPLETE. The full regression covered all four missions at the three difficulties. This is not a test on a real iPhone.
 - **As in the previous releases:** the photorealistic Earth and Moon; the docking ports made clear (TARGET DOCKING PORT, the approach corridor, the capture conditions, FOCUS DOCKING PORTS); mission scoring, medals, achievements and FLIGHT RECORDS; the four docking views; **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel.
 - **How a mission goes after the landing** (as in the previous release):
   1. After a successful landing, **CONTINUE MISSION** shows **LUNAR SURFACE — ASCENT PREPARATION**: the checklist ticks in, and nothing starts until you press **INITIATE LUNAR ASCENT**.
@@ -135,4 +132,4 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
   - every planet texture the game loads is in the bundle, is a valid image and is identical to the source copy; the old textures are gone; the NASA sources (`SOURCES.md`) are bundled;
-  - every feature above is in the bundled game, including the docking copilot (AUTO-CENTER, MATCH VELOCITY, FINE APPROACH, the copilot's reasons, ORBITAL DOCKING TRAINING, in English and Portuguese), the docking assists (AUTO-ALIGN, STABILIZE, the speed assist, soft capture, FINE, the CADET sequence in Portuguese), the photorealistic Earth and Moon, the docking-port markers (English and Portuguese), FOCUS DOCKING PORTS, the capture conditions and the approach corridor, the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
+  - every feature above is in the bundled game, including the Earth return (the TEI burn, the passive thermal control coast, the entry attitude, SKIP CINEMATIC), the docking copilot (AUTO-CENTER, MATCH VELOCITY, FINE APPROACH, the copilot's reasons, ORBITAL DOCKING TRAINING, in English and Portuguese), the docking assists (AUTO-ALIGN, STABILIZE, the speed assist, soft capture, FINE, the CADET sequence in Portuguese), the photorealistic Earth and Moon, the docking-port markers (English and Portuguese), FOCUS DOCKING PORTS, the capture conditions and the approach corridor, the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
