@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, ChevronRight, Lock, Play, RotateCcw, Trophy, Volume2, VolumeX } from "lucide-react";
 import DescentGame from "@/components/DescentGame";
 import ReentryGame from "@/components/ReentryGame";
+import DockingOps from "@/components/DockingOps";
 import BuildBadge from "@/components/BuildBadge";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import comms from "@/audio/comms";
@@ -13,18 +14,23 @@ import {
   DIFFICULTY_KEYS,
   LANDING_SCENARIOS,
   REENTRY_SCENARIOS,
+  DOCKING_SCENARIOS,
   findScenario,
   difficultyFor,
 } from "@/data/trainingScenarios";
 import { landingCoach, createReentryCoach, COACH_LEVEL } from "@/data/trainingCoach";
-import { landingDebrief, reentryDebrief } from "@/data/trainingDebrief";
+import { landingDebrief, reentryDebrief, dockingDebrief } from "@/data/trainingDebrief";
 import { loadProgress, recordAttempt, progressKey, totals, bestsFor } from "@/lib/trainingProgress";
 
 /*
- * Flight Training Center: practise the two flight-control problems of the
- * mission on their own. Each attempt runs the mission's own DescentGame or
+ * Flight Training Center: practise the mission's flight-control problems on
+ * their own. Each attempt runs the mission's own DescentGame, DockingOps or
  * ReentryGame (same physics, controls, limits and grading) from a training
- * start, with an instructor whose detail depends on the difficulty.
+ * start, with an instructor whose detail depends on the difficulty. Docking
+ * training starts at the final-approach checkpoint in lunar orbit: no landing,
+ * ascent or rendezvous film, and RESTART DOCKING retries at once. Training
+ * records stay in the training store: no mission log, score, medal or
+ * achievement comes from a training run.
  *
  * Lunar landing training is flown at the Sea of Tranquility only
  * (data/missionConfig TRAINING_LANDING_SITE): Hadley–Apennine, Tycho Highlands
@@ -38,6 +44,12 @@ const DISCIPLINES = {
     craft: "LM-1 · POWERED DESCENT",
     blurb: "Throttle, braking, horizontal velocity, RCS and safe touchdown practice at the Sea of Tranquility.",
     scenarios: LANDING_SCENARIOS,
+  },
+  docking: {
+    title: "ORBITAL DOCKING TRAINING",
+    craft: "ASCENT STAGE · CSM IN LUNAR ORBIT",
+    blurb: "Relative motion, attitude and lateral alignment, velocity matching and the final approach to a soft capture.",
+    scenarios: DOCKING_SCENARIOS,
   },
   reentry: {
     title: "EARTH REENTRY SIMULATOR",
@@ -59,7 +71,9 @@ const VOICE_KEY = "lunavia.training.voice";
 const TOTAL_SLOTS =
   (LANDING_SCENARIOS.filter((s) => !s.lock).length * DIFFICULTY_KEYS.length + LANDING_SCENARIOS.filter((s) => s.lock).length) * TRAINING_LANDING_SITES.length +
   REENTRY_SCENARIOS.filter((s) => !s.lock).length * DIFFICULTY_KEYS.length +
-  REENTRY_SCENARIOS.filter((s) => s.lock).length;
+  REENTRY_SCENARIOS.filter((s) => s.lock).length +
+  DOCKING_SCENARIOS.filter((s) => !s.lock).length * DIFFICULTY_KEYS.length +
+  DOCKING_SCENARIOS.filter((s) => s.lock).length;
 
 const objectiveText = (scenario, siteId) => (typeof scenario.objective === "function" ? scenario.objective(getSite(siteId)) : scenario.objective);
 
@@ -109,10 +123,11 @@ const fmt = (x, d = 0, unit = "") => (x === null || x === undefined ? "—" : `$
 function RecordsPanel({ progress }) {
   const landingIds = LANDING_SCENARIOS.map((s) => s.id);
   const reentryIds = REENTRY_SCENARIOS.map((s) => s.id);
+  const dockingIds = DOCKING_SCENARIOS.map((s) => s.id);
   const th = "font-mono text-[8px] tracking-[0.2em] text-zinc-500 text-left font-normal py-1 pr-2";
   const td = "font-mono text-[11px] short:text-[10px] text-white tabular py-1 pr-2 border-t border-white/10";
   return (
-    <div className="grid md:grid-cols-2 short:grid-cols-2 gap-4 short:gap-2.5 mt-6 short:mt-2" data-testid="training-records">
+    <div className="grid md:grid-cols-3 short:grid-cols-3 gap-4 short:gap-2.5 mt-6 short:mt-2" data-testid="training-records">
       <div className="hud-panel corners relative bg-black/60 border border-white/10 p-4 short:p-2.5">
         <div className="font-mono text-[9px] tracking-[0.3em] text-[#FF3B00] mb-1">LUNAR LANDING · PERSONAL BESTS</div>
         <table className="w-full">
@@ -157,7 +172,34 @@ function RecordsPanel({ progress }) {
           </tbody>
         </table>
       </div>
-      <p className="md:col-span-2 short:col-span-2 font-mono text-[9px] tracking-wider text-zinc-500">
+      <div className="hud-panel corners relative bg-black/60 border border-white/10 p-4 short:p-2.5">
+        <div className="font-mono text-[9px] tracking-[0.3em] text-[#FF3B00] mb-1">ORBITAL DOCKING · PERSONAL BESTS</div>
+        <table className="w-full">
+          <thead>
+            <tr><th className={th}>LEVEL</th><th className={th}>RUNS</th><th className={th}>SCENARIOS</th><th className={th}>FASTEST</th></tr>
+          </thead>
+          <tbody>
+            {DIFFICULTY_KEYS.map((k) => {
+              const b = bestsFor(progress, "docking", k, dockingIds);
+              const avail = DOCKING_SCENARIOS.filter((s) => !s.lock || s.lock === k).length;
+              let best = null;
+              dockingIds.forEach((id) => {
+                const e = progress[progressKey("docking", id, k)];
+                if (e && e.best && (!best || e.best.rank > best.rank)) best = e.best;
+              });
+              return (
+                <tr key={k} data-testid={`records-docking-${k}`}>
+                  <td className={td}>{k}</td>
+                  <td className={td}>{b.successes}/{b.attempts}</td>
+                  <td className={td}>{b.passed.length}/{avail}</td>
+                  <td className={td}>{best ? best.label : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="md:col-span-3 short:col-span-3 font-mono text-[9px] tracking-wider text-zinc-500">
         Lunar landing training at the Sea of Tranquility. Kept on this device only, separate from the official missions. Removed if the app is deleted.
       </p>
     </div>
@@ -263,6 +305,16 @@ export default function Training() {
     [finish]
   );
   const onReentry = useCallback((data) => finish(reentryDebrief(data)), [finish]);
+  // docking: a hard dock opens the debrief; a failed attempt is recorded and the player stays in
+  // the docking (its own failure panel and RESTART DOCKING retry at once)
+  const onDocking = useCallback(
+    (result) => {
+      const r = runRef.current;
+      if (result.success) finish(dockingDebrief(result, r.difficulty));
+      else if (result.failure !== "restart") setProgress(recordAttempt(r.discipline, r.scenarioId, r.difficulty, { success: false, landed: false, rank: 0, label: "—" }));
+    },
+    [finish]
+  );
 
   const retry = () => {
     stopSounds();
@@ -344,10 +396,10 @@ export default function Training() {
               {!discipline && !showRecords && (
                 <>
                   <p className="text-zinc-400 text-sm mt-4 max-w-2xl short:hidden">
-                    Practise the mission&apos;s two flight-control challenges on their own, with the same physics, controls and
+                    Practise the mission&apos;s flight-control challenges on their own, with the same physics, controls and
                     limits as the full mission. No launch, no cruise: straight to the problem.
                   </p>
-                  <div className="grid md:grid-cols-2 short:grid-cols-2 gap-5 short:gap-3 mt-8 short:mt-2.5">
+                  <div className="grid md:grid-cols-3 short:grid-cols-3 gap-5 short:gap-3 mt-8 short:mt-2.5">
                     {Object.entries(DISCIPLINES).map(([key, d]) => (
                       <button
                         key={key}
@@ -531,6 +583,9 @@ export default function Training() {
           onCrash={onLanding}
           onAbort={toScenarios}
         />
+      )}
+      {(view === "run" || view === "debrief") && run && run.discipline === "docking" && (
+        <DockingOps key={runKey} difficulty={run.difficulty} audio={audio} training={{ start: findScenario("docking", run.scenarioId).start(run.difficulty) }} onResult={onDocking} onAbort={toScenarios} />
       )}
       {(view === "run" || view === "debrief") && run && run.discipline === "reentry" && (
         <ReentryGame

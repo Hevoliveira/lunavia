@@ -2861,3 +2861,86 @@ CADET also recovers from closing too fast (0.7 m/s at 18 m), sideways drift (9 c
 - **ASTRONAUT:** soft capture after 569 s and 551 presses, no contact. The player took the optional STABILIZE 58 times.
 - **COMMANDER:** soft capture after 422 s and 303 presses, no assist, no contact.
 - No page errors in any run.
+
+## 51. Docking copilot: AUTO-CENTER, MATCH VELOCITY, FINE APPROACH, DOCKING TRAINING
+
+**Audit (before the change).**
+- **What each assist did:**
+  - AUTO-ALIGN corrected the attitude only.
+  - STABILIZE matched the velocity (and kept holding it on CADET).
+  - The speed assist capped the closing speed.
+  - The guidance already lit the right jet button, derived from the attitude and the real button mapping.
+- **Can a player be oriented but displaced? Yes.** With AUTO-ALIGN and STABILIZE on and hands off, the CADET port stayed 0.88 m off the probe's axis. Capture needs 0.36 m; the "lined up" corridor at that distance is 0.61 m.
+  - So the player still had to translate on two axes and set the closing speed at the same time.
+  - A perfect guided CADET still spent 6 sideways and 19 FWD/AFT presses. Browser players needed about 60 presses, mostly sideways corrections and 0.012 m/s FWD taps.
+- **Why beginners still failed:**
+  - working out which sideways jet moves the port which way;
+  - managing two lateral axes together;
+  - many tiny FWD taps to build a sensible closing speed;
+  - long holds that overshoot.
+
+**What changed** (`dockingSim.js` assists; `dockingGuidance.js`; `DockingOps.jsx`). Everything flies the same RCS as the pilot (authority, propellant). Nothing teleports, and nothing closes in by itself.
+- **AUTO-CENTER (new):** translation, not attitude.
+  - It slides the ascent stage sideways until its docking port (the drogue, through the current attitude: `portOffset`) is on the probe's approach axis.
+  - Slide speed is min(6 cm/s, 0.1 × offset), and 3 cm/s in the last 3 m.
+  - It is centred within min(8 cm, 0.4 × the lined-up corridor) and drifting less than 1 cm/s. Progress shows on the button (CENTERING 63 %), with CENTERLINE ACQUIRED when done.
+  - **CADET:** it keeps holding the centreline against the orbit's drift. A sideways command from the pilot switches it off ("AUTO-CENTER OFF — YOUR SIDEWAYS COMMAND").
+  - **ASTRONAUT:** it centres once and hands back. **COMMANDER:** none.
+  - With MATCH VELOCITY on, it sets the hold's sideways velocity and the hold flies it; alone, it fires the sideways jets itself. It never moves the vehicle along the axis.
+- **MATCH VELOCITY:** the existing STABILIZE engine, renamed on screen (no second system).
+  - It matches the ascent stage's velocity to the CSM's in the CSM's rotating orbital frame: the hold cancels the Clohessy–Wiltshire Coriolis and tidal pull. Both vehicles stay in orbit; only the relative motion is managed.
+  - Messages: MATCHING VELOCITY, then RELATIVE MOTION STABLE.
+- **FINE APPROACH** (`fineStep`):
+  - **CADET, with MATCH VELOCITY holding:** each FWD/AFT press sets the held closing speed exactly ±0.02 m/s, between 0 and the safe speed for the distance. The RCS reaches it gently (≤ 0.1 m/s²). Holding repeats every 0.35 s, and the keyboard R/F keys do the same. The buttons read +0.02 / −0.02.
+  - **ASTRONAUT and COMMANDER:** FINE scales the jets to 35 %, as before.
+  - **Feedback (all difficulties):** a closing readout above the guidance shows CLOSING, SET, SAFE ≤ (the assist's limit, or the physics' closing limit) and the distance. It turns red above the safe speed.
+- **The right control, shown:**
+  - The guidance still lights the jet it names, derived from the relative position, velocity, attitude and the real button mapping.
+  - AFT shows BRAKE when it is the order.
+  - A jet still held down that the guidance no longer asks for gets a red RELEASE cue.
+  - Assists to press are lit the same way (AUTO-ALIGN, AUTO-CENTER, MATCH VELOCITY, FINE).
+  - The tracker's hold-time, confirmations and "let it settle" rules still stop chatter.
+- **CADET copilot** (`copilotSteps`, `copilotText`): five steps judged from the telemetry, each saying why it is not yet done, with the numbers:
+  1. **AUTO-ALIGN** — the axis within half the attitude tolerance;
+  2. **AUTO-CENTER** — the port within the corridor ("Port 0.42 m left and low of the centreline (needs < 0.22 m)");
+  3. **MATCH VELOCITY** — drift < 1 cm/s, no rotation, not opening, not too fast;
+  4. **FINAL APPROACH** — distance, closing, set and safe speeds;
+  5. **SOFT CAPTURE** — the probe latching and lining up.
+  - The steps run in order with a little hysteresis, and never on a timer. If the vehicle drifts off the axis on the way in, the copilot goes back to step 2.
+  - The guidance asks for each assist in turn and waits while it works. It never orders sideways taps while AUTO-CENTER is flying.
+- **Difficulties:**
+  - **CADET:** the full copilot, all assists and FINE APPROACH.
+  - **ASTRONAUT:** AUTO-CENTER and MATCH VELOCITY offered as one-shot alternatives to the jets (lit beside the jet), with the shorter instruction texts.
+  - **COMMANDER:** nothing automated, the same physics and strict capture; FINE only scales the jets.
+- **DOCKING TRAINING** (Training Center, `DOCKING_SCENARIOS`, `dockingDebrief`):
+  - **Scenarios:**
+    - FINAL APPROACH AND DOCKING: the mission checkpoint;
+    - DRIFTING APPROACH: 1.4 / −1.1 m off, drifting 3.5 / −2.5 cm/s, closing 0.18 m/s, 9/−6/10° off;
+    - COMMANDER DOCKING (locked).
+  - **Flow:** DockingOps' `training` mode starts at that checkpoint with no ascent or rendezvous. RESTART DOCKING returns to the scenario's own start, and the run ends at HARD DOCK with no crew transfer.
+  - **Debrief:** time, attempts, bounced contacts, and the physics' capture facts (closing, probe off centre, port angle, sideways drift) against the difficulty's limits; RCS left; advice. RETRY puts the player back at the checkpoint at once.
+  - **Records:** attempts go to the training store only (`lunavia.training.v2`). The Training Center imports nothing from mission records, scoring, medals or achievements.
+  - Lunar landing and Earth reentry training are unchanged.
+
+**Tests:**
+- **`dockingAssist.test.js`** (27):
+  - AUTO-CENTER through thrust within the RCS authority, holding for 2 minutes, override, and ASTRONAUT's one-shot;
+  - FINE APPROACH steps (exact, clamped, reached gently);
+  - the guidance asking for each assist in turn;
+  - the copilot steps, their reasons in EN/PT, and stepping back on a drift;
+  - **the straightforward beginner sequence from the real checkpoint:** AUTO-ALIGN → AUTO-CENTER → MATCH VELOCITY → FINE APPROACH → FWD presses up to 0.2 m/s. CADET docks in 138 s with 9 FWD presses and 2 % of the RCS, at reaction times of 0.5 and 1.5 s;
+  - 12 random CADET starts never produce an impossible state (acceleration within the RCS, propellant never negative, captures only inside the envelope).
+- **`dockingTraining.test.js`** (5): the third discipline; every scenario dockable at each difficulty it offers; start and restart at the scenario's checkpoint; the debrief; no mission rewards.
+- **MATCH VELOCITY holds station.** Pressed, it matches the CSM's velocity: no sideways motion and no closing. The final approach always starts with the pilot's FWD presses (tested: every assist on and no FWD for 3 minutes, even from the fast drifting start, and the vehicle holds station, centred).
+
+**Results in the browser** (production build; headless Chromium, not a phone). A real mission is flown to the docking, or the Training Center is used; then only on-screen presses following the panel, about 0.7 s between looking and pressing:
+
+| Run | Result |
+|---|---|
+| Mission, CADET (touch events, four views cycled, RESTART DOCKING at 40 s) | soft capture; the copilot sequence was redone after the restart; 28 presses across both attempts (8 assist presses, 20 FWD steps); no contact |
+| Training FINAL APPROACH, CADET (touch) | soft capture after 146 s with 16 presses (AUTO-ALIGN, AUTO-CENTER, MATCH VELOCITY, FINE APPROACH, 12 FWD); probe 0.01 m off centre at 0.083 m/s; 98 % RCS left. The debrief, then RETRY: back at the checkpoint in 2.7 s with full RCS. Records only in the training store |
+| Training DRIFTING APPROACH, CADET, 667 × 375 (iPhone SE size) | soft capture after 144 s with 18 presses (12 FWD); no contact |
+| Mission, ASTRONAUT (taking the offered alternatives) | soft capture after 346 s (569 s before this change), 232 presses, AUTO-CENTER ×3 and MATCH VELOCITY ×4; 94 % RCS left |
+| Mission, COMMANDER | soft capture after 510 s, 417 presses, no assists, no contact |
+
+No page errors in any run.

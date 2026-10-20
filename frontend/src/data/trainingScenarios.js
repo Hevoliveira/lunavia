@@ -182,6 +182,44 @@ export const REENTRY_SCENARIOS = [
 
 export const reentryObjectiveMet = (outcome) => outcome === OUTCOME.SPLASHDOWN;
 
-export const scenarioList = (discipline) => (discipline === "reentry" ? REENTRY_SCENARIOS : LANDING_SCENARIOS);
+/*
+ * Orbital docking training: straight to the final-approach checkpoint in lunar orbit (no
+ * landing, no ascent, no rendezvous film), the mission's own docking simulation
+ * (data/dockingSim), its assists, guidance and capture rules. `start(difficulty)` returns the
+ * checkpoint overrides (null: the difficulty's own mission checkpoint), which RESTART DOCKING
+ * also returns to.
+ */
+export const DOCKING_SCENARIOS = [
+  {
+    id: "approach",
+    title: "FINAL APPROACH AND DOCKING",
+    tag: "FUNDAMENTALS",
+    summary: "The rendezvous hands over: the ascent stage is behind the CSM, a little off its docking axis, closing slowly.",
+    objective: "Align, centre on the axis, match velocity and fly the final approach to a soft capture and hard dock.",
+    teaches: ["Relative motion", "Attitude alignment", "Lateral alignment", "Velocity matching", "Final approach", "Docking contact"],
+    start: () => null,
+  },
+  {
+    id: "drift",
+    title: "DRIFTING APPROACH",
+    tag: "RELATIVE MOTION",
+    summary: "The same place, but sliding sideways, turned off the axis and closing faster than is safe.",
+    objective: "Stop the relative motion before closing in, line up, then dock.",
+    teaches: ["Relative motion", "Velocity matching", "Attitude alignment", "Lateral alignment"],
+    start: () => ({ offset: [1.4, -1.1], drift: [0.035, -0.025], closing: 0.18, att: [9, -6, 10] }),
+  },
+  {
+    id: "commander",
+    title: "COMMANDER DOCKING",
+    tag: "QUALIFICATION",
+    summary: "The mission's COMMANDER approach: no assists, no attitude hold, the strictest capture limits.",
+    objective: "Dock by hand: attitude, translation and closing speed are all yours.",
+    teaches: ["Everything, with no assists"],
+    lock: "COMMANDER",
+    start: () => null,
+  },
+];
+
+export const scenarioList = (discipline) => (discipline === "reentry" ? REENTRY_SCENARIOS : discipline === "docking" ? DOCKING_SCENARIOS : LANDING_SCENARIOS);
 export const findScenario = (discipline, id) => scenarioList(discipline).find((s) => s.id === id) || scenarioList(discipline)[0];
 export const difficultyFor = (scenario, chosen) => scenario.lock || chosen;

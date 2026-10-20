@@ -2,11 +2,13 @@
  * LUNAVIA — Training debriefs.
  *
  * Every number here comes from the simulation that was flown: the lander's
- * graded touchdown (gradeLanding) or the reentry state (reentryPhysics). The
+ * graded touchdown (gradeLanding), the reentry state (reentryPhysics) or the
+ * docking capture (dockingSim judgeContact). The
  * main reason and the recommendations are chosen from what actually limited
  * the attempt.
  */
 import { LIMITS, OUTCOME, CORRIDOR } from "./reentryPhysics";
+import { DOCKING } from "./dockingSim";
 import { getSite, SLOPE_LIMIT } from "./landingSites";
 import { landingObjectiveMet, reentryObjectiveMet, objectiveRadius } from "./trainingScenarios";
 
@@ -215,5 +217,50 @@ export function reentryDebrief(d) {
     recommendations: recs,
     recommendation: recs[0],
     record: { success, landed: success, rank: success ? 1000 - d.peakG * 10 : -1, label: `${f1(d.peakG)} g · ${Math.round(d.peakHeatRate)} W/cm²`, peakG: success ? d.peakG : null },
+  };
+}
+
+/* ---- orbital docking -------------------------------------------------------------------- */
+/**
+ * The docking training debrief, from DockingOps' result (success: the physics' capture facts
+ * at contact). Rows against the difficulty's capture limits; a record whose rank is the time
+ * (faster ranks higher).
+ */
+export function dockingDebrief(r, difficulty) {
+  const tol = DOCKING[difficulty].tol;
+  const c = r.capture || {};
+  const deg = (x) => ((x * 180) / Math.PI).toFixed(1);
+  const t = r.attemptTime != null ? r.attemptTime : r.time;
+  const propPct = Math.round((100 * (r.propLeft || 0)) / DOCKING[difficulty].prop);
+  const rows = [
+    { label: "DOCKING TIME", value: `${Math.round(t)} s`, limit: "this attempt", ok: true, testId: "debrief-dock-time" },
+    { label: "ATTEMPTS", value: `${r.attempts}${r.restarts ? ` · ${r.restarts} RESTART${r.restarts > 1 ? "S" : ""}` : ""}`, limit: null, ok: true, testId: "debrief-dock-attempts" },
+    { label: "BOUNCED CONTACTS", value: `${r.attemptContacts || 0}`, limit: "0 is clean", ok: !r.attemptContacts, testId: "debrief-dock-contacts" },
+    { label: "CLOSING AT CONTACT", value: c.closing != null ? `${c.closing.toFixed(3)} m/s` : "—", limit: `${tol.vMin}–${tol.vMax}`, ok: c.closing == null || (c.closing >= tol.vMin && c.closing <= tol.vMax), testId: "debrief-dock-closing" },
+    { label: "PROBE OFF CENTRE", value: c.lateral != null ? `${c.lateral.toFixed(2)} m` : "—", limit: `limit ${tol.lateral} m`, ok: c.lateral == null || c.lateral <= tol.lateral, testId: "debrief-dock-lateral" },
+    { label: "PORT ANGLE", value: c.angle != null ? `${deg(c.angle)}°` : "—", limit: `limit ${deg(tol.angle)}°`, ok: c.angle == null || c.angle <= tol.angle, testId: "debrief-dock-angle" },
+    { label: "SIDEWAYS DRIFT", value: c.vLat != null ? `${c.vLat.toFixed(3)} m/s` : "—", limit: `limit ${tol.vLat}`, ok: c.vLat == null || c.vLat <= tol.vLat, testId: "debrief-dock-drift" },
+    { label: "RCS LEFT", value: `${propPct} %`, limit: null, ok: propPct > 15, testId: "debrief-dock-rcs" },
+    { label: "OUTCOME", value: "HARD DOCK", limit: null, ok: true, testId: "debrief-dock-outcome" },
+  ];
+  const recs = [];
+  if (c.closing != null && c.closing > 0.6 * tol.vMax) recs.push("Come in slower over the last metres: FINE APPROACH, or short AFT taps, keep the closing speed low.");
+  if (c.lateral != null && c.lateral > 0.5 * tol.lateral) recs.push("Centre the port on the axis before closing in (AUTO-CENTER, or small sideways taps).");
+  if (c.angle != null && c.angle > 0.5 * tol.angle) recs.push("Line up the docking axis first (AUTO-ALIGN, or the attitude controls).");
+  if (r.attemptContacts) recs.push("A bounced contact means the probe met the drogue outside the limits: check the six capture conditions before the last metre.");
+  if (propPct < 40) recs.push("Use fewer, shorter RCS pulses: let the assists or the vehicle's own motion do the work.");
+  if (!recs.length) recs.push(difficulty === "COMMANDER" ? "Clean manual docking. Fly it at a different starting point." : "Clean docking. Try the next difficulty, or the drifting approach.");
+  return {
+    success: true,
+    landed: false,
+    title: "HARD DOCK CONFIRMED · OBJECTIVE COMPLETE",
+    grade: null,
+    score: null,
+    rows,
+    reason: `Captured at ${c.closing != null ? c.closing.toFixed(3) : "—"} m/s, ${c.lateral != null ? c.lateral.toFixed(2) : "—"} m off centre`,
+    reasons: [],
+    recommendations: recs.slice(0, 3),
+    recommendation: recs[0],
+    record: { success: true, landed: false, rank: 100000 - Math.round(t), label: `${Math.round(t)} s` },
   };
 }

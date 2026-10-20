@@ -133,7 +133,7 @@ describe("after the landing: lunar ascent, rendezvous and the player's docking, 
     expect(dock).toMatch(/const e = stepDocking\(s, inp, difficulty, dt, \{ align: alignRef\.current, speed: speedRef\.current \}\);/);
     expect(dock).not.toMatch(/status = "docked"|phase: "docked"|kind: "docked"/); // the component never declares a dock itself
     // every attempt (the first, a retry after a failure, RESTART DOCKING) starts from the full checkpoint state
-    expect(between(dock, "const startDocking = () => {", "};")).toMatch(/restoreCheckpoint\(s, difficulty\);/);
+    expect(between(dock, "const startDocking = () => {", "};")).toMatch(/restoreCheckpoint\(s, difficulty(, undefined, trainingStart)?\);/);
     expect(dock).toMatch(/RETRY FROM RENDEZVOUS CHECKPOINT/);
   });
   test("RESTART DOCKING: always there during the approach, guarded, and it restarts only the docking", () => {

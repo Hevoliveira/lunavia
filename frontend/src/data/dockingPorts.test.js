@@ -22,6 +22,8 @@ import {
   stepDocking,
   telemetry,
   engageStabilize,
+  engageCenter,
+  fineStep,
 } from "./dockingSim";
 import { CONTROLS, commandOf, createGuidance, evaluate, guidedPilot } from "./dockingGuidance";
 import { ORBIT_DEFAULT, VIEWS, orbitDrag, orbitZoom, project, throughCockpitWindow, viewCamera } from "./dockingViews";
@@ -505,7 +507,9 @@ function flyCollect(d, pilot, { keep = 0 } = {}) {
     if (s.t >= next) {
       cmd = pilot(s);
       next = s.t + PULSE;
-      if (cmd.assist === "stabilize" && !s.stab) engageStabilize(s, d); // the pilot pressed STABILIZE
+      if (cmd.assist === "stabilize" && !s.stab) engageStabilize(s, d); // the pilot pressed MATCH VELOCITY
+      if (cmd.assist === "center" && !s.center) engageCenter(s, d); // … AUTO-CENTER
+      if (cmd.fine) fineStep(s, d, cmd.fine, {}); // … FWD in FINE APPROACH
     }
     readyBefore = captureReadiness(s, d).ready;
     prev = approachStatus(s, d, prev);
