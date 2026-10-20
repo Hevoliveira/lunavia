@@ -730,6 +730,30 @@
       "f": "en/reentry.steep.1.mp3"
      }
     ],
+    "return.coast": [
+     {
+      "d": 3.13,
+      "f": "en/return.coast.0.mp3"
+     }
+    ],
+    "return.goTei": [
+     {
+      "d": 2.9,
+      "f": "en/return.goTei.0.mp3"
+     }
+    ],
+    "return.teiCutoff": [
+     {
+      "d": 1.13,
+      "f": "en/return.teiCutoff.0.mp3"
+     }
+    ],
+    "return.teiIgnition": [
+     {
+      "d": 2.17,
+      "f": "en/return.teiIgnition.0.mp3"
+     }
+    ],
     "settings.radioCheck": [
      {
       "d": 3.15,
@@ -1465,6 +1489,30 @@
      {
       "d": 3.04,
       "f": "pt/reentry.steep.1.mp3"
+     }
+    ],
+    "return.coast": [
+     {
+      "d": 3.7,
+      "f": "pt/return.coast.0.mp3"
+     }
+    ],
+    "return.goTei": [
+     {
+      "d": 3.28,
+      "f": "pt/return.goTei.0.mp3"
+     }
+    ],
+    "return.teiCutoff": [
+     {
+      "d": 1.3,
+      "f": "pt/return.teiCutoff.0.mp3"
+     }
+    ],
+    "return.teiIgnition": [
+     {
+      "d": 2.49,
+      "f": "pt/return.teiIgnition.0.mp3"
      }
     ],
     "settings.radioCheck": [

@@ -2944,3 +2944,84 @@ CADET also recovers from closing too fast (0.7 m/s at 18 m), sideways drift (9 c
 | Mission, COMMANDER | soft capture after 510 s, 417 presses, no assists, no contact |
 
 No page errors in any run.
+
+## 52. The return to Earth: TEI, the coast, the Earth approach, the service module's separation
+
+**Audit (what was wrong, and why it looked sideways).**
+- After the hard dock and the ascent stage's jettison, the RETURN state played one close shot
+  ("TRANSEARTH COAST", `returnClose` in MissionScene), then wide shots, before the reentry:
+  - The close shot was built in `radialFrame`: Z pointed away from the Moon, X along the orbit
+    tangent. The CSM was laid along X, but the shot moved the spacecraft straight away from the
+    Moon along Z (the Moon only shrank). The CSM therefore travelled **broadside, at 90° to its
+    own axis**. This was an orientation problem, not a camera trick. The camera, fixed to the CSM,
+    made it worse: the only cue of motion was the Moon shrinking behind a CSM lying across the
+    frame.
+  - **No burn.** SpacecraftStack had an SPS plume, but MissionScene always set `sps = 0`, so
+    nothing propelled the CSM out of lunar orbit.
+  - The wide shots then showed only a sub-pixel glint and a trajectory line while the Earth grew,
+    so the spacecraft disappeared before the approach.
+  - **In the reentry** (ReentryScene/ReentryGame), the separated service module backed away
+    towards the camera's side and filled the top right of the frame. The command module began its
+    180° turn to heat-shield-first 1.2 s after separation, with the SM still about half a metre
+    away.
+- Unchanged and correct: the crew transfer and the jettison in DockingOps; the CSM is the same
+  CsmModel/SpacecraftStack that stayed in lunar orbit; the reentry's own attitude (heat shield
+  into the flow, trim angle, bank from the simulation) and plasma (the flow frame from the
+  velocity).
+
+**What changed.**
+- **`data/earthReturn.js`** (pure, tested) holds the whole return. It runs for 42 s of real time;
+  SKIP CINEMATIC goes straight to the reentry. Steps by time:
+  - **0 s, TEI preparation**: over the sunlit Moon at 110 km, nose retrograde; CAPCOM: "GO for TEI".
+  - **4.5 s, turn**: a 180° RCS slew to prograde. The couple fires only while the rate changes:
+    acceleration, coast, deceleration.
+  - **12 s, ignition**: the SPS fires along the CSM's axis. The plume comes from the engine bell,
+    down the axis, so thrust and nose agree. The CSM pulls ahead of its orbit with constant
+    acceleration, and the camera lags.
+  - **21 s, cutoff**: the engine tails off in 0.3 s and never fires again.
+  - **24.5 s, transearth coast**: engine off, passive thermal control. The long axis is held
+    broadside to the Sun (tested within 6°), 34° off the flight path, and rolls slowly. The
+    attitude is held; it is not forced along the path.
+  - **32.5 s, Earth approach**: the Earth grows at its true apparent size, from 70,000 to
+    21,000 km.
+  - **34.5 s, entry attitude**: the roll is stopped by the RCS, and a slew puts the nose along a
+    flight path that skims the atmosphere at a 65 km perigee, with the Earth below. This is the
+    attitude the reentry's EARTH APPROACH begins in.
+  - **42 s**: hand-over to the reentry.
+- **Every shot keeps the CSM travelling screen-left** (the reentry's own direction), with the
+  camera on the sunlit side (tested). The HUD clock runs from T+139:47 through TEI at T+140:00 to
+  entry interface at T+193 h.
+- **MissionScene:**
+  - the Director reads the return clock and draws only the planet the shot is about, at its true
+    size;
+  - VehicleLayer turns the CSM about its centre of mass, rolls it about its axis, moves it along
+    the burn and passes the SPS level to SpacecraftStack;
+  - SpacecraftStack gains a roll couple from the side thrusters;
+  - the old broadside close shot and the dead wide-shot code are removed.
+- **Mission.jsx:** the RETURN state runs on `returnRealRef`, with captions per step, Mission
+  Control and sound cues (the SPS heard through the structure), `window.__lvReturnSeek` for
+  tooling, and SKIP CINEMATIC (`skip-return`).
+- **Reentry (unchanged physics).** The separated SM backs away along its own axis behind the
+  capsule, drifting a little down and away from the camera. It leaves the frame and keeps
+  drifting into ENTRY; it is never popped. The CM starts its turn to heat-shield-first 2.2 s
+  after separation (`ATTITUDE_TURN`), when the SM is 1.3 capsule diameters clear. The APPROACH
+  and PREP cameras moved to the sunlit front side, so the CSM flies screen-left as in the return
+  shots.
+- **Voice:** four new lines in EN/PT, rendered offline with the project's Kokoro pipeline:
+  `return.goTei`, `return.teiIgnition`, `return.teiCutoff`, `return.coast`. "TEI" is respelled
+  for the synthesiser.
+- **Lineage:** the `return` step became `tei` (burn `sps`), `transearthCoast` and `earthApproach`.
+  The SM still leaves in the reentry shot.
+- **Verifier:** markers for the TEI burn, the PTC coast, the entry attitude and `skip-return`; the
+  old shot's text must be gone. Markers containing "·" never matched the minified bundle (it
+  escapes the dot as `\xb7`), so the new markers avoid it.
+
+**Results in the browser** (production build; headless Chromium, not a phone). One CADET
+mission at Tranquility, flown by the input-only harness: landing → ascent → docking (hard dock,
+no contact) → return → reentry → splashdown. MISSION COMPLETE after 328 s, no page errors.
+- The return passed through every step in order: teiPrep → teiTurn → teiBurn → teiCutoff →
+  coast → approach → entryAttitude.
+- The HUD read T+139:48 → T+140:00:01 at ignition → T+192:53. The SPS level was 1 only between
+  12.1 s and 21 s and 0 in every later frame.
+- The reentry took over at the end of the return, and the capsule entered heat shield first.
+

@@ -64,12 +64,13 @@ MOODS = {
 
 # Pronunciation respellings (subtitles keep the written form).
 RESPELL = {
-    "en": [(r"\bLUNAVIA\b", "Loona-veeah"), (r"\bLV-001\b", "L V zero zero one")],
+    "en": [(r"\bLUNAVIA\b", "Loona-veeah"), (r"\bLV-001\b", "L V zero zero one"), (r"\bTEI\b", "T E I")],
     "pt": [
         (r"\bLUNAVIA\b", "Lunavia"),
         (r"\bHouston\b", "Ríuston"),
         (r"\bLV-001\b", "éle vê zero zero um"),
         (r"\bTLI\b", "tê éle i"),
+        (r"\bTEI\b", "tê é i"),
         (r"\bRCS\b", "érre cê ésse"),
     ],
 }

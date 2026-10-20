@@ -16,8 +16,6 @@ import {
   orbitShotAt,
   orbitShotCamera,
   radialFrame,
-  returnCamera,
-  returnDistanceKm,
   toVehicle,
   toWorld,
   trueSizeDistance,
@@ -273,15 +271,7 @@ describe("lunar orbit: the arrival, the deployment, the undocking, the title", (
   });
 });
 
-describe("the return: the planet at its true size", () => {
-  test("the close camera stays outside the CSM, on the far side from the Moon", () => {
-    for (let u = 0; u <= 1; u += 0.05) {
-      expect(clearance(returnCamera(u).pos)).toBeGreaterThan(10);
-      expect(returnCamera(u).pos[2]).toBeGreaterThan(0);
-    }
-    expect(returnDistanceKm(504000)).toBeGreaterThan(1737);
-  });
-
+describe("true apparent size", () => {
   test("trueSizeDistance gives the planet the angular size it has from the spacecraft", () => {
     const R = 3.31; // drawn Earth radius
     const d = trueSizeDistance(R, 40000, 6371);

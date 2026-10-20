@@ -22,7 +22,9 @@ import { useAudioSettings } from "@/audio/audioSettings";
 import { createFlightScoring } from "@/data/flightScoring";
 import { applyDocking, applyFlightStart, applyLanding, applyMission, applyReentry, loadRecords, unlockedBy, updateRecords } from "@/lib/missionRecords";
 import { goForPdi } from "@/data/lunarOrbitShot";
-import { ORBIT_ENTRY, ORBIT_SEQ, RETURN_CLOSE_END, RETURN_SHOT, orbitClockAt, orbitShotAt } from "@/data/orbitSequence";
+import { ORBIT_ENTRY, ORBIT_SEQ, orbitClockAt, orbitShotAt } from "@/data/orbitSequence";
+import { RETURN_CAPTIONS, RETURN_CUES, RETURN_LEN, returnMissionTime, returnShotAt } from "@/data/earthReturn";
+import { formatMET } from "@/data/missionPhases";
 import { TD } from "@/data/transposition";
 import { TITLE } from "@/data/titleReveal";
 import { MODE, createMissionConfig } from "@/data/missionConfig";
@@ -126,10 +128,8 @@ const UNDOCK_SOUND = [
   { t: 13, cue: "hiss", dur: 2.6, vol: 0.16 },
 ];
 
-// Shot captions (lower third), keyed by shot.
-const SHOT_CAPTIONS = {
-  returnClose: { kicker: "TRANS-EARTH INJECTION", title: RETURN_SHOT.caption, sub: RETURN_SHOT.sub },
-};
+// The return's HUD name, by shot (data/earthReturn).
+const RETURN_HUD = { tei: "TRANS-EARTH INJECTION", coast: "TRANSEARTH COAST", approach: "EARTH APPROACH" };
 
 // Lunar orbit's sound and comms, once each as the orbit clock passes them (and
 // only if it is still near: SKIP jumps past them silently). The deployment's
@@ -213,7 +213,11 @@ export default function Mission({ entry = "opening" }) {
   // Fade through black: lunar orbit into the descent.
   const [fade, setFade] = useState({ o: 0, ms: 650 });
   const fadingRef = useRef(false);
-  const [returnTime, setReturnTime] = useState(504000);
+  // The return to Earth: real seconds since it began (data/earthReturn), read by the scene
+  // every frame; returnTime is the mission clock it shows.
+  const returnRealRef = useRef(0);
+  const returnCueRef = useRef(new Set());
+  const [returnTime, setReturnTime] = useState(returnMissionTime(0));
   const [descentResult, setDescentResult] = useState(null);
   const [showAbort, setShowAbort] = useState(false);
   const rafRef = useRef(null);
@@ -285,20 +289,38 @@ export default function Mission({ entry = "opening" }) {
           setCaption(cap ? { id: cap, kicker: shot.kicker || "LUNAR ORBIT", title: shot.caption, sub: shot.sub } : null);
         }
       } else if (s === STATES.RETURN) {
-        setReturnTime((t) => {
-          // Slower over the close shot of the CSM leaving the Moon.
-          const next = t + dt * (t < RETURN_CLOSE_END ? 12000 : 25000);
-          const cap = next < RETURN_CLOSE_END ? "returnClose" : null;
-          if (cap !== captionRef.current) {
-            captionRef.current = cap;
-            setCaption(cap ? { id: cap, ...SHOT_CAPTIONS[cap] } : null);
-          }
-          if (next >= 695000) {
-            setState(STATES.REENTRY);
-            return 695000;
-          }
-          return next;
+        // TEI, the coast and the Earth approach (data/earthReturn), then the reentry.
+        returnRealRef.current += dt;
+        const seek = window.__lvReturnSeek; // validation tooling, as __lvOrbitSeek
+        if (seek != null) {
+          window.__lvReturnSeek = null;
+          if (seek > returnRealRef.current) returnRealRef.current = seek;
+        }
+        const rt = returnRealRef.current;
+        RETURN_CUES.forEach((c, i) => {
+          if (rt < c.t || returnCueRef.current.has(i)) return;
+          returnCueRef.current.add(i);
+          if (rt - c.t > 0.5 && c.sound !== "burnStop") return; // skipped past (a burn always stops)
+          if (c.line) audio.say(c.line);
+          else if (c.sound === "hiss") audio.hiss(c.dur, c.vol);
+          else if (c.sound === "thud") audio.thud?.(c.vol);
+          else if (c.sound === "burn") {
+            // The SPS heard through the structure (in vacuum nothing else carries it).
+            audio.roarStart({ onboard: true });
+            audio.roarSet(0.32, 0.9);
+          } else if (c.sound === "burnStop") audio.roarStop(0.3);
         });
+        const { step } = returnShotAt(rt);
+        if (step !== captionRef.current) {
+          captionRef.current = step;
+          setCaption({ id: step, ...RETURN_CAPTIONS[step] });
+        }
+        setReturnTime(returnMissionTime(rt));
+        if (rt >= RETURN_LEN) {
+          captionRef.current = null;
+          setCaption(null);
+          setState(STATES.REENTRY);
+        }
       }
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -520,7 +542,22 @@ export default function Mission({ entry = "opening" }) {
   // Hard dock, crew transfer, ascent stage jettisoned: the CSM heads home (the existing return).
   const handleDockingComplete = () => {
     if (stateRef.current !== STATES.DOCKING) return;
+    returnRealRef.current = 0;
+    returnCueRef.current = new Set();
+    captionRef.current = null;
+    setReturnTime(returnMissionTime(0));
     setState(STATES.RETURN);
+  };
+  // SKIP CINEMATIC on the way home: straight to the reentry's EARTH APPROACH (the engine,
+  // if it is burning, stops).
+  const handleSkipReturn = () => {
+    if (stateRef.current !== STATES.RETURN) return;
+    returnRealRef.current = RETURN_LEN;
+    returnCueRef.current = new Set(RETURN_CUES.map((_, i) => i));
+    audio.roarStop(0.2);
+    captionRef.current = null;
+    setCaption(null);
+    setState(STATES.REENTRY);
   };
   const handleDockingResult = (r) => {
     if (flightIdRef.current) setMissionLog(logMissionDocking(flightIdRef.current, r));
@@ -556,7 +593,8 @@ export default function Mission({ entry = "opening" }) {
     setGoPdi(true);
     titleRef.current = true;
     startedRef.current = true;
-    setReturnTime(504000);
+    returnRealRef.current = 0;
+    setReturnTime(returnMissionTime(0));
     setDescentResult(null);
     landingRef.current = null;
     captionRef.current = null;
@@ -616,7 +654,10 @@ export default function Mission({ entry = "opening" }) {
     delete document.documentElement.dataset.flight;
   }, []);
 
-  const label = STATE_LABELS[state] || { code: "", name: "" };
+  const label =
+    state === STATES.RETURN
+      ? { code: formatMET(returnTime), name: RETURN_HUD[returnShotAt(returnRealRef.current).shot] }
+      : STATE_LABELS[state] || { code: "", name: "" };
   const landedOn = mission.base; // TRANQUILITY BASE, HADLEY · SURFACE, …
 
   return (
@@ -721,7 +762,7 @@ export default function Mission({ entry = "opening" }) {
       )}
 
       {state === STATES.RETURN && (
-        <MissionScene missionTime={returnTime} cinematic={true} />
+        <MissionScene missionTime={returnTime} cinematic={true} returnClock={returnRealRef} />
       )}
 
       {state === STATES.REENTRY && (
@@ -775,6 +816,18 @@ export default function Mission({ entry = "opening" }) {
           type="button"
           data-testid="skip-orbit"
           onClick={handleSkipOrbit}
+          className="absolute bottom-6 short:bottom-2 right-6 md:right-10 safe-mr safe-mb z-30 font-mono text-[10px] tracking-[0.3em] text-zinc-400 hover:text-white px-3 py-2 touch:min-h-[44px] touch:px-4 bg-black/30 border border-white/10"
+        >
+          SKIP CINEMATIC ›
+        </button>
+      )}
+
+      {/* The way home can be skipped to the reentry's EARTH APPROACH. */}
+      {state === STATES.RETURN && (
+        <button
+          type="button"
+          data-testid="skip-return"
+          onClick={handleSkipReturn}
           className="absolute bottom-6 short:bottom-2 right-6 md:right-10 safe-mr safe-mb z-30 font-mono text-[10px] tracking-[0.3em] text-zinc-400 hover:text-white px-3 py-2 touch:min-h-[44px] touch:px-4 bg-black/30 border border-white/10"
         >
           SKIP CINEMATIC ›
