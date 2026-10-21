@@ -96,7 +96,7 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Assisted docking: AUTO-ALIGN, STABILIZE and the APPROACH SPEED ASSIST (CADET; STABILIZE on ASTRONAUT), a forgiving but real soft capture for CADET, a calmer CADET starting point, gentler held jet buttons and FINE control, and the six-step CADET docking sequence on screen | #25 | 96a87a6 |
 | Docking copilot: AUTO-CENTER (the RCS slides the port onto the centreline), MATCH VELOCITY (cancels the relative motion and holds station), FINE APPROACH (FWD/AFT set the closing speed in 0.02 m/s steps on CADET), the right control highlighted, the five-step CADET copilot with the reason a step is not done yet, and ORBITAL DOCKING TRAINING in the Training Center | #26 | a50700b |
 | Earth return: TEI on the service propulsion engine (an RCS turn to prograde, a finite burn along the axis, cutoff), an engine-off coast in passive thermal control, the Earth approach at true size, the turn to the entry attitude, then a clean service-module separation and a heat-shield-first capsule in the reentry | #27 | 6a528b7 |
-| Descent and splashdown: one true scale, a field of sunlit cumulus the capsule descends between, an open sea (swell, reflections, sun glint, haze, curvature), Apollo-size parachutes released at splashdown, the splash at contact, the capsule floating, SPLASHDOWN CONFIRMED / CREW SAFE | — | 53bffc0 |
+| Descent and splashdown: one true scale, a field of sunlit cumulus the capsule descends between, an open sea (swell, reflections, sun glint, haze, curvature), Apollo-size parachutes released at splashdown, the splash at contact, the capsule floating, SPLASHDOWN CONFIRMED / CREW SAFE | #28 | 53bffc0 |
 
 ## How this bundle was made and checked
 
