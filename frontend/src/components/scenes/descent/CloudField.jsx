@@ -4,14 +4,23 @@ import * as THREE from "three";
 import { cloudField, CLOUD_FIELD, M_PER_UNIT } from "@/data/descentScene";
 
 /*
- * The cumulus field (data/descentScene cloudField): one instanced mesh of soft puffs (a few hundred
- * quads, one draw call), back-to-front sorted, at their true heights above the sea (bases 650–950 m).
+ * The cumulus field (data/descentScene cloudField), drawn as volumes: one instanced mesh, one draw
+ * call, a few hundred puffs at their true heights above the sea (bases 650–950 m).
  *
- * Each puff is an impostor shaded per pixel as a sphere of vapour lit by the scene's Sun in WORLD
- * space (not a photograph turned to the camera): the side facing the Sun bright, the far side and
- * the cloud's base in a blue-grey shadow, a noise-broken edge so no outline is round, the haze of
- * distance, and a fade where the camera comes close, so a puff never fills the screen or pops.
- * The capsule descends between the towers of the nearest formation.
+ * Each puff is an ellipsoid of vapour. Its mesh is only a bound (a low-poly icosahedron round
+ * the ellipsoid, drawn by its back faces, so it works with the camera outside, beside or inside
+ * it); every pixel then traces its own view ray through the ellipsoid, analytically:
+ * - where the ray enters and leaves it, clipped at the cloud's flat base (the condensation level);
+ * - how much vapour it crosses (the integral of a density highest at the centre), which gives the
+ *   opacity: dense cores, thin soft edges, and a thin veil when the camera is inside a wisp;
+ * - a 3D noise sampled in world space along the ray erodes the edges into billows, fixed to the
+ *   cloud (it moves with it in parallax, never with the screen);
+ * - the light of the scene's Sun on the surface the ray meets: the puff's own roundness blended
+ *   with the whole cloud's, so the sunward side and the tops are bright, the far side and the
+ *   flat base in blue-grey shadow; light glowing through thin edges towards the Sun;
+ * - the haze of distance, into the sky's own horizon colour.
+ * No sprite, no flat card turned to the camera. Back to front sorted, no near fade: the capsule's
+ * column is kept clear of cloud (data/descentScene), so nothing ever passes through the capsule.
  */
 
 let NOISE = null;
@@ -54,111 +63,196 @@ export function noiseTexture() {
   return t;
 }
 
+// The bound: IcosahedronGeometry(1, 1) (80 faces) scaled to contain the unit sphere (measured).
+const BOUND_SCALE = 1.0705;
+
 const vertexShader = `
-attribute vec4 aPuff;   // centre (x, y, z, units, relative to the field) and radius
-attribute vec3 aShade;  // height in its cloud (0 base .. 1 top), seed, the cloud's base height (units)
+attribute vec4 aPuff;   // centre (x, y, z: field units) and radius
+attribute vec4 aCloud;  // the cloud's centre x, z, its base and top (field units)
+attribute vec3 aMisc;   // vertical squash, density, seed
 uniform float uFieldR;
-varying vec2 vUv;
-varying vec3 vShade;
-varying float vDist;
-varying float vFade;
 varying vec3 vWorld;
-varying float vBaseDy;
+varying vec4 vPuff;
+varying vec4 vCloud;
+varying vec3 vMisc;
+varying float vRim;
 void main() {
-  vec4 c = modelMatrix * vec4(aPuff.xyz, 1.0);
-  vec4 mv = viewMatrix * c;
-  float r = aPuff.w;
-  vUv = position.xy;
-  mv.xy += position.xy * r;
-  vShade = aShade;
-  float d = -mv.z;
-  vDist = length(mv.xyz);
-  // the camera coming close (into the cloud): thin out, never fill the screen
-  float nearF = smoothstep(r * 0.7, r * 2.6, d);
+  vec3 o = vec3(modelMatrix[3][0], modelMatrix[3][1], modelMatrix[3][2]); // the field's offset (drift, sea level)
+  vec3 c = aPuff.xyz + o;
+  vec3 lp = position * ${BOUND_SCALE.toFixed(4)} * aPuff.w;
+  lp.y *= aMisc.x;
+  vec3 wp = c + lp;
+  vWorld = wp;
+  vPuff = vec4(c, aPuff.w);
+  vCloud = vec4(aCloud.x + o.x, aCloud.y + o.z, aCloud.z + o.y, aCloud.w + o.y);
+  vMisc = aMisc;
   // the field's rim, round the camera
-  vec3 cw = c.xyz - cameraPosition;
-  float rim = 1.0 - smoothstep(uFieldR * 0.78, uFieldR, length(cw.xz));
-  vFade = nearF * rim * step(0.0, d);
-  // this corner's height above the cloud's flat base (the world up, through the camera's axes)
-  vec3 camUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-  vec3 camRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
-  vec3 wp = c.xyz + (camRight * position.x + camUp * position.y) * r;
-  vBaseDy = (wp.y - (modelMatrix * vec4(0.0, aShade.z, 0.0, 1.0)).y) / r;
-  vWorld = c.xyz;
-  gl_Position = projectionMatrix * mv;
+  vRim = 1.0 - smoothstep(uFieldR * 0.78, uFieldR, length(c.xz - cameraPosition.xz));
+  gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }`;
+
+// The ray through one puff (shared by the depth pre-pass and the colour pass): where it enters and
+// leaves the ellipsoid, clipped at the cloud's flat base, and the vapour it crosses (tau, 0..1).
+const TRACE = `
+  vec3 ro = cameraPosition;
+  vec3 rd = normalize(vWorld - ro);
+  float r = vPuff.w;
+  vec3 sq = vec3(1.0, 1.0 / vMisc.x, 1.0) / r; // into the unit sphere's space
+  vec3 o = (ro - vPuff.xyz) * sq;
+  vec3 d = rd * sq;
+  float a = dot(d, d);
+  float b = dot(o, d);
+  float c = dot(o, o) - 1.0;
+  float disc = b * b - a * c;
+  if (disc <= 0.0) discard;
+  float sd = sqrt(disc);
+  float t0 = (-b - sd) / a;
+  float t1 = (-b + sd) / a;
+  // the cloud's flat base: only the vapour above the condensation level
+  float base = vCloud.z;
+  bool onBase = false;
+  if (abs(rd.y) > 1e-5) {
+    float tp = (base - ro.y) / rd.y;
+    if (rd.y > 0.0) { if (tp > t0) { t0 = tp; onBase = true; } }
+    else t1 = min(t1, tp);
+  } else if (ro.y < base) discard;
+  bool inside = t0 < 0.0;
+  t0 = max(t0, 0.0);
+  if (t1 <= t0) discard;
+  // the vapour crossed: the integral of (1 - |p|²) along the ray, against the most a ray can cross (4r/3)
+  float A0 = a * t0 * t0 * t0 / 3.0 + b * t0 * t0 + (c + 1.0) * t0;
+  float A1 = a * t1 * t1 * t1 / 3.0 + b * t1 * t1 + (c + 1.0) * t1;
+  float tau = ((t1 - t0) - (A1 - A0)) / (1.3333 * r);
+`;
 
 const fragmentShader = `
 uniform sampler2D uNoise;
 uniform vec3 uSun;
-uniform mat3 uViewInv;
+uniform vec3 uSkyTop;
+uniform vec3 uSkyHor;
 uniform vec3 uHaze;
 uniform float uHazeL;
 uniform float uOpacity;
-varying vec2 vUv;
-varying vec3 vShade;
-varying float vDist;
-varying float vFade;
 varying vec3 vWorld;
-varying float vBaseDy;
+varying vec4 vPuff;
+varying vec4 vCloud;
+varying vec3 vMisc;
+varying float vRim;
+
+// The clouds are drawn into their own (half-resolution) buffer, where three.js applies no tone
+// mapping and no output encoding: the same ACES filmic curve and sRGB encoding as the rest of the
+// scene are applied here, so the clouds composite over the frame exactly as if drawn into it.
+vec3 lvRRT(vec3 v) {
+  vec3 a = v * (v + 0.0245786) - 0.000090537;
+  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
+  return a / b;
+}
+vec3 lvAces(vec3 c) {
+  const mat3 I = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
+  const mat3 O = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
+  return clamp(O * lvRRT(I * (c / 0.6)), 0.0, 1.0);
+}
+vec3 lvSRGB(vec3 c) {
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+
+// a 3D-looking noise from two skewed projections of the tileable 2D noise (two lookups)
+float n3(vec3 p) {
+  float a = texture2D(uNoise, p.xz + vec2(0.0, p.y * 0.71)).r;
+  float b = texture2D(uNoise, p.zy * vec2(0.93, 1.0) + vec2(p.x * 0.57, 0.31)).r;
+  return (a + b) * 0.5;
+}
+
 void main() {
-  float r = length(vUv);
-  if (r > 1.12) discard; // the quad's corners: never inside the puff
-  float seed = vShade.y;
-  vec2 nuv = vUv * 0.42 + vec2(seed * 7.13, seed * 3.71);
-  float n1 = texture2D(uNoise, nuv).r;
-  float n2 = texture2D(uNoise, nuv * 2.7 + 0.31).r;
-  float n = n1 * 0.65 + n2 * 0.35;
-  // a broken, billowing edge
-  float edge = r * (0.86 + (n - 0.5) * 0.6);
-  // zero well inside the quad, whatever the noise: no straight edges
-  float a = smoothstep(1.0, 0.42, edge) * smoothstep(1.0, 0.72, r);
-  // cumulus have flat bases (the condensation level): cut, softly
-  a *= smoothstep(-0.02, 0.18, vBaseDy + (n - 0.5) * 0.08);
-  if (a < 0.01) discard;
-  // a sphere of vapour: its normal in view space, turned into the world
-  vec3 nv = normalize(vec3(vUv * 1.05, sqrt(max(0.0, 1.0 - r * r)) + 0.15));
-  vec3 nw = normalize(uViewInv * nv);
-  nw = normalize(nw + (vec3(n1, n2, n1 * n2) - 0.5) * 0.45);
-  float diff = dot(nw, uSun) * 0.5 + 0.5;
-  float h = vShade.x;
-  // lit tops, the base in shadow, light scattered through the edges
-  float baseDark = smoothstep(0.0, 0.9, vBaseDy);
-  float lit = clamp(diff * 0.6 + h * 0.45 - 0.15, 0.0, 1.0) * (0.55 + 0.45 * baseDark);
-  lit = lit * (0.78 + 0.22 * n);
-  vec3 shadowCol = vec3(0.39, 0.44, 0.53);
-  vec3 sunCol = vec3(1.0, 0.985, 0.95);
-  vec3 col = mix(shadowCol, sunCol, lit);
-  col += vec3(0.08, 0.07, 0.05) * smoothstep(0.55, 1.0, r) * max(dot(normalize(vWorld - cameraPosition), uSun), 0.0);
+  if (vRim < 0.002) discard;
+${TRACE}  // billows: noise along the ray erodes the thin parts into a crisp, irregular, billowing edge;
+  // one octave at the puff's own scale (seeded per puff), one fine, both fixed in world space
+  vec3 pm = ro + rd * (0.5 * (t0 + t1));
+  float nb = n3(pm / (r * 0.8) + vMisc.z * 7.31);
+  float nf = n3(pm / 21.0 + 0.37);
+  float n = nb * 0.6 + nf * 0.4;
+  float dens = vMisc.y;
+  float erode = mix(0.42, 0.75, 1.0 - dens); // a wisp is mostly eaten away: ragged
+  float tv = max(0.0, tau - (n - 0.36) * erode) * dens;
+  float alpha = 1.0 - exp(-24.0 * tv);
+  // from inside a wisp: a veil, never a white-out
+  if (inside) alpha *= 0.7;
+  alpha *= vRim * uOpacity;
+  if (alpha < 0.004) discard;
+
+  // the surface the ray meets, and how it faces the Sun
+  vec3 pe = ro + rd * t0;
+  vec3 np = inside ? -rd : normalize((pe - vPuff.xyz) * sq * sq * r);
+  float H = max(vCloud.w - base, 1.0);
+  float R = max(H * 0.6, r);
+  vec3 cc = vec3(vCloud.x, base + H * 0.38, vCloud.y);
+  vec3 nc = normalize((pe - cc) / vec3(R, H * 0.62, R));
+  vec3 nrm = normalize(mix(nc, np, 0.45) + (vec3(nb, nf, 1.0 - nb) - 0.5) * 0.5);
+  // the folds between billows (a puff's surface turned in towards its cloud) lie in shadow
+  float fold = smoothstep(-0.35, 0.55, dot(np, nc));
+  float hy = clamp((pe.y - base) / H, 0.0, 1.0);
+  float diff = clamp(dot(nrm, uSun) * 0.6 + 0.4, 0.0, 1.0);
+  diff *= diff * (3.0 - 2.0 * diff);
+  // the cloud's own shadow: the side of the whole cloud away from the Sun
+  float self = smoothstep(-0.65, 0.45, dot(nc, uSun));
+  // light lost low down in the cloud (its mass above and round it), and in the billows' folds
+  float ao = mix(0.45, 1.0, smoothstep(0.0, 0.7, hy)) * (0.72 + 0.4 * nb) * mix(0.5, 1.0, fold);
+  vec3 sunCol = vec3(1.0, 0.96, 0.9) * 1.1;
+  vec3 skyAmb = mix(uSkyHor, uSkyTop, 0.5) * 0.22 + vec3(0.18, 0.22, 0.29);
+  vec3 lowAmb = vec3(0.2, 0.23, 0.28);
+  vec3 amb = mix(lowAmb, skyAmb, clamp(nrm.y * 0.5 + 0.5, 0.0, 1.0));
+  vec3 col = amb * ao * (0.85 + 0.3 * nf) + sunCol * diff * self * ao;
+  // the flat base: grey, lit from below by the sea and through the cloud's thin edges
+  if (onBase) col = vec3(0.21, 0.24, 0.29) * (0.75 + 0.5 * nf) * mix(1.25, 0.8, smoothstep(0.05, 0.5, tau)) * (0.8 + 0.2 * self);
+  // thin vapour lit from behind glows (towards the Sun)
+  float fwd = pow(max(dot(rd, uSun), 0.0), 6.0);
+  col += sunCol * fwd * (1.0 - alpha) * 0.4;
+  // a wisp is lighter and greyer
+  col = mix(col, mix(amb, sunCol * 0.7, 0.5), (1.0 - dens) * 0.6);
   // the haze of distance
-  float hz = 1.0 - exp(-vDist / uHazeL);
-  col = mix(col, uHaze, clamp(hz, 0.0, 0.92));
-  gl_FragColor = vec4(col, a * vFade * uOpacity * (0.96 - 0.35 * hz));
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
+  float dist = inside ? 0.0 : t0;
+  float hz = 1.0 - exp(-dist / uHazeL);
+  col = mix(col, uHaze, clamp(hz, 0.0, 0.94));
+  gl_FragColor = vec4(lvSRGB(lvAces(col)), alpha * (1.0 - 0.3 * hz));
 }`;
+
+// The composite: the clouds' buffer laid over the frame (premultiplied), a full-screen triangle.
+const compositeVertex = `
+varying vec2 vUv;
+void main() {
+  vUv = position.xy * 0.5 + 0.5;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}`;
+const compositeFragment = `
+uniform sampler2D uTex;
+varying vec2 vUv;
+void main() {
+  gl_FragColor = texture2D(uTex, vUv);
+}`;
+/** The clouds' buffer, as a fraction of the frame's size on each side (under a fifth of the pixels). */
+export const CLOUD_RESOLUTION = 0.42;
+const _size = new THREE.Vector2();
+const _clear = new THREE.Color();
 
 const _v = new THREE.Vector3();
 
 export default function CloudField({ simRef, atmo }) {
-  const mesh = useRef();
   const field = useMemo(() => cloudField(), []);
   const n = field.puffs.length;
-  const { geo, aPuff, aShade, order } = useMemo(() => {
-    const base = new THREE.PlaneGeometry(2, 2);
+  const { geo, aPuff, aCloud, aMisc, order } = useMemo(() => {
+    const base = new THREE.IcosahedronGeometry(1, 1);
     const g = new THREE.InstancedBufferGeometry();
-    g.index = base.index;
     g.attributes.position = base.attributes.position;
-    g.attributes.uv = base.attributes.uv;
     const p = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
-    const s = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
-    p.setUsage(THREE.DynamicDrawUsage);
-    s.setUsage(THREE.DynamicDrawUsage);
+    const c = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+    const m = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
+    [p, c, m].forEach((x) => x.setUsage(THREE.DynamicDrawUsage));
     g.setAttribute("aPuff", p);
-    g.setAttribute("aShade", s);
+    g.setAttribute("aCloud", c);
+    g.setAttribute("aMisc", m);
     g.instanceCount = n;
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e7);
-    return { geo: g, aPuff: p, aShade: s, order: field.puffs.map((_, i) => i) };
+    return { geo: g, aPuff: p, aCloud: c, aMisc: m, order: field.puffs.map((_, i) => i) };
   }, [field, n]);
   const mat = useMemo(
     () =>
@@ -166,7 +260,8 @@ export default function CloudField({ simRef, atmo }) {
         uniforms: {
           uNoise: { value: noiseTexture() },
           uSun: { value: atmo.sun },
-          uViewInv: { value: new THREE.Matrix3() },
+          uSkyTop: { value: atmo.top },
+          uSkyHor: { value: atmo.hor },
           uHaze: { value: atmo.haze },
           uHazeL: { value: 20000 },
           uOpacity: { value: 1 },
@@ -176,33 +271,102 @@ export default function CloudField({ simRef, atmo }) {
         fragmentShader,
         transparent: true,
         depthWrite: false,
+        depthTest: false,
+        toneMapped: false,
+        side: THREE.BackSide,
       }),
     [atmo]
   );
+  // The clouds live in their own scene, drawn at half resolution into their own buffer just before
+  // the frame needs them, then laid over the sky and the sea and under the capsule and its
+  // parachutes (which the cloud field's placement keeps in front of every cloud). A quarter of the
+  // pixels to shade: the volumes stay soft-edged, the spacecraft stay sharp.
+  const cloudMesh = useMemo(() => {
+    const m = new THREE.Mesh(geo, mat);
+    m.frustumCulled = false;
+    m.name = "cloud-field";
+    return m;
+  }, [geo, mat]);
+  const cloudScene = useMemo(() => {
+    const sc = new THREE.Scene();
+    sc.add(cloudMesh);
+    return sc;
+  }, [cloudMesh]);
+  const rt = useMemo(() => new THREE.WebGLRenderTarget(2, 2, { depthBuffer: false, stencilBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false }), []);
+  const compMat = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: { uTex: { value: rt.texture } },
+        vertexShader: compositeVertex,
+        fragmentShader: compositeFragment,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+        blending: THREE.CustomBlending,
+        blendEquation: THREE.AddEquation,
+        blendSrc: THREE.OneFactor,
+        blendDst: THREE.OneMinusSrcAlphaFactor,
+        blendSrcAlpha: THREE.OneFactor,
+        blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+      }),
+    [rt]
+  );
+  const tri = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+    return g;
+  }, []);
   useEffect(() => () => {
     geo.dispose();
     mat.dispose();
-  }, [geo, mat]);
+    rt.dispose();
+    compMat.dispose();
+    tri.dispose();
+  }, [geo, mat, rt, compMat, tri]);
+  const drawClouds = useMemo(
+    () => (renderer, _scene, camera) => {
+      if (!cloudMesh.visible) return;
+      renderer.getDrawingBufferSize(_size);
+      const w = Math.max(2, Math.ceil(_size.x * CLOUD_RESOLUTION));
+      const h = Math.max(2, Math.ceil(_size.y * CLOUD_RESOLUTION));
+      if (rt.width !== w || rt.height !== h) rt.setSize(w, h);
+      const prevTarget = renderer.getRenderTarget();
+      const prevAuto = renderer.autoClear;
+      const prevAlpha = renderer.getClearAlpha();
+      renderer.getClearColor(_clear);
+      renderer.setRenderTarget(rt);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear(true, false, false);
+      renderer.autoClear = false;
+      renderer.render(cloudScene, camera);
+      renderer.autoClear = prevAuto;
+      renderer.setClearColor(_clear, prevAlpha);
+      renderer.setRenderTarget(prevTarget);
+    },
+    [cloudMesh, cloudScene, rt]
+  );
+  const comp = useRef();
   const frame = useRef(0);
   const dist = useMemo(() => new Float32Array(n), [n]);
 
   useFrame((state) => {
     const s = simRef.current;
-    if (!s || !mesh.current) return;
+    if (!s) return;
     const low = atmo.low;
-    mesh.current.visible = low > 0.004;
-    if (!mesh.current.visible) return;
+    cloudMesh.visible = low > 0.004;
+    if (comp.current) comp.current.visible = cloudMesh.visible;
+    if (!cloudMesh.visible) return;
     // the field stands on the sea, which drifts by under the capsule
-    mesh.current.position.set(-atmo.drift, atmo.seaY, 0);
-    mesh.current.updateMatrixWorld();
+    cloudMesh.position.set(-atmo.drift, atmo.seaY, 0);
+    cloudMesh.updateMatrixWorld();
     const U = mat.uniforms;
     U.uOpacity.value = low;
     U.uHazeL.value = 16000 + Math.min(1, Math.max(0, s.h) / 9000) * 34000;
-    U.uViewInv.value.setFromMatrix4(state.camera.matrixWorld);
     // back to front, every other frame (a few hundred distances)
     if (frame.current++ % 2 === 0) {
       const cam = state.camera.position;
       const P = field.puffs;
+      const C = field.clouds;
       const ox = -atmo.drift;
       const oy = atmo.seaY;
       for (let i = 0; i < n; i++) {
@@ -212,23 +376,31 @@ export default function CloudField({ simRef, atmo }) {
       }
       order.sort((a, b) => dist[b] - dist[a]);
       const pa = aPuff.array;
-      const sa = aShade.array;
+      const ca = aCloud.array;
+      const ma = aMisc.array;
       for (let k = 0; k < n; k++) {
         const q = P[order[k]];
+        const cl = C[q.cloud];
         pa[k * 4] = q.x;
         pa[k * 4 + 1] = q.y;
         pa[k * 4 + 2] = q.z;
         pa[k * 4 + 3] = q.r;
-        sa[k * 3] = q.h01;
-        sa[k * 3 + 1] = q.seed;
-        sa[k * 3 + 2] = field.clouds[q.cloud].base;
+        ca[k * 4] = cl.x;
+        ca[k * 4 + 1] = cl.z;
+        ca[k * 4 + 2] = cl.base;
+        ca[k * 4 + 3] = cl.top;
+        ma[k * 3] = q.sy;
+        ma[k * 3 + 1] = q.dens;
+        ma[k * 3 + 2] = q.seed;
       }
       aPuff.needsUpdate = true;
-      aShade.needsUpdate = true;
+      aCloud.needsUpdate = true;
+      aMisc.needsUpdate = true;
     }
   });
 
-  return <mesh ref={mesh} geometry={geo} material={mat} frustumCulled={false} renderOrder={2} name="cloud-field" />;
+  // after the sky (-2) and the sea (-1), before the capsule and the parachutes
+  return <mesh ref={comp} geometry={tri} material={compMat} frustumCulled={false} renderOrder={-0.5} onBeforeRender={drawClouds} name="cloud-composite" />;
 }
 
 /**
@@ -256,7 +428,7 @@ export function cloudShadowMap(sun) {
     const px = (x / size + 0.5) * N;
     const pz = (z / size + 0.5) * N;
     const r = ((cl.r * M_PER_UNIT * 1.05) / size) * N;
-    const d = Math.round(255 * (0.45 + 0.3 * Math.min(1, (cl.top - cl.base) / 400)));
+    const d = Math.round(255 * (0.45 + 0.3 * Math.min(1, (cl.top - cl.base) / 400)) * (cl.wisp ? 0.3 : 1));
     const gr = g.createRadialGradient(px, pz, 0, px, pz, r);
     gr.addColorStop(0, `rgb(${d},${d},${d})`);
     gr.addColorStop(0.55, `rgb(${Math.round(d * 0.8)},${Math.round(d * 0.8)},${Math.round(d * 0.8)})`);

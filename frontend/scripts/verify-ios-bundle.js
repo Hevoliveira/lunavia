@@ -113,8 +113,15 @@ const FEATURES = [
   ["Earth return: SKIP CINEMATIC to the reentry", "skip-return"],
   ["Splashdown: SPLASHDOWN CONFIRMED, then CREW SAFE", "splashdown-confirmed"],
   ["Descent: the cumulus field (one instanced draw)", "cloud-field"],
-  ["Descent: the open-sea renderer (Fresnel, glint, haze, curvature)", "the waves' normal (analytic)"],
-  ["Descent: the splash at contact", "the quad's corners: never inside the puff"],
+  ["Descent: clouds as volumes (each ray through each puff, analytically)", "the vapour crossed"],
+  ["Descent: the clouds drawn at reduced resolution and composited", "cloud-composite"],
+  ["Descent: the open sea (gusts, roughness by distance)", "gusts: broad, slow patches of rougher and smoother water"],
+  ["Splashdown: foam round the floating capsule (no rings, no discs)", "foam round the floating capsule"],
+  ["Splashdown: the spray as streaks along their motion", "the streak: where it was a moment ago"],
+  ["Parachutes: canopies lit through the fabric", "the Sun through the fabric seen from the other side"],
+  ["Descent HUD under the parachutes", "reentry-descent-panel"],
+  ["Descent HUD: the splashdown checklist", "BRACE FOR SPLASHDOWN"],
+  ["Captions in a corner over the descent and splashdown", "max-w-[min(420px,40vw)]"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -129,6 +136,9 @@ const REMOVED = [
   ["Four destinations as training exercises", "training-mission-start-"],
   ["The old return shot (the CSM broadside, no burn)", "THE LUNAR MODULE STAYED BEHIND"],
   ["The old low world at 25 m per unit (the capsule 6x too big)", "metres per scene unit in the low-altitude world"],
+  ["The camera-facing cloud cards (billboards)", "the quad's corners: never inside the puff"],
+  ["The pale ring and foam disc round the splash", "the impact ring running out, its ripples and foam"],
+  ["The crown sheet round the splash", "the sheet flares outward as it rises"],
 ];
 
 function sourceText(dir) {

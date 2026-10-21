@@ -19,6 +19,7 @@ import useMissionAudio from "@/hooks/useMissionAudio";
 import MissionTitle from "@/components/MissionTitle";
 import MissionDebrief from "@/components/scoring/MissionDebrief";
 import { useAudioSettings } from "@/audio/audioSettings";
+import { setSubtitlePlacement } from "@/components/CommsSubtitles";
 import { createFlightScoring } from "@/data/flightScoring";
 import { applyDocking, applyFlightStart, applyLanding, applyMission, applyReentry, loadRecords, unlockedBy, updateRecords } from "@/lib/missionRecords";
 import { goForPdi } from "@/data/lunarOrbitShot";
@@ -636,6 +637,13 @@ export default function Mission({ entry = "opening" }) {
       audio.stopRumble();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  // Over the splashdown and MISSION COMPLETE, a caption still on the air stays in its corner (CommsSubtitles).
+  useEffect(() => {
+    if (state !== STATES.COMPLETE) return undefined;
+    setSubtitlePlacement("corner");
+    return () => setSubtitlePlacement("default");
   }, [state]);
 
   // MISSION COMPLETE holds for 5 s over the splashdown, then the debrief takes over (MISSION DEBRIEF opens it at once).

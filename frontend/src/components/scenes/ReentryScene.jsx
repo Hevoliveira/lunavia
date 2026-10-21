@@ -8,7 +8,7 @@ import { plasmaLevel } from "@/data/reentryGuidance";
 import CsmModel, { csmMaterials } from "@/components/spacecraft/CsmModel";
 import { CM_R, PARTS as CSM_PARTS, buildCM } from "@/data/csmDesign";
 import { SM_SEP, smOffset } from "@/data/earthReturn";
-import { CONFIRM, FLOAT, M_PER_UNIT, chuteCamera, lowWorldFade, recoveryCamera, seaLevelY, seaSurface, splashBob } from "@/data/descentScene";
+import { CONFIRM, DROGUE_DRIFT_M, ENTRY_SIDE, FLOAT, M_PER_UNIT, chuteCamera, lowWorldFade, recoveryCamera, seaLevelY, seaSurface, splashBob } from "@/data/descentScene";
 import Ocean from "@/components/scenes/descent/Ocean";
 import CloudField, { cloudShadowMap, noiseTexture } from "@/components/scenes/descent/CloudField";
 import Splash from "@/components/scenes/descent/Splash";
@@ -401,7 +401,7 @@ function SkyDome({ simRef, atmo }) {
  * shield touches the waves exactly when the simulation's altitude reaches zero), and how far the
  * ground has drifted by under it since the drogues opened (the sea and the clouds move together).
  */
-function AtmoState({ simRef, viewRef, poseRef, atmo }) {
+function AtmoState({ simRef, viewRef, poseRef, atmo, final }) {
   const anchor = useRef(null);
   const lowAtSplash = useRef(null);
   useFrame(() => {
@@ -413,6 +413,8 @@ function AtmoState({ simRef, viewRef, poseRef, atmo }) {
     if (s.drogueT !== null && anchor.current === null) anchor.current = s.s;
     if (s.drogueT === null && !splashed) anchor.current = null;
     atmo.drift = anchor.current === null ? 0 : -(s.s - anchor.current) / M_PER_UNIT;
+    // the MISSION COMPLETE backdrop: the same place on the same sea, under the same clouds
+    if (final) atmo.drift = -DROGUE_DRIFT_M / M_PER_UNIT;
     const low = poseRef.current ? poseRef.current.low : -0.11;
     if (splashed && lowAtSplash.current === null) lowAtSplash.current = low;
     if (!splashed) lowAtSplash.current = null;
@@ -644,13 +646,13 @@ function CameraRig({ simRef, viewRef, atmo }) {
       _p.set(3 + k * 5, 1 + k * 3, 5 + k * 8);
       _l.set(0, -2 * k, 0);
     } else if (s.mainT !== null || s.drogueT !== null) {
-      // under the parachutes: the canopies above, the clouds and the sea below (data/descentScene)
-      const c = chuteCamera(s.h, s.mainT !== null, t);
+      // under the parachutes, one continuous move from the drogues to the water (data/descentScene)
+      const c = chuteCamera(s.h, s.mainT !== null ? s.t - s.mainT : null, t, s.drogueT !== null ? s.t - s.drogueT : Infinity);
       _p.set(...c.pos);
       _l.set(...c.look);
     } else if (s.v < 3000) {
-      _p.set(2.8, 0.4, 4.6);
-      _l.set(0.3, 0.1, 0);
+      _p.set(...ENTRY_SIDE.pos);
+      _l.set(...ENTRY_SIDE.look);
     } else {
       // Documentary side view: capsule left of frame, wake streaming right.
       const close = Math.min(1, L);
@@ -665,8 +667,11 @@ function CameraRig({ simRef, viewRef, atmo }) {
     }
     pos.current.lerp(_p, Math.min(1, dt * 1.2));
     look.current.lerp(_l, Math.min(1, dt * 1.6));
-    // never below the waves
-    if (atmo.low > 0.5) pos.current.y = Math.max(pos.current.y, atmo.seaY + 0.9);
+    // never below the waves: clear of the very swell under the camera
+    if (atmo.low > 0.5) {
+      const w = seaSurface((pos.current.x + atmo.drift) * M_PER_UNIT, pos.current.z * M_PER_UNIT, t);
+      pos.current.y = Math.max(pos.current.y, atmo.seaY + w.h / M_PER_UNIT + 0.32);
+    }
     camera.position.copy(pos.current);
     camera.lookAt(look.current);
     // read-only, for the validation tooling: the camera, the sea and the splash each frame
@@ -705,7 +710,7 @@ function Scene({ simRef, viewRef, final = false }) {
   });
   return (
     <>
-      <AtmoState simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
+      <AtmoState simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} final={final} />
       <SkyDome simRef={simRef} atmo={atmo} />
       <group ref={starRef}>
         <Stars radius={500} depth={60} count={3500} factor={3} saturation={0} fade speed={0.2} />
@@ -718,7 +723,7 @@ function Scene({ simRef, viewRef, final = false }) {
       <CloudField simRef={simRef} atmo={atmo} />
       <Vehicle simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
       <Chutes simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
-      <Splash viewRef={viewRef} noise={noise} />
+      <Splash viewRef={viewRef} noise={noise} sun={atmo.sun} />
       <CameraRig simRef={simRef} viewRef={viewRef} atmo={atmo} />
     </>
   );

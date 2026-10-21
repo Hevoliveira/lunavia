@@ -5,6 +5,7 @@ import {
   CONFIRM,
   DROGUE,
   DROGUE_DRIFT_M,
+  ENTRY_SIDE,
   FLOAT,
   MAIN,
   M_PER_UNIT,
@@ -101,26 +102,44 @@ describe("the clouds: a coherent field of cumulus", () => {
     expect(covered).toBeLessThan(0.35);
     expect(covered).toBeGreaterThan(0.02);
   });
-  test("every puff sits in its own cloud, from its flat base to its top", () => {
+  test("every puff sits in its own cloud, from its flat base to its top: volumes, never cards", () => {
     puffs.forEach((p) => {
       const c = clouds[p.cloud];
-      expect(p.y - p.r * 0.42).toBeGreaterThanOrEqual(c.base - 1e-6);
+      expect(p.y).toBeGreaterThanOrEqual(c.base - 1e-6);
       expect(p.y).toBeLessThanOrEqual(c.top + 1e-6);
+      expect(p.sy).toBeGreaterThan(0.3); // an ellipsoid of vapour (r × r·sy × r)
+      expect(p.sy).toBeLessThanOrEqual(1);
+      expect(p.dens).toBeGreaterThan(0);
     });
     expect(puffs.length).toBeLessThan(1400); // a mobile budget: one instanced draw
+    // one condensation level: the whole field's flat bases within 80 m of each other
+    const bases = clouds.map((c) => c.base * M_PER_UNIT);
+    expect(Math.max(...bases) - Math.min(...bases)).toBeLessThanOrEqual(80);
+    // cumulus, not towers of balls: most clouds no taller than they are wide
+    const squat = clouds.filter((c) => c.top - c.base <= 2 * c.r).length;
+    expect(squat / clouds.length).toBeGreaterThan(0.85);
+    // the renderer traces each puff as a volume from a bound drawn by its back faces (camera inside works)
+    const cf = read("components/scenes/descent/CloudField.jsx");
+    expect(cf).toMatch(/side: THREE\.BackSide/);
+    expect(cf).toMatch(/new THREE\.IcosahedronGeometry\(1, 1\)/);
+    expect(cf).not.toMatch(/PlaneGeometry/); // no camera-facing quads
+    expect(cf).toMatch(/the vapour crossed/);
   });
   test("the capsule's own path down is clear of cloud (it passes between them), and a tower stands in shot", () => {
     // the capsule comes down at the ground position it reaches after the drogues' drift
     const cx = -u(DROGUE_DRIFT_M);
     puffs.forEach((p) => expect(Math.hypot(p.x - cx, p.z) - p.r).toBeGreaterThan(u(40)));
     // the tall placed formation is behind the capsule as the descent camera looks at it
-    const cam = chuteCamera(1500, true).pos;
+    const cam = chuteCamera(1500, 30).pos;
     const toCapsule = Math.atan2(-cam[2], -cam[0]);
     const tower = PLACED_CLOUDS[0];
-    PLACED_CLOUDS.forEach((c) => {
+    PLACED_CLOUDS.forEach((c, i) => {
       const toCloud = Math.atan2(c.z - cam[2], c.x - cx - cam[0]);
-      expect(Math.abs(toCloud - toCapsule)).toBeLessThan(0.45); // in shot, behind the capsule
+      // the two formations behind the capsule; the two near cumulus either side of the shot
+      expect(Math.abs(toCloud - toCapsule)).toBeLessThan(i < 2 ? 0.45 : 0.8);
     });
+    // the camera's own column falls between the clouds too
+    puffs.forEach((p) => expect(Math.hypot(p.x - (cx + cam[0]), p.z - cam[2]) - p.r).toBeGreaterThan(u(150)));
     expect(tower.topM).toBeGreaterThan(2000); // the capsule passes it on the way down under the mains
   });
 });
@@ -171,7 +190,12 @@ describe("splashdown and flotation", () => {
     const game = read("components/ReentryGame.jsx");
     expect(game).toMatch(/if \(s\.outcome === OUTCOME\.SPLASHDOWN\) \{\s+v\.phase = "SPLASHED";/);
     const splash = read("components/scenes/descent/Splash.jsx");
-    expect(splash).toMatch(/const on = !!\(sp && sp\.on && sp\.t < 3\);/);
+    expect(splash).toMatch(/const on = !!\(sp && sp\.on && sp\.t < 3\.5\);/);
+    // no crown sheet, ring or disc: spray streaks and mist; what stays is in the water itself
+    expect(splash).not.toMatch(/CylinderGeometry|RingGeometry|CircleGeometry/);
+    const ocean = read("components/scenes/descent/Ocean.jsx");
+    expect(ocean).toMatch(/No drawn circle, no disc/);
+    expect(ocean).toMatch(/uHull/);
   });
   test("SPLASHDOWN CONFIRMED, then CREW SAFE, only once the simulation reports the splashdown; then MISSION COMPLETE", () => {
     expect(CONFIRM.splashdown).toBeGreaterThan(0);
@@ -189,18 +213,41 @@ describe("splashdown and flotation", () => {
 });
 
 describe("the cameras", () => {
-  test("under the parachutes the camera stays above the sea all the way down, and the recovery shot starts near the sea", () => {
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  test("one continuous move from the drogues to the water, never below the waves", () => {
     for (let h = 3200; h >= 0; h -= 25) {
-      const c = chuteCamera(h, true, h * 0.01).pos;
-      expect(c[1]).toBeGreaterThanOrEqual(seaLevelY(h) + 1.5 - 1e-9);
+      const c = chuteCamera(h, 60, h * 0.01).pos;
+      expect(c[1]).toBeGreaterThanOrEqual(seaLevelY(h) + 0.55 - 1e-9); // 2 m over the mean sea at the lowest
     }
-    const r0 = recoveryCamera(0);
-    expect(r0.pos[1]).toBeLessThan(3);
-    // slow: it moves less than a unit per second
-    for (let s = 0; s < 30; s += 0.5) {
-      const a = recoveryCamera(s).pos;
-      const b = recoveryCamera(s + 0.5).pos;
-      expect(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) / 0.5).toBeLessThan(1);
+    // no jumps: the framing changes smoothly with altitude (less than a unit per 10 m of descent)
+    for (let h = 3200; h > 0; h -= 10) {
+      const a = chuteCamera(h, 60, 0);
+      const b = chuteCamera(h - 10, 60, 0);
+      expect(dist(a.pos, b.pos) - 10 / M_PER_UNIT).toBeLessThan(1);
+      expect(dist(a.look, b.look)).toBeLessThan(0.5);
+    }
+    // and from the drogues to the mains, over the mains' inflation
+    for (let s = 0; s < 8; s += 0.25) expect(dist(chuteCamera(3000, s).pos, chuteCamera(3000, s + 0.25).pos)).toBeLessThan(1.6);
+    expect(dist(chuteCamera(3200, null).pos, chuteCamera(3200, 0).pos)).toBeLessThan(1e-9);
+    // and from the entry's side view as the drogues open: eased from rest, no jolt
+    expect(dist(chuteCamera(7300, null, 0, 0).pos, ENTRY_SIDE.pos)).toBeLessThan(1e-9);
+    for (let s = 0; s < 7; s += 0.25) expect(dist(chuteCamera(7000, null, 0, s).pos, chuteCamera(7000, null, 0, s + 0.25).pos)).toBeLessThan(0.75);
+  });
+  test("shot A wide on the approach, shot B close at the contact, shot C closer still: the hero shot", () => {
+    const a = chuteCamera(600, 60).pos;
+    const b = chuteCamera(0, 60).pos;
+    const c = recoveryCamera(9).pos;
+    const d = (p) => Math.hypot(p[0], p[2]);
+    expect(d(a)).toBeGreaterThan(20); // ~95 m off, the canopies and the sea in frame
+    expect(d(b)).toBeLessThan(9);
+    expect(d(c)).toBeLessThan(d(b));
+    expect(d(c)).toBeLessThan(6); // the capsule large in frame (about 20 m away)
+    expect(c[1]).toBeLessThan(0.6); // low over the water
+    // the splashdown camera continues the descent camera exactly at contact
+    expect(dist(chuteCamera(0, 60).pos, recoveryCamera(0).pos)).toBeLessThan(1e-6);
+    // smooth: no faster than 2 units (8 m) a second, and no jumps
+    for (let s = 0; s < 40; s += 0.25) {
+      expect(dist(recoveryCamera(s).pos, recoveryCamera(s + 0.25).pos) / 0.25).toBeLessThan(2);
     }
   });
 });

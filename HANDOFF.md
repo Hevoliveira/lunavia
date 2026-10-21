@@ -3111,3 +3111,74 @@ The frame-time increase is per-pixel shading on a CPU rasterizer: the sea shader
 screen, and cloud puffs overlap. On a GPU this workload (17 draws, 36k triangles, about 6 texture
 reads per sea pixel) is light, and AdaptiveResolution lowers the pixel ratio if a device cannot
 hold 45 fps. There is no network use: the textures are procedural or the bundled NASA map.
+
+## 54. Critical visual correction: cloud descent and ocean splashdown
+
+**Why.** The iPhone review (IMG_6102 under the main parachutes at 1.8 km, IMG_6103 at
+splashdown) still showed flat speckled cloud discs, a pale ring and disc round the floating
+capsule, a tiny capsule in the recovery shot, the entry guidance (FPA, bank, roll, corridor) on
+screen under the parachutes, and the splashdown caption over the middle of the picture.
+
+**Clouds** (`descent/CloudField.jsx`, `data/descentScene.js cloudField`).
+- Every puff is a volume: an ellipsoid of vapour whose bound (a low-poly icosahedron drawn by its
+  back faces) only marks the pixels to trace. Each pixel traces its own ray through the ellipsoid
+  analytically: entry and exit, clipped at the cloud's flat base, and the vapour crossed (the
+  integral of a density highest at the centre) gives the opacity. A world-space noise erodes the
+  edges into billows; lighting blends the puff's roundness with the whole cloud's, with folds,
+  a darker lower cloud, grey flat bases and haze. No sprites, no camera-facing cards. Works with
+  the camera beside or inside a puff.
+- Cumulus are built as cumulus: base puffs cut flat at one condensation level (820 m ± 40 m for
+  the whole field), two or three overlapping columns with broad rounded tops, and cauliflower
+  turrets sunk into the upper puffs. About 800 puffs, one instanced draw.
+- The capsule descends between placed formations (two behind it, two near cumulus either side of
+  the main-chute shot); its column and the camera's column stay clear of cloud (tested).
+- Drawn at 0.42× resolution into their own buffer, then composited over the sky and the sea and
+  under the capsule and its parachutes (which the placement keeps in front of every cloud). The
+  clouds carry their own ACES and sRGB encoding so the composite matches the frame.
+
+**Continuous descent** (`chuteCamera`, `timeScaleFor`; the trajectory is unchanged).
+- Drogues: an eased move from the entry side view up and back, looking down past the capsule
+  at the cumulus below.
+- Mains: over their 8 s inflation, round to the main-chute shot (canopies above, the cloud towers
+  it falls between, the sea below).
+- Shot A from 1.3 km: wider and a little below, the whole parachute system in frame.
+- Last 400 m: round the column and in, coming down with the capsule (never faster than it) to
+  meet the water close by (shot B).
+- Pace under the mains (presentation only, fixed-step physics): 32× to the cloud tops, 20×
+  between the clouds, easing to 6× at 150 m and 3× at the water (about 24 s on screen from main
+  deployment, was about 12).
+
+**Splashdown** (`Ocean.jsx`, `Splash.jsx`, `recoveryCamera`).
+- No ring, no disc, no crown sheet. Spray: 520 streaks thrown out round the rim in ragged radial
+  jets (the Apollo impact photograph), falling back under gravity, and a short mist.
+- In the water itself: the surface pushed down and rebounding in a low ring, broken ripples that
+  run out and die, white churn round the impact for a few seconds, then a ragged lace of foam
+  hugging the hull and a lapping waterline.
+- Released canopies deflate as they fall downwind, drape on the very swell that is drawn, and
+  sink.
+- Shot B held through the splash, then round and in to shot C, the hero shot (about 20 m, 2 m
+  above the water, the capsule's lit face), circling slowly; MISSION COMPLETE runs on from it
+  under the same clouds.
+
+**Ocean.**
+- The four swell waves plus four short wind waves (9 m to 2 m) and three detail scales, each
+  kept only where the pixel resolves it (no moiré).
+- Gust patches of rougher and smoother water, deeper blue water, sparse whitecaps on the highest
+  crests, and anisotropic detail at grazing angles.
+
+**Parachutes.**
+- Canopy shader: the Sun on the outside and through the translucent fabric from below, ringsail
+  slots, seams, sky light in the shadows, muted Apollo orange.
+- 28 suspension lines per main.
+
+**HUD** (`data/descentHud.js`, tested). Under the parachutes (no lift, so bank and roll do
+nothing) the lift-vector dial, roll and trim buttons, corridor gauge and prediction go away.
+- Left panel: altitude, descent rate, chute state (inflation %), time to splashdown, capsule
+  condition, heat shield used.
+- Right panel: SPLASHDOWN PREP in Apollo's order: drogues, mains 3/3, VHF recovery beacon, RCS
+  propellant dump, main release armed, brace.
+- PAUSE and ABORT stay. The EI clock keeps the final time after splashdown.
+
+**Captions.** `setSubtitlePlacement("corner")` under the parachutes, over the splashdown and
+MISSION COMPLETE: the same caption, type, languages and timing, in the upper-left corner under the
+phase banner on a lighter backing.

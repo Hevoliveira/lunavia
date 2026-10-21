@@ -62,7 +62,20 @@ export const APPROACH_SECONDS = 4;
  * changes. Critical flight runs slowest so the player can react.
  */
 export function timeScaleFor(s) {
-  if (s.mainT !== null) return s.t - s.mainT < 9 ? 3 : 32;
+  if (s.mainT !== null) {
+    if (s.t - s.mainT < 9) return 3;
+    // Down to the cloud tops fast (32x), between the clouds at 20x, then the last few hundred
+    // metres at a pace the eye can follow: the sea coming up, the water contact (6x at 150 m, 3x at
+    // the end). Presentation only: the same fixed-step trajectory at any rate.
+    const sm = (x) => {
+      const c = Math.min(1, Math.max(0, x));
+      return c * c * (3 - 2 * c);
+    };
+    if (s.h > 2200) return 20 + 12 * sm((s.h - 2200) / 400);
+    if (s.h > 900) return 20;
+    if (s.h > 150) return 6 + 14 * sm((s.h - 150) / 750);
+    return 3 + 3 * Math.max(0, s.h / 150);
+  }
   if (s.drogueT !== null) return s.t - s.drogueT < 4 ? 3 : 9;
   if (s.v < 3000) return 18;
   const pastPeak = s.peak.heatRate > 15 && s.heatRate < s.peak.heatRate * 0.97;
