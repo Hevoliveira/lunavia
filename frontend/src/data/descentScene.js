@@ -261,7 +261,7 @@ export function chuteRelease(s) {
   if (s <= 0.25) return { drop: 0, flat: 0, drift: 0, sink: 0 };
   const x = s - 0.25;
   const drop = smooth(x / 4.2);
-  return { drop, flat: smooth((x - 1.6) / 1.8), drift: u(24) * (1 - Math.exp(-x / 3)) + u(0.5) * x, sink: u(1.4) * smooth((x - 3.6) / 5) };
+  return { drop, flat: smooth((x - 1.6) / 1.8), drift: u(24) * (1 - Math.exp(-x / 3)) + u(0.5) * x, sink: u(1.4) * smooth((x - 3.8) / 4) };
 }
 
 /** On-screen confirmation after contact, seconds after splashdown: SPLASHDOWN CONFIRMED, then CREW SAFE. */

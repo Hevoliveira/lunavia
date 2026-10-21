@@ -142,8 +142,8 @@ void main() {
   col *= 1.0 - 0.45 * slot;
   // a soft sheen across the fabric's curve
   col += sunCol * pow(max(dot(reflect(-uSun, n), v), 0.0), 12.0) * 0.06;
-  // wet on the sea: darker, a little of the water's blue
-  col = mix(col, col * vec3(0.55, 0.62, 0.7), vWet * 0.7);
+  // wet on the sea: the orange darker, the white nylon still white (a little of the water's blue)
+  col = mix(col, col * mix(vec3(0.6, 0.66, 0.74), vec3(0.92, 0.96, 1.0), smoothstep(0.5, 0.85, vCol.g)), vWet * 0.8);
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
