@@ -1,12 +1,16 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 53bffc0**.
+This folder installs **BUILD 9364896**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 53bffc0 · 2026-10-20 23:59 UTC**
+> **LUNAVIA iOS · BUILD 9364896 · 2026-10-21 21:38 UTC**
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **53bffc0** is the previous release: the cumulus field and the open sea, but the clouds were
+  flat puffs turned to the camera, the splash left a pale ring and disc on the sea, the entry
+  guidance (flight path, bank, roll, corridor) stayed on screen under the parachutes, and the
+  recovery shot showed a small capsule;
 - **6a528b7** is the previous release: the Earth return (TEI burn, coast, approach), but the old
   descent: flat oval clouds, a flat sea seen only after splashdown, a ring for the splash;
 - **a50700b** is the previous release: the docking copilot and docking training, but after the docking
@@ -97,17 +101,25 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Docking copilot: AUTO-CENTER (the RCS slides the port onto the centreline), MATCH VELOCITY (cancels the relative motion and holds station), FINE APPROACH (FWD/AFT set the closing speed in 0.02 m/s steps on CADET), the right control highlighted, the five-step CADET copilot with the reason a step is not done yet, and ORBITAL DOCKING TRAINING in the Training Center | #26 | a50700b |
 | Earth return: TEI on the service propulsion engine (an RCS turn to prograde, a finite burn along the axis, cutoff), an engine-off coast in passive thermal control, the Earth approach at true size, the turn to the entry attitude, then a clean service-module separation and a heat-shield-first capsule in the reentry | #27 | 6a528b7 |
 | Descent and splashdown: one true scale, a field of sunlit cumulus the capsule descends between, an open sea (swell, reflections, sun glint, haze, curvature), Apollo-size parachutes released at splashdown, the splash at contact, the capsule floating, SPLASHDOWN CONFIRMED / CREW SAFE | #28 | 53bffc0 |
+| Cloud descent and splashdown correction: volumetric cumulus the capsule falls between (no flat cards), one continuous descent camera (drogues, main parachutes between the clouds, a wide approach, the water contact, a close recovery shot), the descent display under the parachutes (altitude, descent rate, parachutes, capsule, SPLASHDOWN PREP) instead of the entry guidance, spray and foam in the water with no rings or discs, and the captions in a corner | #28 | 58fb217, 9364896 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 53bffc0** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release improves how the descent under the parachutes and the splashdown look.** The reentry's physics, controls, parachute timing and success rules are unchanged, as is everything before the reentry, including the Earth return of the previous release.
-  - **Clouds:** scattered fair-weather cumulus with lit tops, darker flat bases and soft broken edges. They start about 650–950 m up and rise to 1.2–2.6 km. Under the main parachutes the capsule comes down between two of them; nothing passes through it.
-  - **Sea:** a deep-blue open ocean with a swell about 1 m high, sky reflections, a sun glint and haze towards a curved horizon. It is seen all the way down, not only after splashdown.
-  - **Parachutes:** the real sizes. Two 5 m drogues, then three 25 m orange and white main parachutes on long lines. At splashdown they are released and settle on the sea.
-  - **Splashdown:** spray and droplets from the point where the heat shield meets the water, a ring of ripples and foam. The capsule dips, bobs and floats apex up, partly under water, riding the waves.
-  - **Then:** SPLASHDOWN CONFIRMED, CREW SAFE (and Houston's "Splashdown... welcome home"), the floating capsule for a few seconds, and LUNAVIA — MISSION COMPLETE over the same shot.
-- **Checked in a browser on the packaged files** (headless Chromium with software rendering, by input only). The full regression covered all four missions at the three difficulties to MISSION COMPLETE, the phone-size layouts, and a descent run at 667 × 375. Software rendering is slower than an iPhone's GPU: the descent now uses 17 draw calls (33 before) and about 36,000 triangles. This is not a test on a real iPhone.
+- **Built from the clean tree at 9364896** with `yarn ios:sync`. The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release corrects how the descent under the parachutes and the splashdown look and read.** The reentry's physics, trajectory, controls, parachute timing and success rules are unchanged, as is everything before the reentry.
+  - **Clouds:** real volumes, not flat pictures. Fair-weather cumulus with flat grey bases at one level (about 820 m), bright sunlit cauliflower tops, shaded sides and haze with distance. Under the drogues you look down on them; under the main parachutes the capsule falls between two of them, past their bases, into clear air over the sea.
+  - **The descent, one continuous shot:** the drogues, then the main parachutes opening, the cloud layer, a wide shot of the whole parachute system over the sea, then down to the water close beside the capsule. The last part is shown slower (the same trajectory): about 24 s from the main parachutes to the water.
+  - **Under the parachutes** the screen shows what matters then: altitude, descent rate, the parachutes (inflating, full), time to splashdown, the capsule and the heat shield, and the **SPLASHDOWN PREP** checklist (drogues, mains 3/3, VHF recovery beacon, RCS propellant dump, main release armed, brace). The lift-vector dial, roll and trim buttons and the entry corridor are gone there (the parachutes give no lift, so they did nothing). PAUSE and ABORT stay.
+  - **Splashdown:** a burst of spray thrown out round the heat shield, then, in the water itself, the surface pushed down and rebounding, ripples that run out and fade, churned white water, and a ragged lace of foam round the floating capsule. No rings, no discs. The released parachutes fall away downwind, lie on the water and sink.
+  - **Then:** the camera comes round and in, low over the water, to the floating capsule (larger than before), rocking on the swell; SPLASHDOWN CONFIRMED, CREW SAFE and LUNAVIA — MISSION COMPLETE over the same shot.
+  - **Captions** ("We have splashdown... Welcome home") keep their words, languages and timing but sit small in the upper-left corner under the phase banner, clear of the capsule.
+- **Checked in a browser on the packaged files** (headless Chromium with software rendering, by input only):
+  - a full mission (Sea of Tranquility, CADET), from the landing through the ascent, docking, return and reentry to MISSION COMPLETE and the debrief, with no page errors (SPLASHDOWN CONFIRMED 0.8 s after contact, CREW SAFE at 2.4 s);
+  - Training Center reentries to splashdown at 852 × 393 and 667 × 375;
+  - a recorded continuous descent, frame by frame: no camera jumps;
+  - the unit tests (546).
+- **Speed, measured in software rendering** (far slower than an iPhone's GPU, so only the comparison matters): the descent averages 71–75 ms a frame against 61 ms for the previous release, with the same median (67 ms), 15–16 draw calls (17 before) and no more memory. The clouds are drawn at reduced resolution to keep that cost down.
+- **This is not a test on a real iPhone.**
 - **As in the previous releases:** the photorealistic Earth and Moon; the docking ports made clear (TARGET DOCKING PORT, the approach corridor, the capture conditions, FOCUS DOCKING PORTS); mission scoring, medals, achievements and FLIGHT RECORDS; the four docking views; **RESTART DOCKING** (hold it) and the **DOCKING GUIDANCE** panel.
 - **How a mission goes after the landing** (as in the previous release):
   1. After a successful landing, **CONTINUE MISSION** shows **LUNAR SURFACE — ASCENT PREPARATION**: the checklist ticks in, and nothing starts until you press **INITIATE LUNAR ASCENT**.
@@ -130,4 +142,4 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
   - there is no server URL, so the app plays from its own files;
   - Xcode copies the bundle into the app;
   - every planet texture the game loads is in the bundle, is a valid image and is identical to the source copy; the old textures are gone; the NASA sources (`SOURCES.md`) are bundled;
-  - every feature above is in the bundled game, including the descent (the cumulus field, the open sea, SPLASHDOWN CONFIRMED), the Earth return (the TEI burn, the passive thermal control coast, the entry attitude, SKIP CINEMATIC), the docking copilot (AUTO-CENTER, MATCH VELOCITY, FINE APPROACH, the copilot's reasons, ORBITAL DOCKING TRAINING, in English and Portuguese), the docking assists (AUTO-ALIGN, STABILIZE, the speed assist, soft capture, FINE, the CADET sequence in Portuguese), the photorealistic Earth and Moon, the docking-port markers (English and Portuguese), FOCUS DOCKING PORTS, the capture conditions and the approach corridor, the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, or the four destinations as training exercises, is still in the bundle.
+  - every feature above is in the bundled game, including the descent (the clouds drawn as volumes, the open sea, the foam round the capsule, the spray, the parachute canopies, the descent display and SPLASHDOWN PREP, the captions in a corner, SPLASHDOWN CONFIRMED), the Earth return (the TEI burn, the passive thermal control coast, the entry attitude, SKIP CINEMATIC), the docking copilot (AUTO-CENTER, MATCH VELOCITY, FINE APPROACH, the copilot's reasons, ORBITAL DOCKING TRAINING, in English and Portuguese), the docking assists (AUTO-ALIGN, STABILIZE, the speed assist, soft capture, FINE, the CADET sequence in Portuguese), the photorealistic Earth and Moon, the docking-port markers (English and Portuguese), FOCUS DOCKING PORTS, the capture conditions and the approach corridor, the mission debrief (English and Portuguese), the medals, the achievements and the flight records, the four docking views, RESTART DOCKING and the docking guidance, the startup screen (THE ROAD TO THE MOON, LAUNCH SEQUENCE — INITIATE), the direct cut to lunar orbit, the MISSIONS / TRAINING menu and the four official missions; it also fails if any removed travel shot, the four destinations as training exercises, the flat camera-facing cloud cards, or the splash's ring, disc and crown are still in the bundle.

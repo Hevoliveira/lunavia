@@ -3182,3 +3182,27 @@ nothing) the lift-vector dial, roll and trim buttons, corridor gauge and predict
 **Captions.** `setSubtitlePlacement("corner")` under the parachutes, over the splashdown and
 MISSION COMPLETE: the same caption, type, languages and timing, in the upper-left corner under the
 phase banner on a lighter backing.
+
+**Measured** (headless Chromium with SwiftShader, CPU rendering at 852 × 393, the same descent from
+6 km to 8 s after splashdown, both builds measured in the same session; not an iPhone GPU):
+
+| | 53bffc0 | 9364896 |
+|---|---|---|
+| Mean frame time | 61 ms | 71–75 ms |
+| Median frame time | 66.6 ms | 66.7 ms |
+| 95th percentile | 83 ms | 100 ms |
+| Draw calls (max) | 17 | 15–16 |
+| Triangles (max) | 36k | 74k |
+| JS heap (max) | 24.8 MB | 22–24.8 MB |
+
+- **Where the time goes.** With neither clouds nor sea the scene runs at 16.7 ms. The sea adds
+  about 33 ms. The clouds cost about 50 ms at full resolution (each puff traced per pixel,
+  overlapping), and about 17 ms in their reduced-resolution buffer (0.42 × 0.42, 18% of the pixels).
+- **What didn't help.** A depth pre-pass for the opaque cloud cores made it slower in software
+  (shaders that can discard don't benefit from early depth rejection), so it was dropped.
+- **Memory.** The cloud buffer adds one RGBA8 render target, about 2 MB at an iPhone's resolution.
+- **Animation.** A recorded descent from 8 km to 16 s after splashdown, analysed frame by frame:
+  no camera jumps. The fastest camera move is 7.9 units/s, the swing while the mains inflate; the
+  drogue hand-over, which started at 15 units/s, is now eased.
+- **Regression.** A full mission on the packaged build, docking to splashdown, ran with no page
+  errors, and SPLASHDOWN CONFIRMED came 0.8 s after contact.
