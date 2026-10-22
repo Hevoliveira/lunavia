@@ -3396,3 +3396,47 @@ and the cloud buffer follows the drawing buffer.
   under magnification.
 - At 690 m the sea under the horizon is pale (the haze).
 - The cost is about 1.6–2 × 9364896 in software rendering.
+
+## 57. Natural cloud formations: broad, horizontally spread cumulus (clouds only)
+
+Focused on the clouds' proportions and distribution. Nothing else changed: the sea and its waves,
+the splashdown, the flotation, the parachutes and their deployment, the cameras and their framing,
+the reentry physics and the mission flow are as in §56 (BUILD a5edd07).
+
+**Why the clouds of a5edd07 read as towers.** Each cloud was as deep as 0.95–1.85 times its radius
+(1.15–2.45 km tops on 380–1700 m cells), drawn as one dome per cell: from the descent's low
+viewpoints a row of white mountains. Shrinking them vertically alone would have given flat discs.
+
+**The field** (`data/cumulusField.js`):
+- Mostly **cumulus humilis**: each cloud 2.5–4.5 times wider than it is tall (none under 2), 0.6 to
+  2.2 km across (median 750 m), 130–400 m deep for nine in ten (median 215 m; the largest up to
+  830 m), over one condensation level (820 m, each cloud's own base within ±45 m). The rare taller
+  cumulus (still at least twice as wide as tall) only beyond 14 km.
+- Each cloud is a **heap of puffs**: a central puff, the tallest, and 3–7 smaller, lower ones round it,
+  each its own rounded dome in the weather map (per-puff top in G), so the outline is lumpy and the
+  top heaped, never a single dome or a disc.
+- **Scattered in irregular groups** (1–8 clouds round a group centre, groups thinned in broad
+  patches), at least 200 m of clear air between neighbours' main bodies; a few thin (130–240 m),
+  broken **stratocumulus sheets** (kind in A), far off.
+- Open sky over the splashdown: no cloud's whole footprint within 3.5 km of the column, the larger
+  clouds and the sheets beyond 7 km. About 11–15 % of the sea covered (the ocean between them).
+- The weather map is a seamless 80 km tile at 78 m a texel (was 160 km at 156 m), repeating beyond
+  (by then in the haze), built in steps of a few hundred clouds (≈ 100 ms + 120 ms on a laptop CPU).
+
+**The shape** (`descent/CumulusLayer.jsx`): a low dome that reaches the cloud's top only at its
+highest bumps (no flat plateau); turrets at two scales (≈ 600 m and 240 m) stronger towards the top;
+the base flat but ragged and fading over its lowest 45 m; sheets flat-topped, thinner and broken
+into cloudlets by Worley cells; every edge at least one cloud-buffer pixel soft at its distance (no
+stair-steps when the buffer is enlarged). Lighting, haze and the checkerboard update are unchanged.
+
+**Measured** (SwiftShader CPU rendering at 852 × 393, held frames, same session; not an iPhone GPU):
+
+| | a5edd07 | this build |
+|---|---|---|
+| 1 800 m | 102 ms (clouds 45) | 105 ms (clouds 40) |
+| 900 m | 103 ms (clouds 58) | 92 ms (clouds 36) |
+| 500 m | 101 ms (clouds 42) | 101 ms (clouds 45) |
+| 160 m | 138 ms (clouds 34) | 132 ms (clouds 33) |
+| 9 s afloat | 155 ms (clouds 38) | 167 ms (clouds 44) |
+
+Average of the five: 119.7 → 119.5 ms: the same cost.

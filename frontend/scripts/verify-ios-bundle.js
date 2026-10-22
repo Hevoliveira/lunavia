@@ -115,6 +115,9 @@ const FEATURES = [
   ["Descent: the cumulus layer, one ray-marched pass through a weather map", "cumulus-layer"],
   ["Clouds: each cloud's surface found by bisection (no slicing, no dither)", "its surface found exactly between the last two samples"],
   ["Clouds: empty sky skipped by the weather map's coarse levels", "empty-space skipping"],
+  ["Clouds: broad, low cumulus domes over flat bases (wider than tall)", "a cumulus: a broad, low dome over a flat base"],
+  ["Clouds: heaped puffs on the tops (cauliflower, not a smooth dome)", "heaped, rounded bumps (a cumulus is a cluster of small puffs)"],
+  ["Clouds: thin stratocumulus sheets broken into cloudlets", "a sheet breaks into cloudlets with sky between them"],
   ["One atmosphere for the sky, the sea's haze and the clouds", "the brighter band of haze just over the horizon"],
   ["Descent: the clouds drawn at reduced resolution and composited", "cloud-composite"],
   ["Parachutes: canopies lit through the fabric", "the Sun through the fabric seen from the other side"],
@@ -152,6 +155,7 @@ const REMOVED = [
   ["The cumulus as unions of eroded puffs (towers of balls)", "the vapour crossed"],
   ["The splash as a burst of streak particles", "the streak: where it was a moment ago"],
   ["The NASA cloud cover read by the sea", "beyond the 3D field, the NASA cloud cover: read here, per vertex"],
+  ["The tall cumulus profile (a dome as tall as the cloud is wide)", "widest a little above the base (the body bulges out over a flat, slightly narrower base), a dome above"],
 ];
 
 function sourceText(dir) {

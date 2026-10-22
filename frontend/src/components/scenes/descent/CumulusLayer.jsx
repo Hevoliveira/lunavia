@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { M_PER_UNIT } from "@/data/descentScene";
-import { CUMULUS, COLUMN, cumulusCells, weatherMap, cloudNoise3D } from "@/data/cumulusField";
+import { CUMULUS, COLUMN, cumulusCells, weatherMap, weatherMapSteps, cloudNoise3D } from "@/data/cumulusField";
 import { SKY_GLSL, TONE_GLSL, hazeLength } from "./atmosphere";
 
 /*
  * The cumulus over the recovery area (data/cumulusField), drawn as a layer of vapour, not as
  * objects. One full-screen pass, at reduced resolution into its own buffer, traces each pixel's
- * ray through the cloud layer (820 m to 2.45 km, on the curved Earth) and, step by step:
+ * ray through the cloud layer (820 m to 1.65 km, on the curved Earth) and, step by step:
  * - asks the weather map whether a cloud stands there, how far inside it, and how tall it grows;
  * - shapes the cloud from that: a flat base at the condensation level, a footprint narrowing
  *   towards a rounded top (a dome), its outline broken into lobes and eroded into cauliflower
@@ -86,29 +86,41 @@ float density(vec2 xz, float h, float t, out float hf) {
   // each cloud's own condensation level, within a few tens of metres of the others' (never one
   // razor-flat plane across the whole sky)
   float base = uBase + (w.b - 0.5) * 90.0;
-  hf = (h - base) / (top - base);
-  if (hf <= -0.05 || hf >= 1.0) return 0.0;
+  float depth = top - base;
+  hf = (h - base) / depth;
+  if (hf <= -0.1 || hf >= 1.0) return 0.0;
+  // 0 a cumulus, 1 a stratocumulus sheet
+  float sc = 1.0 - w.a;
   vec3 q = vec3(g.x, h, g.y);
   // each noise read filtered to what a pixel at this distance spans (no aliasing, no speckle)
   float pix = t * uPix;
-  // the cloud's lobes: its footprint, broken up, narrowing as a dome towards a rounded top; a flat base
-  vec4 nb = textureLod(uNoise, q / 2600.0, log2(max(pix / 81.0, 1.0)));
-  // the base flat but ragged: it rises and sags a little with the vapour
-  hf -= (nb.g - 0.5) * 0.06;
+  // the footprint broken up (a cloud's own lobes, a few hundred metres across)
+  vec4 nb = textureLod(uNoise, q / 1500.0, log2(max(pix / 47.0, 1.0)));
+  // the base flat but ragged: it rises and sags by a few metres with the vapour
+  hf -= (nb.g - 0.5) * 24.0 / depth;
   if (hf <= 0.0) return 0.0;
-  // and the turrets: lobes at a third of the scale (cauliflower), where a pixel can hold them
-  float lobes = textureLod(uNoise, q / 900.0 + 0.53, log2(max(pix / 28.0, 1.0))).r;
-  float shape = w.r + (nb.r - 0.5) * 0.5 + (nb.b - 0.5) * 0.2 + (lobes - 0.5) * 0.3 * (0.4 + 0.6 * hf);
-  // widest a little above the base (the body bulges out over a flat, slightly narrower base), a dome above
-  float thr = 0.06 + 0.9 * hf * hf + 0.22 * (1.0 - smoothstep(0.0, 0.22, hf));
-  float d = smoothstep(thr, thr + 0.16, shape) * smoothstep(0.0, 0.05, hf);
+  // and the turrets: heaped, rounded bumps (a cumulus is a cluster of small puffs), two sizes,
+  // stronger towards the top, the smaller only where a pixel can hold them
+  float lobes = textureLod(uNoise, q / 600.0 + 0.53, log2(max(pix / 19.0, 1.0))).r;
+  float lobes2 = pix < 160.0 ? textureLod(uNoise, q / 240.0 + 0.71, log2(max(pix / 7.5, 1.0))).r : 0.5;
+  float shape = w.r + (nb.r - 0.5) * 0.6 + (nb.b - 0.5) * 0.2 + ((lobes - 0.5) * 0.6 + (lobes2 - 0.5) * 0.4) * (0.3 + 0.7 * hf);
+  // a cumulus: a broad, low dome over a flat base, a little narrower just at the base; a
+  // stratocumulus sheet: thin and nearly flat-topped
+  // (the dome reaches the cloud's top only at its highest bumps: no flat-topped plateau)
+  float thr = mix(0.05 + 1.0 * hf * hf + 0.12 * (1.0 - smoothstep(0.0, 0.2, hf)), 0.14 + 0.35 * hf * hf, sc);
+  // the base: flat, but the vapour thins over its lowest few tens of metres (no hard ruled edge).
+  // Every edge at least a buffer pixel soft at this distance: enlarged, it stays smooth (no steps)
+  float aa = min(pix * 0.003, 0.4);
+  float d = smoothstep(thr - aa * 0.5, thr + 0.16 + aa * 0.5, shape) * smoothstep(0.0, min(0.35, max(45.0, pix * 1.5) / depth), hf);
   if (d <= 0.0) return 0.0;
-  // the billows: the edge eroded into cauliflower, at the scale of the cloud's turrets, and finer
-  // close by (only where a pixel can show it)
-  float n2 = textureLod(uNoise, q / 1300.0 + 0.21, log2(max(pix / 41.0, 1.0))).g;
-  float e = smoothstep(0.3, 0.8, n2) * 0.42 * (1.0 - smoothstep(20000.0, 45000.0, t));
+  // a sheet breaks into cloudlets with sky between them (the cells of stratocumulus), and is thinner
+  if (sc > 0.01) d *= mix(1.0, smoothstep(0.32, 0.62, textureLod(uNoise, q / 650.0 + 0.11, log2(max(pix / 20.0, 1.0))).b) * 0.7, sc);
+  // the billows: the edge eroded into cauliflower, at the scale of the turrets, and finer close by
+  // (only where a pixel can show it)
+  float n2 = textureLod(uNoise, q / 800.0 + 0.21, log2(max(pix / 25.0, 1.0))).g;
+  float e = smoothstep(0.3, 0.8, n2) * 0.4 * (1.0 - smoothstep(20000.0, 45000.0, t));
   float fine = 1.0 - smoothstep(2500.0, 7000.0, t);
-  if (fine > 0.0) e += smoothstep(0.3, 0.8, textureLod(uNoise, q / 420.0 + 0.37, log2(max(pix / 13.0, 1.0))).g) * 0.16 * fine;
+  if (fine > 0.0) e += smoothstep(0.3, 0.8, textureLod(uNoise, q / 300.0 + 0.37, log2(max(pix / 9.4, 1.0))).g) * 0.16 * fine;
   // eroded where the cloud thins (its edges and top), its core kept whole
   d = clamp((d - e * (1.0 - d * 0.6)) / max(1.0 - e, 0.05), 0.0, 1.0);
   return d;
@@ -122,10 +134,10 @@ float densityLite(vec2 xz, float h, float lod) {
   float base = uBase + (w.b - 0.5) * 90.0;
   float hf = (h - base) / (top - base);
   if (hf <= 0.0 || hf >= 1.0) return 0.0;
-  vec4 nb = textureLod(uNoise, vec3(g.x, h, g.y) / 2600.0, lod);
-  // widest a little above the base (the body bulges out over a flat, slightly narrower base), a dome above
-  float thr = 0.06 + 0.9 * hf * hf + 0.22 * (1.0 - smoothstep(0.0, 0.22, hf));
-  return smoothstep(thr, thr + 0.16, w.r + (nb.r - 0.5) * 0.55 + (nb.b - 0.5) * 0.25);
+  float sc = 1.0 - w.a;
+  vec4 nb = textureLod(uNoise, vec3(g.x, h, g.y) / 1500.0, lod);
+  float thr = mix(0.05 + 1.0 * hf * hf + 0.12 * (1.0 - smoothstep(0.0, 0.2, hf)), 0.14 + 0.35 * hf * hf, sc);
+  return smoothstep(thr, thr + 0.16, w.r + (nb.r - 0.5) * 0.55 + (nb.b - 0.5) * 0.25) * (1.0 - 0.3 * sc);
 }
 float hg(float c, float g) {
   float g2 = g * g;
@@ -212,7 +224,7 @@ void main() {
       float st = d * SIGMA;
       // the sunlight left after crossing the cloud towards the Sun
       float tau = 0.0;
-      float lod = log2(max(t * uPix / 81.0, 1.0)) + 1.0;
+      float lod = log2(max(t * uPix / 47.0, 1.0)) + 1.0;
       tau += densityLite(p.xz + uSun.xz * 110.0, h + uSun.y * 110.0, lod) * 230.0;
       tau += densityLite(p.xz + uSun.xz * 520.0, h + uSun.y * 520.0, lod + 1.0) * 690.0;
       tau *= SIGMA;
@@ -299,7 +311,8 @@ function buildTextures() {
   const weather = new THREE.DataTexture(weatherMap(), N, N, THREE.RGBAFormat);
   weather.minFilter = THREE.LinearMipmapLinearFilter;
   weather.magFilter = THREE.LinearFilter;
-  weather.wrapS = weather.wrapT = THREE.ClampToEdgeWrapping;
+  // the field is a seamless tile: beyond it the sky repeats (by then deep in the haze)
+  weather.wrapS = weather.wrapT = THREE.RepeatWrapping;
   weather.generateMipmaps = true;
   weather.needsUpdate = true;
   const nN = 32;
@@ -407,7 +420,9 @@ export default function CumulusLayer({ simRef, atmo, passRef = null }) {
       return undefined;
     }
     let alive = true;
-    const steps = [() => cumulusCells(), () => weatherMap(), () => cloudNoise3D(), () => buildTextures()];
+    // the cells, the map a few hundred clouds at a time, the noise, the textures: no step long
+    const map = weatherMapSteps(350);
+    const steps = [() => cumulusCells(), ...map.steps, () => cloudNoise3D(), () => buildTextures()];
     let i = 0;
     let id = 0;
     const run = () => {

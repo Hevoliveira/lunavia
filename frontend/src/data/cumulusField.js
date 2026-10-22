@@ -1,35 +1,45 @@
 /*
- * LUNAVIA — the sky over the recovery area: a field of scattered fair-weather cumulus (pure; tested).
+ * LUNAVIA — the sky over the recovery area: scattered fair-weather cumulus over the open sea
+ * (pure; tested).
  *
  * The clouds are not built from geometry. This module describes the weather; the renderer
  * (components/scenes/descent/CumulusLayer) traces each pixel's ray through the cloud layer and asks,
  * at each point, how much vapour is there:
- * - cumulusCells(): where the clouds are. Separate cells (dart-throwing, a minimum gap between
- *   them), mostly small and a few larger, larger cells growing taller, thinned in broad patches so
- *   the field is uneven, and none near the splashdown column: the last of the descent and the
- *   recovery are in clear air, with the clouds in the distance.
- * - weatherMap(): the cells drawn into a map the shader reads: R the coverage (how far inside a
- *   cell, with a ragged, wind-blown edge), G the cell's top (its height above the base).
- * - cloudNoise3D(): a small tileable 3D noise (R: billowing Perlin–Worley for the shape, G: a
- *   finer Worley for the eroded edges), so a cloud's outline is cauliflower, never a sphere.
+ * - cumulusCells(): where the clouds are and what they are. Mostly cumulus humilis: broad, low
+ *   clouds 2.5 to 4.5 times wider than they are tall (a rounded, bumpy top over a flat base), in
+ *   irregular groups with clear sky between them, mostly small and a few larger; a few thin,
+ *   broken stratocumulus sheets; the rare taller cumulus (still wider than tall) only far off.
+ *   No cloud near the splashdown column, and the larger ones and the sheets farther still: the
+ *   last of the descent and the recovery are under open sky, the clouds around and beyond.
+ * - weatherMap(): the cells drawn into a map the shader reads, each footprint the union of a few
+ *   overlapping blobs with a ragged, wind-blown edge (never a disc): R the coverage, G the cloud's
+ *   top, B its seed, A its kind (cumulus 255, stratocumulus 64). The map is a seamless 80 km tile:
+ *   beyond it the sky repeats, by then deep in the haze.
+ * - cloudNoise3D(): a small tileable 3D noise (R: billowing Perlin–Worley for the shape, G: smooth
+ *   billows for the eroded edges, B: Worley cells), so a cloud's outline is cauliflower, never a
+ *   sphere.
  * Positions are metres in the descent's ground frame (the drogue anchor's frame of
  * data/descentScene: the capsule's final column at x = -DROGUE_DRIFT_M, z = 0).
  */
 import { DROGUE_DRIFT_M } from "./descentScene";
 
 export const CUMULUS = {
-  baseM: 820, // one condensation level (marine fair-weather cumulus)
-  topMinM: 1150,
-  topMaxM: 2450,
-  mapM: 160000, // the weather map's side (the cloud field), centred on the column
-  mapN: 1024,
-  clearM: 6000, // no cloud within this of the splashdown column (edge to centre): the recovery's sky is open overhead
-  rMinM: 380,
-  rMaxM: 1700,
-  gapM: 700, // the least clear air between two clouds' edges
-  coverTarget: 0.2, // about a fifth of the sky
+  baseM: 820, // one condensation level (marine fair-weather cumulus), each cloud within ±45 m of it
+  topMinM: 880, // the lowest puffs' tops
+  topMaxM: 1650, // the rare taller cumulus, far off
+  mapM: 80000, // the weather map's tile (m), centred on the column; it repeats beyond
+  mapN: 1024, // 78 m a texel
+  clearM: 3500, // no cloud's edge within this of the splashdown column
+  bigClearM: 7000, // the larger clouds (radius over 650 m) and the sheets keep farther off
+  rMinM: 300,
+  rMaxM: 1100,
+  gapM: 200, // the least clear air between two clouds' main bodies
+  coverTarget: 0.22, // about a fifth of the sky
 };
 export const COLUMN = { x: -DROGUE_DRIFT_M, z: 0 };
+/** Cloud kinds. */
+export const CU = 0;
+export const SC = 1;
 
 function rng(seed) {
   let s = seed >>> 0;
@@ -38,122 +48,286 @@ function rng(seed) {
     return s / 4294967296;
   };
 }
-// a smooth 2D value noise (for the field's uneven patches and the cells' ragged outlines)
-function valueNoise2(seed) {
+// a smooth 2D value noise, periodic with period P (its grid's size)
+function valueNoise2(seed, P = 64) {
   const R = rng(seed);
-  const N = 64;
-  const g = new Float32Array(N * N).map(() => R());
+  const g = new Float32Array(P * P).map(() => R());
   const f = (x) => x * x * (3 - 2 * x);
   return (x, y) => {
     const xi = Math.floor(x);
     const yi = Math.floor(y);
     const fx = f(x - xi);
     const fy = f(y - yi);
-    const at = (i, j) => g[(((j % N) + N) % N) * N + (((i % N) + N) % N)];
+    const at = (i, j) => g[(((j % P) + P) % P) * P + (((i % P) + P) % P)];
     const a = at(xi, yi) + (at(xi + 1, yi) - at(xi, yi)) * fx;
     const b = at(xi, yi + 1) + (at(xi + 1, yi + 1) - at(xi, yi + 1)) * fx;
     return a + (b - a) * fy;
   };
 }
+const T = () => CUMULUS.mapM;
+/** The shortest offset from a to b on the tile (it wraps). */
+export function wrapDelta(d) {
+  const t = T();
+  return d - t * Math.round(d / t);
+}
+/** Distance on the tile from the column (the nearest of its repeats). */
+export function fromColumn(x, z) {
+  return Math.hypot(wrapDelta(x - COLUMN.x), wrapDelta(z - COLUMN.z));
+}
+
+/** How far a cloud's footprint can reach from its centre (m): its puffs, their lobes and ragged edge. */
+export function extent(c) {
+  return c.r * c.elong * (c.kind === SC ? 1.5 : 1.75);
+}
 
 let CELLS = null;
-/** The cumulus cells: [{ x, z, r, top, seed }] (metres; top = the cell's top above the sea). */
-export function cumulusCells(seed = 20261022) {
-  if (CELLS && seed === 20261022) return CELLS;
+/**
+ * The clouds: [{ x, z, r, top, seed, kind, ang, elong, blobs: [{ dx, dz, r }] }] (metres; top = the
+ * cloud's top above the sea; blobs relative to x, z before the cloud's rotation ang and its
+ * stretch elong along it).
+ */
+export function cumulusCells(seed = 20261023) {
+  if (CELLS && seed === 20261023) return CELLS;
   const C = CUMULUS;
   const R = rng(seed);
-  const patch = valueNoise2(seed + 7);
-  const half = C.mapM / 2;
+  const t = C.mapM;
+  // broad patches of more and fewer clouds (periodic over the tile: 4 patches across)
+  const patch = valueNoise2(seed + 7, 4);
+  const patchAt = (x, z) => patch(((x - COLUMN.x) / t) * 4, ((z - COLUMN.z) / t) * 4);
   const cells = [];
-  // a spatial hash for the gap test
-  const bin = 4000;
+  // a spatial hash for the gap test (on the tile)
+  const bin = 2500;
+  const nb = Math.ceil(t / bin);
   const grid = new Map();
-  const key = (i, j) => i * 100003 + j;
-  const near = (x, z, r) => {
+  const key = (i, j) => (((i % nb) + nb) % nb) * 100003 + (((j % nb) + nb) % nb);
+  // spacing by a cloud's typical footprint (its heap's main body): within a group, puffs of two
+  // neighbours may touch, as real cumulus groups do; the sheets are checked by their full reach
+  const reach = (c) => c.r * c.elong * 1.1;
+  const sheetList = [];
+  let widest = 0; // the largest cumulus reach placed so far (the search must cover it)
+  const clash = (x, z, r, gap) => {
+    for (const c of sheetList) if (Math.hypot(wrapDelta(c.x - x), wrapDelta(c.z - z)) < extent(c) + r + gap) return true;
     const i0 = Math.floor(x / bin);
     const j0 = Math.floor(z / bin);
-    for (let i = i0 - 1; i <= i0 + 1; i++)
-      for (let j = j0 - 1; j <= j0 + 1; j++) {
+    const span = Math.ceil((r + widest + gap) / bin);
+    for (let i = i0 - span; i <= i0 + span; i++)
+      for (let j = j0 - span; j <= j0 + span; j++) {
         const list = grid.get(key(i, j));
         if (!list) continue;
-        for (const c of list) if (Math.hypot(c.x - x, c.z - z) < c.r + r + C.gapM) return true;
+        for (const c of list) if (Math.hypot(wrapDelta(c.x - x), wrapDelta(c.z - z)) < reach(c) + r + gap) return true;
       }
     return false;
   };
-  let area = 0;
-  const target = C.coverTarget * C.mapM * C.mapM * 1.2; // the circles' area: their ragged edges and soft rims cover less
-  let tries = 0;
-  while (area < target && tries++ < 60000) {
-    const x = COLUMN.x + (R() * 2 - 1) * half * 0.97;
-    const z = COLUMN.z + (R() * 2 - 1) * half * 0.97;
-    // mostly small clouds, a few larger (heavy-tailed)
-    const r = C.rMinM + (C.rMaxM - C.rMinM) * Math.pow(R(), 1.7);
-    const sd = R();
-    const tall = R();
-    // broad patches of more and fewer clouds: never a lattice
-    if (patch(x / 22000, z / 22000) < 0.18 + 0.4 * R()) continue;
-    if (Math.hypot(x - COLUMN.x, z - COLUMN.z) < C.clearM + r) continue;
-    if (near(x, z, r)) continue;
-    // larger cells have grown taller (a few towers), all from the one base
-    const depth = Math.min(C.topMaxM - C.baseM, Math.max(C.topMinM - C.baseM, r * (0.95 + 0.9 * tall * tall)));
-    const c = { x, z, r, top: C.baseM + depth, seed: sd };
+  const add = (c) => {
     cells.push(c);
-    const k = key(Math.floor(x / bin), Math.floor(z / bin));
+    if (c.kind === SC) {
+      sheetList.push(c);
+      return;
+    }
+    widest = Math.max(widest, reach(c));
+    const k = key(Math.floor(c.x / bin), Math.floor(c.z / bin));
     if (!grid.has(k)) grid.set(k, []);
     grid.get(k).push(c);
-    area += Math.PI * r * r;
+  };
+  const blobsFor = (kind) => {
+    if (kind === SC) {
+      // a sheet: several broad, low patches strung along its length
+      const n = 4 + Math.floor(R() * 3);
+      const out = [{ dx: 0, dz: 0, r: 0.7, h: 1 }];
+      for (let i = 0; i < n; i++) {
+        const a = R() * Math.PI * 2;
+        const d = 0.3 + 0.55 * R();
+        out.push({ dx: Math.cos(a) * d, dz: Math.sin(a) * d * 0.55, r: 0.45 + 0.3 * R(), h: 0.75 + 0.25 * R() });
+      }
+      return out;
+    }
+    // a cumulus is a heap of puffs: a central one, the tallest, and several smaller and lower
+    // round it, each its own rounded dome (a lumpy outline and a heaped top, never one disc)
+    const n = 3 + Math.floor(R() * 5);
+    const out = [{ dx: 0, dz: 0, r: 0.58 + 0.12 * R(), h: 1 }];
+    for (let i = 0; i < n; i++) {
+      const a = R() * Math.PI * 2;
+      const d = 0.25 + 0.5 * R();
+      out.push({ dx: Math.cos(a) * d, dz: Math.sin(a) * d, r: 0.3 + 0.25 * R(), h: 0.5 + 0.45 * R() });
+    }
+    return out;
+  };
+  let area = 0;
+  const target = C.coverTarget * t * t;
+  // 1. a few broken stratocumulus sheets, thin and long, well away from the splashdown
+  let sheets = 0;
+  for (let tries = 0; sheets < 7 && tries < 400; tries++) {
+    const x = COLUMN.x + (R() - 0.5) * t;
+    const z = COLUMN.z + (R() - 0.5) * t;
+    const r = 1500 + 1500 * R();
+    const elong = 1.6 + 0.8 * R();
+    if (fromColumn(x, z) < C.bigClearM + 3000 + extent({ r, elong, kind: SC })) continue;
+    if (clash(x, z, extent({ r, elong, kind: SC }), 1500)) continue;
+    const depth = 130 + 110 * R();
+    add({ x, z, r, top: C.baseM + depth, seed: R(), kind: SC, ang: R() * Math.PI, elong, blobs: blobsFor(SC) });
+    area += Math.PI * r * r * elong * 0.55;
+    sheets++;
   }
-  if (seed === 20261022) CELLS = cells;
+  // 2. cumulus in irregular groups: a group's centre, then its clouds round it
+  let tries = 0; // a bounded amount of work (the field is made on the device as the scene opens)
+  for (let g = 0; g < 12000 && area < target && tries < 50000; g++) {
+    const gx = COLUMN.x + (R() - 0.5) * t;
+    const gz = COLUMN.z + (R() - 0.5) * t;
+    // fewer groups in the thin patches: never a lattice
+    if (patchAt(gx, gz) < 0.15 + 0.45 * R()) continue;
+    const k = 1 + Math.floor(Math.pow(R(), 1.3) * 7);
+    const spread = 500 + 2200 * R();
+    let added = 0;
+    for (let i = 0; i < k * 5 && i < 40 && added < k; i++, tries++) {
+      const a = R() * Math.PI * 2;
+      const d = i === 0 ? 0 : spread * Math.sqrt(R());
+      const x = gx + Math.cos(a) * d;
+      const z = gz + Math.sin(a) * d * 0.7;
+      // mostly small clouds, a few larger (heavy-tailed); a group's first one the larger
+      let r = C.rMinM + (C.rMaxM - C.rMinM) * Math.pow(R(), 1.8);
+      if (i === 0) r = Math.min(C.rMaxM, r * 1.35);
+      const elong = 1.05 + 0.3 * R();
+      const ext = extent({ r, elong, kind: CU });
+      const dc = fromColumn(x, z);
+      if (dc < C.clearM + ext) continue;
+      if (r > 650 && dc < C.bigClearM + ext) continue;
+      if (clash(x, z, r * elong * 1.1, C.gapM)) continue;
+      // broad, low cumulus (2.5 to 4.5 times wider than tall); the rare taller one only far off
+      const tallOne = dc > 14000 && R() < 0.1;
+      let depth = r * (tallOne ? 0.72 + 0.22 * R() : 0.44 + 0.3 * Math.pow(R(), 2));
+      depth = Math.min(C.topMaxM - C.baseM, Math.max(C.topMinM - C.baseM, depth));
+      add({ x, z, r, top: C.baseM + depth, seed: R(), kind: CU, ang: R() * Math.PI, elong, blobs: blobsFor(CU) });
+      area += Math.PI * r * r * 0.95;
+      added++;
+    }
+  }
+  if (seed === 20261023) CELLS = cells;
   return cells;
 }
 
-let MAP = null;
-/**
- * The weather map: Uint8Array RGBA, mapN × mapN over mapM metres centred on the column (texel
- * (i, j) at x = COLUMN.x + (i + 0.5 - N/2) · mapM/N, likewise z with j). R: coverage 0..255
- * (1 at a cell's heart, falling to 0 at its ragged edge); G: the top's height in the layer
- * ((top - topMin) / (topMax - topMin)); B: the cell's seed (variety); A: 255.
- */
-export function weatherMap(cells = cumulusCells(), N = CUMULUS.mapN) {
-  if (MAP && N === CUMULUS.mapN && cells === CELLS) return MAP;
+// painting one cloud into the map: its blobs' union, on the tile (wrapping)
+function painter(N) {
   const C = CUMULUS;
   const out = new Uint8Array(N * N * 4);
   const cov = new Float32Array(N * N);
   const px = C.mapM / N;
-  const rough = valueNoise2(91);
-  for (const c of cells) {
-    const reach = c.r * 1.25;
-    const i0 = Math.max(0, Math.floor((c.x - reach - COLUMN.x) / px + N / 2));
-    const i1 = Math.min(N - 1, Math.ceil((c.x + reach - COLUMN.x) / px + N / 2));
-    const j0 = Math.max(0, Math.floor((c.z - reach - COLUMN.z) / px + N / 2));
-    const j1 = Math.min(N - 1, Math.ceil((c.z + reach - COLUMN.z) / px + N / 2));
-    const topN = (c.top - C.topMinM) / (C.topMaxM - C.topMinM);
-    for (let j = j0; j <= j1; j++)
-      for (let i = i0; i <= i1; i++) {
-        const x = COLUMN.x + (i + 0.5 - N / 2) * px;
+  // the ragged edge's noise, periodic over the tile (128 across: 625 m), made once per texel
+  const rough = valueNoise2(91, 128);
+  const rn = new Float32Array(N * N);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) rn[j * N + i] = rough((i / N) * 128, (j / N) * 128) - 0.5;
+  const paint = (c) => {
+    const ca = Math.cos(c.ang);
+    const sa = Math.sin(c.ang);
+    const kindA = c.kind === SC ? 64 : 255;
+    // the outline's lobes: sin(3a + p3) and sin(5a + p5), from the direction's cosine and sine
+    const p3c = Math.cos(c.seed * 17);
+    const p3s = Math.sin(c.seed * 17);
+    const p5c = Math.cos(c.seed * 31);
+    const p5s = Math.sin(c.seed * 31);
+    // each cloud reads the edge noise at its own offset (texels)
+    const off = Math.floor(c.seed * 997);
+    for (const b of c.blobs) {
+      // this puff's own top (the heap's heart the tallest)
+      const top = C.baseM + (c.top - C.baseM) * b.h;
+      const topN = Math.min(1, Math.max(0, (top - C.topMinM) / (C.topMaxM - C.topMinM)));
+      const bx0 = b.dx * c.r * c.elong;
+      const bz0 = b.dz * c.r;
+      const bx = c.x + bx0 * ca - bz0 * sa;
+      const bz = c.z + bx0 * sa + bz0 * ca;
+      const br = b.r * c.r;
+      const reach = br * c.elong * 1.55;
+      const rmax2 = (br * 1.55) * (br * 1.55);
+      const i0 = Math.floor((bx - reach - COLUMN.x) / px + N / 2);
+      const i1 = Math.ceil((bx + reach - COLUMN.x) / px + N / 2);
+      const j0 = Math.floor((bz - reach - COLUMN.z) / px + N / 2);
+      const j1 = Math.ceil((bz + reach - COLUMN.z) / px + N / 2);
+      for (let j = j0; j <= j1; j++) {
         const z = COLUMN.z + (j + 0.5 - N / 2) * px;
-        const dx = x - c.x;
-        const dz = z - c.z;
-        // a ragged, lobed outline (the noise on the angle and on the ground), stretched a little downwind (+x)
-        const a = Math.atan2(dz, dx);
-        const lobe = 1 + 0.22 * Math.sin(a * 3 + c.seed * 17) + 0.12 * Math.sin(a * 5 + c.seed * 31);
-        const n = rough(x / 1400 + c.seed * 9, z / 1400) - 0.5;
-        const d = Math.hypot(dx / 1.15, dz) / (c.r * (lobe + 0.45 * n));
-        const v = Math.max(0, 1 - d * d);
-        const k = j * N + i;
-        if (v > cov[k]) {
-          cov[k] = v;
-          out[k * 4 + 1] = Math.round(Math.min(1, Math.max(0, topN)) * 255);
-          out[k * 4 + 2] = Math.round(c.seed * 255);
+        const dz = z - bz;
+        const jj = ((j % N) + N) % N;
+        const jr = ((((j + off) % N) + N) % N) * N;
+        for (let i = i0; i <= i1; i++) {
+          const dx = COLUMN.x + (i + 0.5 - N / 2) * px - bx;
+          // into the cloud's own axes: stretched along ang, the edge ragged
+          const u = (dx * ca + dz * sa) / c.elong;
+          const v = -dx * sa + dz * ca;
+          const q2 = u * u + v * v;
+          if (q2 >= rmax2) continue;
+          const q = Math.sqrt(q2) || 1;
+          const co = u / q;
+          const si = v / q;
+          const s3 = 3 * si - 4 * si * si * si;
+          const c3 = 4 * co * co * co - 3 * co;
+          const si2 = si * si;
+          const co2 = co * co;
+          const s5 = si * (16 * si2 * si2 - 20 * si2 + 5);
+          const c5 = co * (16 * co2 * co2 - 20 * co2 + 5);
+          const lobe = 1 + 0.16 * (s3 * p3c + c3 * p3s) + 0.1 * (s5 * p5c + c5 * p5s);
+          const ii = ((i % N) + N) % N;
+          const n = rn[jr + ((((i + off) % N) + N) % N)];
+          const d = q / (br * (lobe + 0.5 * n));
+          const val = 1 - d * d;
+          if (val <= 0) continue;
+          const k = jj * N + ii;
+          // the union of the blobs (each keeps its own rounded profile: the cloud is highest over
+          // a blob's heart, never a flat plateau); the stronger one's top, seed and kind
+          if (val > cov[k]) {
+            cov[k] = val;
+            out[k * 4 + 1] = Math.round(topN * 255);
+            out[k * 4 + 2] = Math.round(c.seed * 255);
+            out[k * 4 + 3] = kindA;
+          }
         }
       }
-  }
-  for (let k = 0; k < N * N; k++) {
-    out[k * 4] = Math.round(Math.min(1, cov[k]) * 255);
-    out[k * 4 + 3] = 255;
-  }
+    }
+  };
+  const finish = () => {
+    for (let k = 0; k < N * N; k++) {
+      out[k * 4] = Math.round(Math.min(1, cov[k]) * 255);
+      if (cov[k] <= 0) out[k * 4 + 3] = 255;
+    }
+    return out;
+  };
+  return { paint, finish };
+}
+
+let MAP = null;
+/**
+ * The weather map: Uint8Array RGBA, mapN × mapN over the mapM tile centred on the column (texel
+ * (i, j) at x = COLUMN.x + (i + 0.5 - N/2) · mapM/N, likewise z with j), seamless when repeated.
+ * R: coverage 0..255 (1 at a cloud's heart, 0 at its ragged edge); G: the top's height in the
+ * layer ((top - topMin) / (topMax - topMin)); B: the cloud's seed; A: its kind (255 cumulus,
+ * 64 a stratocumulus sheet).
+ */
+export function weatherMap(cells = cumulusCells(), N = CUMULUS.mapN) {
+  if (MAP && N === CUMULUS.mapN && cells === CELLS) return MAP;
+  const { paint, finish } = painter(N);
+  cells.forEach(paint);
+  const out = finish();
   if (N === CUMULUS.mapN && cells === CELLS) MAP = out;
   return out;
+}
+/** The same map made in steps (a few hundred clouds each), so the scene never stalls on it. */
+export function weatherMapSteps(per = 350) {
+  const holder = { map: null };
+  if (MAP) {
+    holder.map = MAP;
+    return { steps: [], holder };
+  }
+  const steps = [];
+  let p = null;
+  let cells = null;
+  steps.push(() => {
+    cells = cumulusCells();
+    p = painter(CUMULUS.mapN);
+  });
+  const n = Math.ceil(cumulusCells().length / per);
+  for (let s = 0; s < n; s++) steps.push(() => cells.slice(s * per, (s + 1) * per).forEach(p.paint));
+  steps.push(() => {
+    MAP = p.finish();
+    holder.map = MAP;
+  });
+  return { steps, holder };
 }
 
 /** The field's share of the sky inside a radius of the column (from the map), for the tests. */

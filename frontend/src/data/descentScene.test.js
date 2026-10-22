@@ -24,7 +24,7 @@ import {
   u,
 } from "./descentScene";
 import { CM_R } from "./csmDesign";
-import { COLUMN, CUMULUS, cloudNoise3D, coverFraction, cumulusCells, weatherMap } from "./cumulusField";
+import { CU, CUMULUS, SC, cloudNoise3D, coverFraction, cumulusCells, extent, fromColumn, weatherMap, wrapDelta } from "./cumulusField";
 import { BAND_A, BAND_B, MSS_TOTAL, MSS_UNRESOLVED, WIND, meanSquareSlope, oceanBand } from "./oceanSpectrum";
 import { CHUTES } from "./reentryPhysics";
 
@@ -85,45 +85,80 @@ describe("the sea: a recovery sea state at its real size", () => {
 
 describe("the clouds: scattered fair-weather cumulus, traced through a weather map", () => {
   const cells = cumulusCells();
-  test("one flat base, tops of varied height, mostly small clouds and a few large ones", () => {
-    expect(cells.length).toBeGreaterThan(500);
-    cells.forEach((c) => {
-      expect(c.top).toBeGreaterThanOrEqual(CUMULUS.topMinM - 1e-6);
-      expect(c.top).toBeLessThanOrEqual(CUMULUS.topMaxM + 1e-6);
+  const cu = cells.filter((c) => c.kind === CU);
+  const sc = cells.filter((c) => c.kind === SC);
+  const depth = (c) => c.top - CUMULUS.baseM;
+  test("broad cumulus, wider than tall: no towers, and no flat discs", () => {
+    expect(cu.length).toBeGreaterThan(500);
+    cu.forEach((c) => {
       expect(c.r).toBeGreaterThanOrEqual(CUMULUS.rMinM);
-      expect(c.r).toBeLessThanOrEqual(CUMULUS.rMaxM);
+      expect(c.r).toBeLessThanOrEqual(CUMULUS.rMaxM * 1.35 + 1e-6);
+      expect(c.top).toBeLessThanOrEqual(CUMULUS.topMaxM + 1e-6);
+      const aspect = (2 * c.r) / depth(c); // width over height
+      expect(aspect).toBeGreaterThanOrEqual(2); // never a tower: every cloud at least twice as wide as tall
+      expect(aspect).toBeLessThanOrEqual(5); // nor a flat platform: a cloud has real depth
     });
-    const r = cells.map((c) => c.r).sort((a, b) => a - b);
+    // most of them 2.5 to 4.5 times wider than tall (cumulus humilis)
+    const humilis = cu.filter((c) => (2 * c.r) / depth(c) >= 2.5).length;
+    expect(humilis / cu.length).toBeGreaterThan(0.85);
+    // the taller ones only far off: none within 14 km of the splashdown
+    cu.filter((c) => (2 * c.r) / depth(c) < 2.5).forEach((c) => expect(fromColumn(c.x, c.z)).toBeGreaterThan(14000));
+    // varied sizes, mostly small (heavy-tailed)
+    const r = cu.map((c) => c.r).sort((a, b) => a - b);
     expect(r[Math.floor(r.length * 0.9)] / r[Math.floor(r.length * 0.1)]).toBeGreaterThan(2);
-    expect(r[Math.floor(r.length / 2)]).toBeLessThan((CUMULUS.rMinM + CUMULUS.rMaxM) / 2); // heavy-tailed
-    // cumulus, not towers: no cloud more than about twice as tall as its radius
-    cells.forEach((c) => expect(c.top - CUMULUS.baseM).toBeLessThanOrEqual(Math.max(CUMULUS.topMinM - CUMULUS.baseM, 1.85 * c.r) + 1e-6));
+    expect(r[Math.floor(r.length / 2)]).toBeLessThan((CUMULUS.rMinM + CUMULUS.rMaxM) / 2);
+    // each a heap of puffs (several rounded domes, the heart the tallest), never one round body
+    cu.forEach((c) => {
+      expect(c.blobs.length).toBeGreaterThanOrEqual(4);
+      expect(Math.max(...c.blobs.map((b) => b.h))).toBe(1);
+    });
+    // a few thin, broken stratocumulus sheets, far from the splashdown
+    expect(sc.length).toBeGreaterThan(0);
+    sc.forEach((c) => {
+      expect(depth(c)).toBeLessThan(260);
+      expect(fromColumn(c.x, c.z) - extent(c)).toBeGreaterThan(CUMULUS.bigClearM);
+    });
   });
-  test("separate clouds with clear air between them, and none near the splashdown", () => {
-    // every pair of neighbours at least the gap apart, edge to edge (a sweep along x)
-    const byX = [...cells].sort((p, q) => p.x - q.x);
-    const reach = 2 * CUMULUS.rMaxM + CUMULUS.gapM;
+  test("clear air between the clouds, and an open sky over the splashdown", () => {
+    // every pair of neighbours apart by at least the gap, main body to main body (on the tile)
+    const body = (c) => (c.kind === SC ? extent(c) : c.r * c.elong * 1.1);
     let least = Infinity;
+    const byX = [...cells].sort((p, q) => p.x - q.x);
     for (let i = 0; i < byX.length; i++)
-      for (let j = i + 1; j < byX.length && byX[j].x - byX[i].x < reach; j++) {
-        const d = Math.hypot(byX[i].x - byX[j].x, byX[i].z - byX[j].z);
-        least = Math.min(least, d - byX[i].r - byX[j].r);
+      for (let j = 0; j < byX.length; j++) {
+        if (i === j) continue;
+        const dx = wrapDelta(byX[i].x - byX[j].x);
+        if (Math.abs(dx) > 25000) continue;
+        const d = Math.hypot(dx, wrapDelta(byX[i].z - byX[j].z));
+        least = Math.min(least, d - body(byX[i]) - body(byX[j]));
       }
     expect(least).toBeGreaterThanOrEqual(CUMULUS.gapM - 1e-6);
-    // the last of the descent and the recovery are in clear air: the nearest cloud's edge kilometres off
-    cells.forEach((c) => expect(Math.hypot(c.x - COLUMN.x, c.z - COLUMN.z) - c.r).toBeGreaterThanOrEqual(CUMULUS.clearM - 1e-6));
+    // no cloud's whole footprint (its puffs and ragged edge) within 3.5 km of the splashdown column,
+    // the larger ones farther still
+    cells.forEach((c) => {
+      expect(fromColumn(c.x, c.z) - extent(c)).toBeGreaterThanOrEqual(CUMULUS.clearM - 1e-6);
+      if (c.r > 650) expect(fromColumn(c.x, c.z) - extent(c)).toBeGreaterThanOrEqual(CUMULUS.bigClearM - 1e-6);
+    });
   });
-  test("about a fifth of the sky covered: never a blanket, never empty", () => {
-    const N = 256;
+  test("moderate cover, the sea seen between the clouds; the map a seamless tile", () => {
+    const N = 512;
     const map = weatherMap(cells, N);
-    const near = coverFraction(map, N, 30000);
-    const all = coverFraction(map, N, 75000);
-    expect(near).toBeGreaterThan(0.08);
-    expect(near).toBeLessThan(0.32);
-    expect(all).toBeGreaterThan(0.12);
+    const near = coverFraction(map, N, 20000);
+    const all = coverFraction(map, N, 39000);
+    expect(near).toBeGreaterThan(0.06);
+    expect(near).toBeLessThan(0.3);
+    expect(all).toBeGreaterThan(0.08);
     expect(all).toBeLessThan(0.3);
-    // within the clear zone: no cover at all
-    expect(coverFraction(map, N, CUMULUS.clearM * 0.9)).toBe(0);
+    // nothing over the splashdown
+    expect(coverFraction(map, N, CUMULUS.clearM * 0.95)).toBe(0);
+    // it wraps without a seam (clouds crossing the edge continue on the other side)
+    let inner = 0;
+    let wrap = 0;
+    for (let j = 0; j < N; j++) {
+      inner += Math.abs(map[(j * N + N / 2) * 4] - map[(j * N + N / 2 - 1) * 4]);
+      wrap += Math.abs(map[(j * N) * 4] - map[(j * N + N - 1) * 4]);
+    }
+    expect(wrap).toBeLessThan(inner * 2 + 200);
   });
   test("the 3D noise wraps on every axis (no seam where it repeats)", () => {
     const N = 32;
@@ -150,6 +185,11 @@ describe("the clouds: scattered fair-weather cumulus, traced through a weather m
     // while the view holds still, half the pixels each frame, in whole 2 x 2 quads (a GPU shades quads)
     expect(src).toMatch(/mod\(floor\(gl_FragCoord\.x \* 0\.5\) \+ floor\(gl_FragCoord\.y \* 0\.5\) \+ uPhase, 2\.0\)/);
     expect(src).toMatch(/last\.dir\.angleTo\(dir\) < U\.uPix\.value \* 0\.5/);
+    // cumulus as low domes reaching their tops only at their bumps; stratocumulus sheets thin and broken
+    expect(src).toMatch(/float sc = 1\.0 - w\.a;/);
+    expect(src).toMatch(/0\.05 \+ 1\.0 \* hf \* hf/);
+    // every edge at least a buffer pixel soft (enlarged, no stair-steps)
+    expect(src).toMatch(/float aa = min\(pix \* 0\.003, 0\.4\);/);
     // the sky, the sea's haze and the clouds' haze are one atmosphere
     expect(src).toMatch(/SKY_GLSL/);
     expect(read("components/scenes/descent/Ocean.jsx")).toMatch(/SKY_GLSL/);
