@@ -27,6 +27,9 @@ export default function ControlRoomView({ onLaunch, saved = null, saveProblem = 
   const [confirming, setConfirming] = useState(false);
   const [problemSeen, setProblemSeen] = useState(false);
   const pressLaunch = () => (saved ? setConfirming(true) : startCountdown());
+  // the right-hand panel: the saved mission, or why a saved mission cannot be restored
+  const problemShown = !saved && !!saveProblem && !problemSeen;
+  const panel = !launching && (!!saved || problemShown);
 
   return (
     <div
@@ -64,7 +67,7 @@ export default function ControlRoomView({ onLaunch, saved = null, saveProblem = 
       </div>
 
       {/* Center: giant countdown or CTA (beside a saved mission, centred in the space left of it) */}
-      <div className={`absolute inset-0 flex flex-col items-center justify-center px-6 ${saved && !launching ? "control-beside-save" : ""}`}>
+      <div className={`absolute inset-0 flex flex-col items-center justify-center px-6 ${panel ? "control-beside-save" : ""}`}>
         {!launching && (
           <>
             <div className="font-mono text-[11px] tracking-[0.4em] text-zinc-400 mb-4 short:mb-2 short:mt-10 scan-in">
@@ -86,7 +89,7 @@ export default function ControlRoomView({ onLaunch, saved = null, saveProblem = 
               LAUNCH SEQUENCE — INITIATE
               <span className="inline-block w-3 h-3 rounded-full bg-[#FF3B00] blink" />
             </button>
-            <div className={`mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500 ${saved ? "short:hidden" : ""}`}>
+            <div className={`mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500 ${panel ? "short:hidden" : ""}`}>
               PRESS TO BEGIN · TERMINAL COUNT, LAUNCH AND EARTH DEPARTURE ARE AUTOMATIC
             </div>
           </>
@@ -117,9 +120,9 @@ export default function ControlRoomView({ onLaunch, saved = null, saveProblem = 
           <SavedMissionCard save={saved} lang={lang} onResume={onResume} className="w-[260px] short:w-[196px] narrow:w-[176px]" />
         </div>
       )}
-      {!launching && !saved && saveProblem && !problemSeen && (
-        <div className="absolute inset-y-0 right-8 short:right-4 safe-mr flex items-center pointer-events-none z-20">
-          <SaveProblemNote status={saveProblem} lang={lang} onDismiss={() => setProblemSeen(true)} />
+      {!launching && problemShown && (
+        <div className="absolute inset-y-0 right-8 short:right-4 narrow:right-3 safe-mr flex items-center pointer-events-none z-20">
+          <SaveProblemNote status={saveProblem} lang={lang} onDismiss={() => setProblemSeen(true)} className="w-[260px] short:w-[196px] narrow:w-[176px]" />
         </div>
       )}
       <NewMissionConfirm

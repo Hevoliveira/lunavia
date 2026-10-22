@@ -131,10 +131,10 @@ export function NewMissionConfirm({ open, lang = "en", onCancel, onConfirm }) {
 }
 
 /** A saved mission that cannot be resumed (damaged, or from a newer version): said once, plainly. */
-export function SaveProblemNote({ status, lang = "en", onDismiss }) {
+export function SaveProblemNote({ status, lang = "en", onDismiss, className = "" }) {
   const t = T(lang);
   return (
-    <div className="pointer-events-auto bg-black/70 backdrop-blur-sm border-l-2 border-[#f5c451] px-4 py-3 short:px-3 short:py-2 text-left max-w-[280px]" data-testid="save-problem" data-status={status}>
+    <div className={`pointer-events-auto bg-black/70 backdrop-blur-sm border-l-2 border-[#f5c451] px-4 py-3 short:px-3 short:py-2 text-left ${className}`} data-testid="save-problem" data-status={status}>
       <div className="font-mono text-[9px] tracking-[0.28em] text-[#f5c451]">● {t.damagedTitle}</div>
       <p className="font-mono text-[9px] short:text-[8px] tracking-[0.08em] leading-relaxed text-zinc-300 mt-1.5">{status === "unsupported" ? t.unsupportedBody : t.damagedBody}</p>
       <button type="button" onClick={onDismiss} data-testid="save-problem-ok" className="mt-2 font-mono text-[10px] tracking-[0.3em] text-zinc-300 hover:text-white px-3 py-1.5 border border-white/20 min-h-[36px]">
