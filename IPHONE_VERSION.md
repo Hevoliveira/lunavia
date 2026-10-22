@@ -1,17 +1,21 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 8691a17**.
+This folder installs **BUILD 2a8b97d**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 8691a17 · 2026-10-22 20:29 UTC**
+> **LUNAVIA iOS · BUILD 2a8b97d · 2026-10-22 22:04 UTC**
 
-It has the descent and splashdown of the reviewed prototypes (the sea, the framing of the whole
-parachute assembly, the splash and the released parachutes), with the clouds reshaped: broad,
-low cumulus spread across the sky in scattered groups, wider than they are tall, with open sky
-over the splashdown.
+It adds **save and resume**: an unfinished official mission is kept on the iPhone at each safe
+checkpoint (descent ready, landing complete, docking ready, docking complete, Earth reentry
+ready) and, after the app is closed, THE ROAD TO THE MOON shows SAVED MISSION AVAILABLE with
+RESUME MISSION (CONTINUAR MISSÃO in Portuguese). Everything else — the launch, the four
+destinations, the landing, the docking, the return, the clouds, the sea and the splashdown — is
+as in BUILD 8691a17.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **8691a17** is the previous release: the same game, but closing the app lost an unfinished
+  mission (no RESUME MISSION);
 - **a5edd07** is the review build of the two prototypes (branch `claude/descent-prototypes`): the
   same sea, framing and splashdown, but the clouds still too tall (white towers and mountains on
   the horizon during the low descent);
@@ -120,10 +124,33 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | A faster descent: the sea and the clouds do only the work a pixel can show (most of the speed lost in the previous release recovered), wind ripples on the near water, squat distant cumulus, and the released parachutes lying down on the water as they reach it and going under as one sheet | #28 | 6906966, a0b5ec2 |
 | Descent and splashdown prototypes (review build): scattered cumulus traced through a weather map (no puff towers), the sea from a calibrated wave spectrum with a short-crested swell (no stripes) and one atmosphere for sky, sea and clouds, the whole parachute assembly framed at 160 m with its lines visible, spray as masses of water at contact, and the released parachutes falling on and lying downwind on the sea | — | a5edd07 |
 | Natural cloud formations: broad, low cumulus (2.5–4.5 times wider than tall) built as heaps of puffs, scattered in irregular groups with clear sky between them, a few thin broken stratocumulus sheets far off, open sky over the splashdown, taller cumulus only far away | — | 8691a17 |
+| Mission save and resume: automatic checkpoints (LUNAR DESCENT READY, LUNAR LANDING COMPLETE, DOCKING READY, DOCKING COMPLETE, EARTH REENTRY READY), kept in the app's own files and in the web view; RESUME MISSION on the startup screen and in the game menu; START A NEW MISSION? before a save is replaced; an interrupted maneuver flown again from the last safe checkpoint | — | 2a8b97d |
+
+## Try save and resume on the iPhone
+
+Not yet tried on a physical iPhone; the checks below were run in a desktop browser.
+1. Start a mission (LAUNCH SEQUENCE — INITIATE, MISSIONS, a destination, a difficulty):
+   MISSION CHECKPOINT SAVED · LUNAR DESCENT READY appears at the top.
+2. Close LUNAVIA from the app switcher (swipe it up), open it again: THE ROAD TO THE MOON shows
+   SAVED MISSION AVAILABLE (destination, difficulty, checkpoint, date and time). Nothing starts by
+   itself. RESUME MISSION opens the descent briefing directly.
+3. Repeat after the landing (resumes on the surface, ascent preparation), when the docking starts
+   (resumes at the docking checkpoint), after HARD DOCK CONFIRMED (resumes on the way home) and at
+   the start of the reentry (resumes the reentry). Closing in the middle of a maneuver resumes from
+   the last safe checkpoint with RESUMED FROM LAST SAFE CHECKPOINT; a docking attempt you had
+   started counts as a restart.
+4. LAUNCH SEQUENCE — INITIATE with a saved mission asks START A NEW MISSION? (CANCEL keeps it).
+5. After splashdown RESUME MISSION is gone; the debrief, records, medals and the mission log keep
+   the flight.
+
+The checkpoint is written to the app's own files (`MissionSaveStore.swift`, new in the Xcode
+project) the moment it is reached; it does not depend on the app being closed cleanly.
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 8691a17** with `yarn ios:sync` (`ios:verify`: 137 checks). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **Built from the clean tree at 2a8b97d** with `yarn ios:sync` (`ios:verify`: 146 checks, including the checkpoint store compiled into the App target and registered, and the save/resume screens in English and Portuguese). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release adds save and resume** over BUILD 8691a17 (HANDOFF §58). The Xcode project gains one Swift file (`App/MissionSaveStore.swift`) and one line in `SceneDelegate.swift`; Capacitor and the Swift package are unchanged (no new dependency), so the ZIP opens and builds in Xcode as before. Browser checks of this release: a full mission closed and relaunched at every checkpoint (three times by SIGKILL), 60 resumes across the 4 destinations × 3 difficulties × 5 checkpoints, damaged, torn, outdated and newer-version saves, START A NEW MISSION?, a mission flown straight through and the docking training, the packaged files offline. Not run on a physical iPhone.
+- **8691a17** (the previous release, below) was built from its clean tree with 137 checks.
 - **This release changes only the clouds' shape and spread** over BUILD a5edd07 (HANDOFF §57); a5edd07 itself changed only how the descent and the splashdown look over a0b5ec2 (HANDOFF §56: the clouds, the sea, the descent and recovery cameras, the suspension lines, the spray and the released parachutes). The reentry's physics, the parachutes' timing and descent rate, the time scale and the success rules, and everything before the reentry, are as in a0b5ec2. The notes below describe a0b5ec2.
 - **This release makes the descent faster and finishes its look.** Nothing else changes: the reentry's physics, trajectory, controls, parachute timing and success rules, and everything before the reentry, are as in the previous release.
   - **Faster:** the sea computes each wave only where it can be seen (from altitude, none of the short ones), reads the distant cloud cover once per point of its grid instead of in every pixel, and stops the splash's ripples once they have died out; the clouds skip detail too small to see and draw their own buffer before the frame instead of in the middle of it (on a phone's GPU that saves writing the whole frame out and back).
