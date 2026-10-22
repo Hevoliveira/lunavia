@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { planetTexture } from "@/components/planets/planetMaterials";
-import { M_PER_UNIT, R_EARTH_U, WAVES, waveSpeed, CLOUD_FIELD } from "@/data/descentScene";
+import { M_PER_UNIT, R_EARTH_U, WAVES, waveSpeed } from "@/data/descentScene";
+import { BAND_A, BAND_B, MSS_UNRESOLVED, WIND, oceanBand, packBand } from "@/data/oceanSpectrum";
+import { CUMULUS, COLUMN } from "@/data/cumulusField";
+import { SKY_GLSL, hazeLength } from "./atmosphere";
+import { noiseTexture } from "./noise2d";
 
 /*
  * The open sea below the capsule (data/descentScene: one scale, 1 unit = 3.9 m).
@@ -10,22 +13,23 @@ import { M_PER_UNIT, R_EARTH_U, WAVES, waveSpeed, CLOUD_FIELD } from "@/data/des
  * Geometry: a polar grid centred under the camera (fine near the middle, coarse far out, 4 m to
  * 450 km), following it, the surface falling away with the Earth's curvature, so the horizon is
  * the sea's own and the grid's rim lies beyond it, lost in the haze: no edge, no tiling square.
+ * The long swell (data/descentScene WAVES) displaces it near the camera; the floating capsule
+ * rides the same swell.
  *
- * Shading (one shader, per pixel), many scales, each only where the pixel can hold it:
- * - the swell and wind waves of data/descentScene WAVES (real sizes; the floating capsule rides
- *   the same sum), displaced near the camera, as analytic normals everywhere they resolve;
- * - four shorter wind waves (9 m down to 2 m) and three scales of procedural detail normals,
- *   each faded out by the pixel's own footprint on the sea (no moiré, no shimmer, no visible
- *   repeat: the detail tiles are of unrelated sizes and turned against each other);
- * - gusts: slow, broad patches of rougher and smoother water (cat's paws), so the surface is
- *   never uniform and never a mirror;
- * - Fresnel: deep blue water looking down, the sky's reflection towards the horizon; roughness
- *   growing with distance; scattered small whitecaps on the steepest crests (a slight sea);
- * - the shadows of the 3D cumulus field, and beyond it the NASA Blue Marble cloud cover;
- * - haze into the sky's horizon colour with distance;
- * - the splash, all in the water itself: the surface pushed down and rebounding in a low swell
- *   ring, broken ripples running out and dying, aerated water churned white round the impact,
- *   then a ragged lace of foam round the floating capsule and its waterline, fading slowly.
+ * Shading (one shader, per pixel), the way the real sea's light works:
+ * - the wind sea is a random sea from a wave spectrum (data/oceanSpectrum: two bands, each a
+ *   seamless tile sampled twice at unrelated scales and angles, drifting downwind), its slopes
+ *   calibrated to Cox & Munk's measurements of the real sea;
+ * - what a pixel cannot resolve is not lost: the tiles store each texel's mean square slope, so
+ *   the slope variance filtered out with distance becomes roughness (the sea grows smoother in
+ *   texture and wider in its glitter towards the horizon, as in photographs; no stripes, no moiré);
+ * - Fresnel: dark navy water looking down, the sky's reflection towards the horizon, the rougher
+ *   sea reflecting a higher (bluer) part of the sky; the Sun's glitter from the same slope
+ *   statistics; a little green-blue light through the crests towards the Sun;
+ * - the cumulus' shadows from the very weather map the clouds are drawn from;
+ * - haze into the sky's own colour at the horizon (descent/atmosphere): sea and sky meet softly;
+ * - the splash, in the water itself: ragged churned white water that spreads and breaks up, small
+ *   broken ripples, then a thin broken foam lace and a lapping meniscus round the floating hull.
  *   No drawn circle, no disc.
  */
 
@@ -63,56 +67,6 @@ function polarGrid() {
   return g;
 }
 
-/** A tileable noise normal map (256², procedural; made once, no file to load); its height in alpha. */
-let DETAIL = null;
-function detailNormals() {
-  if (DETAIL) return DETAIL;
-  const N = 256;
-  const h = new Float32Array(N * N);
-  // a sum of random periodic waves (integer frequencies on the tile: it wraps seamlessly)
-  let s = 12345;
-  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  const waves = [];
-  for (let i = 0; i < 64; i++) {
-    const f = 2 + Math.floor(Math.pow(r(), 1.5) * 30);
-    const a = r() * Math.PI * 2;
-    waves.push({ fx: Math.round(Math.cos(a) * f), fy: Math.round(Math.sin(a) * f), ph: r() * Math.PI * 2, amp: 1 / Math.pow(f, 1.15) });
-  }
-  let mn = Infinity;
-  let mx = -Infinity;
-  for (let y = 0; y < N; y++)
-    for (let x = 0; x < N; x++) {
-      let v = 0;
-      for (const w of waves) v += w.amp * Math.sin(((w.fx * x + w.fy * y) / N) * Math.PI * 2 + w.ph);
-      h[y * N + x] = v;
-      mn = Math.min(mn, v);
-      mx = Math.max(mx, v);
-    }
-  const data = new Uint8Array(N * N * 4);
-  for (let y = 0; y < N; y++)
-    for (let x = 0; x < N; x++) {
-      const dx = h[y * N + ((x + 1) % N)] - h[y * N + ((x + N - 1) % N)];
-      const dy = h[((y + 1) % N) * N + x] - h[((y + N - 1) % N) * N + x];
-      const nx = -dx * 3.2;
-      const ny = -dy * 3.2;
-      const l = Math.hypot(nx, ny, 1);
-      const o = (y * N + x) * 4;
-      data[o] = Math.round(((nx / l) * 0.5 + 0.5) * 255);
-      data[o + 1] = Math.round(((ny / l) * 0.5 + 0.5) * 255);
-      data[o + 2] = Math.round(((1 / l) * 0.5 + 0.5) * 255);
-      data[o + 3] = Math.round(((h[y * N + x] - mn) / (mx - mn)) * 255);
-    }
-  const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.magFilter = THREE.LinearFilter;
-  t.minFilter = THREE.LinearMipmapLinearFilter;
-  t.anisotropy = 2; // the sea is seen at grazing angles: keep its detail crisp, not smeared
-  t.generateMipmaps = true;
-  t.needsUpdate = true;
-  DETAIL = t;
-  return t;
-}
-
 const WAVE_GLSL = WAVES.map((w, i) => {
   const k = (2 * Math.PI) / w.len;
   return `const vec4 W${i} = vec4(${Math.cos(w.dir).toFixed(5)}, ${Math.sin(w.dir).toFixed(5)}, ${k.toFixed(6)}, ${(k * waveSpeed(w.len)).toFixed(6)});
@@ -130,23 +84,57 @@ float seaHeight(vec2 m, float t) {
   return h;
 }`;
 
-/*
- * The short wind waves (normals only): wavelength (m), direction (rad), slope amplitude (a·k).
- * A slight sea's spectrum: directions spread round the wind, slopes gentle (under 0.1 each).
- */
-const SHORT = [
-  [8.9, 1.35, 0.06],
-  [4.9, 0.05, 0.065],
-  [3.1, 0.95, 0.07],
-  [2.0, 1.75, 0.075],
-];
-const SHORT_GLSL = SHORT.map(([len, dir, slope], i) => {
-  const k = (2 * Math.PI) / len;
-  return `const vec4 S${i} = vec4(${Math.cos(dir).toFixed(5)}, ${Math.sin(dir).toFixed(5)}, ${k.toFixed(5)}, ${(k * waveSpeed(len)).toFixed(5)});`;
-}).join("\n");
 
-// The splash in the water (m, s): the rebound ring, the ripples, the churn, the foam round the hull.
-const SPLASH_SEA = { reboundSpeed: 4.2, reboundAmp: 0.32, rippleSpeed: 2.6, hullR: 1.75 };
+// The splash in the water (m, s): the rebound, the ripples, the churn, the foam round the hull.
+const SPLASH_SEA = { reboundSpeed: 4.2, reboundAmp: 0.18, rippleSpeed: 2.4, hullR: 1.8 };
+
+// The wind sea's two bands, each sampled twice: [rotation (rad), stretch, drift speed (m/s)].
+// The second sample of each is turned and stretched against the first (no repeat lines up).
+const SAMPLES = {
+  A: [
+    [0.0, 1.0, 1.9],
+    [0.72, 0.79, 1.4],
+  ],
+  B: [
+    [0.21, 1.0, 0.8],
+    [-0.58, 0.71, 0.55],
+  ],
+};
+// weights so that the two samples together keep the band's calibrated mean square slope
+const sampleConsts = (band, list) => {
+  const inv = list.reduce((a, [, k]) => a + 1 / (k * k), 0);
+  const w = 1 / Math.sqrt(inv);
+  return list.map(([rot, k, v]) => {
+    const c = Math.cos(rot);
+    const sn = Math.sin(rot);
+    // the tile's own wind direction, carried along by the rotation: its drift in tile units per second
+    const ang = WIND.dir;
+    return {
+      mat: `mat2(${c.toFixed(5)}, ${(-sn).toFixed(5)}, ${sn.toFixed(5)}, ${c.toFixed(5)})`,
+      scale: (1 / (band.L * k)).toFixed(6),
+      drift: `vec2(${((Math.cos(ang) * v) / (band.L * k)).toFixed(6)}, ${((Math.sin(ang) * v) / (band.L * k)).toFixed(6)})`,
+      wk: (w / k).toFixed(5), // slope weight (the stretch flattens the slopes by k)
+      wk2: ((w * w) / (k * k)).toFixed(5),
+      wh: w.toFixed(5),
+    };
+  });
+};
+const SA = sampleConsts(BAND_A, SAMPLES.A);
+const SB = sampleConsts(BAND_B, SAMPLES.B);
+// The second sample of a band only breaks up its repeat, which shows only where the texture's detail
+// is resolved: farther out (gate: the pixel's footprint, m) its share of the slopes is roughness.
+const bandGLSL = (tex, S, out, band, gate) =>
+  S.map((c, i) => {
+    const body = `vec4 b = texture2D(${tex}, (R_${out}${i} * m) * ${c.scale} + ${c.drift} * uTime);
+    s += (b.xy * R_${out}${i}) * (${c.wk} * rough * f2);
+    varU += max(b.w - dot(b.xy, b.xy), 0.0) * (${c.wk2} * rough * rough * f2);
+    ${out === "A" ? `crest += b.z * ${c.wh} * f2;` : ""}`;
+    if (i === 0) return `  { float f2 = 1.0; ${body} }`;
+    return `  { float f2 = 1.0 - smoothstep(${(gate * 0.6).toFixed(2)}, ${gate.toFixed(2)}, fp);
+    if (f2 > 0.0) { ${body} }
+    varU += (1.0 - f2) * ${(Number(c.wk2) * band.mss).toFixed(6)} * rough * rough; }`;
+  }).join("\n");
+const matGLSL = (S, out) => S.map((c, i) => `const mat2 R_${out}${i} = ${c.mat};`).join("\n");
 
 const vertexShader = `
 uniform vec3 uCam;
@@ -154,17 +142,25 @@ uniform float uSeaY;
 uniform vec2 uDrift;
 uniform float uTime;
 uniform vec4 uSplash;  // x, z (m), seconds since contact, on
+uniform sampler2D uNoise2;
+uniform sampler2D uCloudMap;  // the cumulus' weather map (their shadows)
+uniform float uCloudOn;
+uniform float uCloudMapM;
+uniform vec2 uColumn;
+uniform vec2 uWindOff;
+uniform float uCloudMid;      // the clouds' middle height (m), where their shadows are cast from
+uniform vec3 uSun;
+uniform vec3 uSkyTop;
+uniform vec3 uSkyHor;
+uniform float uGlow;
 ${WAVE_GLSL}
 varying vec2 vXZ;      // world position on the sea, metres (drift included)
 varying vec3 vPos;     // scene position
 varying float vDist;   // horizontal distance from the camera, units
-varying float vCrest;  // the swell's height here (m), for the whitecaps
 varying float vGust;   // broad, slow patches of rougher and smoother water (cat's paws)
-varying float vCover;  // the NASA cloud cover beyond the 3D cumulus field
-uniform sampler2D uDetail;
-uniform sampler2D uCover;
-uniform vec2 uCoverUV;     // the recovery area's place on the NASA map
-uniform vec2 uCoverScale;  // map uv per metre
+varying float vShadow; // a cumulus' shadow here (hundreds of metres across: per vertex is enough)
+varying vec3 vHaze;    // the sky's colour at the horizon this way (the haze the far sea fades into)
+${SKY_GLSL}
 #include <logdepthbuf_pars_vertex>
 void main() {
   vec2 xz = position.xz + uCam.xz;
@@ -175,24 +171,17 @@ void main() {
     (i) => `{ float ph = W${i}.z * dot(W${i}.xy, m) - W${i}.w * uTime; float c = cos(ph);
     disp.xz += W${i}.xy * (A${i}.y * A${i}.x * c); disp.y += A${i}.x * sin(ph); }`
   )}
-  vCrest = disp.y;
-  vGust = texture2D(uDetail, m / 1300.0 + vec2(0.0021, 0.0013) * uTime).a;
-  // the splash: the water pushed down at the impact, rebounding in a low ring that runs out and dies
-  if (uSplash.w > 0.5) {
-    float r = length(m - uSplash.xy);
+  vGust = textureLod(uNoise2, m / 1500.0 + vec2(0.0021, 0.0013) * uTime, 0.0).r;
+  // the splash: the water pushed down at the impact, rebounding unevenly as it runs out and dies
+  if (uSplash.w > 0.5 && uSplash.z < 8.0) {
+    vec2 sp = m - uSplash.xy;
+    float r = length(sp);
     float t = uSplash.z;
     float front = r - ${SPLASH_SEA.reboundSpeed.toFixed(2)} * t;
-    float ring = exp(-front * front / 9.0) * cos(front * 0.9);
-    float pit = -exp(-r * r / 6.0) * sin(min(t / 0.9, 1.0) * 3.14159) ;
-    disp.y += ${SPLASH_SEA.reboundAmp.toFixed(2)} * exp(-t / 2.2) * (ring / (1.0 + r * 0.15) + pit);
-  }
-  // beyond the 3D field, the NASA cloud cover: read here, per vertex (it changes over kilometres and
-  // the grid's vertices out there are about that far apart), not by every pixel of the distant sea
-  vCover = 0.0;
-  if (d > ${(CLOUD_FIELD.radius * 0.6).toFixed(0)}.0) {
-    float c0 = textureLod(uCover, uCoverUV + m * uCoverScale, 0.0).b;
-    float brk = textureLod(uDetail, m / 2300.0, 6.0).x;
-    vCover = smoothstep(0.55, 0.85, c0 * 0.85 + brk * 0.45);
+    float uneven = 0.55 + 0.45 * sin(atan(sp.y, sp.x) * 3.0 + 1.3) * sin(atan(sp.y, sp.x) * 5.0 + 0.4);
+    float ring = exp(-front * front / 6.0) * cos(front * 1.1) * uneven;
+    float pit = -exp(-r * r / 5.0) * sin(min(t / 0.8, 1.0) * 3.14159);
+    disp.y += ${SPLASH_SEA.reboundAmp.toFixed(2)} * exp(-t / 1.6) * (ring / (1.0 + r * 0.2) + pit);
   }
   float near = smoothstep(900.0, 150.0, d);
   vec3 p = vec3(xz.x, uSeaY, xz.y) + disp / ${M_PER_UNIT.toFixed(2)} * near;
@@ -200,6 +189,13 @@ void main() {
   vXZ = m;
   vPos = p;
   vDist = d;
+  vShadow = 0.0;
+  if (uCloudOn > 0.5) {
+    vec2 g = m - uWindOff - uSun.xz / max(uSun.y, 0.2) * uCloudMid;
+    vShadow = smoothstep(0.06, 0.5, textureLod(uCloudMap, (g - uColumn) / uCloudMapM + 0.5, 1.5).r);
+  }
+  vec2 dir = length(position.xz) > 1e-3 ? normalize(position.xz) : vec2(1.0, 0.0);
+  vHaze = skyColor(normalize(vec3(dir.x, 1e-4, dir.y)));
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
   #include <logdepthbuf_vertex>
 }`;
@@ -210,164 +206,191 @@ uniform float uFade;
 uniform vec3 uSun;
 uniform vec3 uSkyTop;
 uniform vec3 uSkyHor;
-uniform vec3 uHaze;
+uniform float uGlow;
 uniform float uHazeL;
-uniform sampler2D uDetail;
-uniform sampler2D uShadow; // the cumulus field's shadows on the sea (baked once)
-uniform float uShadowSize; // metres across
-uniform vec4 uSplash;      // x, z (m), seconds since contact, on
-uniform vec3 uHull;        // the floating capsule's axis on the sea (x, z m), afloat (0/1)
+uniform sampler2D uBandA;
+uniform sampler2D uBandB;
+uniform sampler2D uNoise2;
+uniform vec4 uSplash;         // x, z (m), seconds since contact, on
+uniform vec3 uHull;           // the floating capsule's axis on the sea (x, z m), afloat (0/1)
 ${WAVE_GLSL}
-${SHORT_GLSL}
+${matGLSL(SA, "A")}
+${matGLSL(SB, "B")}
 varying vec2 vXZ;
 varying vec3 vPos;
 varying float vDist;
-varying float vCrest;
 varying float vGust;
-varying float vCover;
+varying float vShadow;
+varying vec3 vHaze;
+${SKY_GLSL}
 #include <logdepthbuf_pars_fragment>
 
-vec3 sky(vec3 r) {
-  // the sky as the sea sees it: rough water blurs its gradient
-  float k = pow(clamp(r.y, 0.0, 1.0), 0.55) * 0.9;
-  vec3 c = mix(uSkyHor, uSkyTop, k);
-  float sd = max(dot(r, uSun), 0.0);
-  sd *= sd;
-  sd *= sd;
-  return c + vec3(1.0, 0.92, 0.8) * (sd * sd * 0.18);
-}
-// a wave of length L resolves only where the pixel is well under it
-float keep(float L, float fp) { return 1.0 - smoothstep(L * 0.18, L * 0.5, fp); }
+// an analytic wave of length L resolves only where the pixel is well under it (fp: the pixel's
+// footprint along the wave's own direction of travel: at a grazing angle the pixel is long towards
+// the horizon and narrow across it, and a wave crossing the view needs the long side)
+float keep(float L, float fp) { return 1.0 - smoothstep(L * 0.12, L * 0.4, fp); }
 
 void main() {
   #include <logdepthbuf_fragment>
   vec2 m = vXZ;
-  // the pixel's footprint on the sea (m): how much detail it can hold
+  // the pixel's footprint on the sea (m)
   vec2 fw = fwidth(m);
   float fp = sqrt(fw.x * fw.y) * 1.5 + 0.15 * max(fw.x, fw.y);
-  // gusts: broad, slow patches of rougher and smoother water
-  float gust = vGust;
-  float rough = 0.6 + 0.8 * smoothstep(0.25, 0.75, gust);
-  // the swell and wind waves (analytic)
-  vec2 g = vec2(0.0);
-  // (each wave skipped outright where keep() is 0: the pixel covers half its length or more)
-  ${WAVE_SUM((i) => `if (fp < ${(WAVES[i].len * 0.5).toFixed(2)}) { float ph = W${i}.z * dot(W${i}.xy, m) - W${i}.w * uTime; g += W${i}.xy * (A${i}.x * W${i}.z * cos(ph)) * keep(A${i}.z, fp); }`)}
-  g *= 1.0 - 0.6 * smoothstep(80.0, 3000.0, vDist); // the swell's long lines soften far off
-  // the short wind waves, longest first and nested: once one is too fine for the pixel, so are the
-  // shorter ones, and none is computed (from altitude, none of them)
-  ${SHORT.map(([len, , slope], i) => `if (fp < ${(len * 0.5).toFixed(2)}) { float ph = S${i}.z * dot(S${i}.xy, m) - S${i}.w * uTime + ${(i * 1.7).toFixed(2)}; g += S${i}.xy * (${slope.toFixed(3)} * cos(ph)) * keep(${len.toFixed(2)}, fp) * rough;`).join("\n  ")}
-  ${SHORT.map(() => "}").join("")}
-  // procedural detail at three unrelated scales
-  float wcNoise = 0.5;
-  // wind ripples: each scale sampled in the wind's frame (along it, across it), stretched across the
-  // wind (crests 2.2x as long as they are apart), and its slope turned back into the world with
-  // the same stretch: the water tilts mostly along the wind, as wind ripples do (no isotropic mottling)
-  if (fp < 1.2) {
-    const mat2 R1 = mat2(0.8139, -0.5810, 0.5810, 0.8139);
-    const mat2 R2 = mat2(0.5570, -0.8305, 0.8305, 0.5570);
-    const vec2 ST = vec2(1.0, 1.0 / 2.2);
-    vec2 u1 = (R1 * m) * (ST / 7.3) + vec2(0.024, 0.004) * uTime;
-    vec2 u2 = (R2 * m) * (ST / 2.35) + vec2(0.04, -0.006) * uTime;
-    vec4 d1 = texture2D(uDetail, u1);
-    vec3 d2 = texture2D(uDetail, u2).xyz * 2.0 - 1.0;
-    wcNoise = d1.a;
-    g += (((d1.xy * 2.0 - 1.0) * ST) * R1 * (0.1 * keep(2.2, fp)) + (d2.xy * ST) * R2 * (0.18 * keep(0.7, fp))) * rough;
-    if (fp < 0.12) {
-      const mat2 R3 = mat2(0.6967, -0.7174, 0.7174, 0.6967);
-      vec3 d3 = texture2D(uDetail, (R3 * m) * (ST / 0.91) + vec2(0.06, 0.01) * uTime).xyz * 2.0 - 1.0;
-      g += ((d3.xy * ST) * R3) * (0.15 * keep(0.28, fp)) * rough;
-    }
-  }
+  // gusts: broad patches of rougher and smoother water (the mean square slope still the measured one)
+  float rough = 0.8 + 0.4 * smoothstep(0.2, 0.8, vGust);
+  vec2 s = vec2(0.0);
+  float varU = ${MSS_UNRESOLVED.toFixed(5)}; // the slopes no texel resolves (Cox & Munk's remainder)
+  float crest = 0.0;
+  // the swell (analytic), and the slope it leaves unresolved where too fine for the pixel
+  vec2 mx = dFdx(m);
+  vec2 my = dFdy(m);
+  ${WAVE_SUM(
+    (i) => `{ float kk = keep(A${i}.z, abs(dot(W${i}.xy, mx)) + abs(dot(W${i}.xy, my))); float sl = A${i}.x * W${i}.z;
+    if (kk > 0.0) { float ph = W${i}.z * dot(W${i}.xy, m) - W${i}.w * uTime; s += W${i}.xy * (sl * cos(ph)) * kk; }
+    varU += (1.0 - kk) * 0.5 * sl * sl; }`
+  )}
+  // the wind sea, band A (1.8-25 m): resolved slopes, and what the filtering left as roughness
+  if (fp < 20.0) {
+${bandGLSL("uBandA", SA, "A", BAND_A, 3.0)}
+  } else varU += ${BAND_A.mss.toFixed(5)} * rough * rough;
+  // band B (ripples, 8 cm-1.8 m): drawn only where a pixel resolves them; beyond, their slopes are roughness
+  if (fp < 0.9) {
+${bandGLSL("uBandB", SB, "B", BAND_B, 0.6)}
+  } else varU += ${BAND_B.mss.toFixed(5)} * rough * rough;
 
-  // the splash: broken ripples running out and dying, the churn round the impact
+  // the splash: churned white water, ragged, spreading and breaking up; small broken ripples
   float churn = 0.0;
   float foam = 0.0;
   vec2 sp = m - uSplash.xy;
   float spR = length(sp);
-  if (uSplash.w > 0.5 && uSplash.z < 8.0 && spR < ${SPLASH_SEA.rippleSpeed.toFixed(2)} * uSplash.z + 12.0) {
-    float r = spR;
-    float t = uSplash.z;
-    float brk = texture2D(uDetail, m / 4.3).a;
-    float ang = atan(sp.y, sp.x);
-    float lobes = 0.55 + 0.45 * sin(ang * 5.0 + brk * 6.0);
-    float front = r - ${SPLASH_SEA.rippleSpeed.toFixed(2)} * t;
-    float packet = exp(-front * front / (2.5 + t)) * exp(-t / 2.4) * (1.0 - smoothstep(5.0, 8.0, t)) * lobes * (0.4 + 0.9 * brk);
-    g += normalize(sp + 1e-4) * sin(front * 3.1) * packet * 0.5 * keep(2.0, fp);
-    // white water churned up round the impact, settling within seconds
-    churn = smoothstep(4.2 + 1.5 * brk, 0.8, r) * exp(-t / 1.4) * smoothstep(0.0, 0.15, t) * (0.45 + 0.55 * brk);
-  }
-  // foam round the floating capsule: a ragged lace hugging the hull at its waterline
   vec2 hp = m - uHull.xy;
-  if (uHull.z > 0.5 && dot(hp, hp) < 64.0) {
-    float r = length(hp);
+  float hr = length(hp);
+  // the foam's small-scale noise, only where there is foam (round the splash and the hull)
+  float n1 = 0.5;
+  float n2 = 0.5;
+  if ((uSplash.w > 0.5 && spR < 16.0) || (uHull.z > 0.5 && hr < 7.0)) {
+    n1 = texture2D(uNoise2, m / 2.7 + vec2(0.0, 0.04) * uTime).r;
+    n2 = texture2D(uNoise2, m / 0.83 - vec2(0.03, 0.0) * uTime).r;
+  }
+  if (uSplash.w > 0.5 && uSplash.z < 9.0 && spR < 16.0) {
     float t = uSplash.z;
-    float lace1 = texture2D(uDetail, m / 1.7 + vec2(0.0, 0.03) * uTime).a;
-    float lace2 = texture2D(uDetail, mat2(0.6, 0.8, -0.8, 0.6) * m / 0.75).a;
-    float lace = smoothstep(0.52, 0.72, lace1 * 0.6 + lace2 * 0.5);
-    float reach = ${SPLASH_SEA.hullR.toFixed(2)} + 0.9 + 1.6 * lace1 + 2.5 * exp(-t / 5.0);
-    float zone = smoothstep(reach, ${SPLASH_SEA.hullR.toFixed(2)} + 0.15, r);
-    // the waterline itself: a thin bright line where the swell laps the hull
-    float lap = 0.5 + 0.5 * sin(uTime * 1.9 + atan(hp.y, hp.x) * 3.0 + lace1 * 5.0);
-    float line = smoothstep(${(SPLASH_SEA.hullR + 0.55).toFixed(2)}, ${(SPLASH_SEA.hullR + 0.05).toFixed(2)}, r - 0.3 * lace2) * (0.35 + 0.4 * lap);
-    foam = max(zone * lace * (0.3 + 0.5 * exp(-t / 9.0)), line);
+    float reach = 2.2 + 3.6 * (1.0 - exp(-t / 1.3)) + 2.2 * (n1 - 0.5);
+    float patchy = smoothstep(0.35, 0.65, n1 * 0.55 + n2 * 0.45 + 0.25 * exp(-t / 1.5));
+    churn = smoothstep(reach, reach * 0.45, spR) * patchy * exp(-t / 2.2) * smoothstep(0.0, 0.1, t);
+    float front = spR - ${SPLASH_SEA.rippleSpeed.toFixed(2)} * t;
+    float packet = exp(-front * front / (1.4 + t)) * exp(-t / 2.0) * (1.0 - smoothstep(5.0, 8.0, t)) * (0.35 + 0.65 * n1);
+    s += normalize(sp + 1e-4) * sin(front * 4.2) * packet * 0.16;
+  }
+  // round the floating hull: a thin, broken foam lace and the lapping meniscus at the waterline
+  if (uHull.z > 0.5 && hr < 7.0) {
+    float t = uSplash.z;
+    // (broken and sparse: streaks of foam, never a ring painted round the hull)
+    float lace = smoothstep(0.66, 0.84, n2 * 0.6 + n1 * 0.4 + 0.08 * crest);
+    float reach = ${SPLASH_SEA.hullR.toFixed(2)} + 0.25 + 1.2 * n1 + 1.4 * exp(-t / 6.0);
+    float zone = smoothstep(reach, ${SPLASH_SEA.hullR.toFixed(2)}, hr);
+    float lap = 0.5 + 0.5 * sin(uTime * 1.7 + atan(hp.y, hp.x) * 4.0 + n1 * 6.0);
+    float line = smoothstep(${(SPLASH_SEA.hullR + 0.3).toFixed(2)}, ${SPLASH_SEA.hullR.toFixed(2)}, hr - 0.22 * n2) * (0.12 + 0.3 * lap) * smoothstep(0.4, 0.65, n2);
+    foam = max(zone * lace * (0.1 + 0.4 * exp(-t / 6.0)), line);
   }
 
-  vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
+  vec3 n = normalize(vec3(-s.x, 1.0, -s.y));
   vec3 v = normalize(cameraPosition - vPos);
-  float ndv = max(dot(n, v), 0.0);
-  float far = smoothstep(80.0, 3000.0, vDist); // 0 near by .. 1 far away
+  float ndv = max(dot(n, v), 0.002);
+  float sig2 = varU;
+  // Fresnel (water, n = 1.33), held below a mirror's at grazing angles by the facets' masking
   float f1 = 1.0 - ndv;
   float f2 = f1 * f1;
-  float fres = 0.02 + 0.98 * f2 * f2 * f1;
-  fres *= 1.0 - 0.3 * far; // rough at a distance: less of a mirror
+  float F = min(0.02 + 0.98 * f2 * f2 * f1, 0.78);
+  // the sky it reflects: the rougher the sea, the higher (bluer, darker) the sky it sees
   vec3 r = reflect(-v, n);
   r.y = abs(r.y);
-  vec3 refl = sky(r) * 0.74;
-  // the water itself: deep blue, lifted where light comes through the crests
-  float crest = clamp(g.x * uSun.x + g.y * uSun.z, 0.0, 1.0);
-  vec3 body = vec3(0.003, 0.03, 0.1) + vec3(0.0, 0.045, 0.06) * crest * (1.0 - far) + vec3(0.003, 0.016, 0.045) * max(uSun.y, 0.0);
-  vec3 col = mix(body, refl, fres);
-  // the Sun's glint: sharp near, a wide glitter path far away
-  vec3 h = normalize(v + uSun);
-  float shin = mix(1400.0, 80.0, far) / rough;
-  float spec = pow(max(dot(n, h), 0.0), shin) * (shin + 8.0) / 25.0;
-  col += vec3(1.0, 0.95, 0.86) * spec * 0.06;
-  // whitecaps: a few small breaking crests where the swell peaks and the wind gusts
-  float wc = smoothstep(0.6, 0.82, vCrest) * smoothstep(0.74, 0.88, wcNoise) * smoothstep(0.55, 0.85, gust);
-  float wcFar = 1.0 - smoothstep(1.5, 9.0, fp);
-  foam = max(foam, wc * 0.75 * wcFar);
-
-  // cloud shadows (the 3D field) and, beyond it, the NASA cloud cover (from the vertices)
-  float farCover = smoothstep(${(CLOUD_FIELD.radius * 0.6).toFixed(0)}.0, ${(CLOUD_FIELD.radius * 1.05).toFixed(0)}.0, vDist);
-  float shade = 0.0;
-  // (the shadow map ends at the field's rim, past which farCover is 1: nothing to read out there)
-  if (farCover < 0.999) shade = texture2D(uShadow, m / uShadowSize + 0.5).r;
-  float cover = vCover;
-  shade = max(shade, cover * 0.7 * farCover);
-  col *= 1.0 - 0.5 * shade;
-  vec3 cloudLit = vec3(0.86, 0.89, 0.93) * (0.75 + 0.25 * max(uSun.y, 0.0));
-  col = mix(col, cloudLit, cover * farCover * 0.35);
-
+  vec3 refl = skyColor(normalize(r + vec3(0.0, 1.3 * sqrt(sig2), 0.0)));
+  // the cumulus' shadow here (from the clouds' own weather map, cast along the Sun)
+  float shadow = vShadow;
+  // the water itself: deep navy, a little green-blue light through the crests towards the Sun
+  vec3 body = vec3(0.0045, 0.026, 0.06) * (0.5 + 0.5 * uGlow) * (1.0 - 0.3 * shadow);
+  float crestN = clamp(crest / 0.32, 0.0, 1.0);
+  float toward = pow(max(dot(normalize(vec3(-v.x, 0.0, -v.z) + 1e-5), normalize(vec3(uSun.x, 0.0, uSun.z) + 1e-5)), 0.0), 3.0);
+  body += vec3(0.0, 0.045, 0.042) * crestN * crestN * toward * (1.0 - smoothstep(80.0, 3000.0, vDist)) * (1.0 - shadow);
+  vec3 col = (1.0 - F) * body + F * refl;
+  // the Sun's glitter: the slopes facing it, from the same slope statistics (Cox & Munk)
+  vec3 hv = normalize(v + uSun);
+  float hn = max(dot(hv, n), 1e-3);
+  float hn2 = hn * hn;
+  float sc2 = max(sig2 * 0.5, 2e-4);
+  float D = exp(-((1.0 - hn2) / hn2) / (2.0 * sc2)) / (6.2831853 * sc2 * hn2 * hn2);
+  float vh = max(dot(v, hv), 0.0);
+  float vh1 = 1.0 - vh;
+  float Fs = 0.02 + 0.98 * vh1 * vh1 * vh1 * vh1 * vh1;
+  float spec = min(Fs * D / (4.0 * ndv), 80.0) * max(uSun.y, 0.0);
+  col += vec3(1.0, 0.95, 0.86) * spec * 0.55 * uGlow * (1.0 - shadow);
+  // a few small whitecaps on the highest crests of the wind sea, near enough to be seen
+  // (a 6 m/s breeze breaks very few: on the highest crests, in the gusts; rare, small, soft-edged)
+  float wc = smoothstep(0.36, 0.5, crest) * smoothstep(0.55, 0.85, vGust) * (1.0 - smoothstep(1.0, 6.0, fp));
   // aerated water and foam: white, a little blue-green in the churn
-  col = mix(col, vec3(0.55, 0.72, 0.74), clamp(churn, 0.0, 1.0) * 0.75);
-  col = mix(col, vec3(0.9, 0.94, 0.95) * (0.8 + 0.2 * max(uSun.y, 0.0)), clamp(foam, 0.0, 1.0));
-  // haze: into the sky's own horizon colour with distance
+  col = mix(col, vec3(0.6, 0.72, 0.74) * (0.7 + 0.3 * uGlow), clamp(churn, 0.0, 1.0) * 0.8);
+  col = mix(col, vec3(0.88, 0.92, 0.93) * (0.72 + 0.28 * uGlow) * (1.0 - 0.3 * shadow), clamp(max(foam, wc * 0.45), 0.0, 1.0));
+  // haze: into the sky's own colour at the horizon in this direction
   float hz = 1.0 - exp(-vDist / uHazeL);
-  col = mix(col, uHaze, clamp(hz, 0.0, 1.0));
+  col = mix(col, vHaze, clamp(hz, 0.0, 1.0));
   gl_FragColor = vec4(col, uFade);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
 
-// The recovery area on the NASA map: the central Pacific, 13° N 169° W (Apollo 11's splashdown area).
-const SITE = { lat: 13.3, lon: -169.2 };
+// The wind-sea bands as textures: half-float RGBA (sx, sz, h, sx² + sz²) with their mip chain made
+// here (box-filtered: the mean slope and mean square slope of each footprint), so no device has to
+// build mipmaps of a float texture itself.
+function toHalf(f32) {
+  const out = new Uint16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) out[i] = THREE.DataUtils.toHalfFloat(f32[i]);
+  return out;
+}
+function bandTexture(band) {
+  const b = oceanBand(band);
+  let level = packBand(b);
+  let n = b.N;
+  const levels = [{ data: toHalf(level), width: n, height: n }];
+  while (n > 1) {
+    const h = n >> 1;
+    const next = new Float32Array(h * h * 4);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < h; x++)
+        for (let c = 0; c < 4; c++) {
+          const a = (i, j) => level[((2 * y + j) * n + (2 * x + i)) * 4 + c];
+          next[(y * h + x) * 4 + c] = (a(0, 0) + a(1, 0) + a(0, 1) + a(1, 1)) * 0.25;
+        }
+    level = next;
+    n = h;
+    levels.push({ data: toHalf(level), width: n, height: n });
+  }
+  const t = new THREE.DataTexture(levels[0].data, b.N, b.N, THREE.RGBAFormat, THREE.HalfFloatType);
+  t.mipmaps = levels;
+  t.generateMipmaps = false;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.anisotropy = 2;
+  t.needsUpdate = true;
+  return t;
+}
+let BANDS = null;
+function flatBand() {
+  const t = new THREE.DataTexture(toHalf(new Float32Array([0, 0, 0, 0])), 1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+  t.needsUpdate = true;
+  return t;
+}
 
-export default function Ocean({ simRef, viewRef, atmo, cloudShadows }) {
+export default function Ocean({ simRef, viewRef, atmo }) {
   const mesh = useRef();
   const geo = useMemo(() => polarGrid(), []);
+  const flat = useMemo(() => flatBand(), []);
+  const blank = useMemo(() => {
+    const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+    t.needsUpdate = true;
+    return t;
+  }, []);
   const mat = useMemo(() => {
-    const cover = planetTexture("earthAux");
-    const latR = (SITE.lat * Math.PI) / 180;
     const m = new THREE.ShaderMaterial({
       uniforms: {
         uCam: { value: new THREE.Vector3() },
@@ -378,14 +401,17 @@ export default function Ocean({ simRef, viewRef, atmo, cloudShadows }) {
         uSun: { value: atmo.sun },
         uSkyTop: { value: atmo.top },
         uSkyHor: { value: atmo.hor },
-        uHaze: { value: atmo.haze },
+        uGlow: { value: 1 },
         uHazeL: { value: 20000 },
-        uDetail: { value: detailNormals() },
-        uCover: { value: cover },
-        uCoverUV: { value: new THREE.Vector2((SITE.lon + 180) / 360, 1 - (90 - SITE.lat) / 180) },
-        uCoverScale: { value: new THREE.Vector2(1 / (2 * Math.PI * 6371e3 * Math.cos(latR)), -1 / (Math.PI * 6371e3)) },
-        uShadow: { value: cloudShadows.texture },
-        uShadowSize: { value: cloudShadows.size },
+        uBandA: { value: BANDS ? BANDS.A : flat },
+        uBandB: { value: BANDS ? BANDS.B : flat },
+        uNoise2: { value: noiseTexture() },
+        uCloudMap: { value: blank },
+        uCloudOn: { value: 0 },
+        uCloudMapM: { value: CUMULUS.mapM },
+        uColumn: { value: new THREE.Vector2(COLUMN.x, COLUMN.z) },
+        uWindOff: { value: new THREE.Vector2() },
+        uCloudMid: { value: (CUMULUS.baseM + CUMULUS.topMinM) / 2 + 150 },
         uSplash: { value: new THREE.Vector4(0, 0, 0, 0) },
         uHull: { value: new THREE.Vector3(0, 0, 0) },
       },
@@ -395,11 +421,36 @@ export default function Ocean({ simRef, viewRef, atmo, cloudShadows }) {
       depthWrite: true,
     });
     return m;
-  }, [atmo, cloudShadows]);
-  useEffect(() => () => {
-    geo.dispose();
-    mat.dispose();
-  }, [geo, mat]);
+  }, [atmo, flat, blank]);
+  useEffect(
+    () => () => {
+      geo.dispose();
+      mat.dispose();
+      flat.dispose();
+      blank.dispose();
+    },
+    [geo, mat, flat, blank]
+  );
+  // the wind sea's bands, made in steps after the scene has opened (cached for the next scene)
+  useEffect(() => {
+    if (BANDS) return undefined;
+    let alive = true;
+    let A = null;
+    const id1 = setTimeout(() => {
+      if (alive) A = bandTexture(BAND_A);
+    }, 200);
+    const id2 = setTimeout(() => {
+      if (!alive || !A) return;
+      BANDS = { A, B: bandTexture(BAND_B) };
+      mat.uniforms.uBandA.value = BANDS.A;
+      mat.uniforms.uBandB.value = BANDS.B;
+    }, 320);
+    return () => {
+      alive = false;
+      clearTimeout(id1);
+      clearTimeout(id2);
+    };
+  }, [mat]);
 
   useFrame((state) => {
     const s = simRef.current;
@@ -414,8 +465,18 @@ export default function Ocean({ simRef, viewRef, atmo, cloudShadows }) {
     U.uDrift.value.set(atmo.drift, 0);
     U.uTime.value = state.clock.elapsedTime;
     U.uFade.value = low;
+    U.uGlow.value = atmo.glow ?? 1;
+    if (BANDS && U.uBandA.value !== BANDS.A) {
+      U.uBandA.value = BANDS.A;
+      U.uBandB.value = BANDS.B;
+    }
+    if (atmo.cloudMap) {
+      U.uCloudMap.value = atmo.cloudMap;
+      U.uCloudOn.value = 1;
+      if (atmo.windOff) U.uWindOff.value.copy(atmo.windOff);
+    }
     // thicker haze low over the sea; long sight lines from high up
-    U.uHazeL.value = 16000 + Math.min(1, Math.max(0, s.h) / 9000) * 34000;
+    U.uHazeL.value = hazeLength(s.h);
     // crossfading with the orbital Earth above 15 km: blended, writing no depth
     const fading = low < 0.999;
     if (mat.transparent !== fading) {

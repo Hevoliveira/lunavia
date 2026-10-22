@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 import {
-  CLOUD_FIELD,
   CONFIRM,
   DROGUE,
   DROGUE_DRIFT_M,
@@ -9,13 +8,11 @@ import {
   FLOAT,
   MAIN,
   M_PER_UNIT,
-  PLACED_CLOUDS,
   SIGNIFICANT_HEIGHT_M,
   SPLASH,
   WAVES,
   chuteCamera,
   chuteRelease,
-  cloudField,
   curvatureDrop,
   horizonDistance,
   lowWorldFade,
@@ -27,6 +24,8 @@ import {
   u,
 } from "./descentScene";
 import { CM_R } from "./csmDesign";
+import { COLUMN, CUMULUS, cloudNoise3D, coverFraction, cumulusCells, weatherMap } from "./cumulusField";
+import { BAND_A, BAND_B, MSS_TOTAL, MSS_UNRESOLVED, WIND, meanSquareSlope, oceanBand } from "./oceanSpectrum";
 import { CHUTES } from "./reentryPhysics";
 
 const SRC = path.resolve(__dirname, "..");
@@ -84,67 +83,121 @@ describe("the sea: a recovery sea state at its real size", () => {
   });
 });
 
-describe("the clouds: a coherent field of cumulus", () => {
-  const { clouds, puffs } = cloudField();
-  test("fair-weather cumulus at plausible heights, of varied size, never a uniform blanket", () => {
-    expect(clouds.length).toBe(CLOUD_FIELD.count);
-    clouds.forEach((c) => {
-      expect(c.base * M_PER_UNIT).toBeGreaterThanOrEqual(650 - 1e-6);
-      expect(c.base * M_PER_UNIT).toBeLessThanOrEqual(1000);
-      expect(c.top * M_PER_UNIT).toBeLessThanOrEqual(2700);
-      expect(c.top).toBeGreaterThan(c.base);
-      expect(Math.hypot(c.x, c.z)).toBeLessThanOrEqual(CLOUD_FIELD.radius + 1e-6);
+describe("the clouds: scattered fair-weather cumulus, traced through a weather map", () => {
+  const cells = cumulusCells();
+  test("one flat base, tops of varied height, mostly small clouds and a few large ones", () => {
+    expect(cells.length).toBeGreaterThan(500);
+    cells.forEach((c) => {
+      expect(c.top).toBeGreaterThanOrEqual(CUMULUS.topMinM - 1e-6);
+      expect(c.top).toBeLessThanOrEqual(CUMULUS.topMaxM + 1e-6);
+      expect(c.r).toBeGreaterThanOrEqual(CUMULUS.rMinM);
+      expect(c.r).toBeLessThanOrEqual(CUMULUS.rMaxM);
     });
-    const r = clouds.map((c) => c.r * M_PER_UNIT).sort((a, b) => a - b);
-    expect(r[r.length - 1] / r[0]).toBeGreaterThan(2); // varied sizes
-    // coverage: the formations cover well under half of the field (scattered, with sea between)
-    const covered = clouds.reduce((a, c) => a + Math.PI * c.r * c.r, 0) / (Math.PI * CLOUD_FIELD.radius ** 2);
-    expect(covered).toBeLessThan(0.35);
-    expect(covered).toBeGreaterThan(0.02);
+    const r = cells.map((c) => c.r).sort((a, b) => a - b);
+    expect(r[Math.floor(r.length * 0.9)] / r[Math.floor(r.length * 0.1)]).toBeGreaterThan(2);
+    expect(r[Math.floor(r.length / 2)]).toBeLessThan((CUMULUS.rMinM + CUMULUS.rMaxM) / 2); // heavy-tailed
+    // cumulus, not towers: no cloud more than about twice as tall as its radius
+    cells.forEach((c) => expect(c.top - CUMULUS.baseM).toBeLessThanOrEqual(Math.max(CUMULUS.topMinM - CUMULUS.baseM, 1.85 * c.r) + 1e-6));
   });
-  test("every puff sits in its own cloud, from its flat base to its top: volumes, never cards", () => {
-    puffs.forEach((p) => {
-      const c = clouds[p.cloud];
-      expect(p.y).toBeGreaterThanOrEqual(c.base - 1e-6);
-      expect(p.y).toBeLessThanOrEqual(c.top + 1e-6);
-      expect(p.sy).toBeGreaterThan(0.3); // an ellipsoid of vapour (r × r·sy × r)
-      expect(p.sy).toBeLessThanOrEqual(1);
-      expect(p.dens).toBeGreaterThan(0);
-    });
-    expect(puffs.length).toBeLessThan(1400); // a mobile budget: one instanced draw
-    // one condensation level: the whole field's flat bases within 80 m of each other
-    const bases = clouds.map((c) => c.base * M_PER_UNIT);
-    expect(Math.max(...bases) - Math.min(...bases)).toBeLessThanOrEqual(80);
-    // cumulus, not towers of balls: most clouds no taller than they are wide
-    const squat = clouds.filter((c) => c.top - c.base <= 2 * c.r).length;
-    expect(squat / clouds.length).toBeGreaterThan(0.85);
-    // the renderer traces each puff as a volume from a bound drawn by its back faces (camera inside works)
-    const cf = read("components/scenes/descent/CloudField.jsx");
-    expect(cf).toMatch(/side: THREE\.BackSide/);
-    expect(cf).toMatch(/new THREE\.IcosahedronGeometry\(1, 0\)/);
-    // the bound must contain the puff: scaled by at least 1 / the icosahedron's inradius
-    const edge = 4 / Math.sqrt(10 + 2 * Math.sqrt(5)); // circumradius 1
-    const inradius = (Math.sqrt(3) / 12) * (3 + Math.sqrt(5)) * edge;
-    expect(+cf.match(/const BOUND_SCALE = ([\d.]+);/)[1]).toBeGreaterThanOrEqual(1 / inradius);
-    expect(cf).not.toMatch(/PlaneGeometry/); // no camera-facing quads
-    expect(cf).toMatch(/the vapour crossed/);
+  test("separate clouds with clear air between them, and none near the splashdown", () => {
+    // every pair of neighbours at least the gap apart, edge to edge (a sweep along x)
+    const byX = [...cells].sort((p, q) => p.x - q.x);
+    const reach = 2 * CUMULUS.rMaxM + CUMULUS.gapM;
+    let least = Infinity;
+    for (let i = 0; i < byX.length; i++)
+      for (let j = i + 1; j < byX.length && byX[j].x - byX[i].x < reach; j++) {
+        const d = Math.hypot(byX[i].x - byX[j].x, byX[i].z - byX[j].z);
+        least = Math.min(least, d - byX[i].r - byX[j].r);
+      }
+    expect(least).toBeGreaterThanOrEqual(CUMULUS.gapM - 1e-6);
+    // the last of the descent and the recovery are in clear air: the nearest cloud's edge kilometres off
+    cells.forEach((c) => expect(Math.hypot(c.x - COLUMN.x, c.z - COLUMN.z) - c.r).toBeGreaterThanOrEqual(CUMULUS.clearM - 1e-6));
   });
-  test("the capsule's own path down is clear of cloud (it passes between them), and a tower stands in shot", () => {
-    // the capsule comes down at the ground position it reaches after the drogues' drift
-    const cx = -u(DROGUE_DRIFT_M);
-    puffs.forEach((p) => expect(Math.hypot(p.x - cx, p.z) - p.r).toBeGreaterThan(u(40)));
-    // the tall placed formation is behind the capsule as the descent camera looks at it
-    const cam = chuteCamera(1500, 30).pos;
-    const toCapsule = Math.atan2(-cam[2], -cam[0]);
-    const tower = PLACED_CLOUDS[0];
-    PLACED_CLOUDS.forEach((c, i) => {
-      const toCloud = Math.atan2(c.z - cam[2], c.x - cx - cam[0]);
-      // the two formations behind the capsule; the two near cumulus either side of the shot
-      expect(Math.abs(toCloud - toCapsule)).toBeLessThan(i < 2 ? 0.45 : 0.8);
+  test("about a fifth of the sky covered: never a blanket, never empty", () => {
+    const N = 256;
+    const map = weatherMap(cells, N);
+    const near = coverFraction(map, N, 30000);
+    const all = coverFraction(map, N, 75000);
+    expect(near).toBeGreaterThan(0.08);
+    expect(near).toBeLessThan(0.32);
+    expect(all).toBeGreaterThan(0.12);
+    expect(all).toBeLessThan(0.3);
+    // within the clear zone: no cover at all
+    expect(coverFraction(map, N, CUMULUS.clearM * 0.9)).toBe(0);
+  });
+  test("the 3D noise wraps on every axis (no seam where it repeats)", () => {
+    const N = 32;
+    const n = cloudNoise3D(N);
+    const at = (x, y, z, ch) => n[((z * N + y) * N + x) * 4 + ch];
+    [0, 1].forEach((ch) => {
+      let inner = 0;
+      let wrap = 0;
+      let k = 0;
+      for (let z = 0; z < N; z += 3)
+        for (let y = 0; y < N; y += 3) {
+          inner += Math.abs(at(N / 2, y, z, ch) - at(N / 2 - 1, y, z, ch));
+          wrap += Math.abs(at(0, y, z, ch) - at(N - 1, y, z, ch));
+          k++;
+        }
+      expect(wrap / k).toBeLessThan((inner / k) * 2 + 4);
     });
-    // the camera's own column falls between the clouds too
-    puffs.forEach((p) => expect(Math.hypot(p.x - (cx + cam[0]), p.z - cam[2]) - p.r).toBeGreaterThan(u(150)));
-    expect(tower.topM).toBeGreaterThan(2000); // the capsule passes it on the way down under the mains
+  });
+  test("one ray-marched pass at reduced resolution: no puffs, no cards, no per-cloud geometry", () => {
+    const src = read("components/scenes/descent/CumulusLayer.jsx");
+    expect(src).toMatch(/export const CLOUD_RESOLUTION = 0\.34;/);
+    expect(src).toMatch(/sampler3D uNoise/);
+    expect(src).not.toMatch(/InstancedMesh|PlaneGeometry|Sprite|IcosahedronGeometry/);
+    // while the view holds still, half the pixels each frame, in whole 2 x 2 quads (a GPU shades quads)
+    expect(src).toMatch(/mod\(floor\(gl_FragCoord\.x \* 0\.5\) \+ floor\(gl_FragCoord\.y \* 0\.5\) \+ uPhase, 2\.0\)/);
+    expect(src).toMatch(/last\.dir\.angleTo\(dir\) < U\.uPix\.value \* 0\.5/);
+    // the sky, the sea's haze and the clouds' haze are one atmosphere
+    expect(src).toMatch(/SKY_GLSL/);
+    expect(read("components/scenes/descent/Ocean.jsx")).toMatch(/SKY_GLSL/);
+    expect(read("components/scenes/ReentryScene.jsx")).toMatch(/<CumulusLayer simRef=\{simRef\} atmo=\{atmo\} passRef=\{cloudPass\} \/>/);
+  });
+});
+
+describe("the wind sea: a random sea from a wave spectrum, its slopes those of the real ocean", () => {
+  const a = oceanBand(BAND_A);
+  test("the slopes add up to Cox & Munk's measured mean square slope for the breeze", () => {
+    expect(MSS_TOTAL).toBeCloseTo(0.003 + 0.00512 * WIND.speed, 9);
+    expect(meanSquareSlope(a)).toBeCloseTo(BAND_A.mss, 6);
+    expect(MSS_UNRESOLVED).toBeGreaterThan(0);
+    expect(BAND_A.mss + BAND_B.mss + MSS_UNRESOLVED).toBeCloseTo(MSS_TOTAL, 9);
+    // gentle: the chop's height about a tenth of a metre (rms), its slopes a few degrees
+    let hh = 0;
+    for (let o = 0; o < a.h.length; o++) hh += a.h[o] * a.h[o];
+    expect(Math.sqrt(hh / a.h.length)).toBeLessThan(0.3);
+  });
+  test("the tile wraps without a seam, and the waves run in many directions (no stripes)", () => {
+    const N = a.N;
+    let inner = 0;
+    let wrap = 0;
+    for (let y = 0; y < N; y++) {
+      inner += Math.abs(a.h[y * N + N / 2] - a.h[y * N + N / 2 - 1]);
+      wrap += Math.abs(a.h[y * N] - a.h[y * N + N - 1]);
+    }
+    expect(wrap).toBeLessThan(inner * 1.5);
+    // the slope along the wind and across it: both present (a spread sea, not parallel crests)
+    let along = 0;
+    let across = 0;
+    const wx = Math.cos(WIND.dir);
+    const wz = Math.sin(WIND.dir);
+    for (let o = 0; o < a.sx.length; o++) {
+      along += (a.sx[o] * wx + a.sz[o] * wz) ** 2;
+      across += (-a.sx[o] * wz + a.sz[o] * wx) ** 2;
+    }
+    expect(across / along).toBeGreaterThan(0.25);
+    expect(across / along).toBeLessThan(1);
+  });
+  test("the ocean shader reads the spectrum, filters it with distance and fades into the sky's own horizon", () => {
+    const src = read("components/scenes/descent/Ocean.jsx");
+    expect(src).toMatch(/from "@\/data\/oceanSpectrum"/);
+    expect(src).not.toMatch(/planetTexture/);
+    expect(src).toMatch(/skyColor\(/);
+    // half-float bands with their mip chain built on the CPU (no float mip generation on the GPU)
+    expect(src).toMatch(/THREE\.HalfFloatType/);
+    expect(src).toMatch(/generateMipmaps = false/);
   });
 });
 
@@ -171,10 +224,19 @@ describe("the parachutes", () => {
       const r = chuteRelease(s);
       if (r.drop < 0.75) expect(r.flat).toBeLessThan(0.05);
     }
-    // and go under as one sheet, fading (0 on the surface .. 1 gone), gone within about 11 s
-    expect(chuteRelease(4).sink).toBe(0);
-    expect(chuteRelease(8).sink).toBeGreaterThan(0.2);
-    expect(chuteRelease(11).sink).toBe(1);
+    // never left hanging: they fall on at the descent rate from contact (no pause in the air), the
+    // lines slack and the canopies deflating, and are on the sea within about three seconds
+    expect(chuteRelease(0.1).drop).toBeGreaterThan(0.015);
+    expect(chuteRelease(1).collapse).toBeGreaterThan(0.6);
+    expect(chuteRelease(3.4).drop).toBe(1);
+    expect(chuteRelease(4).flat).toBe(1);
+    for (let s = 0; s < 4; s += 0.05) expect(chuteRelease(s + 0.05).drop).toBeGreaterThanOrEqual(chuteRelease(s).drop);
+    // and go under as one sheet, fading (0 on the surface .. 1 gone): on the sea through the
+    // recovery shot, gone within about 22 s
+    expect(chuteRelease(6).sink).toBe(0);
+    expect(chuteRelease(10).sink).toBeLessThan(0.25);
+    expect(chuteRelease(14).sink).toBeGreaterThan(0.3);
+    expect(chuteRelease(22).sink).toBe(1);
     const chutesSrc = read("components/scenes/descent/Chutes.jsx");
     expect(chutesSrc).not.toMatch(/- uSink;/); // the sea never rises through the fabric
     expect(chutesSrc).toMatch(/1\.0 - smoothstep\(0\.15, 0\.85, uSink\)/);
@@ -210,8 +272,12 @@ describe("splashdown and flotation", () => {
     expect(game).toMatch(/if \(s\.outcome === OUTCOME\.SPLASHDOWN\) \{\s+v\.phase = "SPLASHED";/);
     const splash = read("components/scenes/descent/Splash.jsx");
     expect(splash).toMatch(/const on = !!\(sp && sp\.on && sp\.t < 3\.5\);/);
-    // no crown sheet, ring or disc: spray streaks and mist; what stays is in the water itself
+    // no crown sheet, ring or disc: lit masses of spray and a few fine drops; what stays is in the water itself
     expect(splash).not.toMatch(/CylinderGeometry|RingGeometry|CircleGeometry/);
+    expect(splash).toMatch(/const MASSES = \d+;/);
+    expect(+splash.match(/const DROPS = (\d+);/)[1]).toBeLessThanOrEqual(200); // never a confetti of streaks
+    // the drops as thin as drops are on screen: their coverage, not a fixed width
+    expect(splash).toMatch(/min\(1\.0, px \/ 1\.2\)/);
     const ocean = read("components/scenes/descent/Ocean.jsx");
     expect(ocean).toMatch(/No drawn circle, no disc/);
     expect(ocean).toMatch(/uHull/);
@@ -273,16 +339,25 @@ describe("the cameras", () => {
 
 describe("presentation only", () => {
   test("the descent never steps or changes the reentry simulation", () => {
-    ["components/scenes/descent/Ocean.jsx", "components/scenes/descent/CloudField.jsx", "components/scenes/descent/Chutes.jsx", "components/scenes/descent/Splash.jsx", "components/scenes/ReentryScene.jsx"].forEach((f) => {
+    ["components/scenes/descent/Ocean.jsx", "components/scenes/descent/CumulusLayer.jsx", "components/scenes/descent/Chutes.jsx", "components/scenes/descent/Splash.jsx", "components/scenes/ReentryScene.jsx"].forEach((f) => {
       const src = read(f);
       expect(src).not.toMatch(/\b(advance|step)\(s[,)]/);
       expect(src).not.toMatch(/s\.(h|v|t|mainT|drogueT|outcome)\s*=[^=]/);
     });
   });
-  test("every asset is offline: procedural textures and the bundled NASA map only", () => {
-    ["components/scenes/descent/Ocean.jsx", "components/scenes/descent/CloudField.jsx", "components/scenes/descent/Chutes.jsx", "components/scenes/descent/Splash.jsx"].forEach((f) => {
+  test("every asset is offline: the sky, the clouds and the sea are computed on the device", () => {
+    [
+      "components/scenes/descent/Ocean.jsx",
+      "components/scenes/descent/CumulusLayer.jsx",
+      "components/scenes/descent/atmosphere.js",
+      "components/scenes/descent/noise2d.js",
+      "components/scenes/descent/Chutes.jsx",
+      "components/scenes/descent/Splash.jsx",
+      "data/cumulusField.js",
+      "data/oceanSpectrum.js",
+    ].forEach((f) => {
       expect(read(f)).not.toMatch(/https?:\/\//);
+      expect(read(f)).not.toMatch(/\.(png|jpe?g|webp|ktx2?)["']/);
     });
-    expect(read("components/scenes/descent/Ocean.jsx")).toMatch(/planetTexture\("earthAux"\)/);
   });
 });

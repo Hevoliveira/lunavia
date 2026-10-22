@@ -84,6 +84,7 @@ uniform vec2 uDrift;
 uniform float uTime;
 uniform float uRings;
 uniform float uSink;    // 0 on the surface .. 1 under (the whole sheet at once)
+uniform float uCrumple; // 0 inflated .. 1 released and collapsed (the fabric flutters and folds)
 varying vec3 vCol;
 varying vec3 vN;
 varying vec3 vW;
@@ -91,7 +92,14 @@ varying vec3 vGore;
 varying float vWet;
 ${SEA_HEIGHT_GLSL}
 void main() {
-  vec4 w = modelMatrix * vec4(position, 1.0);
+  vec3 pos = position;
+  if (uCrumple > 0.0) {
+    // released: no longer held open, the fabric folds and flutters (irregular, never a dome)
+    float c = sin(aGore.z * 5.0 + aGore.x * 7.0 + uTime * 7.0) * 0.55 + sin(aGore.z * 11.0 - uTime * 5.0 + aGore.x * 3.0) * 0.3;
+    pos.xz *= 1.0 + 0.5 * c * uCrumple;
+    pos.y *= 1.0 + 0.3 * c * uCrumple;
+  }
+  vec4 w = modelMatrix * vec4(pos, 1.0);
   vec3 n = normalize(mat3(modelMatrix) * normal);
   if (uFlat > 0.0) {
     // released: the fabric settles on the swell, crumpled into folds, partly awash
@@ -167,6 +175,7 @@ function canopyMaterial(atmo, rings) {
       uTime: { value: 0 },
       uRings: { value: rings },
       uSink: { value: 0 },
+      uCrumple: { value: 0 },
     },
     vertexShader: canopyVertex,
     fragmentShader: canopyFragment,
@@ -178,6 +187,91 @@ function canopyMaterial(atmo, rings) {
   });
 }
 
+/*
+ * The suspension lines and risers: thin ribbons turned to face the camera, each as wide on screen
+ * as the cord really is. A cord thinner than a pixel is drawn a pixel and a half wide with its
+ * true coverage as its opacity (a 2 cm line 60 m away covers about a third of a pixel), so the
+ * lines read as fine threads converging on the riser, never as a jagged 1-pixel stair nor as
+ * ropes. (Plain GL lines are 1 pixel whatever the distance, and alias.)
+ */
+const LINE_MAX = 3 * 28 + 3 + 2 * 8;
+function ribbonGeometry(n) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 4 * 3), 3));
+  g.setAttribute("aOther", new THREE.BufferAttribute(new Float32Array(n * 4 * 3), 3));
+  g.setAttribute("aWidth", new THREE.BufferAttribute(new Float32Array(n * 4), 1));
+  const side = new Float32Array(n * 4 * 2);
+  const idx = [];
+  for (let i = 0; i < n; i++) {
+    // (side across the ribbon, which end: 0 at a, 1 at b)
+    side.set([-1, 0, 1, 0, -1, 1, 1, 1], i * 8);
+    const o = i * 4;
+    idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3);
+  }
+  g.setAttribute("aSide", new THREE.BufferAttribute(side, 2));
+  g.setIndex(idx);
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+  return g;
+}
+const ribbonVertex = `
+attribute vec3 aOther;
+attribute vec2 aSide;
+attribute float aWidth;
+uniform float uViewH;
+uniform float uAspect;
+varying float vAlpha;
+varying float vSide;
+void main() {
+  vec4 va = modelViewMatrix * vec4(position, 1.0);
+  vec4 vb = modelViewMatrix * vec4(aOther, 1.0);
+  // a segment through the near plane is cut at it
+  float near = 0.02;
+  if (vb.z > -near && va.z < -near) vb = mix(va, vb, (-near - va.z) / (vb.z - va.z));
+  if (va.z > -near) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vAlpha = 0.0; vSide = 0.0; return; }
+  vec4 ca = projectionMatrix * va;
+  vec4 cb = projectionMatrix * vb;
+  vec2 sa = ca.xy / ca.w * vec2(uAspect, 1.0);
+  vec2 sb = cb.xy / cb.w * vec2(uAspect, 1.0);
+  // the same across-direction at both ends (from a to b), so the ribbon never twists
+  vec2 d = (aSide.y < 0.5 ? sb - sa : sa - sb);
+  d = length(d) > 1e-6 ? normalize(d) : vec2(1.0, 0.0);
+  vec2 perp = vec2(-d.y, d.x);
+  // the cord's true width in pixels here, and the ribbon's drawn width (at least 1.5 px)
+  float px = aWidth * projectionMatrix[1][1] * 0.5 * uViewH / ca.w;
+  float w = max(px, 1.5);
+  vAlpha = min(1.0, px / 1.5);
+  vSide = aSide.x;
+  vec2 off = perp * aSide.x * (w * 0.5) * (2.0 / uViewH);
+  off.x /= uAspect;
+  ca.xy += off * ca.w;
+  gl_Position = ca;
+}`;
+const ribbonFragment = `
+uniform vec3 uColor;
+uniform float uOpacity;
+varying float vAlpha;
+varying float vSide;
+void main() {
+  // a round cord's profile across the ribbon (its mean is 1: the coverage is kept)
+  float a = vAlpha * uOpacity * 1.5 * (1.0 - vSide * vSide);
+  gl_FragColor = vec4(uColor, a);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+function ribbonMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { uViewH: { value: 800 }, uAspect: { value: 2 }, uColor: { value: new THREE.Color(0.62, 0.61, 0.58) }, uOpacity: { value: 1 } },
+    vertexShader: ribbonVertex,
+    fragmentShader: ribbonFragment,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+}
+// cord widths (m): a main's suspension lines (each drawn line stands for two or three of Apollo's,
+// so a little wider than one cord), the risers, the drogues' lines
+const CORD = { main: 0.036 / M_PER_UNIT, riser: 0.09 / M_PER_UNIT, drogue: 0.03 / M_PER_UNIT };
+
 const inflation = (s, which) => {
   const t0 = which === "main" ? s.mainT : s.drogueT;
   if (t0 === null || t0 === undefined) return 0;
@@ -185,28 +279,30 @@ const inflation = (s, which) => {
 };
 
 const UP = new THREE.Vector3(0, 1, 0);
+// a released canopy's axis as it falls: leaning over downwind (-x, -z, the drift's way)
+const LEAN = new THREE.Vector3(-0.62, 0.55, -0.56).normalize();
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 const _c = new THREE.Vector3();
+const _d = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const LINES_PER = 28;
 
 export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
   const mains = useRef([]);
   const drogues = useRef([]);
-  const lines = useRef();
   const mainGeo = useMemo(() => canopyGeometry(MAIN.gores), []);
   const drogueGeo = useMemo(() => canopyGeometry(DROGUE.gores, 6, 0.12), []);
   const mat = useMemo(() => canopyMaterial(atmo, 10), [atmo]);
   const drogueMat = useMemo(() => canopyMaterial(atmo, 6), [atmo]);
-  const lineGeo = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array((3 * LINES_PER + 2 * 8 + 3) * 2 * 3), 3));
-    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
-    return g;
+  // the lines' mesh is made here and handed to the scene as it is (a primitive)
+  const lineMesh = useMemo(() => {
+    const m = new THREE.Mesh(ribbonGeometry(LINE_MAX), ribbonMaterial());
+    m.frustumCulled = false;
+    m.name = "suspension-lines";
+    return m;
   }, []);
-  const lineMat = useMemo(() => new THREE.LineBasicMaterial({ color: "#e4e0d6", transparent: true, opacity: 0.5, depthWrite: false }), []);
-  useEffect(() => () => [mainGeo, drogueGeo, mat, drogueMat, lineGeo, lineMat].forEach((x) => x.dispose()), [mainGeo, drogueGeo, mat, drogueMat, lineGeo, lineMat]);
+  useEffect(() => () => [mainGeo, drogueGeo, mat, drogueMat, lineMesh.geometry, lineMesh.material].forEach((x) => x.dispose()), [mainGeo, drogueGeo, mat, drogueMat, lineMesh]);
   const released = useRef(null); // the canopies' places at splashdown
 
   useFrame((state) => {
@@ -221,11 +317,22 @@ export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
     const failed = v.phase === "FAILED";
     // the riser's confluence above the apex
     const conf = _c.set(0, 0.77 + MAIN.confluence, 0).applyQuaternion(pose.quat).add(pose.pos);
-    const P = lineGeo.attributes.position.array;
-    let n = 0;
-    const seg = (a, b) => {
-      P[n++] = a.x; P[n++] = a.y; P[n++] = a.z;
-      P[n++] = b.x; P[n++] = b.y; P[n++] = b.z;
+    const LG = lineMesh.geometry;
+    const P = LG.attributes.position.array;
+    const O = LG.attributes.aOther.array;
+    const W = LG.attributes.aWidth.array;
+    let n = 0; // segments
+    const seg = (a, b, w) => {
+      if (n >= LINE_MAX) return;
+      const o = n * 12;
+      for (let k = 0; k < 4; k++) {
+        const own = k < 2 ? a : b;
+        const oth = k < 2 ? b : a;
+        P[o + k * 3] = own.x; P[o + k * 3 + 1] = own.y; P[o + k * 3 + 2] = own.z;
+        O[o + k * 3] = oth.x; O[o + k * 3 + 1] = oth.y; O[o + k * 3 + 2] = oth.z;
+        W[n * 4 + k] = w;
+      }
+      n++;
     };
 
     // ---- mains
@@ -244,6 +351,7 @@ export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
     const U = mat.uniforms;
     U.uFlat.value = rel ? rel.flat : 0;
     U.uSink.value = rel ? rel.sink : 0;
+    U.uCrumple.value = rel ? rel.collapse : 0;
     // writing depth until it goes under (render state only: no new shader program)
     mat.depthWrite = !(rel && rel.sink > 0.001);
     U.uSeaY.value = atmo.seaY;
@@ -272,29 +380,38 @@ export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
           const seaY = atmo.seaY + 0.05;
           // downwind: away from the recovery camera
           m.position.set(r0.p.x - rel.drift * 0.75 - i * 1.5, r0.p.y + (seaY - r0.p.y) * rel.drop, r0.p.z - rel.drift * 0.65);
-          _q.setFromUnitVectors(UP, UP);
-          m.quaternion.copy(r0.q).slerp(_q, Math.min(1, rel.drop * 1.2));
-          // collapsing as it settles: the fabric spread smaller on the sea, draped over the waves (shader)
-          // falling, the canopy deflates into a long streamer; on the sea it spreads again
-          const fall = rel.drop * (1 - rel.flat);
-          const rad = MAIN.radius * (1 - 0.6 * fall) * (1 - 0.55 * rel.flat);
-          m.scale.set(rad, Math.max(0.05, depth * (1 + 0.8 * fall) * (1 - 0.9 * rel.flat)), rad * (1 + 0.05 * rel.flat));
+          // collapsing, it leans over downwind as it falls (so on the sea it lies as a long sheet)
+          _q.setFromUnitVectors(UP, LEAN);
+          m.quaternion.copy(r0.q).slerp(_q, rel.collapse);
+          // released, the canopy deflates into a long streamer as it falls; on the sea it spreads
+          // again, smaller, draped over the waves (shader)
+          const streamR = MAIN.radius * (1 - 0.68 * rel.collapse);
+          const rad = streamR + (MAIN.radius * 0.5 - streamR) * rel.flat;
+          m.scale.set(rad, Math.max(0.05, depth * (1 + 0.6 * rel.collapse) * (1 - 0.94 * rel.flat)), rad * (1 + 0.05 * rel.flat));
         }
-        lineFade = Math.max(0, 1 - rel.drop * 1.6);
+        // the lines go slack with the release and fall with the fabric
+        lineFade = Math.max(0, 1 - rel.collapse * 1.6);
       }
-      // suspension lines: skirt to the confluence
+      // suspension lines: skirt to the confluence; released, their lower ends fall with the canopy
+      // (slack, gathering under it, never below the sea)
       if (lineFade > 0.01) {
+        const r0 = rel && released.current && released.current[i];
+        if (r0) {
+          _d.copy(m.position).sub(r0.p).add(conf).lerp(m.position, 0.6 * rel.collapse);
+          _d.y = Math.max(_d.y, atmo.seaY);
+        }
+        const end = r0 ? _d : conf;
         for (let k = 0; k < LINES_PER; k++) {
           const th = (k / LINES_PER) * Math.PI * 2;
           _b.set(Math.cos(th), 0, Math.sin(th)).multiply(m.scale).applyQuaternion(m.quaternion).add(m.position);
-          seg(_b, rel ? _b : conf);
+          seg(_b, end, CORD.main);
         }
       }
     });
     if (showMain && !rel) {
       // the risers: confluence to the apex
       _a.set(0, 0.77, 0).applyQuaternion(pose.quat).add(pose.pos);
-      for (let k = 0; k < 3; k++) seg(conf, _a);
+      for (let k = 0; k < 3; k++) seg(conf, _a, CORD.riser);
     }
 
     // ---- drogues (cut away when the mains open)
@@ -313,14 +430,21 @@ export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
       for (let k = 0; k < 8; k++) {
         const th = (k / 8) * Math.PI * 2;
         _b.set(Math.cos(th), 0, Math.sin(th)).multiply(m.scale).applyQuaternion(m.quaternion).add(m.position);
-        seg(_b, conf);
+        seg(_b, conf, CORD.drogue);
       }
     });
 
-    while (n < P.length) P[n++] = 0;
-    lineGeo.attributes.position.needsUpdate = true;
-    if (lines.current) lines.current.visible = (showMain || showDrogue) && lineFade > 0.01;
-    lineMat.opacity = 0.5 * lineFade;
+    LG.setDrawRange(0, n * 6);
+    LG.attributes.position.needsUpdate = true;
+    LG.attributes.aOther.needsUpdate = true;
+    LG.attributes.aWidth.needsUpdate = true;
+    lineMesh.visible = (showMain || showDrogue) && lineFade > 0.01 && n > 0;
+    const LU = lineMesh.material.uniforms;
+    LU.uOpacity.value = lineFade;
+    LU.uViewH.value = state.gl.domElement.height;
+    LU.uAspect.value = state.gl.domElement.width / Math.max(1, state.gl.domElement.height);
+    // the cord in the light: the Sun's side brighter, against the sky or the sea
+    LU.uColor.value.setRGB(0.62, 0.61, 0.58).multiplyScalar(0.7 + 0.3 * Math.max(0, atmo.sun.y));
   });
 
   return (
@@ -331,7 +455,7 @@ export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
       {[0, 1].map((i) => (
         <mesh key={`d${i}`} ref={(el) => (drogues.current[i] = el)} geometry={drogueGeo} material={drogueMat} visible={false} />
       ))}
-      <lineSegments ref={lines} geometry={lineGeo} material={lineMat} frustumCulled={false} />
+      <primitive object={lineMesh} />
     </group>
   );
 }

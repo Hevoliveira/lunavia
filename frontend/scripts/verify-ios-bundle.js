@@ -112,20 +112,24 @@ const FEATURES = [
   ["Earth return: the entry attitude before the SM separation", "SM SEPARATION NEXT"],
   ["Earth return: SKIP CINEMATIC to the reentry", "skip-return"],
   ["Splashdown: SPLASHDOWN CONFIRMED, then CREW SAFE", "splashdown-confirmed"],
-  ["Descent: the cumulus field (one instanced draw)", "cloud-field"],
-  ["Descent: clouds as volumes (each ray through each puff, analytically)", "the vapour crossed"],
+  ["Descent: the cumulus layer, one ray-marched pass through a weather map", "cumulus-layer"],
+  ["Clouds: each cloud's surface found by bisection (no slicing, no dither)", "its surface found exactly between the last two samples"],
+  ["Clouds: empty sky skipped by the weather map's coarse levels", "empty-space skipping"],
+  ["One atmosphere for the sky, the sea's haze and the clouds", "the brighter band of haze just over the horizon"],
   ["Descent: the clouds drawn at reduced resolution and composited", "cloud-composite"],
-  ["Descent: the open sea (gusts, roughness by distance)", "gusts: broad, slow patches of rougher and smoother water"],
-  ["Splashdown: foam round the floating capsule (no rings, no discs)", "foam round the floating capsule"],
-  ["Splashdown: the spray as streaks along their motion", "the streak: where it was a moment ago"],
   ["Parachutes: canopies lit through the fabric", "the Sun through the fabric seen from the other side"],
   ["Descent HUD under the parachutes", "reentry-descent-panel"],
   ["Descent HUD: the splashdown checklist", "BRACE FOR SPLASHDOWN"],
   ["Captions in a corner over the descent and splashdown", "max-w-[min(420px,40vw)]"],
-  ["Sea: the distant cloud cover read per vertex, not by every distant pixel", "beyond the 3D field, the NASA cloud cover: read here, per vertex"],
-  ["Sea: wind ripples stretched across the wind", "the water tilts mostly along the wind"],
-  ["Clouds: the fine billows only where a pixel can hold them", "the fine billows only where a pixel can hold them"],
   ["Released canopies go under as one sheet", "going under: deep water over it, fading into the sea as one sheet"],
+  ["Sea: the wind sea from a wave spectrum (two bands, Cox & Munk slopes)", "the wind sea, band A (1.8-25 m)"],
+  ["Sea: ripples drawn only where a pixel resolves them", "drawn only where a pixel resolves them"],
+  ["Sea: each swell wave filtered along its own direction (no stripes)", "footprint along the wave's own direction of travel"],
+  ["Sea: cloud shadows per vertex, from the clouds' own weather map", "hundreds of metres across: per vertex is enough"],
+  ["Sea: foam noise only round the splash and the hull", "the foam's small-scale noise, only where there is foam"],
+  ["Parachutes: suspension lines as ribbons at the cord's true width", "a round cord's profile across the ribbon"],
+  ["Parachutes: released canopies collapse and flutter as they fall", "released: no longer held open, the fabric folds and flutters"],
+  ["Splashdown: spray as lit masses of water, not particles", "lit as a volume: the side towards the Sun white"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -145,6 +149,9 @@ const REMOVED = [
   ["The crown sheet round the splash", "the sheet flares outward as it rises"],
   ["The sea rising through sinking canopies (left as islands)", "+ 0.07 - uSink"],
   ["Every distant sea pixel reading the NASA cloud map", "float c0 = texture2D(uCover, uCoverUV + m * uCoverScale).b;"],
+  ["The cumulus as unions of eroded puffs (towers of balls)", "the vapour crossed"],
+  ["The splash as a burst of streak particles", "the streak: where it was a moment ago"],
+  ["The NASA cloud cover read by the sea", "beyond the 3D field, the NASA cloud cover: read here, per vertex"],
 ];
 
 function sourceText(dir) {

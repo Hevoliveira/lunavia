@@ -3290,3 +3290,109 @@ COMPLETE and the debrief (894/1000, GOLD), no page errors. 546 unit tests; `ios:
 
 The reentry scene keeps `AdaptiveResolution`: on a device that cannot hold about 45 fps the pixel
 ratio steps down (to no lower than 1.25) rather than the frame rate dropping.
+
+## 56. Descent and splashdown: art-direction reset, two visual prototypes (for review)
+
+Two prototypes from the reference build 9364896, both rendered by the game: **A**, the final
+descent at about 160 m; **B**, the capsule afloat after splashdown. Presentation only: the
+reentry simulation, the parachutes' flight (deployment, inflation, descent rate), the time scale
+and every success condition are unchanged; so are the launch, the transit, the lunar missions, the
+landing, the ascent, the docking (copilot and cameras) and the return.
+
+**Why 9364896 looked artificial (the causes, not the symptoms).**
+- *Clouds*: each cloud was a union of eroded spheres (instanced puffs), each puff cut flat at the
+  base: balls and foam, shelves stacked under them, the same sculpted shapes repeated. Placed
+  towers 1.7–2.3 km tall stood 0.4–1.3 km from the capsule's column, so they filled the 690 m and
+  160 m shots.
+- *Sea*: four discrete swell sinusoids plus one tiled noise picture: parallel stripes and a
+  visible repeat; slopes several times the real sea's (too much contrast); the haze colour was not
+  the sky's colour at the horizon (a drawn line).
+- *Camera*: about 93 m from the capsule on a 45° lens, aimed 11 m above it: the canopies cropped,
+  the capsule about 15 px.
+- *Splash*: 520 streak particles (confetti); the canopies took 4.2 s to come down 50 m after a
+  0.25 s pause in the air, so they hung over the floating capsule.
+- *Lines*: the suspension lines never reached the screen. The `<lineSegments>` element ended up
+  with a geometry of its own (id 328) while the code filled another (id 273); 1-pixel GL lines
+  would have aliased anyway.
+
+**Clouds: a ray-marched cumulus layer** (`data/cumulusField.js`, `descent/CumulusLayer.jsx`).
+- A weather map (1024², 160 km, RGBA8): about 3 000 separate cells by dart-throwing with a 700 m
+  minimum gap, radius 380–1700 m (heavy-tailed), thinned in broad patches, about a fifth of the
+  sky covered, none within 6 km of the splashdown column. R: coverage with a ragged, lobed edge;
+  G: the cell's top (1.15–2.45 km, larger cells taller); B: its seed. Plus a 32³ tileable 3D noise
+  (Perlin–Worley, smooth fbm, Worley) with mipmaps.
+- One full-screen pass at 0.34 × the drawing buffer, composited premultiplied before the main
+  pass. Each ray: curved-Earth slab, the sea occludes; long strides through empty sky (the weather
+  map's coarse mip skips whole strides with no cloud), the cloud's surface found by bisection
+  between the last two samples (no slicing, no dither), then fine steps.
+- Shape: a dome over a flat but ragged base (each cloud's own base within ±45 m), lobes and
+  eroded billows, all noise filtered to what a pixel at that distance spans.
+- Light: two taps towards the Sun, three orders of scattering (dual-lobe Henyey–Greenstein),
+  the powder term, the sky's light from above and the sea's from below, occluded by the cloud
+  above.
+- One atmosphere (`descent/atmosphere.js`): the sky dome, the sea's reflection and haze and the
+  clouds' haze use the same `skyColor`; the haze length is 22 km low over the sea (about 85 km
+  visual range), the same as before above 9 km.
+- While the camera turns less than half a buffer pixel per frame, a checkerboard of whole 2 × 2
+  quads is traced each frame (a GPU shades quads); any larger turn traces every pixel.
+
+**Sea: a spectrum, calibrated** (`data/oceanSpectrum.js`, `descent/Ocean.jsx`).
+- The wind sea is an inverse FFT of a directional Phillips-type spectrum in two seamless bands
+  (1.8–25 m on a 56 m tile; 8 cm–1.8 m on a 9.7 m tile). The mean square slope is calibrated to
+  Cox & Munk for a 6 m/s breeze (0.034 in all, the rest as roughness).
+- Half-float textures (slope x, slope z, height, slope²) with a CPU-built mip chain: what a pixel
+  cannot resolve becomes roughness (the glitter widens) instead of shimmer. Each band is sampled
+  twice, turned and stretched against each other.
+- The swell is nine Gerstner components in two systems spread ±25°, 33–104 m, Hs about 1.0 m
+  (was four, 1.47 m); each is filtered by the pixel's footprint along its own direction.
+- Fresnel held at 0.78; reflection of the sky raised by roughness; navy body; cloud shadows from
+  the clouds' own weather map (per vertex); haze into the sky's horizon colour (per vertex).
+- Costs: the ripple band only where a pixel resolves it (< 0.9 m); the second chop sample only
+  under 3 m; foam noise only round the splash and the hull; whitecaps on high crests in gusts.
+
+**Cameras** (`data/descentScene.js`).
+- Shot P, 450 → 230 m and held to 150 m: 18 units out and 12.5 up, looking down on the three
+  canopies, their lines and the capsule against the sea, on a 50° lens.
+- Below 150 m: down to shot B at the water.
+- After contact: shot B (42°), then shot C (38°), the recovery shot, 13 m off and 1.6 m up.
+- Each shot's lens is eased. With all three 25 m canopies and the capsule 50 m below them in
+  frame, the capsule cannot be much more than 6 % of the frame's height; the NASA photograph of
+  the same moment shows it at about 5 %.
+- Suspension lines are camera-facing ribbons at the cord's true width (3.6 cm per drawn line),
+  with coverage as opacity, a primitive mesh.
+
+**Splashdown in three phases** (`descent/Splash.jsx`, `Chutes.jsx`, `Ocean.jsx`).
+- *Contact*: 64 lit masses of spray thrown mostly on the leading edge's side, each drawn out
+  along its motion and slowed by air drag, falling back under gravity and swelling into mist. Also
+  a low skirt of 26 masses and 140 drops at their true sub-pixel width. No crown, ring or disc.
+- *Settling*: the rebound, ripples and churn in the water; the canopies keep falling at the
+  descent rate from contact (no pause in the air), collapse and flutter (`uCrumple`), lean over
+  downwind and reach the sea about 3.1 s after contact, the lines slack beneath them.
+- *Recovery*: they lie as long crumpled sheets downwind on the swell and go under slowly (gone at
+  about 22 s). A broken foam lace and a thin meniscus round the hull, no ring.
+
+**Measured** (headless Chromium, SwiftShader CPU rendering at 852 × 393, same session; not an
+iPhone GPU). Held frames, synchronous renders, median:
+
+| | 9364896 | prototypes |
+|---|---|---|
+| 160 m (prototype A) | 74 ms | 133 ms (clouds 30 ms; 167 ms when every cloud pixel is traced) |
+| 9 s afloat (prototype B) | 95 ms | 154 ms (clouds 42 ms; 186 ms) |
+| 0.5 s after contact | 100 ms | 154 ms (clouds 36 ms) |
+| 690 m | 86 ms | 108 ms (clouds 43 ms) |
+| Draw calls / triangles at 160 m | 14 / 73 k | 15 / 34 k |
+
+The rest of the cost is the sea's shader (≈ 80 ms here against 28–54 ms before): texture reads
+dominate in software rendering (four spectrum reads, half-float, anisotropic). Not measured on an
+iPhone. The reentry scene keeps `AdaptiveResolution` (pixel ratio down to 1.25 below about 45 fps),
+and the cloud buffer follows the drawing buffer.
+
+**Known limitations.**
+- The canopies are smooth domes with painted gores (no ringsail slots seen from afar).
+- The capsule's hull has no wet darkening at the waterline.
+- The spray is soft billboards, not a fluid simulation.
+- Released canopies are the same mesh crumpled by the shader.
+- The far cloud band at sea level is dense, and cloud edges show the reduced buffer's resolution
+  under magnification.
+- At 690 m the sea under the horizon is pale (the haze).
+- The cost is about 1.6–2 × 9364896 in software rendering.

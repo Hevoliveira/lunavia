@@ -8,9 +8,11 @@ import { plasmaLevel } from "@/data/reentryGuidance";
 import CsmModel, { csmMaterials } from "@/components/spacecraft/CsmModel";
 import { CM_R, PARTS as CSM_PARTS, buildCM } from "@/data/csmDesign";
 import { SM_SEP, smOffset } from "@/data/earthReturn";
-import { CONFIRM, DROGUE_DRIFT_M, ENTRY_SIDE, FLOAT, M_PER_UNIT, chuteCamera, lowWorldFade, recoveryCamera, seaLevelY, seaSurface, splashBob } from "@/data/descentScene";
+import { CONFIRM, DROGUE_DRIFT_M, ENTRY_SIDE, FLOAT, FOV_DEFAULT, M_PER_UNIT, chuteCamera, lowWorldFade, recoveryCamera, seaLevelY, seaSurface, splashBob } from "@/data/descentScene";
 import Ocean from "@/components/scenes/descent/Ocean";
-import CloudField, { CloudPass, cloudShadowMap, noiseTexture } from "@/components/scenes/descent/CloudField";
+import CumulusLayer, { CloudPass } from "@/components/scenes/descent/CumulusLayer";
+import { noiseTexture } from "@/components/scenes/descent/noise2d";
+import { SKY_GLSL } from "@/components/scenes/descent/atmosphere";
 import Splash from "@/components/scenes/descent/Splash";
 import Chutes from "@/components/scenes/descent/Chutes";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
@@ -341,7 +343,7 @@ function ShoulderGlow({ levelRef }) {
 
 function SkyDome({ simRef, atmo }) {
   const mat = useRef();
-  const uniforms = useMemo(() => ({ uTop: { value: new THREE.Color("#010103") }, uHor: { value: new THREE.Color("#04060c") }, uSun: { value: atmo.sun }, uGlow: { value: 0 } }), [atmo]);
+  const uniforms = useMemo(() => ({ uSkyTop: { value: new THREE.Color("#010103") }, uSkyHor: { value: new THREE.Color("#04060c") }, uSun: { value: atmo.sun }, uGlow: { value: 0 } }), [atmo]);
   const cols = useMemo(
     () => ({
       topSpace: new THREE.Color("#010103"),
@@ -364,9 +366,10 @@ function SkyDome({ simRef, atmo }) {
     const lo = smooth((35 - h) / 25); // 35 -> 10 km: daylight sky
     cols.top.copy(cols.topSpace).lerp(cols.topHigh, hi).lerp(cols.topLow, lo);
     cols.hor.copy(cols.horSpace).lerp(cols.horHigh, hi).lerp(cols.horLow, lo);
-    mat.current.uniforms.uTop.value.copy(cols.top);
-    mat.current.uniforms.uHor.value.copy(cols.hor);
+    mat.current.uniforms.uSkyTop.value.copy(cols.top);
+    mat.current.uniforms.uSkyHor.value.copy(cols.hor);
     mat.current.uniforms.uGlow.value = lo;
+    atmo.glow = lo;
     // the sea and the clouds take the sky's own colours: one atmosphere
     atmo.top.copy(cols.top);
     atmo.hor.copy(cols.hor);
@@ -381,15 +384,10 @@ function SkyDome({ simRef, atmo }) {
         depthWrite={false}
         uniforms={uniforms}
         vertexShader={`varying vec3 vD; void main(){ vD = position; vec4 p = modelViewMatrix * vec4(position,1.0); p.xyz += cameraPosition * 0.0; gl_Position = projectionMatrix * p;} `}
-        fragmentShader={`uniform vec3 uTop; uniform vec3 uHor; uniform vec3 uSun; uniform float uGlow; varying vec3 vD;
-          void main(){ vec3 d = normalize(vD); float y = d.y; float k = pow(clamp(y, 0.0, 1.0), 0.45);
-            vec3 c = mix(uHor, uTop, k);
-            // below the horizon: the haze over the sea (the sea itself is drawn over this)
-            c = mix(c, uHor * 0.92, smoothstep(0.0, -0.08, y));
-            // a soft brightening round the Sun (no flare)
-            float sd = max(dot(d, uSun), 0.0);
-            c += vec3(1.0, 0.93, 0.82) * (pow(sd, 6.0) * 0.16 + pow(sd, 64.0) * 0.35) * uGlow;
-            gl_FragColor = vec4(c, 1.0); }`}
+        fragmentShader={`uniform vec3 uSkyTop; uniform vec3 uSkyHor; uniform vec3 uSun; uniform float uGlow; varying vec3 vD;
+          ${SKY_GLSL}
+          // the one sky the sea reflects and fades into, and the clouds are lit by (descent/atmosphere)
+          void main(){ gl_FragColor = vec4(skyColor(normalize(vD)), 1.0); }`}
       />
     </mesh>
   );
@@ -617,6 +615,7 @@ function Vehicle({ simRef, viewRef, poseRef, atmo }) {
 function CameraRig({ simRef, viewRef, atmo }) {
   const { camera } = useThree();
   const first = useRef(true);
+  const fovSet = useRef(false);
   const pos = useRef(new THREE.Vector3(3, 1, 4.5));
   const look = useRef(new THREE.Vector3());
   const _p = useMemo(() => new THREE.Vector3(), []);
@@ -627,6 +626,8 @@ function CameraRig({ simRef, viewRef, atmo }) {
     if (!s) return;
     const t = state.clock.elapsedTime;
     const L = plasmaLevel(s);
+    // each shot's lens (the descent and recovery shots choose theirs; the rest keep 45°)
+    let fovTarget = FOV_DEFAULT;
     if (v.phase === "APPROACH") {
       // Ahead and to the sunlit side, as the return's approach shot: the CSM flies screen-left.
       _p.set(-1.2, 1.3, 5.6);
@@ -641,6 +642,7 @@ function CameraRig({ simRef, viewRef, atmo }) {
       const c = recoveryCamera(v.phaseT || 0);
       _p.set(...c.pos);
       _l.set(...c.look);
+      fovTarget = c.fov;
     } else if (v.phase === "FAILED" && s.outcome === OUTCOME.SKIP_OUT) {
       const k = Math.min(1, (v.failT || 0) / 4);
       _p.set(3 + k * 5, 1 + k * 3, 5 + k * 8);
@@ -650,6 +652,7 @@ function CameraRig({ simRef, viewRef, atmo }) {
       const c = chuteCamera(s.h, s.mainT !== null ? s.t - s.mainT : null, t, s.drogueT !== null ? s.t - s.drogueT : Infinity);
       _p.set(...c.pos);
       _l.set(...c.look);
+      fovTarget = c.fov;
     } else if (s.v < 3000) {
       _p.set(...ENTRY_SIDE.pos);
       _l.set(...ENTRY_SIDE.look);
@@ -674,6 +677,13 @@ function CameraRig({ simRef, viewRef, atmo }) {
     }
     camera.position.copy(pos.current);
     camera.lookAt(look.current);
+    // eased like the camera's own move (the first frame takes it at once)
+    const f = fovSet.current ? camera.fov + (fovTarget - camera.fov) * Math.min(1, dt * 1.2) : fovTarget;
+    fovSet.current = true;
+    if (Math.abs(camera.fov - f) > 1e-4) {
+      camera.fov = f;
+      camera.updateProjectionMatrix();
+    }
     // read-only, for the validation tooling: the camera, the sea and the splash each frame
     if (typeof window !== "undefined") {
       const w = window.__lvReentryView || (window.__lvReentryView = {});
@@ -695,11 +705,10 @@ function Scene({ simRef, viewRef, final = false }) {
   const starRef = useRef();
   // One atmosphere for the sky, the sea and the clouds (written by SkyDome and AtmoState).
   const atmo = useMemo(
-    () => ({ sun: new THREE.Vector3(...REENTRY_SUN).normalize(), top: new THREE.Color(), hor: new THREE.Color(), haze: new THREE.Color("#b8cfe0"), low: 0, seaY: -1e4, drift: 0 }),
+    () => ({ sun: new THREE.Vector3(...REENTRY_SUN).normalize(), top: new THREE.Color(), hor: new THREE.Color(), haze: new THREE.Color("#b8cfe0"), low: 0, seaY: -1e4, drift: 0, glow: 1, cloudMap: null, windOff: null }),
     []
   );
   const poseRef = useRef({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), low: -0.11 });
-  const shadows = useMemo(() => cloudShadowMap(REENTRY_SUN.map((x) => x / Math.hypot(...REENTRY_SUN))), []);
   const noise = useMemo(() => noiseTexture(), []);
   const cloudPass = useRef(null);
   useFrame((_, dt) => {
@@ -720,8 +729,8 @@ function Scene({ simRef, viewRef, final = false }) {
       <hemisphereLight args={["#9cc6ff", "#0b1a2c", 0.35]} />
       <directionalLight position={[-6, 7, 5]} intensity={2.6} color="#fff4e6" />
       <OrbitalEarth simRef={simRef} viewRef={viewRef} />
-      <Ocean simRef={simRef} viewRef={viewRef} atmo={atmo} cloudShadows={shadows} />
-      <CloudField simRef={simRef} atmo={atmo} passRef={cloudPass} />
+      <Ocean simRef={simRef} viewRef={viewRef} atmo={atmo} />
+      <CumulusLayer simRef={simRef} atmo={atmo} passRef={cloudPass} />
       <Vehicle simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
       <Chutes simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
       <Splash viewRef={viewRef} noise={noise} sun={atmo.sun} />

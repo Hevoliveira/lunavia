@@ -37,11 +37,21 @@ export const lowWorldFade = (h) => smooth((26000 - h) / 11000);
  * height about 1 m. Gerstner waves in metres (shared by the ocean shader and the floating capsule,
  * so the capsule rides the very surface that is drawn). dir: heading of travel, radians.
  */
+// A swell is never one train of identical crests: its energy is spread over a band of lengths and
+// directions, so its crests are short and come in groups. Nine components, two swell systems
+// (from about 0.5 rad and 1.2 rad) spread ±25° and 46-104 m long, and the wind sea's longest
+// waves: summed, an irregular, short-crested swell with no long parallel stripes. (The shorter
+// wind sea is data/oceanSpectrum's.)
 export const WAVES = [
-  { len: 96, amp: 0.42, dir: 0.5, steep: 0.55 },
-  { len: 61, amp: 0.27, dir: 1.15, steep: 0.5 },
-  { len: 33, amp: 0.13, dir: -0.25, steep: 0.45 },
-  { len: 17, amp: 0.06, dir: 1.9, steep: 0.4 },
+  { len: 104, amp: 0.18, dir: 0.42, steep: 0.5 },
+  { len: 88, amp: 0.156, dir: 0.7, steep: 0.5 },
+  { len: 97, amp: 0.139, dir: 0.18, steep: 0.5 },
+  { len: 79, amp: 0.119, dir: 0.92, steep: 0.5 },
+  { len: 71, amp: 0.09, dir: 0.33, steep: 0.45 },
+  { len: 62, amp: 0.111, dir: 1.22, steep: 0.45 },
+  { len: 54, amp: 0.078, dir: 1.48, steep: 0.45 },
+  { len: 46, amp: 0.061, dir: 1.02, steep: 0.4 },
+  { len: 33, amp: 0.057, dir: -0.1, steep: 0.4 },
 ];
 const G = 9.81;
 export const waveSpeed = (lenM) => Math.sqrt((G * lenM) / (2 * Math.PI)); // deep water, m/s
@@ -72,143 +82,12 @@ export function seaSurface(xm, zm, t) {
 
 /* ---- the clouds ---------------------------------------------------------------------------- */
 /*
- * Fair-weather cumulus over a tropical recovery area (the references: scattered cumulus with flat
- * grey bases and bright cauliflower tops, a few towering ones, their shadows on the sea). Bases
- * 650–950 m, tops 1.2–2.6 km. The field is deterministic (seeded): the same clouds every flight.
- * Distances in units (3.9 m).
- *
- * Each cloud is built as a cumulus is: a wide, flattened body sitting on its condensation level
- * (one flat base for the whole cloud), one to three towers of rounded puffs narrowing upward, and
- * smaller cauliflower turrets on their upper surfaces. Every puff is a volume (an ellipsoid of
- * vapour, components/scenes/descent/CloudField), never a picture.
- *
- * The capsule comes down at the field's centre, between placed formations: a tall one behind it
- * as the descent camera looks, a lower one beside it, and two near towers either side of the
- * shot that the camera falls past under the main parachutes; a few thin wisps lie across the
- * camera's own path (it passes through them), none across the capsule's.
+ * The cumulus layer is data/cumulusField (a weather map of scattered cells) drawn by
+ * components/scenes/descent/CumulusLayer (one ray-marched pass). Here only where the capsule comes
+ * down: it drifts 325 m (-X) under its drogues (the same on every flown entry: data/reentryPhysics,
+ * measured), then comes straight down under its mains.
  */
-// One condensation level for the whole field (bases within ±40 m of 820 m): flat bases in one plane, as a
-// cumulus field has them.
-export const CLOUD_FIELD = { radius: u(30000), count: 52, baseM: [780, 860], topM: [1200, 2600] };
-// Ground positions: the capsule drifts 325 m (-X) under its drogues (the same on every flown
-// entry: data/reentryPhysics, measured), then comes straight down under its mains. The placed
-// clouds below are given relative to that final column (m), turned into field units here.
 export const DROGUE_DRIFT_M = 325;
-const col = (xM, zM) => ({ x: u(xM - DROGUE_DRIFT_M), z: u(zM) });
-export const PLACED_CLOUDS = [
-  { ...col(-640, -1250), r: u(600), baseM: 810, topM: 2300 }, // the tall formation behind the capsule
-  { ...col(-40, -1200), r: u(420), baseM: 830, topM: 1750 },
-  { ...col(-640, -380), r: u(400), baseM: 800, topM: 1700 }, // near cumulus, left of the shot
-  { ...col(330, -980), r: u(470), baseM: 820, topM: 2150 }, // near cumulus, right of the shot
-];
-/** Thin wisps (fractus): none placed in this sky (the descent passes between the cumulus). */
-export const WISPS = [];
-function rng(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-let FIELD = null;
-/**
- * The clouds and their puffs (units; y is the height above the sea):
- * { clouds: [{ x, z, base, top, r, dens, wisp }], puffs: [{ x, y, z, r, sy, dens, h01, seed, cloud }] }
- * sy: the puff's vertical squash (an ellipsoid r × r·sy × r); dens: its density (1 cumulus, < 1 a wisp);
- * h01: its height in its cloud (0 base .. 1 top).
- */
-export function cloudField(seed = 20261021) {
-  if (FIELD && seed === 20261021) return FIELD;
-  const R = rng(seed);
-  const F = CLOUD_FIELD;
-  const clouds = PLACED_CLOUDS.map((c) => ({ x: c.x, z: c.z, r: c.r, base: u(c.baseM), top: u(c.topM), dens: 1, wisp: false }));
-  while (clouds.length < F.count) {
-    const i = clouds.length;
-    const a = R() * Math.PI * 2;
-    // a few more within a few kilometres (the layer is seen all round on the way down), the rest to 30 km
-    const d = i < 10 ? u(1700 + R() * 3000) : F.radius * Math.sqrt(0.03 + 0.97 * R());
-    const base = u(F.baseM[0] + R() * (F.baseM[1] - F.baseM[0]));
-    const tall = Math.pow(R(), 2.2); // most clouds modest, a few towers (heavy-tailed)
-    const r = u(380 + R() * 820) * (0.75 + 0.5 * tall);
-    // cumulus are about as wide as they are tall; only a few tower above that, and only near by (far
-    // off, where a tower would read as a stack of balls a few pixels wide, they stay as broad as tall)
-    const farOff = Math.hypot(Math.cos(a) * d + u(DROGUE_DRIFT_M), Math.sin(a) * d) > u(9000);
-    const top = base + Math.min((farOff ? 1.0 : 1.5) * r, u(420 + tall * (F.topM[1] - F.baseM[0] - 420)));
-    clouds.push({ x: Math.cos(a) * d, z: Math.sin(a) * d, base, top, r, dens: 1, wisp: false });
-  }
-  const puffs = [];
-  const column = { x: -u(DROGUE_DRIFT_M), z: 0 };
-  clouds.forEach((c, ci) => {
-    const H = c.top - c.base;
-    // near clouds in full detail; far ones (a few pixels high) with fewer, larger puffs
-    const near = Math.hypot(c.x - column.x, c.z - column.z) < u(9000);
-    const add = (x, y, z, r, sy) => {
-      // never above the cloud's top, never below its base
-      const yy = Math.min(c.top - r * sy * 0.45, Math.max(c.base, y));
-      puffs.push({ x, y: yy, z, r, sy, dens: 1, h01: Math.min(1, Math.max(0, (yy - c.base) / H)), seed: R(), cloud: ci });
-      return { x, y: yy, z, r };
-    };
-    // 1. the base: wide, flattened puffs centred on the condensation level (cut flat by it)
-    const nb = near ? 6 : 3;
-    for (let i = 0; i < nb; i++) {
-      const a = (i / nb) * Math.PI * 2 + R() * 0.8;
-      const d = i === 0 ? 0 : c.r * (0.4 + 0.18 * R());
-      add(c.x + Math.cos(a) * d, c.base, c.z + Math.sin(a) * d, c.r * (0.4 + 0.12 * R()), 0.75);
-    }
-    // 2. the body: overlapping columns rising from the base, narrowing upward and leaning a little
-    //    downwind (+x), the tallest to the cloud's top, the others lower (a cumulus' several domes)
-    const nCol = near ? 2 + (R() < 0.3 ? 1 : 0) : 2;
-    const body = [];
-    for (let k = 0; k < nCol; k++) {
-      const a = R() * Math.PI * 2;
-      const d = k === 0 ? c.r * 0.1 * R() : c.r * (0.25 + 0.2 * R());
-      const top = k === 0 ? c.top : c.base + H * (0.4 + 0.4 * R());
-      // a column is broad: a cumulus dome, not a stack of balls
-      const r0 = Math.min(c.r * 0.62, Math.max(c.r * (k === 0 ? 0.45 : 0.36), H * (k === 0 ? 0.3 : 0.24))) * (0.9 + 0.2 * R()) * (near ? 1 : 1.2);
-      // a broad, rounded top (a cumulus dome), not a narrowing stack of balls
-      const r1 = Math.max(u(40), r0 * (0.62 + 0.14 * R()));
-      const y0 = c.base + r0 * 0.35;
-      const y1 = top - r1 * 0.55;
-      const n = Math.max(1, Math.min(near ? 5 : 3, Math.ceil((y1 - y0) / (0.55 * (r0 + r1) * 0.5))));
-      for (let j = 0; j <= n; j++) {
-        const f = n === 0 ? 1 : j / n;
-        const r = r0 + (r1 - r0) * f;
-        const px = c.x + Math.cos(a) * d + c.r * 0.15 * f * f + (R() - 0.5) * r * 0.45;
-        const pz = c.z + Math.sin(a) * d + (R() - 0.5) * r * 0.45;
-        body.push({ ...add(px, y0 + (y1 - y0) * f, pz, r, 0.92), f });
-      }
-    }
-    // 3. cauliflower turrets: rounded bulges half sunk into the upper body puffs, on their outer
-    //    and upper sides (never floating free)
-    body.forEach((b) => {
-      const nT = b.f < 0.35 ? 0 : near ? 1 + (b.f > 0.7 ? 1 : 0) : b.f > 0.8 ? 1 : 0;
-      for (let j = 0; j < nT; j++) {
-        const ta = R() * Math.PI * 2;
-        // far away a turret is a bump on the dome's shoulder, sunk deeper (on the crown it would read
-        // as a separate ball, a head)
-        const el = (near ? 20 + R() * 60 : 12 + R() * 33) * (Math.PI / 180);
-        const tr = b.r * (0.34 + 0.2 * R());
-        const off = b.r * (near ? 0.66 + 0.12 * R() : 0.52 + 0.1 * R());
-        add(b.x + Math.cos(ta) * Math.cos(el) * off, b.y + Math.sin(el) * off * 0.92, b.z + Math.sin(ta) * Math.cos(el) * off, tr, 1);
-      }
-    });
-  });
-  // the wisps: ragged, flattened, thin fragments
-  WISPS.forEach((w) => {
-    const ci = clouds.length;
-    const y = u(w.yM);
-    clouds.push({ x: w.x, z: w.z, r: w.r, base: y - w.r * 0.35, top: y + w.r * 0.35, dens: w.dens, wisp: true });
-    for (let j = 0; j < 5; j++) {
-      const a = (j / 5) * Math.PI * 2 + R();
-      const r = w.r * (j === 0 ? 0.6 : 0.38 + 0.12 * R());
-      const d = j === 0 ? 0 : w.r * (0.35 + 0.25 * R());
-      puffs.push({ x: w.x + Math.cos(a) * d, y: y + (R() - 0.5) * w.r * 0.15, z: w.z + Math.sin(a) * d * 0.7, r, sy: 0.32, dens: w.dens, h01: 0.5, seed: R(), cloud: ci });
-    }
-  });
-  const out = { clouds, puffs };
-  if (seed === 20261021) FIELD = out;
-  return out;
-}
 
 /* ---- the parachutes ------------------------------------------------------------------------- */
 /*
@@ -256,19 +135,32 @@ export function splashBob(t) {
   return -SPLASH.dip * Math.exp(-x / (SPLASH.settle * 0.45)) * Math.cos(x * 2.6);
 }
 /**
- * Where the released parachutes are, s seconds after splashdown: 0 hanging, then the wind carries
- * them down and away downwind, deflated into streamers; they settle on the sea as they reach it,
- * bunched and crumpled, and slowly sink (Apollo's mains had no flotation). { drop (0..1, of the way
- * down), flat (0..1, lying on the sea), drift (units), sink (0 on the surface .. 1 gone) }.
+ * Where the released parachutes are, s seconds after splashdown. They do not stop when the capsule
+ * does: at contact they are still coming down at the descent rate (the lines go slack and the mains
+ * are released), so they fall on, collapsing as they lose their load into streamers, a little faster
+ * as they deflate, and reach the sea about three seconds later, downwind of the capsule; there they
+ * lie bunched and crumpled on the swell, and slowly sink (Apollo's mains had no flotation).
+ * { drop (0..1, of the way down), collapse (0 open .. 1 deflated), flat (0..1, lying on the sea),
+ * drift (units), sink (0 on the surface .. 1 gone) }.
  */
+export const RELEASE = { heightM: 46, speedMS: 8.5, accelMS2: 4 };
+// when they reach the sea (s after contact)
+const RELEASE_LAND = (-RELEASE.speedMS + Math.sqrt(RELEASE.speedMS ** 2 + 2 * RELEASE.accelMS2 * RELEASE.heightM)) / RELEASE.accelMS2;
 export function chuteRelease(s) {
-  if (s <= 0.25) return { drop: 0, flat: 0, drift: 0, sink: 0 };
-  const x = s - 0.25;
-  const drop = smooth(x / 4.2);
-  // sink: how far under the fabric has gone (0 on the surface .. 1 gone), the whole sheet at once as
-  // it waterlogs (never the sea rising through it, which would leave its folds as separate islands)
-  // flat: they lie down on the sea as they reach it (not in the air)
-  return { drop, flat: smooth((x - 3.2) / 1.6), drift: u(24) * (1 - Math.exp(-x / 3)) + u(0.5) * x, sink: smooth((x - 4.5) / 6) };
+  if (s <= 0) return { drop: 0, collapse: 0, flat: 0, drift: 0, sink: 0 };
+  const x = s;
+  const fallen = RELEASE.speedMS * x + 0.5 * RELEASE.accelMS2 * x * x;
+  const drop = Math.min(1, fallen / RELEASE.heightM);
+  return {
+    drop,
+    collapse: smooth(x / 1.4),
+    // they lie down on the sea as they reach it (not in the air), the fabric settling in a second
+    flat: smooth((x - RELEASE_LAND + 0.45) / 0.8),
+    drift: u(24) * (1 - Math.exp(-x / 3)) + u(0.5) * x,
+    // the whole sheet goes under at once as it waterlogs (never the sea rising through it, which
+    // would leave its folds as separate islands): still on the surface through the recovery shot
+    sink: smooth((x - 6) / 16),
+  };
 }
 
 /** On-screen confirmation after contact, seconds after splashdown: SPLASHDOWN CONFIRMED, then CREW SAFE. */
@@ -282,10 +174,25 @@ const HANG_LOW = 0.11;
 export const ENTRY_SIDE = { pos: [2.8, 0.4, 4.6], look: [0.3, 0.1, 0] };
 /** Shot A (the final approach): well off to the side and a little below, the three canopies and the capsule under them in frame, the sea below; until 400 m. */
 const SHOT_A = { x: 17, y: -2.0, z: 30, look: 4.5, until: 400 };
+/**
+ * Shot P (the final descent, as recovery photographs show it, from about 450 m to 150 m): above
+ * the parachutes and off to the side, looking down, so the whole assembly is in frame (the three
+ * canopies, their lines and the capsule) against the sea, with the horizon and the distant clouds
+ * along the top of the frame. A 50° lens. (Framing all three 25 m canopies and the capsule 50 m
+ * below them, the capsule cannot be much more than 6 % of the frame's height: the real photographs
+ * show it so. It reads against the dark water.)
+ */
+const SHOT_P = { a: 0.17, d: 18, y: 12.5, look: 7.4, fov: 50, from: 450, to: 230, until: 150 };
 /** Shot B (the water contact), relative to the point of contact: low over the waves, close beside it. */
-const SHOT_B = { a: 0.65, d: 8.2, y: 0.8 }; // azimuth (rad, from +z towards +x), distance, height above the sea
-/** Shot C (the recovery hero shot): closer, lower, round towards the Sun so the capsule's face is lit. */
-const SHOT_C = { a: 0.12, d: 5.2, y: 0.5 };
+const SHOT_B = { a: 0.65, d: 6.5, y: 0.7, fov: 42 }; // azimuth (rad, from +z towards +x), distance, height above the sea
+/**
+ * Shot C (the recovery): close and low over the water (about 13 m off, 1.6 m up, a 38° lens), round
+ * towards the Sun so the capsule's face is lit; the capsule a quarter of the frame, the water
+ * round it, the horizon and the distant clouds beyond.
+ */
+const SHOT_C = { a: -0.1, d: 3.3, y: 0.42, fov: 38 };
+/** The descent and entry views' lens. */
+export const FOV_DEFAULT = 45;
 const polar = (a, d, y) => [Math.sin(a) * d, y, Math.cos(a) * d];
 /**
  * The descent camera, one continuous move from the drogues to the water (h: altitude, m;
@@ -302,6 +209,7 @@ const polar = (a, d, y) => [Math.sin(a) * d, y, Math.cos(a) * d];
 export function chuteCamera(h, sinceMain = null, t = 0, sinceDrogue = Infinity) {
   const sway = Math.sin(t * 0.13) * 0.6;
   const sea = seaLevelY(h) - HANG_LOW; // the sea's surface below the capsule's centre
+  let fov = FOV_DEFAULT;
   // as the drogues open, an eased move up and back from the entry's side view (no jolt)
   const d0 = smooth(sinceDrogue / 7);
   let pos = lerp3(ENTRY_SIDE.pos, [8 + sway * 0.6, 4.5, 13], d0);
@@ -313,20 +221,29 @@ export function chuteCamera(h, sinceMain = null, t = 0, sinceDrogue = Infinity) 
     const a = smooth((1300 - h) / 850);
     pos = lerp3(pos, [SHOT_A.x + sway * 0.5, SHOT_A.y, SHOT_A.z], a);
     look = lerp3(look, [0, SHOT_A.look, 0], a);
-    if (h < SHOT_A.until) {
-      const q0 = smooth(Math.max(0, h) / SHOT_A.until); // 1 at 400 m .. 0 at the water
-      const q = Math.sqrt(q0); // closing in mostly over the last 100 m: the canopies in frame till then
-      const dA = Math.hypot(SHOT_A.x, SHOT_A.z);
-      const aA = Math.atan2(SHOT_A.x, SHOT_A.z);
-      // coming down with the capsule (never falling faster than it), ending just over the waves
+    // shot P: up and over, round to the side, looking down on the whole assembly against the sea
+    const p = smooth((SHOT_P.from - h) / (SHOT_P.from - SHOT_P.to));
+    const P = [...polar(SHOT_P.a, SHOT_P.d, SHOT_P.y)];
+    P[0] += sway * 0.3;
+    pos = lerp3(pos, P, p);
+    look = lerp3(look, [0, SHOT_P.look, 0], p);
+    fov = FOV_DEFAULT + (SHOT_P.fov - FOV_DEFAULT) * p;
+    if (h < SHOT_P.until) {
+      // the last 150 m: down from shot P to the water beside the capsule (shot B at contact)
+      const q = smooth(Math.max(0, h) / SHOT_P.until); // 1 at 150 m .. 0 at the water
       const yB = SHOT_B.y - HANG_LOW;
-      pos = polar(SHOT_B.a + (aA - SHOT_B.a) * q, SHOT_B.d + (dA - SHOT_B.d) * q, yB + (SHOT_A.y - yB) * q);
-      pos[0] += sway * 0.5 * q;
-      look = [0, 0.3 + (SHOT_A.look - 0.3) * q, 0];
+      const B = polar(SHOT_B.a, SHOT_B.d, yB);
+      const k = 1 - q;
+      // round and down: the angle and distance first, the height eased so it never drops past the capsule's line
+      pos = lerp3(P, B, k);
+      pos[1] = yB + (P[1] - yB) * Math.pow(q, 1.6);
+      // the aim lowered steadily with the height left (no whip down at the end)
+      look = [0, 0.3 + (SHOT_P.look - 0.3) * (Math.max(0, h) / SHOT_P.until), 0];
+      fov = SHOT_P.fov + (SHOT_B.fov - SHOT_P.fov) * k;
     }
   }
   pos[1] = Math.max(pos[1], sea + 0.7);
-  return { pos, look };
+  return { pos, look, fov };
 }
 /**
  * After splashdown (s seconds after contact; the scene's origin is the point of contact, the sea
@@ -338,10 +255,10 @@ export function chuteCamera(h, sinceMain = null, t = 0, sinceDrogue = Infinity) 
 export function recoveryCamera(s) {
   const k = smooth((s - 2.2) / 5);
   const on = Math.max(0, s - 7.2);
-  const a = SHOT_B.a + (SHOT_C.a - SHOT_B.a) * k - 0.006 * on;
-  const d = SHOT_B.d + (SHOT_C.d - SHOT_B.d) * k + 0.6 * smooth(on / 40);
+  const a = SHOT_B.a + (SHOT_C.a - SHOT_B.a) * k - 0.005 * on;
+  const d = SHOT_B.d + (SHOT_C.d - SHOT_B.d) * k + 0.5 * smooth(on / 40);
   const y = -HANG_LOW + SHOT_B.y + (SHOT_C.y - SHOT_B.y) * k;
-  return { pos: polar(a, d, y), look: [0, 0.3 - 0.14 * k, 0] };
+  return { pos: polar(a, d, y), look: [0, 0.3 - 0.12 * k, 0], fov: SHOT_B.fov + (SHOT_C.fov - SHOT_B.fov) * k };
 }
 
-export const _test = { smooth, rng };
+export const _test = { smooth };
