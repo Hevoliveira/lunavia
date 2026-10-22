@@ -83,7 +83,7 @@ uniform float uSeaY;
 uniform vec2 uDrift;
 uniform float uTime;
 uniform float uRings;
-uniform float uSink;
+uniform float uSink;    // 0 on the surface .. 1 under (the whole sheet at once)
 varying vec3 vCol;
 varying vec3 vN;
 varying vec3 vW;
@@ -98,9 +98,11 @@ void main() {
     vec2 m = (w.xz + uDrift) * ${M_PER_UNIT.toFixed(2)};
     float sea = uSeaY + seaHeight(m, uTime) / ${M_PER_UNIT.toFixed(2)};
     // folds and trapped air lift the fabric in ridges; the rest lies on the water
-    float fold = max(0.0, sin(aGore.z * 16.0 + aGore.x * 9.0)) * 0.05 + max(0.0, sin(aGore.x * 13.0 + aGore.z * 5.0)) * 0.04 + (0.5 + 0.5 * sin(aGore.z * 3.0 + 1.3)) * 0.03;
+    float fold = max(0.0, sin(aGore.z * 16.0 + aGore.x * 9.0)) * 0.07 + max(0.0, sin(aGore.x * 13.0 + aGore.z * 5.0)) * 0.06 + (0.5 + 0.5 * sin(aGore.z * 3.0 + 1.3)) * 0.05;
     // (a little proud of the drawn surface, which the grid interpolates and the crests crowd)
-    float y = sea + fold * (0.5 + 0.5 * aGore.x) + 0.07 - uSink;
+    // (it stays on the surface as it waterlogs, its folds settling flat: the sheet goes under as one,
+    // tinted by the water above it, never cut into islands by the swell)
+    float y = sea + fold * (0.5 + 0.5 * aGore.x) * (1.0 - 0.8 * uSink) + 0.07;
     w.y = mix(w.y, y, uFlat);
     n = normalize(mix(n, vec3(0.0, 1.0, 0.0) + vec3(cos(aGore.z * 16.0), 0.0, sin(aGore.x * 23.0)) * 0.35, uFlat));
   }
@@ -117,6 +119,7 @@ uniform vec3 uSun;
 uniform vec3 uSkyTop;
 uniform vec3 uSkyHor;
 uniform float uRings;
+uniform float uSink;
 varying vec3 vCol;
 varying vec3 vN;
 varying vec3 vW;
@@ -144,7 +147,10 @@ void main() {
   col += sunCol * pow(max(dot(reflect(-uSun, n), v), 0.0), 12.0) * 0.06;
   // wet on the sea: the orange darker, the white nylon still white (a little of the water's blue)
   col = mix(col, col * mix(vec3(0.6, 0.66, 0.74), vec3(0.92, 0.96, 1.0), smoothstep(0.5, 0.85, vCol.g)), vWet * 0.8);
-  gl_FragColor = vec4(col, 1.0);
+  // going under: deep water over it, fading into the sea as one sheet (never a pale patch)
+  vec3 under = vec3(0.025, 0.075, 0.14) * (0.8 + 0.3 * vCol.g);
+  col = mix(col, under, smoothstep(0.0, 0.6, uSink));
+  gl_FragColor = vec4(col, 1.0 - smoothstep(0.15, 0.85, uSink));
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -219,7 +225,7 @@ export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
     };
 
     // ---- mains
-    const showMain = s.mainT !== null && !failed;
+    const showMain = s.mainT !== null && !failed && !(splashed && chuteRelease(v.phaseT || 0).sink >= 0.999);
     const rel = splashed ? chuteRelease(v.phaseT || 0) : null;
     const centres = mainCanopyCentres(mU);
     if (splashed && !released.current) {
@@ -234,6 +240,13 @@ export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
     const U = mat.uniforms;
     U.uFlat.value = rel ? rel.flat : 0;
     U.uSink.value = rel ? rel.sink : 0;
+    // blended only while it goes under (and hidden once it has)
+    const sinking = !!rel && rel.sink > 0.001;
+    if (mat.transparent !== sinking) {
+      mat.transparent = sinking;
+      mat.depthWrite = !sinking;
+      mat.needsUpdate = true;
+    }
     U.uSeaY.value = atmo.seaY;
     U.uDrift.value.set(atmo.drift, 0);
     U.uTime.value = t;
@@ -265,7 +278,7 @@ export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
           // collapsing as it settles: the fabric spread smaller on the sea, draped over the waves (shader)
           // falling, the canopy deflates into a long streamer; on the sea it spreads again
           const fall = rel.drop * (1 - rel.flat);
-          const rad = MAIN.radius * (1 - 0.6 * fall) * (1 - 0.3 * rel.flat);
+          const rad = MAIN.radius * (1 - 0.6 * fall) * (1 - 0.55 * rel.flat);
           m.scale.set(rad, Math.max(0.05, depth * (1 + 0.8 * fall) * (1 - 0.9 * rel.flat)), rad * (1 + 0.05 * rel.flat));
         }
         lineFade = Math.max(0, 1 - rel.drop * 1.6);

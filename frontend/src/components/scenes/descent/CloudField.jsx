@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { cloudField, CLOUD_FIELD, M_PER_UNIT } from "@/data/descentScene";
 
 /*
@@ -63,8 +64,10 @@ export function noiseTexture() {
   return t;
 }
 
-// The bound: IcosahedronGeometry(1, 1) (80 faces) scaled to contain the unit sphere (measured).
-const BOUND_SCALE = 1.0705;
+// The bound: an icosahedron (20 faces) scaled to contain the unit sphere (1 / its inradius). The
+// trace is analytic, so the bound only has to cover the puff: few, larger triangles are cheaper to
+// raster than many small ones.
+const BOUND_SCALE = 1.2585;
 
 const vertexShader = `
 attribute vec4 aPuff;   // centre (x, y, z: field units) and radius
@@ -133,6 +136,7 @@ uniform vec3 uSkyHor;
 uniform vec3 uHaze;
 uniform float uHazeL;
 uniform float uOpacity;
+uniform float uPix;  // the width of one of the buffer's pixels per unit of distance
 varying vec3 vWorld;
 varying vec4 vPuff;
 varying vec4 vCloud;
@@ -169,12 +173,19 @@ ${TRACE}  // billows: noise along the ray erodes the thin parts into a crisp, ir
   // one octave at the puff's own scale (seeded per puff), one fine, both fixed in world space
   vec3 pm = ro + rd * (0.5 * (t0 + t1));
   float nb = n3(pm / (r * 0.8) + vMisc.z * 7.31);
-  float nf = n3(pm / 21.0 + 0.37);
+  // the fine billows only where a pixel can hold them (beyond, their average: no lookups, no speckle)
+  float foot = t0 * uPix;
+  float fineK = 1.0 - smoothstep(4.0, 16.0, foot);
+  float nf = 0.5;
+  if (fineK > 0.0) nf = mix(0.5, n3(pm / 21.0 + 0.37), fineK);
   float n = nb * 0.6 + nf * 0.4;
+  // far away, where a puff spans a few pixels: the cloud reads as one mass, not as its puffs
+  // (less of each puff's own thin edge eaten away, so no notch where two puffs meet)
+  float farK = 1.0 - smoothstep(3.0, 14.0, r / max(foot, 1e-4));
   float dens = vMisc.y;
-  float erode = mix(0.42, 0.75, 1.0 - dens); // a wisp is mostly eaten away: ragged
+  float erode = mix(0.42, 0.75, 1.0 - dens) * mix(1.0, 0.5, farK); // a wisp is mostly eaten away: ragged
   float tv = max(0.0, tau - (n - 0.36) * erode) * dens;
-  float alpha = 1.0 - exp(-24.0 * tv);
+  float alpha = 1.0 - exp(-24.0 * mix(1.0, 1.7, farK) * tv);
   // from inside a wisp: a veil, never a white-out
   if (inside) alpha *= 0.7;
   alpha *= vRim * uOpacity;
@@ -187,9 +198,10 @@ ${TRACE}  // billows: noise along the ray erodes the thin parts into a crisp, ir
   float R = max(H * 0.6, r);
   vec3 cc = vec3(vCloud.x, base + H * 0.38, vCloud.y);
   vec3 nc = normalize((pe - cc) / vec3(R, H * 0.62, R));
-  vec3 nrm = normalize(mix(nc, np, 0.45) + (vec3(nb, nf, 1.0 - nb) - 0.5) * 0.5);
+  vec3 nrm = normalize(mix(nc, np, mix(0.45, 0.15, farK)) + (vec3(nb, nf, 1.0 - nb) - 0.5) * 0.5);
   // the folds between billows (a puff's surface turned in towards its cloud) lie in shadow
-  float fold = smoothstep(-0.35, 0.55, dot(np, nc));
+  // (too small to see far away, where they would only draw a dark ring round each puff)
+  float fold = mix(smoothstep(-0.35, 0.55, dot(np, nc)), 1.0, farK * 0.7);
   float hy = clamp((pe.y - base) / H, 0.0, 1.0);
   float diff = clamp(dot(nrm, uSun) * 0.6 + 0.4, 0.0, 1.0);
   diff *= diff * (3.0 - 2.0 * diff);
@@ -205,7 +217,9 @@ ${TRACE}  // billows: noise along the ray erodes the thin parts into a crisp, ir
   // the flat base: grey, lit from below by the sea and through the cloud's thin edges
   if (onBase) col = vec3(0.21, 0.24, 0.29) * (0.75 + 0.5 * nf) * mix(1.25, 0.8, smoothstep(0.05, 0.5, tau)) * (0.8 + 0.2 * self);
   // thin vapour lit from behind glows (towards the Sun)
-  float fwd = pow(max(dot(rd, uSun), 0.0), 6.0);
+  float fwd = max(dot(rd, uSun), 0.0);
+  fwd *= fwd;
+  fwd *= fwd * fwd;
   col += sunCol * fwd * (1.0 - alpha) * 0.4;
   // a wisp is lighter and greyer
   col = mix(col, mix(amb, sunCol * 0.7, 0.5), (1.0 - dens) * 0.6);
@@ -236,12 +250,18 @@ const _clear = new THREE.Color();
 
 const _v = new THREE.Vector3();
 
-export default function CloudField({ simRef, atmo }) {
+export default function CloudField({ simRef, atmo, passRef = null }) {
   const field = useMemo(() => cloudField(), []);
   const n = field.puffs.length;
   const { geo, aPuff, aCloud, aMisc, order } = useMemo(() => {
-    const base = new THREE.IcosahedronGeometry(1, 1);
+    // indexed: its 12 corners shaded once each per puff, not once per face (60)
+    const ico = new THREE.IcosahedronGeometry(1, 0);
+    ico.deleteAttribute("normal");
+    ico.deleteAttribute("uv");
+    const base = mergeVertices(ico);
+    ico.dispose();
     const g = new THREE.InstancedBufferGeometry();
+    g.setIndex(base.index);
     g.attributes.position = base.attributes.position;
     const p = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
     const c = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
@@ -266,6 +286,7 @@ export default function CloudField({ simRef, atmo }) {
           uHazeL: { value: 20000 },
           uOpacity: { value: 1 },
           uFieldR: { value: CLOUD_FIELD.radius },
+          uPix: { value: 0.005 },
         },
         vertexShader,
         fragmentShader,
@@ -277,10 +298,11 @@ export default function CloudField({ simRef, atmo }) {
       }),
     [atmo]
   );
-  // The clouds live in their own scene, drawn at half resolution into their own buffer just before
-  // the frame needs them, then laid over the sky and the sea and under the capsule and its
-  // parachutes (which the cloud field's placement keeps in front of every cloud). A quarter of the
-  // pixels to shade: the volumes stay soft-edged, the spacecraft stay sharp.
+  // The clouds live in their own scene, drawn at reduced resolution into their own buffer before the
+  // frame's main pass (CloudPass, after the camera has moved: never in the middle of the frame,
+  // which on a phone's tile-based GPU would write the whole frame out to memory and read it back),
+  // then laid over the sky and the sea and under the capsule and its parachutes (which the cloud
+  // field's placement keeps in front of every cloud). The volumes stay soft-edged, the spacecraft sharp.
   const cloudMesh = useMemo(() => {
     const m = new THREE.Mesh(geo, mat);
     m.frustumCulled = false;
@@ -330,6 +352,7 @@ export default function CloudField({ simRef, atmo }) {
       const w = Math.max(2, Math.ceil(_size.x * CLOUD_RESOLUTION));
       const h = Math.max(2, Math.ceil(_size.y * CLOUD_RESOLUTION));
       if (rt.width !== w || rt.height !== h) rt.setSize(w, h);
+      mat.uniforms.uPix.value = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / h;
       const prevTarget = renderer.getRenderTarget();
       const prevAuto = renderer.autoClear;
       const prevAlpha = renderer.getClearAlpha();
@@ -343,8 +366,15 @@ export default function CloudField({ simRef, atmo }) {
       renderer.setClearColor(_clear, prevAlpha);
       renderer.setRenderTarget(prevTarget);
     },
-    [cloudMesh, cloudScene, rt]
+    [cloudMesh, cloudScene, rt, mat]
   );
+  useEffect(() => {
+    if (!passRef) return undefined;
+    passRef.current = drawClouds;
+    return () => {
+      if (passRef.current === drawClouds) passRef.current = null;
+    };
+  }, [passRef, drawClouds]);
   const comp = useRef();
   const frame = useRef(0);
   const dist = useMemo(() => new Float32Array(n), [n]);
@@ -400,7 +430,18 @@ export default function CloudField({ simRef, atmo }) {
   });
 
   // after the sky (-2) and the sea (-1), before the capsule and the parachutes
-  return <mesh ref={comp} geometry={tri} material={compMat} frustumCulled={false} renderOrder={-0.5} onBeforeRender={drawClouds} name="cloud-composite" />;
+  return <mesh ref={comp} geometry={tri} material={compMat} frustumCulled={false} renderOrder={-0.5} onBeforeRender={passRef ? undefined : drawClouds} name="cloud-composite" />;
+}
+
+/**
+ * The cloud field's own pass (CloudField passRef), run before the frame's main pass. Mount it after
+ * the camera rig, so the clouds are drawn from this frame's camera.
+ */
+export function CloudPass({ passRef }) {
+  useFrame((state) => {
+    if (passRef.current) passRef.current(state.gl, state.scene, state.camera);
+  });
+  return null;
 }
 
 /**

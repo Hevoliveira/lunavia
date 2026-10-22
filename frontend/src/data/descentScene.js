@@ -130,8 +130,10 @@ export function cloudField(seed = 20261021) {
     const base = u(F.baseM[0] + R() * (F.baseM[1] - F.baseM[0]));
     const tall = Math.pow(R(), 2.2); // most clouds modest, a few towers (heavy-tailed)
     const r = u(380 + R() * 820) * (0.75 + 0.5 * tall);
-    // cumulus are about as wide as they are tall; only a few tower above that
-    const top = base + Math.min(1.5 * r, u(420 + tall * (F.topM[1] - F.baseM[0] - 420)));
+    // cumulus are about as wide as they are tall; only a few tower above that, and only near by (far
+    // off, where a tower would read as a stack of balls a few pixels wide, they stay as broad as tall)
+    const farOff = Math.hypot(Math.cos(a) * d + u(DROGUE_DRIFT_M), Math.sin(a) * d) > u(9000);
+    const top = base + Math.min((farOff ? 1.0 : 1.5) * r, u(420 + tall * (F.topM[1] - F.baseM[0] - 420)));
     clouds.push({ x: Math.cos(a) * d, z: Math.sin(a) * d, base, top, r, dens: 1, wisp: false });
   }
   const puffs = [];
@@ -182,9 +184,11 @@ export function cloudField(seed = 20261021) {
       const nT = b.f < 0.35 ? 0 : near ? 1 + (b.f > 0.7 ? 1 : 0) : b.f > 0.8 ? 1 : 0;
       for (let j = 0; j < nT; j++) {
         const ta = R() * Math.PI * 2;
-        const el = (20 + R() * 60) * (Math.PI / 180);
+        // far away a turret is a bump on the dome's shoulder, sunk deeper (on the crown it would read
+        // as a separate ball, a head)
+        const el = (near ? 20 + R() * 60 : 12 + R() * 33) * (Math.PI / 180);
         const tr = b.r * (0.34 + 0.2 * R());
-        const off = b.r * (0.66 + 0.12 * R());
+        const off = b.r * (near ? 0.66 + 0.12 * R() : 0.52 + 0.1 * R());
         add(b.x + Math.cos(ta) * Math.cos(el) * off, b.y + Math.sin(el) * off * 0.92, b.z + Math.sin(ta) * Math.cos(el) * off, tr, 1);
       }
     });
@@ -253,15 +257,18 @@ export function splashBob(t) {
 }
 /**
  * Where the released parachutes are, s seconds after splashdown: 0 hanging, then the wind carries
- * them down and away downwind, they settle on the sea, spread and crumpled, and slowly sink
- * (Apollo's mains had no flotation). { drop (0..1, of the way down), flat (0..1), drift (units),
- * sink (units below the surface) }.
+ * them down and away downwind, deflated into streamers; they settle on the sea as they reach it,
+ * bunched and crumpled, and slowly sink (Apollo's mains had no flotation). { drop (0..1, of the way
+ * down), flat (0..1, lying on the sea), drift (units), sink (0 on the surface .. 1 gone) }.
  */
 export function chuteRelease(s) {
   if (s <= 0.25) return { drop: 0, flat: 0, drift: 0, sink: 0 };
   const x = s - 0.25;
   const drop = smooth(x / 4.2);
-  return { drop, flat: smooth((x - 1.6) / 1.8), drift: u(24) * (1 - Math.exp(-x / 3)) + u(0.5) * x, sink: u(1.4) * smooth((x - 3.8) / 4) };
+  // sink: how far under the fabric has gone (0 on the surface .. 1 gone), the whole sheet at once as
+  // it waterlogs (never the sea rising through it, which would leave its folds as separate islands)
+  // flat: they lie down on the sea as they reach it (not in the air)
+  return { drop, flat: smooth((x - 3.2) / 1.6), drift: u(24) * (1 - Math.exp(-x / 3)) + u(0.5) * x, sink: smooth((x - 4.5) / 6) };
 }
 
 /** On-screen confirmation after contact, seconds after splashdown: SPLASHDOWN CONFIRMED, then CREW SAFE. */

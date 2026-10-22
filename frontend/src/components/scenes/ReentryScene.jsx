@@ -10,7 +10,7 @@ import { CM_R, PARTS as CSM_PARTS, buildCM } from "@/data/csmDesign";
 import { SM_SEP, smOffset } from "@/data/earthReturn";
 import { CONFIRM, DROGUE_DRIFT_M, ENTRY_SIDE, FLOAT, M_PER_UNIT, chuteCamera, lowWorldFade, recoveryCamera, seaLevelY, seaSurface, splashBob } from "@/data/descentScene";
 import Ocean from "@/components/scenes/descent/Ocean";
-import CloudField, { cloudShadowMap, noiseTexture } from "@/components/scenes/descent/CloudField";
+import CloudField, { CloudPass, cloudShadowMap, noiseTexture } from "@/components/scenes/descent/CloudField";
 import Splash from "@/components/scenes/descent/Splash";
 import Chutes from "@/components/scenes/descent/Chutes";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
@@ -701,6 +701,7 @@ function Scene({ simRef, viewRef, final = false }) {
   const poseRef = useRef({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), low: -0.11 });
   const shadows = useMemo(() => cloudShadowMap(REENTRY_SUN.map((x) => x / Math.hypot(...REENTRY_SUN))), []);
   const noise = useMemo(() => noiseTexture(), []);
+  const cloudPass = useRef(null);
   useFrame((_, dt) => {
     const s = simRef.current;
     const ph = viewRef.current.phase;
@@ -720,11 +721,13 @@ function Scene({ simRef, viewRef, final = false }) {
       <directionalLight position={[-6, 7, 5]} intensity={2.6} color="#fff4e6" />
       <OrbitalEarth simRef={simRef} viewRef={viewRef} />
       <Ocean simRef={simRef} viewRef={viewRef} atmo={atmo} cloudShadows={shadows} />
-      <CloudField simRef={simRef} atmo={atmo} />
+      <CloudField simRef={simRef} atmo={atmo} passRef={cloudPass} />
       <Vehicle simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
       <Chutes simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
       <Splash viewRef={viewRef} noise={noise} sun={atmo.sun} />
       <CameraRig simRef={simRef} viewRef={viewRef} atmo={atmo} />
+      {/* after the camera rig: the clouds' buffer drawn from this frame's camera, before the main pass */}
+      <CloudPass passRef={cloudPass} />
     </>
   );
 }

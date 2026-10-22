@@ -160,7 +160,11 @@ varying vec3 vPos;     // scene position
 varying float vDist;   // horizontal distance from the camera, units
 varying float vCrest;  // the swell's height here (m), for the whitecaps
 varying float vGust;   // broad, slow patches of rougher and smoother water (cat's paws)
+varying float vCover;  // the NASA cloud cover beyond the 3D cumulus field
 uniform sampler2D uDetail;
+uniform sampler2D uCover;
+uniform vec2 uCoverUV;     // the recovery area's place on the NASA map
+uniform vec2 uCoverScale;  // map uv per metre
 #include <logdepthbuf_pars_vertex>
 void main() {
   vec2 xz = position.xz + uCam.xz;
@@ -182,6 +186,14 @@ void main() {
     float pit = -exp(-r * r / 6.0) * sin(min(t / 0.9, 1.0) * 3.14159) ;
     disp.y += ${SPLASH_SEA.reboundAmp.toFixed(2)} * exp(-t / 2.2) * (ring / (1.0 + r * 0.15) + pit);
   }
+  // beyond the 3D field, the NASA cloud cover: read here, per vertex (it changes over kilometres and
+  // the grid's vertices out there are about that far apart), not by every pixel of the distant sea
+  vCover = 0.0;
+  if (d > ${(CLOUD_FIELD.radius * 0.6).toFixed(0)}.0) {
+    float c0 = textureLod(uCover, uCoverUV + m * uCoverScale, 0.0).b;
+    float brk = textureLod(uDetail, m / 2300.0, 6.0).x;
+    vCover = smoothstep(0.55, 0.85, c0 * 0.85 + brk * 0.45);
+  }
   float near = smoothstep(900.0, 150.0, d);
   vec3 p = vec3(xz.x, uSeaY, xz.y) + disp / ${M_PER_UNIT.toFixed(2)} * near;
   p.y -= d * d / ${(2 * R_EARTH_U).toFixed(1)};
@@ -201,9 +213,6 @@ uniform vec3 uSkyHor;
 uniform vec3 uHaze;
 uniform float uHazeL;
 uniform sampler2D uDetail;
-uniform sampler2D uCover;
-uniform vec2 uCoverUV;     // the recovery area's place on the NASA map
-uniform vec2 uCoverScale;  // map uv per metre
 uniform sampler2D uShadow; // the cumulus field's shadows on the sea (baked once)
 uniform float uShadowSize; // metres across
 uniform vec4 uSplash;      // x, z (m), seconds since contact, on
@@ -215,6 +224,7 @@ varying vec3 vPos;
 varying float vDist;
 varying float vCrest;
 varying float vGust;
+varying float vCover;
 #include <logdepthbuf_pars_fragment>
 
 vec3 sky(vec3 r) {
@@ -222,7 +232,9 @@ vec3 sky(vec3 r) {
   float k = pow(clamp(r.y, 0.0, 1.0), 0.55) * 0.9;
   vec3 c = mix(uSkyHor, uSkyTop, k);
   float sd = max(dot(r, uSun), 0.0);
-  return c + vec3(1.0, 0.92, 0.8) * (pow(sd, 8.0) * 0.18);
+  sd *= sd;
+  sd *= sd;
+  return c + vec3(1.0, 0.92, 0.8) * (sd * sd * 0.18);
 }
 // a wave of length L resolves only where the pixel is well under it
 float keep(float L, float fp) { return 1.0 - smoothstep(L * 0.18, L * 0.5, fp); }
@@ -238,37 +250,48 @@ void main() {
   float rough = 0.6 + 0.8 * smoothstep(0.25, 0.75, gust);
   // the swell and wind waves (analytic)
   vec2 g = vec2(0.0);
-  ${WAVE_SUM((i) => `{ float ph = W${i}.z * dot(W${i}.xy, m) - W${i}.w * uTime; g += W${i}.xy * (A${i}.x * W${i}.z * cos(ph)) * keep(A${i}.z, fp); }`)}
+  // (each wave skipped outright where keep() is 0: the pixel covers half its length or more)
+  ${WAVE_SUM((i) => `if (fp < ${(WAVES[i].len * 0.5).toFixed(2)}) { float ph = W${i}.z * dot(W${i}.xy, m) - W${i}.w * uTime; g += W${i}.xy * (A${i}.x * W${i}.z * cos(ph)) * keep(A${i}.z, fp); }`)}
   g *= 1.0 - 0.6 * smoothstep(80.0, 3000.0, vDist); // the swell's long lines soften far off
-  // the short wind waves
-  ${SHORT.map(([len, , slope], i) => `{ float ph = S${i}.z * dot(S${i}.xy, m) - S${i}.w * uTime + ${(i * 1.7).toFixed(2)}; g += S${i}.xy * (${slope.toFixed(3)} * cos(ph)) * keep(${len.toFixed(2)}, fp) * rough; }`).join("\n  ")}
-  // procedural detail at three unrelated scales, turned against each other
+  // the short wind waves, longest first and nested: once one is too fine for the pixel, so are the
+  // shorter ones, and none is computed (from altitude, none of them)
+  ${SHORT.map(([len, , slope], i) => `if (fp < ${(len * 0.5).toFixed(2)}) { float ph = S${i}.z * dot(S${i}.xy, m) - S${i}.w * uTime + ${(i * 1.7).toFixed(2)}; g += S${i}.xy * (${slope.toFixed(3)} * cos(ph)) * keep(${len.toFixed(2)}, fp) * rough;`).join("\n  ")}
+  ${SHORT.map(() => "}").join("")}
+  // procedural detail at three unrelated scales
   float wcNoise = 0.5;
+  // wind ripples: each scale sampled in the wind's frame (along it, across it), stretched across the
+  // wind (crests 2.2x as long as they are apart), and its slope turned back into the world with
+  // the same stretch: the water tilts mostly along the wind, as wind ripples do (no isotropic mottling)
   if (fp < 1.2) {
-    vec2 u1 = mat2(0.8, -0.6, 0.6, 0.8) * m / 7.3 + vec2(0.021, 0.013) * uTime;
-    vec2 u2 = mat2(0.28, 0.96, -0.96, 0.28) * m / 2.35 + vec2(-0.033, 0.024) * uTime;
+    const mat2 R1 = mat2(0.8139, -0.5810, 0.5810, 0.8139);
+    const mat2 R2 = mat2(0.5570, -0.8305, 0.8305, 0.5570);
+    const vec2 ST = vec2(1.0, 1.0 / 2.2);
+    vec2 u1 = (R1 * m) * (ST / 7.3) + vec2(0.024, 0.004) * uTime;
+    vec2 u2 = (R2 * m) * (ST / 2.35) + vec2(0.04, -0.006) * uTime;
     vec4 d1 = texture2D(uDetail, u1);
     vec3 d2 = texture2D(uDetail, u2).xyz * 2.0 - 1.0;
     wcNoise = d1.a;
-    g += ((d1.xy * 2.0 - 1.0) * 0.08 * keep(2.2, fp) + d2.xy * 0.15 * keep(0.7, fp)) * rough;
+    g += (((d1.xy * 2.0 - 1.0) * ST) * R1 * (0.1 * keep(2.2, fp)) + (d2.xy * ST) * R2 * (0.18 * keep(0.7, fp))) * rough;
     if (fp < 0.12) {
-      vec3 d3 = texture2D(uDetail, m / 0.91 + vec2(0.05, -0.04) * uTime).xyz * 2.0 - 1.0;
-      g += d3.xy * 0.13 * keep(0.28, fp) * rough;
+      const mat2 R3 = mat2(0.6967, -0.7174, 0.7174, 0.6967);
+      vec3 d3 = texture2D(uDetail, (R3 * m) * (ST / 0.91) + vec2(0.06, 0.01) * uTime).xyz * 2.0 - 1.0;
+      g += ((d3.xy * ST) * R3) * (0.15 * keep(0.28, fp)) * rough;
     }
   }
 
   // the splash: broken ripples running out and dying, the churn round the impact
   float churn = 0.0;
   float foam = 0.0;
-  if (uSplash.w > 0.5) {
-    vec2 sp = m - uSplash.xy;
-    float r = length(sp);
+  vec2 sp = m - uSplash.xy;
+  float spR = length(sp);
+  if (uSplash.w > 0.5 && uSplash.z < 8.0 && spR < ${SPLASH_SEA.rippleSpeed.toFixed(2)} * uSplash.z + 12.0) {
+    float r = spR;
     float t = uSplash.z;
     float brk = texture2D(uDetail, m / 4.3).a;
     float ang = atan(sp.y, sp.x);
     float lobes = 0.55 + 0.45 * sin(ang * 5.0 + brk * 6.0);
     float front = r - ${SPLASH_SEA.rippleSpeed.toFixed(2)} * t;
-    float packet = exp(-front * front / (2.5 + t)) * exp(-t / 2.4) * lobes * (0.4 + 0.9 * brk);
+    float packet = exp(-front * front / (2.5 + t)) * exp(-t / 2.4) * (1.0 - smoothstep(5.0, 8.0, t)) * lobes * (0.4 + 0.9 * brk);
     g += normalize(sp + 1e-4) * sin(front * 3.1) * packet * 0.5 * keep(2.0, fp);
     // white water churned up round the impact, settling within seconds
     churn = smoothstep(4.2 + 1.5 * brk, 0.8, r) * exp(-t / 1.4) * smoothstep(0.0, 0.15, t) * (0.45 + 0.55 * brk);
@@ -293,7 +316,9 @@ void main() {
   vec3 v = normalize(cameraPosition - vPos);
   float ndv = max(dot(n, v), 0.0);
   float far = smoothstep(80.0, 3000.0, vDist); // 0 near by .. 1 far away
-  float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
+  float f1 = 1.0 - ndv;
+  float f2 = f1 * f1;
+  float fres = 0.02 + 0.98 * f2 * f2 * f1;
   fres *= 1.0 - 0.3 * far; // rough at a distance: less of a mirror
   vec3 r = reflect(-v, n);
   r.y = abs(r.y);
@@ -312,15 +337,12 @@ void main() {
   float wcFar = 1.0 - smoothstep(1.5, 9.0, fp);
   foam = max(foam, wc * 0.75 * wcFar);
 
-  // cloud shadows (the 3D field) and, beyond it, the NASA cloud cover
-  float shade = texture2D(uShadow, m / uShadowSize + 0.5).r;
+  // cloud shadows (the 3D field) and, beyond it, the NASA cloud cover (from the vertices)
   float farCover = smoothstep(${(CLOUD_FIELD.radius * 0.6).toFixed(0)}.0, ${(CLOUD_FIELD.radius * 1.05).toFixed(0)}.0, vDist);
-  float cover = 0.0;
-  if (farCover > 0.001) {
-    float c0 = texture2D(uCover, uCoverUV + m * uCoverScale).b;
-    float brk = texture2D(uDetail, m / 2300.0).x;
-    cover = smoothstep(0.55, 0.85, c0 * 0.85 + brk * 0.45);
-  }
+  float shade = 0.0;
+  // (the shadow map ends at the field's rim, past which farCover is 1: nothing to read out there)
+  if (farCover < 0.999) shade = texture2D(uShadow, m / uShadowSize + 0.5).r;
+  float cover = vCover;
   shade = max(shade, cover * 0.7 * farCover);
   col *= 1.0 - 0.5 * shade;
   vec3 cloudLit = vec3(0.86, 0.89, 0.93) * (0.75 + 0.25 * max(uSun.y, 0.0));

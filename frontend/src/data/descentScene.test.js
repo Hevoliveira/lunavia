@@ -121,7 +121,11 @@ describe("the clouds: a coherent field of cumulus", () => {
     // the renderer traces each puff as a volume from a bound drawn by its back faces (camera inside works)
     const cf = read("components/scenes/descent/CloudField.jsx");
     expect(cf).toMatch(/side: THREE\.BackSide/);
-    expect(cf).toMatch(/new THREE\.IcosahedronGeometry\(1, 1\)/);
+    expect(cf).toMatch(/new THREE\.IcosahedronGeometry\(1, 0\)/);
+    // the bound must contain the puff: scaled by at least 1 / the icosahedron's inradius
+    const edge = 4 / Math.sqrt(10 + 2 * Math.sqrt(5)); // circumradius 1
+    const inradius = (Math.sqrt(3) / 12) * (3 + Math.sqrt(5)) * edge;
+    expect(+cf.match(/const BOUND_SCALE = ([\d.]+);/)[1]).toBeGreaterThanOrEqual(1 / inradius);
     expect(cf).not.toMatch(/PlaneGeometry/); // no camera-facing quads
     expect(cf).toMatch(/the vapour crossed/);
   });
@@ -162,6 +166,18 @@ describe("the parachutes", () => {
     expect(chuteRelease(0).drop).toBe(0);
     expect(chuteRelease(6).drop).toBe(1);
     expect(chuteRelease(8).flat).toBe(1);
+    // they lie down on the sea only as they reach it: never flat discs hanging in the air
+    for (let s = 0; s <= 8; s += 0.1) {
+      const r = chuteRelease(s);
+      if (r.drop < 0.75) expect(r.flat).toBeLessThan(0.05);
+    }
+    // and go under as one sheet, fading (0 on the surface .. 1 gone), gone within about 11 s
+    expect(chuteRelease(4).sink).toBe(0);
+    expect(chuteRelease(8).sink).toBeGreaterThan(0.2);
+    expect(chuteRelease(11).sink).toBe(1);
+    const chutesSrc = read("components/scenes/descent/Chutes.jsx");
+    expect(chutesSrc).not.toMatch(/- uSink;/); // the sea never rises through the fabric
+    expect(chutesSrc).toMatch(/1\.0 - smoothstep\(0\.15, 0\.85, uSink\)/);
   });
 });
 

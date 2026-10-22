@@ -122,6 +122,10 @@ const FEATURES = [
   ["Descent HUD under the parachutes", "reentry-descent-panel"],
   ["Descent HUD: the splashdown checklist", "BRACE FOR SPLASHDOWN"],
   ["Captions in a corner over the descent and splashdown", "max-w-[min(420px,40vw)]"],
+  ["Sea: the distant cloud cover read per vertex, not by every distant pixel", "beyond the 3D field, the NASA cloud cover: read here, per vertex"],
+  ["Sea: wind ripples stretched across the wind", "the water tilts mostly along the wind"],
+  ["Clouds: the fine billows only where a pixel can hold them", "the fine billows only where a pixel can hold them"],
+  ["Released canopies go under as one sheet", "going under: deep water over it, fading into the sea as one sheet"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -139,6 +143,8 @@ const REMOVED = [
   ["The camera-facing cloud cards (billboards)", "the quad's corners: never inside the puff"],
   ["The pale ring and foam disc round the splash", "the impact ring running out, its ripples and foam"],
   ["The crown sheet round the splash", "the sheet flares outward as it rises"],
+  ["The sea rising through sinking canopies (left as islands)", "+ 0.07 - uSink"],
+  ["Every distant sea pixel reading the NASA cloud map", "float c0 = texture2D(uCover, uCoverUV + m * uCoverScale).b;"],
 ];
 
 function sourceText(dir) {
