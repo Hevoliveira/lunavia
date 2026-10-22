@@ -1163,7 +1163,7 @@ export default function Mission({ entry = "opening" }) {
         )}
 
       {/* MISSION CHECKPOINT SAVED / MISSION RESUMED (top centre, brief, nothing to tap) */}
-      <MissionSaveNotice notice={notice} lang={lang} below={state === STATES.DOCKING || state === STATES.REENTRY || state === STATES.MANUAL_DESCENT ? "hud" : "nav"} />
+      <MissionSaveNotice notice={notice} lang={lang} below={state === STATES.DOCKING || state === STATES.REENTRY || state === STATES.MANUAL_DESCENT || state === STATES.RETURN ? "hud" : "nav"} />
       {/* START A NEW MISSION? — MISSIONS replacing an unfinished mission */}
       <NewMissionConfirm
         open={!!confirmNew}

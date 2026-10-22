@@ -19,7 +19,7 @@ const siteName = (id) => {
 };
 
 export default function ModeMenu({ onMissions, onTraining, saved = null, lang = "en", onResume }) {
-  const choice = (testId, onClick, title, sub, primary) => (
+  const choice = (testId, onClick, title, sub, primary, wrap = false) => (
     <button
       type="button"
       onClick={onClick}
@@ -32,7 +32,7 @@ export default function ModeMenu({ onMissions, onTraining, saved = null, lang = 
     >
       <span className="min-w-0">
         <span className="block font-mono text-[13px] short:text-[12px] tracking-[0.42em] text-white">{title}</span>
-        <span className="block font-mono text-[9px] tracking-[0.22em] text-white/75 mt-1 truncate">{sub}</span>
+        <span className={`block font-mono text-[9px] tracking-[0.22em] text-white/75 mt-1 ${wrap ? "whitespace-normal leading-snug" : "truncate"}`}>{sub}</span>
       </span>
       <ChevronRight size={16} className="text-white shrink-0" />
     </button>
@@ -53,7 +53,7 @@ export default function ModeMenu({ onMissions, onTraining, saved = null, lang = 
           A LAJU PRODUCTIONS GAME
         </div>
         <div className="mt-7 short:mt-4 w-full max-w-[320px] flex flex-col gap-3 short:gap-2">
-          {saved && choice("mode-resume", onResume, SAVE_TEXT[lang === "pt" ? "pt" : "en"].resume, `${siteName(saved.mission.siteId)} · ${saved.mission.difficulty} · ${checkpointText(saved.checkpoint, lang)}`, false)}
+          {saved && choice("mode-resume", onResume, SAVE_TEXT[lang === "pt" ? "pt" : "en"].resume, `${siteName(saved.mission.siteId)} · ${saved.mission.difficulty} · ${checkpointText(saved.checkpoint, lang)}`, false, true)}
           {choice("mode-missions", onMissions, "MISSIONS", "FOUR OFFICIAL LUNAR MISSIONS", true)}
           {choice("mode-training", onTraining, "TRAINING", "FLIGHT TRAINING CENTER", false)}
         </div>
