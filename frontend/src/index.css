@@ -68,6 +68,25 @@ html {
 .safe-pt { padding-top: var(--sat); }
 .safe-px { padding-left: var(--sal); padding-right: var(--sar); }
 
+/*
+ * The startup screen beside a saved mission (components/missions/MissionSaveUI): the
+ * launch stack is centred in the space left of the saved-mission card (its width plus
+ * its right offset), so the two never overlap on a landscape phone.
+ */
+@media (min-width: 640px) {
+    .control-beside-save { right: calc(292px + var(--sar)); }
+}
+@media (min-width: 640px) and (max-height: 520px) {
+    .control-beside-save { right: calc(212px + var(--sar)); }
+}
+html[data-native="1"] .control-beside-save { right: calc(212px + var(--sar)); }
+@media (min-width: 640px) and (max-height: 520px) and (max-width: 720px) {
+    .control-beside-save { right: calc(188px + var(--sar)); padding-left: 0.5rem; padding-right: 0.5rem; }
+}
+@media (max-width: 720px) {
+    html[data-native="1"] .control-beside-save { right: calc(188px + var(--sar)); padding-left: 0.5rem; padding-right: 0.5rem; }
+}
+
 /* Game surfaces: no text selection, callouts or double-tap zoom. */
 .game-surface {
     -webkit-user-select: none;

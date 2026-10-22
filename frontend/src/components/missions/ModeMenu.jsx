@@ -1,12 +1,24 @@
 import { ChevronRight } from "lucide-react";
+import { SAVE_TEXT } from "@/components/missions/MissionSaveUI";
+import { checkpointText } from "@/lib/missionSave";
+import { getSite } from "@/data/landingSites";
 
 /**
  * The game menu, after the opening: START MISSIONS on the title screen opens it,
  * over the same lunar-orbit shot and in the title's place (LUNAVIA / A LAJU
  * PRODUCTIONS GAME stay on screen). Two choices: the four official lunar
- * missions, or the Flight Training Center.
+ * missions, or the Flight Training Center; with an unfinished official mission
+ * saved on the device (lib/missionSave), RESUME MISSION first.
  */
-export default function ModeMenu({ onMissions, onTraining }) {
+const siteName = (id) => {
+  try {
+    return getSite(id).name;
+  } catch {
+    return id;
+  }
+};
+
+export default function ModeMenu({ onMissions, onTraining, saved = null, lang = "en", onResume }) {
   const choice = (testId, onClick, title, sub, primary) => (
     <button
       type="button"
@@ -41,6 +53,7 @@ export default function ModeMenu({ onMissions, onTraining }) {
           A LAJU PRODUCTIONS GAME
         </div>
         <div className="mt-7 short:mt-4 w-full max-w-[320px] flex flex-col gap-3 short:gap-2">
+          {saved && choice("mode-resume", onResume, SAVE_TEXT[lang === "pt" ? "pt" : "en"].resume, `${siteName(saved.mission.siteId)} · ${saved.mission.difficulty} · ${checkpointText(saved.checkpoint, lang)}`, false)}
           {choice("mode-missions", onMissions, "MISSIONS", "FOUR OFFICIAL LUNAR MISSIONS", true)}
           {choice("mode-training", onTraining, "TRAINING", "FLIGHT TRAINING CENTER", false)}
         </div>

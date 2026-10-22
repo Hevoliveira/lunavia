@@ -133,6 +133,14 @@ const FEATURES = [
   ["Parachutes: suspension lines as ribbons at the cord's true width", "a round cord's profile across the ribbon"],
   ["Parachutes: released canopies collapse and flutter as they fall", "released: no longer held open, the fabric folds and flutters"],
   ["Splashdown: spray as lit masses of water, not particles", "lit as a volume: the side towards the Sun white"],
+  ["Mission checkpoints: two sealed save slots (checksum, sequence)", "lunavia.mission.save.v1.a"],
+  ["Mission checkpoints: the iOS app's own checkpoint files (LunaviaSave)", "LunaviaSave"],
+  ["Startup: SAVED MISSION AVAILABLE and RESUME MISSION", "SAVED MISSION AVAILABLE"],
+  ["Startup: RESUME MISSION in Portuguese (CONTINUAR MISSAO)", "CONTINUAR MISS"],
+  ["A new mission over a saved one asks first: START A NEW MISSION?", "START A NEW MISSION?"],
+  ["MISSION CHECKPOINT SAVED", "MISSION CHECKPOINT SAVED"],
+  ["Resumed after an interruption: RESUMED FROM LAST SAFE CHECKPOINT", "RESUMED FROM LAST SAFE CHECKPOINT"],
+  ["Resume notices in Portuguese", "RETOMADA DO "],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -223,6 +231,19 @@ try {
   /public in Resources/.test(phase) && /capacitor\.config\.json in Resources/.test(phase)
     ? ok("Xcode copies public/ and capacitor.config.json into the app")
     : fail("the Xcode Resources phase does not copy public/ and capacitor.config.json");
+  // the mission checkpoint store: compiled into the App target and registered before the web view loads
+  const sources = (pbx.match(/Begin PBXSourcesBuildPhase[\s\S]*?End PBXSourcesBuildPhase/) || [""])[0];
+  let store = "";
+  let scene = "";
+  try {
+    store = read(path.join(ios, "App/MissionSaveStore.swift"));
+    scene = read(path.join(ios, "App/SceneDelegate.swift"));
+  } catch {
+    // reported below
+  }
+  /MissionSaveStore\.swift in Sources/.test(sources) && /jsName = "LunaviaSave"/.test(store) && /options: \.atomic/.test(store) && /registerPluginInstance\(LunaviaSavePlugin\(\)\)/.test(scene)
+    ? ok("the mission checkpoint store (MissionSaveStore.swift) is compiled into the app and registered")
+    : fail("MissionSaveStore.swift is missing, not in the App target's Sources, or not registered in SceneDelegate.swift");
   const ids = [...new Set([...pbx.matchAll(/PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/g)].map((m) => m[1]))];
   ids.length === 1 ? ok(`one bundle identifier: ${ids[0]}`) : fail(`several bundle identifiers: ${ids.join(", ")}`);
 } catch {

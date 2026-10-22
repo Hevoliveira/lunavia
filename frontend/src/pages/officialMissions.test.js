@@ -20,7 +20,7 @@ describe("startup screen, then the expedition, then the game menu", () => {
   test("opening LUNAVIA (/) shows THE ROAD TO THE MOON and waits: only LAUNCH SEQUENCE — INITIATE starts the launch", () => {
     expect(app).toMatch(/<Route path="\/" element=\{<Mission key="opening" entry="opening" \/>\} \/>/);
     expect(mission).toMatch(/const ENTRY_STATE = \{ opening: STATES\.CONTROL, menu: STATES\.MENU, missions: STATES\.SELECT \}/);
-    expect(mission).toMatch(/\{state === STATES\.CONTROL && <ControlRoomView onLaunch=\{handleLaunch\} \/>\}/);
+    expect(mission).toMatch(/\{state === STATES\.CONTROL && \(\s*<ControlRoomView\s+onLaunch=\{handleLaunch\}/);
     // the launch starts in one place only, from the startup state, once
     expect((mission.match(/setState\(STATES\.LAUNCH\)/g) || []).length).toBe(1);
     const launch = between(mission, "const handleLaunch = () => {", "};");
@@ -32,7 +32,15 @@ describe("startup screen, then the expedition, then the game menu", () => {
     expect(view).toMatch(/LV-001 · READY FOR LAUNCH/);
     expect(view).toMatch(/LAUNCH SEQUENCE — INITIATE/);
     expect(view).toMatch(/LV-001 ARTEMIS-CLASS/);
-    expect(view).toMatch(/onClick=\{startCountdown\}/); // the 1.1-s GO follows the press only
+    // the 1.1-s GO follows the press only; with an unfinished mission saved, only after START A NEW MISSION?
+    expect(view).toMatch(/onClick=\{pressLaunch\}/);
+    expect(view).toMatch(/const pressLaunch = \(\) => \(saved \? setConfirming\(true\) : startCountdown\(\)\);/);
+    expect(between(view, "<NewMissionConfirm", "/>")).toMatch(/onConfirm=\{\(\) => \{\s*setConfirming\(false\);\s*if \(onReplaceSave\) onReplaceSave\(\);\s*startCountdown\(\);/);
+    // a saved mission is only ever resumed by RESUME MISSION (startup screen or game menu), never on its own
+    const resume = between(mission, "const handleResume = () => {", "\n  };");
+    expect(resume).toMatch(/if \(s0 !== STATES\.CONTROL && s0 !== STATES\.MENU\) return;/);
+    expect((mission.match(/onResume=\{handleResume\}/g) || []).length).toBe(2);
+    expect((mission.match(/handleResume\(/g) || []).length).toBe(0);
     // the launch film itself is the approved one, ending in the direct cut
     expect(mission).toMatch(/<LaunchCinematic audio=\{audio\} onComplete=\{handleLaunchComplete\} onSkip=\{handleSkipLaunch\} onCutAhead=\{handleCutAhead\} \/>/);
   });
@@ -41,7 +49,7 @@ describe("startup screen, then the expedition, then the game menu", () => {
     const start = between(mission, "const handleStartMissions", "const handleTraining");
     expect(start).toMatch(/setState\(STATES\.MENU\)/);
     expect(start).not.toMatch(/BRIEFING|LAUNCH|MANUAL_DESCENT|resetMission/);
-    expect(mission).toMatch(/<ModeMenu onMissions=\{\(\) => setState\(STATES\.SELECT\)\} onTraining=\{handleTraining\} \/>/);
+    expect(mission).toMatch(/<ModeMenu onMissions=\{\(\) => setState\(STATES\.SELECT\)\} onTraining=\{handleTraining\} saved=\{resumable\} lang=\{lang\} onResume=\{handleResume\} \/>/);
     expect(between(mission, "const handleTraining", "};")).toMatch(/navigate\("\/training"\)/);
     const menu = read("components/missions/ModeMenu.jsx");
     expect(menu).toMatch(/"mode-missions"[^\n]*"MISSIONS"/);
@@ -58,7 +66,9 @@ describe("startup screen, then the expedition, then the game menu", () => {
     expect(confirm).toMatch(/setSelection\(next\)/);
     expect(confirm).toMatch(/setState\(STATES\.BRIEFING\)/);
     expect(confirm).not.toMatch(/STATES\.LAUNCH/);
-    expect((mission.match(/setSelection\(/g) || []).length).toBe(1);
+    // the selection changes on MISSIONS, and on RESUME MISSION (back to the saved mission's own)
+    expect((mission.match(/setSelection\(/g) || []).length).toBe(2);
+    expect(between(mission, "const handleResume = () => {", "\n  };")).toMatch(/setSelection\(sel\)/);
     expect((mission.match(/<MissionSelect/g) || []).length).toBe(1);
   });
 
@@ -115,7 +125,9 @@ describe("after the landing: lunar ascent, rendezvous and the player's docking, 
     expect(cont).toMatch(/setState\(STATES\.ASCENT\)/);
     expect(cont).not.toMatch(/STATES\.RETURN/);
     // the return (trans-Earth injection) is reached only from a completed docking
-    expect((mission.match(/setState\(STATES\.RETURN\)/g) || []).length).toBe(1);
+    // the return starts after the docking, or from a DOCKING COMPLETE checkpoint (RESUME MISSION)
+    expect((mission.match(/setState\(STATES\.RETURN\)/g) || []).length).toBe(2);
+    expect(between(mission, "const restoreDockingComplete", "const restoreReentryReady")).toMatch(/setState\(STATES\.RETURN\)/);
     expect(between(mission, "const handleDockingComplete", "const handleDockingResult")).toMatch(/setState\(STATES\.RETURN\)/);
     expect(between(mission, "const handleAscentComplete", "const handleDockingComplete")).toMatch(/setState\(STATES\.DOCKING\)/);
   });
@@ -197,7 +209,9 @@ describe("mission scoring: measured at the end of each phase, shown only after t
   });
   test("the approved menus stay as they were: MISSIONS / TRAINING, all four destinations open", () => {
     const menu = read("components/missions/ModeMenu.jsx");
-    expect((menu.match(/choice\("/g) || []).length).toBe(2);
+    // MISSIONS and TRAINING, and RESUME MISSION only while a mission is saved
+    expect((menu.match(/choice\("/g) || []).length).toBe(3);
+    expect(menu).toMatch(/\{saved && choice\("mode-resume"/);
     const select = read("components/missions/MissionSelect.jsx");
     expect(select).toMatch(/to="\/records"/);
     expect(select).not.toMatch(/\bLock\b|isLocked|locked:|unlockedBy|requires:|disabled=\{/);

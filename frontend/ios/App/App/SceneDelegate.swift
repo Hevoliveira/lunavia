@@ -38,6 +38,9 @@ class LunaviaViewController: CAPBridgeViewController {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
 
     override func capacitorDidLoad() {
+        // The mission checkpoint store (MissionSaveStore.swift), registered before the
+        // web view loads so the game finds it on its first frame.
+        bridge?.registerPluginInstance(LunaviaSavePlugin())
         view.backgroundColor = UIColor(red: 5 / 255, green: 5 / 255, blue: 5 / 255, alpha: 1)
         if let webView = webView {
             webView.isOpaque = false

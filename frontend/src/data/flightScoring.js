@@ -16,6 +16,25 @@
  */
 import { dockingSnapshot, landingSnapshot, reentrySnapshot, scoreDocking, scoreLanding, scoreMission, scoreReentry } from "./missionScoring";
 
+/**
+ * The same flight's scoring again, from the state a mission checkpoint kept
+ * (lib/missionSave: `flight`, already validated). Only the snapshots the flight
+ * had measured come back; nothing is re-scored differently, added or reset.
+ */
+export function restoreFlightScoring(saved) {
+  const api = createFlightScoring({ id: saved.id, siteId: saved.siteId, difficulty: saved.difficulty });
+  const f = api.flight;
+  const copy = (v) => (v && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : null);
+  f.landing = copy(saved.landing);
+  f.docking = copy(saved.docking);
+  f.reentry = copy(saved.reentry);
+  f.dockFailures = Array.isArray(saved.dockFailures) ? saved.dockFailures.slice() : [];
+  f.entryLosses = Array.isArray(saved.entryLosses) ? saved.entryLosses.slice() : [];
+  f.ended = null;
+  if (saved.flown) f.flown = true;
+  return api;
+}
+
 export function createFlightScoring({ id, siteId, difficulty }) {
   const f = { id, siteId, difficulty, landing: null, docking: null, reentry: null, dockFailures: [], entryLosses: [], ended: null };
   const api = {

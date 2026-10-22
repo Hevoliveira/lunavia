@@ -3440,3 +3440,115 @@ stair-steps when the buffer is enlarged). Lighting, haze and the checkerboard up
 | 9 s afloat | 155 ms (clouds 38) | 167 ms (clouds 44) |
 
 Average of the five: 119.7 → 119.5 ms: the same cost.
+
+## 58. Mission save and resume (persistent checkpoints)
+
+An unfinished official mission is now kept on the device and can be resumed after LUNAVIA is
+closed, without flying its completed phases again. Before this change nothing survived a restart
+except the selection, the records, the training progress and the mission log: the flight itself
+(`Mission.jsx` state, `flightScoring`'s per-flight object) lived only in memory.
+
+**Checkpoints** (`lib/missionSave.js`, written by `pages/Mission.jsx` as the flight reaches them):
+
+| | checkpoint | written when | RESUME opens |
+|---|---|---|---|
+| A | `DESCENT_READY` | MISSIONS → destination → difficulty (and RESTART after a landing) | the descent briefing over lunar orbit (BEGIN PDI) |
+| B | `LANDING_COMPLETE` | a safe touchdown (with the LM's resting pose) | LUNAR SURFACE — ASCENT PREPARATION (INITIATE LUNAR ASCENT) |
+| C | `DOCKING_READY` | RENDEZVOUS COMPLETE (the docking's handover) | the playable docking at its checkpoint: four views, guidance, copilot, assists, RESTART DOCKING |
+| D | `DOCKING_COMPLETE` | HARD DOCK CONFIRMED (score, telemetry, attempt history) | the return to Earth (TEI), the CSM alone |
+| E | `EARTH REENTRY READY` | the reentry begins (end of the return, SKIP, or a resume) | the reentry from EARTH APPROACH |
+| F | `MISSION_COMPLETE` | splashdown | — the save is closed; RESUME goes away |
+
+Between checkpoints the save is updated in place with what the player is doing (`activity`:
+descent, ascent, rendezvous, docking — engaged or not —, a failed docking attempt, transfer,
+return, reentry) and with the scoring measured so far (failed dockings, restarts, capsules lost).
+An interruption therefore resumes from the latest *safe* checkpoint: during the descent → A, after
+the landing or during the ascent and rendezvous → B, during the docking → C, during the return → D,
+during the reentry → E; the interrupted maneuver is flown again ("RESUMED FROM LAST SAFE
+CHECKPOINT") and never counted as done. A docking attempt the player had started (a jet, AUTO-CENTER,
+MATCH VELOCITY or a FINE step: `DockingOps` `onEngaged`) counts as a restart, exactly as RESTART
+DOCKING would (reported, then attempt n+1), so closing the app cannot turn a bad approach into a
+clean first attempt; an attempt that had already failed resumes as its retry.
+
+**The document** (schema 1): `attemptId` (the flight's id in the mission log and the records'
+marks), `status` (active | completed | abandoned), `checkpoint`, `mission` {siteId, difficulty},
+`activity`, `landing.pose` (B and later; sanitized against the destination's terrain, an unusable
+pose falls back to the site's landing point), `docking` {attempts, restarts, contacts} (C and
+later), `flight` (the `flightScoring` state: the landing/docking/reentry snapshots, failures,
+losses), `createdAt`, `savedAt`, `build`. `validateSave` accepts a checkpoint only when the flight
+really reached it (B needs a safe landing, D and E a hard dock; a splashed or ended flight is never
+active) and keeps only known fields.
+
+**Storage.** Two alternating slots (`a`, `b`), each an envelope `{ seq, len, sum, body }` (FNV-1a
+checksum of sequence and body). A new checkpoint always goes to the slot *not* holding the latest
+valid one, so a write cut short can only lose the newest checkpoint, never the previous one; on
+load every copy is checked and the newest valid one wins (`fallback` when a newer copy was
+unreadable). Closing a mission writes a closing record to both slots, so an older checkpoint can
+never come back. Each slot is kept twice:
+- in the iOS app's own files: `ios/App/App/MissionSaveStore.swift`, a Capacitor plugin compiled
+  into the App target (`LunaviaSave`: `readSlots`, `writeSlot`), registered in
+  `LunaviaViewController.capacitorDidLoad()`; each write replaces
+  `Application Support/MissionSave/slot-<a|b>.json` atomically. No npm package or extra Swift
+  package: the release ZIP still opens straight in Xcode;
+- in the web view's localStorage (and alone in a browser).
+Nothing waits for a shutdown callback: the checkpoint is written when it is reached. Unusable saves
+are reported, never thrown: `damaged` (checksum, truncation, an outdated format, contents that
+cannot be flown) and `unsupported` (written by a newer version of the game, kept until a new
+mission replaces it); the first damaged copy is kept aside (`lunavia.mission.save.v1.damaged`).
+Records, the mission log and the training progress are separate keys and are never touched.
+
+**Startup and menus.** THE ROAD TO THE MOON is unchanged; with a resumable save a card sits to its
+right (SAVED MISSION AVAILABLE / destination / difficulty / CHECKPOINT / saved date and time /
+RESUME MISSION — PT: MISSÃO SALVA DISPONÍVEL … CONTINUAR MISSÃO) and the launch stack is centred
+in the space left of it (on phones the hint line under LAUNCH gives way). Nothing resumes, launches
+or is discarded by itself. LAUNCH SEQUENCE — INITIATE then asks START A NEW MISSION? / "Your
+unfinished mission checkpoint will be replaced." (CANCEL / START NEW MISSION); confirmed, the old
+flight ends in the history as ABORTED with its partial score (as leaving a flight always has) and
+its save is closed. MISSIONS asks the same when it would replace a mission from an earlier session
+or one already flown. The game menu (/menu) offers RESUME MISSION as well. A damaged or newer-version
+save is explained on the startup screen (SAVED MISSION COULD NOT BE RESTORED).
+
+**Notices.** MISSION CHECKPOINT SAVED · <checkpoint> for 2.6 s when a later checkpoint is reached
+(not on in-place updates); MISSION RESUMED · <the phase restored>, or RESUMED FROM LAST SAFE
+CHECKPOINT with the reason, for 5.2 s. Top centre, under the navigation bar, and under the HUD's top
+row in the docking and the reentry; nothing to tap. English and Portuguese follow the subtitle
+language.
+
+**Scoring.** The resumed flight keeps its id, so everything already keyed by it stays idempotent:
+the attempt (`counted`), the mission (`finished`), and now the hard dock (`docked`: a category's
+dockings are counted once per flight even if a flight docks again after an interruption). The
+mission log entry is the same (it counts `resumes`, and is rebuilt if the web view's storage was
+cleared while the app's file survived). Restored snapshots re-score identically
+(`restoreFlightScoring`); bests are only ever raised; no cinematic or reward is triggered by a load.
+
+**Tests.** `lib/missionSave.test.js` (35): format, checksum, every kind of damage, checkpoint
+consistency, pose sanitizing, alternating slots, torn writes, closing records, native + web copies
+(and a failing or hanging native side), the Swift store and its registration, resume plans
+(interrupted docking = restart), scoring/records/log idempotency, and J: the four destinations ×
+three difficulties flown with the real landing, docking and reentry simulations through all six
+checkpoints with a reopen at each, ending with exactly the uninterrupted flight's score and medal.
+
+**Browser validation** (Chromium + SwiftShader, 844 × 390 touch viewport; a persistent profile
+closed gracefully or killed with SIGKILL and relaunched — *browser* tests, not an iPhone):
+- a full Hadley · ASTRONAUT mission with a close/relaunch at every checkpoint, three of them by
+  SIGKILL (on the results screen, mid-docking-attempt, at the reentry), with the iOS file store
+  simulated through the same plugin interface (Node writes each slot atomically): 32/32 checks —
+  no phase replayed, the interrupted docking counted as a restart (attempt 2), D and E restored,
+  splashdown closes the save, records count one attempt, one success, one docking (restarted, not
+  first-attempt), the log one entry with six resumes;
+- the in-app resume matrix: 4 destinations × 3 difficulties × 5 checkpoints from saves built by the
+  game's own modules: 60/60;
+- data safety, new mission and lifecycle: 20/20 (corrupted, torn, outdated, newer-version and
+  inconsistent saves; CANCEL / START NEW MISSION from LAUNCH and from MISSIONS; RESUME in the game
+  menu; a page frozen and resumed mid-docking; a save from an earlier build);
+- localStorage alone (no app files) killed 0.1–4 s after checkpoint B: the previous checkpoint (A)
+  came back each time, never a damaged one — Chromium delays its storage commits, which is why the
+  iOS app keeps its own atomic files;
+- a straight mission with no interruption and the Training Center's docking training: 11/11
+  (GOLD, first-attempt docking; training never touches the mission save);
+- the startup card beside LAUNCH at 667 × 375, 844 × 390, 932 × 430 and 1440 × 900, EN and PT: no
+  overlap.
+
+Not verified here: the Swift store on a device (it was checked against Capacitor 8.5.2's sources
+and parsed by a Swift grammar, not compiled), WKWebView's own localStorage timing, and real iPhone
+termination, restart and App Store–style updates.

@@ -25,6 +25,10 @@ frontend/
                              bar, deferred edge swipes, screen kept awake, no web-view
                              bounce). The Home Indicator auto-hides through Capacitor's
                              SystemBars plugin (capacitor.config.json → plugins).
+                             capacitorDidLoad registers the LunaviaSave plugin.
+    MissionSaveStore.swift   LunaviaSave: the official mission's checkpoint (save &
+                             resume), two slots written atomically as files in
+                             Application Support/MissionSave (see "Mission checkpoints")
     Info.plist               display name, landscape-only, status bar hidden,
                              arm64/metal, ITSAppUsesNonExemptEncryption=false
     Assets.xcassets          AppIcon (1024² RGB) and Splash (2732² RGB)
@@ -48,6 +52,22 @@ hidden with `"plugins": { "SystemBars": { "hidden": true } }` in `capacitor.conf
 instead. The remaining overrides (`prefersStatusBarHidden`, `supportedInterfaceOrientations`,
 `capacitorDidLoad`, `viewDidAppear`) are `open` in Capacitor, and
 `preferredScreenEdgesDeferringSystemGestures` is only defined by UIKit.
+
+### Mission checkpoints (save & resume)
+
+`MissionSaveStore.swift` is a small Capacitor plugin compiled into the App target (no npm
+package, no extra Swift Package: the release ZIP still opens straight in Xcode). Its class
+`LunaviaSavePlugin` (JS name `LunaviaSave`) is registered by
+`LunaviaViewController.capacitorDidLoad()` with `bridge?.registerPluginInstance(...)`, which
+Capacitor runs in `loadView`, before the web view loads, so the game sees it on its first frame.
+Two methods: `readSlots()` → `{ a?, b? }` and `writeSlot({ slot, value })`, which replaces
+`Library/Application Support/MissionSave/slot-<a|b>.json` with `Data.write(options: .atomic)`
+(a temporary file renamed over the slot). The JSON is sealed and validated by the web side
+(`src/lib/missionSave.js`: schema, checksum, sequence number); the plugin only stores it.
+The same envelopes are also kept in the web view's localStorage; at launch the newest valid copy
+of the four wins. Application Support survives app termination, relaunch, iPhone restarts and
+app updates (it is removed only with the app). Without the plugin (a browser, or an older
+native shell) the game falls back to localStorage alone.
 
 ## Scripts (run in `frontend/`)
 

@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
+import { NewMissionConfirm, SaveProblemNote, SavedMissionCard } from "@/components/missions/MissionSaveUI";
 
 /**
  * ControlRoomView — 2D immersive mission control screen.
  * Uses the Unsplash mission control image as a backdrop, with layered HUD
  * elements: countdown clock, telemetry, and a giant LAUNCH button.
+ *
+ * With an unfinished official mission saved on the device (lib/missionSave), its
+ * summary and RESUME MISSION sit beside the launch (`saved`); nothing resumes,
+ * launches or is discarded by itself. LAUNCH SEQUENCE — INITIATE then first asks
+ * START A NEW MISSION? (the checkpoint would be replaced: onReplaceSave).
  */
-export default function ControlRoomView({ onLaunch }) {
+export default function ControlRoomView({ onLaunch, saved = null, saveProblem = null, lang = "en", onResume, onReplaceSave }) {
   // Starting the mission is the only input before the Moon: the terminal
   // count, ignition, ascent, staging, orbit and TLI then run automatically
   // in the launch cinematic.
@@ -18,6 +24,9 @@ export default function ControlRoomView({ onLaunch }) {
   }, [launching, onLaunch]);
 
   const startCountdown = () => setLaunching(true);
+  const [confirming, setConfirming] = useState(false);
+  const [problemSeen, setProblemSeen] = useState(false);
+  const pressLaunch = () => (saved ? setConfirming(true) : startCountdown());
 
   return (
     <div
@@ -54,8 +63,8 @@ export default function ControlRoomView({ onLaunch }) {
         </div>
       </div>
 
-      {/* Center: giant countdown or CTA */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
+      {/* Center: giant countdown or CTA (beside a saved mission, centred in the space left of it) */}
+      <div className={`absolute inset-0 flex flex-col items-center justify-center px-6 ${saved && !launching ? "control-beside-save" : ""}`}>
         {!launching && (
           <>
             <div className="font-mono text-[11px] tracking-[0.4em] text-zinc-400 mb-4 short:mb-2 short:mt-10 scan-in">
@@ -69,7 +78,7 @@ export default function ControlRoomView({ onLaunch }) {
               <span className="text-[#FF3B00]">TO THE MOON</span>
             </h1>
             <button
-              onClick={startCountdown}
+              onClick={pressLaunch}
               data-testid="control-launch-btn"
               className="mt-12 short:mt-5 group relative z-10 inline-flex items-center gap-4 px-8 py-4 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/10 hover:bg-[#FF3B00] transition-colors duration-200 font-mono tracking-[0.35em] text-sm"
             >
@@ -77,10 +86,17 @@ export default function ControlRoomView({ onLaunch }) {
               LAUNCH SEQUENCE — INITIATE
               <span className="inline-block w-3 h-3 rounded-full bg-[#FF3B00] blink" />
             </button>
-            <div className="mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500">
+            <div className={`mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500 ${saved ? "short:hidden" : ""}`}>
               PRESS TO BEGIN · TERMINAL COUNT, LAUNCH AND EARTH DEPARTURE ARE AUTOMATIC
             </div>
           </>
+        )}
+
+        {/* a narrow portrait screen: the saved mission under the launch */}
+        {!launching && saved && (
+          <div className="sm:hidden mt-5 w-full max-w-[300px]">
+            <SavedMissionCard save={saved} lang={lang} onResume={onResume} testId="saved-mission-stacked" />
+          </div>
         )}
 
         {launching && (
@@ -94,6 +110,28 @@ export default function ControlRoomView({ onLaunch }) {
           </div>
         )}
       </div>
+
+      {/* The saved mission, beside the launch (landscape phones, tablets, desktop) */}
+      {!launching && saved && (
+        <div className="hidden sm:flex absolute inset-y-0 right-8 short:right-4 narrow:right-3 safe-mr items-center pointer-events-none z-20">
+          <SavedMissionCard save={saved} lang={lang} onResume={onResume} className="w-[260px] short:w-[196px] narrow:w-[176px]" />
+        </div>
+      )}
+      {!launching && !saved && saveProblem && !problemSeen && (
+        <div className="absolute inset-y-0 right-8 short:right-4 safe-mr flex items-center pointer-events-none z-20">
+          <SaveProblemNote status={saveProblem} lang={lang} onDismiss={() => setProblemSeen(true)} />
+        </div>
+      )}
+      <NewMissionConfirm
+        open={confirming}
+        lang={lang}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false);
+          if (onReplaceSave) onReplaceSave();
+          startCountdown();
+        }}
+      />
 
       {/* Bottom telemetry strip */}
       <div className="absolute bottom-8 short:bottom-3 left-8 right-8 safe-ml safe-mr safe-mb grid grid-cols-4 gap-6 font-mono text-[10px] tracking-widest text-zinc-500 border-t border-white/10 pt-4 short:pt-2 pointer-events-none">

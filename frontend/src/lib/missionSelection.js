@@ -152,5 +152,23 @@ export const logMissionScoring = (id, scoring) =>
     if (scoring.status && !e.endedAt) e.endedAt = Date.now();
   });
 
+/**
+ * Flight `id` was resumed from its mission checkpoint (lib/missionSave): counted on its
+ * entry. If the log no longer has the entry (the web view's storage was cleared while the
+ * app's own checkpoint file survived), it is written again with what the checkpoint
+ * knows, so the rest of the flight is still logged under the same id.
+ */
+export function logMissionResumed(id, { siteId, difficulty, at, flown = false }) {
+  const log = loadMissionLog();
+  let e = log.find((x) => x.id === id);
+  if (!e) {
+    e = { id, mode: "official", siteId, difficulty, at: typeof at === "number" ? at : Date.now(), landing: null, completed: false, flown: !!flown, restored: true };
+    log.push(e);
+  }
+  e.resumes = (e.resumes || 0) + 1;
+  write(LOG_KEY, log.slice(-LOG_MAX));
+  return log;
+}
+
 /** The latest flight to a destination (for the mission cards). */
 export const lastFlight = (log, siteId) => [...log].reverse().find((e) => e.siteId === siteId) || null;

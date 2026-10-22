@@ -133,7 +133,7 @@ const CHECKS = (farSide) => [
   ["EARTH LINK", farSide ? "UNAVAILABLE · FAR SIDE" : "HOUSTON · GO"],
 ];
 
-export default function LunarAscent({ siteId, pose = null, audio = null, farSide = false, onComplete }) {
+export default function LunarAscent({ siteId, pose = null, audio = null, farSide = false, onComplete, onInitiate = null }) {
   const site = useMemo(() => getSite(siteId), [siteId]);
   const p = pose || { x: 0, padY: site.contactGround ? site.scale.y(site.contactGround(0)) : 0, tilt: 0, pitch: 0, comp: [0, 0, 0, 0], probe: [0, 0, 0, 0] };
   const base = useMemo(() => [p.x, p.padY + LM.foot, 0], [p.x, p.padY]);
@@ -214,6 +214,7 @@ export default function LunarAscent({ siteId, pose = null, audio = null, farSide
     if (stage !== "prep") return;
     ctl.current.stage = "countdown";
     setStage("countdown");
+    if (onInitiate) onInitiate(); // the mission checkpoint notes the liftoff is under way
   };
 
   const c = ctl.current;

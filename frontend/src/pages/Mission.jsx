@@ -20,7 +20,7 @@ import MissionTitle from "@/components/MissionTitle";
 import MissionDebrief from "@/components/scoring/MissionDebrief";
 import { useAudioSettings } from "@/audio/audioSettings";
 import { setSubtitlePlacement } from "@/components/CommsSubtitles";
-import { createFlightScoring } from "@/data/flightScoring";
+import { createFlightScoring, restoreFlightScoring } from "@/data/flightScoring";
 import { applyDocking, applyFlightStart, applyLanding, applyMission, applyReentry, loadRecords, unlockedBy, updateRecords } from "@/lib/missionRecords";
 import { goForPdi } from "@/data/lunarOrbitShot";
 import { ORBIT_ENTRY, ORBIT_SEQ, orbitClockAt, orbitShotAt } from "@/data/orbitSequence";
@@ -29,7 +29,10 @@ import { formatMET } from "@/data/missionPhases";
 import { TD } from "@/data/transposition";
 import { TITLE } from "@/data/titleReveal";
 import { MODE, createMissionConfig } from "@/data/missionConfig";
-import { loadMissionLog, loadSelection, logMissionComplete, logMissionDocking, logMissionFlown, logMissionLanding, logMissionReentry, logMissionScoring, logMissionStart, saveSelection } from "@/lib/missionSelection";
+import { loadMissionLog, loadSelection, logMissionComplete, logMissionDocking, logMissionFlown, logMissionLanding, logMissionReentry, logMissionResumed, logMissionScoring, logMissionStart, saveSelection } from "@/lib/missionSelection";
+import { CP, canResume, cpRank, makeCheckpoint, makeClosing, missionSaveStore, resumePlan } from "@/lib/missionSave";
+import { BUILD_COMMIT } from "@/lib/buildInfo";
+import { MissionSaveNotice, NewMissionConfirm } from "@/components/missions/MissionSaveUI";
 
 /*
  * Outbound flight is automatic: LAUNCH plays the Earth departure (terminal
@@ -78,6 +81,17 @@ import { loadMissionLog, loadSelection, logMissionComplete, logMissionDocking, l
  * mission log: the history). After MISSION COMPLETE, and after END MISSION on a
  * failed mission, the MISSION DEBRIEF shows the scores, the medal, the
  * achievements and the personal record. Nothing scored is shown during flight.
+ *
+ * Mission checkpoints (lib/missionSave): an official flight is saved on the device
+ * at each safe checkpoint it reaches — LUNAR DESCENT READY (destination and pilot
+ * difficulty chosen), LUNAR LANDING COMPLETE (a safe touchdown), DOCKING READY
+ * (rendezvous flown), DOCKING COMPLETE (hard dock), EARTH REENTRY READY — and the
+ * save is closed at splashdown, END MISSION, ABORT or when a new mission replaces
+ * it. RESUME MISSION (startup screen, game menu) restores the latest checkpoint
+ * directly: the destination and difficulty, the scoring measured so far, the
+ * lunar module's pose, the docking's attempt history; nothing before it is
+ * replayed and nothing after it is counted as done. Each checkpoint has its own
+ * restore method below (restoreDescentReady … restoreReentryReady).
  */
 const STATES = {
   CONTROL: "control",          // startup: THE ROAD TO THE MOON, waiting for LAUNCH SEQUENCE — INITIATE
@@ -227,6 +241,22 @@ export default function Mission({ entry = "opening" }) {
 
   const audio = useMissionAudio();
 
+  // The mission checkpoint (lib/missionSave): the store (the device's two slots), what it
+  // holds, and what this flight's next checkpoint carries over (its pose, docking history).
+  const saveStore = useMemo(() => missionSaveStore(), []);
+  const [saveState, setSaveState] = useState(() => saveStore.state());
+  // a saved mission is offered once every copy has been read (the app's files are read asynchronously)
+  const resumable = canResume(saveState) && saveState.ready ? saveState.save : null;
+  const ckRef = useRef(null); // { id, checkpoint, pose, docking, createdAt, activity }
+  const [notice, setNotice] = useState(null); // MISSION CHECKPOINT SAVED / MISSION RESUMED
+  const [confirmNew, setConfirmNew] = useState(null); // { sel }: START A NEW MISSION? before MISSIONS replaces a save
+  const [dockResume, setDockResume] = useState(null); // a resumed docking's attempt history (DockingOps resume)
+  useEffect(() => {
+    const off = saveStore.subscribe(setSaveState);
+    saveStore.refresh().then(setSaveState);
+    return off;
+  }, [saveStore]);
+
   useEffect(() => {
     stateRef.current = state;
     lastTsRef.current = 0;
@@ -330,6 +360,63 @@ export default function Mission({ entry = "opening" }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ---- mission checkpoints ------------------------------------------------------------------ */
+  /**
+   * Save this flight at `checkpoint` (or, with null, at its current checkpoint with what
+   * changed: the activity, the scoring, the docking history). Only the store's validated
+   * documents are written; MISSION CHECKPOINT SAVED shows when a later checkpoint is reached.
+   */
+  const persist = (checkpoint, patch = {}) => {
+    const sc = scoringRef.current;
+    const id = flightIdRef.current;
+    if (!sc || !id) return false;
+    const prev = ckRef.current && ckRef.current.id === id ? ckRef.current : null;
+    const next = { id, checkpoint: null, pose: null, docking: null, createdAt: Date.now(), activity: null, ...(prev || {}), ...patch };
+    if (checkpoint) next.checkpoint = checkpoint;
+    if (!next.checkpoint) return false;
+    const res = saveStore.write(makeCheckpoint({ checkpoint: next.checkpoint, flight: sc.flight, activity: next.activity, pose: next.pose, docking: next.docking, createdAt: next.createdAt, build: BUILD_COMMIT }));
+    if (!res.ok) {
+      // eslint-disable-next-line no-console
+      console.warn("[LUNAVIA] mission checkpoint not written:", res.reason);
+      return false;
+    }
+    ckRef.current = next;
+    if (!prev || cpRank(next.checkpoint) > cpRank(prev.checkpoint)) setNotice({ kind: "saved", checkpoint: next.checkpoint, at: Date.now() });
+    return true;
+  };
+  const dockHistory = () => (ckRef.current && ckRef.current.docking) || { attempts: 1, restarts: 0, contacts: 0 };
+  /** Close this flight's save (splashdown, END MISSION, ABORT): RESUME goes away; the history stays. */
+  const closeSave = (status) => {
+    const id = flightIdRef.current;
+    const st = saveStore.state();
+    if (id && st.save && st.save.attemptId === id && st.save.status === "active") {
+      saveStore.write(makeClosing({ attemptId: id, status, checkpoint: st.save.checkpoint, mission: st.save.mission, build: BUILD_COMMIT }));
+    }
+    ckRef.current = null;
+  };
+  /**
+   * START NEW MISSION (after the confirmation): the unfinished mission is closed. Flown, it ends
+   * in the log as ABORTED with its partial score, exactly as leaving a flight always has; its
+   * records, achievements and history entry are kept.
+   */
+  const abandonStoredMission = () => {
+    const st = saveStore.state();
+    if (!canResume(st)) return;
+    const save = st.save;
+    if (save.attemptId === flightIdRef.current) {
+      endFlight("aborted");
+      closeSave("abandoned");
+      return;
+    }
+    if (save.flight.flown) {
+      const sc = restoreFlightScoring(save.flight);
+      const status = sc.status("aborted");
+      sc.flight.ended = status;
+      setMissionLog(logMissionScoring(save.attemptId, sc.summary(status)));
+    }
+    saveStore.write(makeClosing({ attemptId: save.attemptId, status: "abandoned", checkpoint: save.checkpoint, mission: save.mission, build: BUILD_COMMIT }));
+  };
+
   // LAUNCH SEQUENCE — INITIATE on the startup screen: the only way the launch starts
   // (no timer, no autoplay). Once: the button gives way to GO, and only the startup
   // state can launch.
@@ -355,11 +442,27 @@ export default function Mission({ entry = "opening" }) {
     const next = saveSelection(sel);
     audio.padStop(2.5);
     setSelection(next);
+    // an unfinished mission is replaced (the player confirmed it when it had been flown or came
+    // from an earlier session): closed first, so it can never come back in its place
+    abandonStoredMission();
     endFlight("aborted"); // a flight left unfinished (CHANGE MISSION after a descent) ends as ABORTED
+    closeSave("abandoned");
     flightIdRef.current = logMissionStart(next);
     scoringRef.current = createFlightScoring({ id: flightIdRef.current, ...next });
+    setDockResume(null);
+    // checkpoint A — LUNAR DESCENT READY: the destination and difficulty, before powered descent
+    persist(CP.DESCENT_READY, { activity: { phase: "briefing" }, createdAt: Date.now() });
     setDescentResult(null);
     setState(STATES.BRIEFING);
+  };
+  // MISSIONS → START MISSION: replacing an unfinished mission asks first (START A NEW MISSION?)
+  const requestConfirmMission = (sel) => {
+    const st = saveStore.state();
+    if (canResume(st) && (st.save.attemptId !== flightIdRef.current || st.save.flight.flown)) {
+      setConfirmNew({ sel });
+      return;
+    }
+    handleConfirmMission(sel);
   };
 
   // End of the Earth departure (2 s after "Cutoff.", or SKIP): a cinematic time jump
@@ -421,6 +524,7 @@ export default function Mission({ entry = "opening" }) {
       sc.flight.flown = true;
       logMissionFlown(flightIdRef.current);
       updateRecords((r) => applyFlightStart(r, sc.flight));
+      persist(null, { activity: { phase: "descent" } }); // still checkpoint A: a descent cut short is flown again
     }
     setState(STATES.MANUAL_DESCENT);
     // the crew's call to Houston: not on the far side (no link)
@@ -453,6 +557,9 @@ export default function Mission({ entry = "opening" }) {
       const L = sc.landed(result);
       updateRecords((r) => applyLanding(r, sc.flight, L));
       setMissionLog(logMissionScoring(flightIdRef.current, sc.summary(null)));
+      // checkpoint B — LUNAR LANDING COMPLETE, on a safe touchdown only (with where the LM rests)
+      if (!result.crashed) persist(CP.LANDING_COMPLETE, { pose: result.pose || null, activity: { phase: "result" } });
+      else persist(null, { activity: { phase: "result" } });
     }
     setState(STATES.RESULT);
   };
@@ -461,6 +568,7 @@ export default function Mission({ entry = "opening" }) {
   const handleRestartDescent = () => {
     audio.commsFlush();
     setDescentResult(null);
+    persist(CP.DESCENT_READY, { pose: null, activity: { phase: "briefing" } }); // the landing is flown again
     setState(STATES.BRIEFING);
   };
 
@@ -484,6 +592,8 @@ export default function Mission({ entry = "opening" }) {
       d = { mission: M, status, prev: prevBest, newBest: out.newBest, unlocked: unlockedBy(records, id), records, number: missionRef.current.number, at: Date.now() };
     }
     if (flightIdRef.current) setMissionLog(logMissionComplete(flightIdRef.current));
+    // F — MISSION COMPLETE: the results are in the records and the log; the save is closed
+    closeSave("completed");
     setDebrief(d);
     setDebriefOpen(false);
     setState(STATES.COMPLETE);
@@ -495,6 +605,7 @@ export default function Mission({ entry = "opening" }) {
     if (!sc || !flightIdRef.current || !data) return;
     sc.entryLost(data);
     logMissionReentry(flightIdRef.current, { splashdown: false, outcome: data.outcome, attempts: data.attempts, losses: data.losses, eiFpa: data.eiFpa, peakG: data.peakG, peakHeatRate: data.peakHeatRate });
+    persist(null, { activity: { phase: "reentry" } }); // the loss stays on the flight's record
   };
 
   // A failed or aborted flight ends: its partial score goes to the log (no medal, no mission record).
@@ -512,6 +623,7 @@ export default function Mission({ entry = "opening" }) {
   // END MISSION after a crash, a failed docking or a lost capsule: the partial debrief, then the menu.
   const handleEndFailedMission = () => {
     const d = endFlight("ended");
+    closeSave("abandoned");
     if (!d) {
       resetMission();
       return;
@@ -535,14 +647,35 @@ export default function Mission({ entry = "opening" }) {
     setDescentResult(null);
     setState(STATES.ASCENT);
   };
+  // INITIATE LUNAR ASCENT: the liftoff is under way (cut short, it is flown again from B)
+  const handleAscentInitiate = () => persist(null, { activity: { phase: "ascent" } });
   // Liftoff film over (or skipped): orbit insertion, rendezvous, docking.
   const handleAscentComplete = () => {
     if (stateRef.current !== STATES.ASCENT) return;
+    persist(null, { activity: { phase: "rendezvous" } });
     setState(STATES.DOCKING);
+  };
+  // The docking's phases: RENDEZVOUS COMPLETE is checkpoint C — DOCKING READY; a retry after a
+  // failed attempt is a new attempt; the crew transfer follows the hard dock (D).
+  const handleDockPhase = (p) => {
+    if (p === "handover") persist(CP.DOCKING_READY, { docking: dockHistory(), activity: { phase: "docking", engaged: false } });
+    else if (p === "docking") {
+      const ck = ckRef.current;
+      if (ck && ck.activity && ck.activity.phase === "dockFailed") {
+        const d = dockHistory();
+        persist(null, { docking: { attempts: d.attempts + 1, restarts: d.restarts + 1, contacts: d.contacts }, activity: { phase: "docking", engaged: false } });
+      }
+    } else if (p === "transfer") persist(null, { activity: { phase: "transfer" } });
+  };
+  // the player's first input in a docking attempt: closing the app from here counts as a restart
+  const handleDockEngaged = () => {
+    const ck = ckRef.current;
+    if (ck && ck.checkpoint === CP.DOCKING_READY) persist(null, { activity: { phase: "docking", engaged: true } });
   };
   // Hard dock, crew transfer, ascent stage jettisoned: the CSM heads home (the existing return).
   const handleDockingComplete = () => {
     if (stateRef.current !== STATES.DOCKING) return;
+    setDockResume(null);
     returnRealRef.current = 0;
     returnCueRef.current = new Set();
     captionRef.current = null;
@@ -569,6 +702,12 @@ export default function Mission({ entry = "opening" }) {
       updateRecords((rec) => applyDocking(rec, sc.flight, D));
       setMissionLog(logMissionScoring(flightIdRef.current, sc.summary(null)));
     }
+    if (!r || !sc) return;
+    const hist = { attempts: r.attempts || 1, restarts: r.restarts || 0, contacts: r.contacts || 0 };
+    // checkpoint D — DOCKING COMPLETE at the hard dock (its telemetry, score and attempt history)
+    if (r.success) persist(CP.DOCKING_COMPLETE, { docking: hist, activity: { phase: "transfer" } });
+    else if (r.failure === "restart") persist(null, { docking: { ...hist, attempts: hist.attempts + 1 }, activity: { phase: "docking", engaged: false } });
+    else persist(null, { docking: hist, activity: { phase: "dockFailed" } });
   };
 
   // ABORT, END MISSION, MAIN MENU: back to the game menu, over lunar orbit as left by
@@ -576,6 +715,8 @@ export default function Mission({ entry = "opening" }) {
   // mission is chosen afresh on MISSIONS.
   const resetMission = () => {
     endFlight("aborted"); // a flight still under way ends as ABORTED (nothing if it already ended)
+    closeSave("abandoned"); // and its checkpoint with it (nothing if it was already closed)
+    setDockResume(null);
     scoringRef.current = null;
     setDebrief(null);
     setDebriefOpen(false);
@@ -604,6 +745,93 @@ export default function Mission({ entry = "opening" }) {
     orbitCueRef.current = new Set(ORBIT_CUES.map((_, i) => i));
     setState(STATES.MENU);
   };
+
+  /* ---- RESUME MISSION ----------------------------------------------------------------------- */
+  // Each checkpoint's own restore: the phase it reopens, from the state the checkpoint kept.
+  // A — LUNAR DESCENT READY: the descent briefing over lunar orbit (BEGIN PDI), as after MISSIONS.
+  const restoreDescentReady = () => {
+    preloadMissionScene();
+    persist(null, { activity: { phase: "briefing" } });
+    setState(STATES.BRIEFING);
+  };
+  // B — LUNAR LANDING COMPLETE: the lunar surface, ascent preparation, the LM where it landed
+  // (an unusable pose was already dropped by the store: the site's landing point is used).
+  const restoreLandingComplete = (save) => {
+    landingRef.current = { pose: save.landing ? save.landing.pose : null };
+    persist(null, { activity: { phase: "result" } });
+    setState(STATES.ASCENT);
+  };
+  // C — DOCKING READY: the playable docking at its checkpoint, with the attempt history (an
+  // attempt the interruption cut short is reported as a restart first, as RESTART DOCKING does).
+  const restoreDockingReady = (save, plan) => {
+    if (plan.restartReport) handleDockingResult(plan.restartReport);
+    persist(null, { docking: plan.docking, activity: { phase: "docking", engaged: false } });
+    setDockResume(plan.docking);
+    setState(STATES.DOCKING);
+  };
+  // D — DOCKING COMPLETE: the CSM alone, the crew aboard, on the way home (no docking, no ascent stage).
+  const restoreDockingComplete = () => {
+    returnRealRef.current = 0;
+    returnCueRef.current = new Set();
+    captionRef.current = null;
+    setReturnTime(returnMissionTime(0));
+    setState(STATES.RETURN);
+  };
+  // E — EARTH REENTRY READY: the reentry from its start (EARTH APPROACH).
+  const restoreReentryReady = () => setState(STATES.REENTRY);
+  const RESTORE = { briefing: restoreDescentReady, ascent: restoreLandingComplete, docking: restoreDockingReady, return: restoreDockingComplete, reentry: restoreReentryReady };
+
+  /**
+   * RESUME MISSION (startup screen or game menu, never automatic): the saved flight carries on
+   * from its latest valid checkpoint — same flight id (history, records marks), destination,
+   * pilot difficulty and scoring; nothing before the checkpoint is replayed (no launch, lunar
+   * orbit film, title or selection) and no cinematic or reward is triggered again.
+   */
+  const handleResume = () => {
+    const s0 = stateRef.current;
+    if (s0 !== STATES.CONTROL && s0 !== STATES.MENU) return;
+    const st = saveStore.state();
+    if (!canResume(st)) return;
+    const save = st.save;
+    const plan = resumePlan(save);
+    if (!plan || !RESTORE[plan.state]) return;
+    stateRef.current = plan.state; // once
+    audio.init();
+    audio.padStop(0.5);
+    const sel = saveSelection(save.mission);
+    setSelection(sel);
+    missionRef.current = createMissionConfig({ mode: MODE.OFFICIAL, ...sel });
+    flightIdRef.current = save.attemptId;
+    const sc = restoreFlightScoring(save.flight);
+    scoringRef.current = sc;
+    setMissionLog(logMissionResumed(save.attemptId, { siteId: sel.siteId, difficulty: sel.difficulty, at: save.createdAt, flown: !!save.flight.flown }));
+    if (sc.flight.flown) updateRecords((r) => applyFlightStart(r, sc.flight)); // once per flight id: a no-op unless the records were lost
+    ckRef.current = { id: save.attemptId, checkpoint: save.checkpoint, pose: save.landing ? save.landing.pose : null, docking: save.docking, createdAt: save.createdAt, activity: save.activity };
+    // the opening is behind this flight: lunar orbit as left at the title screen, every cue spent
+    orbitRealRef.current = Math.max(orbitRealRef.current, ORBIT_SEQ.titleScreen);
+    orbitClockRef.current = orbitClockAt(orbitRealRef.current);
+    goPdiRef.current = true;
+    setGoPdi(true);
+    titleRef.current = true;
+    startedRef.current = true;
+    undockSoundRef.current = new Set(UNDOCK_SOUND.map((_, i) => i));
+    orbitCueRef.current = new Set(ORBIT_CUES.map((_, i) => i));
+    setOrbitAhead(false);
+    setDebrief(null);
+    setDebriefOpen(false);
+    setDescentResult(null);
+    setDockResume(null);
+    RESTORE[plan.state](save, plan);
+    setNotice({ kind: "resumed", checkpoint: save.checkpoint, interrupted: plan.interrupted, fallback: !!st.fallback, at: Date.now() });
+  };
+
+  // The way home and the reentry, however they are reached (the return's end, SKIP, a resume):
+  // RETURN is the latest return checkpoint (D); the reentry is checkpoint E — EARTH REENTRY READY.
+  useEffect(() => {
+    if (state === STATES.RETURN) persist(null, { activity: { phase: "return" } });
+    if (state === STATES.REENTRY) persist(CP.REENTRY_READY, { activity: { phase: "reentry" } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   // GO FOR PDI: the lunar module has undocked and separated (data/lunarOrbitShot
   // goForPdi); FLIGHT's call comes just before the descent setup opens.
@@ -693,15 +921,24 @@ export default function Mission({ entry = "opening" }) {
         <MissionTitle clockRef={orbitClockRef} ready={state === STATES.TITLE} onStart={handleStartMissions} />
       )}
 
-      {state === STATES.CONTROL && <ControlRoomView onLaunch={handleLaunch} />}
+      {state === STATES.CONTROL && (
+        <ControlRoomView
+          onLaunch={handleLaunch}
+          saved={resumable}
+          saveProblem={saveState.ready && (saveState.status === "damaged" || saveState.status === "unsupported") ? saveState.status : null}
+          lang={lang}
+          onResume={handleResume}
+          onReplaceSave={abandonStoredMission}
+        />
+      )}
 
       {/* START MISSIONS: the game menu, in the title's place over the same shot */}
-      {state === STATES.MENU && <ModeMenu onMissions={() => setState(STATES.SELECT)} onTraining={handleTraining} />}
+      {state === STATES.MENU && <ModeMenu onMissions={() => setState(STATES.SELECT)} onTraining={handleTraining} saved={resumable} lang={lang} onResume={handleResume} />}
 
       {/* MISSIONS: the four official destinations, then the pilot difficulty */}
       {state === STATES.SELECT && (
         <div className="absolute inset-0 z-40" data-testid="mission-select-layer">
-          <MissionSelect selection={selection} log={missionLog} onConfirm={handleConfirmMission} onBack={() => setState(STATES.MENU)} />
+          <MissionSelect selection={selection} log={missionLog} onConfirm={requestConfirmMission} onBack={() => setState(STATES.MENU)} />
         </div>
       )}
 
@@ -754,6 +991,7 @@ export default function Mission({ entry = "opening" }) {
           audio={audio}
           farSide={mission.comms.farSide}
           onComplete={handleAscentComplete}
+          onInitiate={handleAscentInitiate}
         />
       )}
 
@@ -766,6 +1004,9 @@ export default function Mission({ entry = "opening" }) {
           onComplete={handleDockingComplete}
           onAbort={handlePhaseAbort}
           onResult={handleDockingResult}
+          resume={dockResume}
+          onPhase={handleDockPhase}
+          onEngaged={handleDockEngaged}
         />
       )}
 
@@ -920,6 +1161,20 @@ export default function Mission({ entry = "opening" }) {
             <RotateCcw size={12} /> ABORT
           </button>
         )}
+
+      {/* MISSION CHECKPOINT SAVED / MISSION RESUMED (top centre, brief, nothing to tap) */}
+      <MissionSaveNotice notice={notice} lang={lang} below={state === STATES.DOCKING || state === STATES.REENTRY || state === STATES.MANUAL_DESCENT ? "hud" : "nav"} />
+      {/* START A NEW MISSION? — MISSIONS replacing an unfinished mission */}
+      <NewMissionConfirm
+        open={!!confirmNew}
+        lang={lang}
+        onCancel={() => setConfirmNew(null)}
+        onConfirm={() => {
+          const sel = confirmNew && confirmNew.sel;
+          setConfirmNew(null);
+          if (sel) handleConfirmMission(sel);
+        }}
+      />
 
       <AbortModal
         open={showAbort}

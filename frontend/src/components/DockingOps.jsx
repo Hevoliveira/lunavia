@@ -757,8 +757,16 @@ function saveGuidanceOn(difficulty, on) {
  * overrides (null: the mission checkpoint). It goes straight to the docking (no orbit
  * insertion or rendezvous film), RESTART DOCKING returns to that same start, and it ends at
  * HARD DOCK CONFIRMED (no crew transfer or jettison: onResult reports the docking).
+ *
+ * `resume` (an official mission resumed from its DOCKING READY checkpoint, lib/missionSave):
+ * { attempts, restarts, contacts } — the flight's attempt history so far. Orbit insertion and
+ * the rendezvous are already flown: it opens on RENDEZVOUS COMPLETE and the docking
+ * checkpoint, then carries on exactly as the mission does (hard dock, crew transfer,
+ * jettison, onComplete). `onPhase(phase)` reports each phase; `onEngaged()` reports, once
+ * per attempt, the player's first control input (a jet, AUTO-CENTER, MATCH VELOCITY or a
+ * FINE APPROACH step), so an attempt interrupted by closing the app counts as a restart.
  */
-export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, audio = null, onComplete, onAbort, onResult, training = null }) {
+export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, audio = null, onComplete, onAbort, onResult, training = null, resume = null, onPhase = null, onEngaged = null }) {
   const cfg = DOCKING[difficulty];
   const lang = useAudioSettings().subLang === "pt" ? "pt" : "en";
   const ui = GUI[lang];
@@ -773,9 +781,13 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   }
   const phaseRef = useRef("insertion");
   const [phase, setPhaseState] = useState("insertion"); // insertion | rendezvous | handover | docking | captured | docked | transfer | jettison | failed
+  // the mission's callbacks, always the latest (the input handlers and timers keep the first render's closures)
+  const cbRef = useRef({ onPhase, onEngaged });
+  cbRef.current = { onPhase, onEngaged };
   const setPhase = (p) => {
     phaseRef.current = p;
     setPhaseState(p);
+    if (cbRef.current.onPhase) cbRef.current.onPhase(p);
   };
   // the docking view: NAV first; a view only moves the camera (data/dockingViews)
   const [view, setViewState] = useState("NAV");
@@ -820,7 +832,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   const [hud, setHud] = useState(null);
   const [failure, setFailure] = useState(null);
   const [toast, setToast] = useState(null);
-  const [linkUp, setLinkUp] = useState(!farSide);
+  const [linkUp, setLinkUp] = useState(!farSide || !!resume); // a resumed docking is past the far side's acquisition of signal
   const markRef = useRef({});
   // the docking ports: the screen markers' painter, the approach status (hysteresis) and the
   // guidance on display (the 360° arrow), all read from the one simulation
@@ -829,12 +841,19 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   const guideRef = useRef(null);
   const sizeRef = useRef({ w: 1, h: 1 });
   const clockRef = useRef(0);
-  const attemptsRef = useRef(1);
-  const restartsRef = useRef(0);
+  const attemptsRef = useRef(resume ? resume.attempts : 1);
+  const restartsRef = useRef(resume ? resume.restarts : 0);
   const startedAtRef = useRef(null);
   const firstStartRef = useRef(null);
   const attemptOpen = useRef(false);
-  const contactsRef = useRef(0);
+  const contactsRef = useRef(resume ? resume.contacts : 0);
+  // the player's first control input in this attempt (onEngaged)
+  const engagedRef = useRef(false);
+  const markEngaged = () => {
+    if (engagedRef.current || phaseRef.current !== "docking") return;
+    engagedRef.current = true;
+    if (cbRef.current.onEngaged) cbRef.current.onEngaged();
+  };
   // the guidance: one tracker per attempt (reset on restart), shown or hidden by the player
   const guidanceRef = useRef(createGuidance(difficulty));
   const lastGuideKey = useRef(null);
@@ -852,7 +871,10 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   /* -- input: held buttons and keys, with a minimum impulse per tap -- */
   const held = useRef(new Map()); // key → { axis: "t"|"r", i, v, until }
   // a tap is one minimum-impulse firing; held, the jets build up gently (dockingSim.jetCommand)
-  const press = (key, axis, i, v) => held.current.set(key, { axis, i, v, t0: performance.now(), until: performance.now() + PULSE * 1000, down: true });
+  const press = (key, axis, i, v) => {
+    held.current.set(key, { axis, i, v, t0: performance.now(), until: performance.now() + PULSE * 1000, down: true });
+    markEngaged();
+  };
   const release = (key) => {
     const h = held.current.get(key);
     if (!h) return;
@@ -902,7 +924,10 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
       // FINE APPROACH: R/F step the held closing speed (one step per key press, not per repeat)
       const sm = simRef.current;
       if ((NAME[e.code] === "fwd" || NAME[e.code] === "aft") && fineRef.current && (DOCKING[difficulty].assists || {}).fine === "set" && sm && sm.stab && sm.stab.mode === "hold") {
-        if (!e.repeat) fineStep(sm, difficulty, NAME[e.code] === "fwd" ? 1 : -1, { speed: speedRef.current });
+        if (!e.repeat) {
+          fineStep(sm, difficulty, NAME[e.code] === "fwd" ? 1 : -1, { speed: speedRef.current });
+          markEngaged();
+        }
         return;
       }
       if (!held.current.has("k" + e.code) || !held.current.get("k" + e.code).down) press("k" + e.code, ...m);
@@ -929,6 +954,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
       window.removeEventListener("blur", letGo);
       document.removeEventListener("visibilitychange", vis);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [difficulty]);
 
   /* -- phases and comms -- */
@@ -943,6 +969,18 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
     if (training) {
       setPhase("handover");
       const t = setTimeout(() => startDocking(), 1800);
+      return () => clearTimeout(t);
+    }
+    // a resumed mission: the rendezvous is behind it (the guidance's clock where it handed over),
+    // RENDEZVOUS COMPLETE, then the docking checkpoint
+    if (resume) {
+      const s = simRef.current;
+      s.play = PLAY_S;
+      s.missionT = playToMission(PLAY_S, plan);
+      said.current = new Set(["aos", "tpi", "mcc", "brk"]);
+      if (audio) audio.setEarthLink(true);
+      setPhase("handover");
+      const t = setTimeout(() => startDocking(), 2400);
       return () => clearTimeout(t);
     }
     // orbit insertion: the end of the ascent burn, told as a title over the scene
@@ -1007,6 +1045,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
     statusRef.current = null; // the approach status starts afresh with the attempt
     guideRef.current = null;
     attemptOpen.current = true;
+    engagedRef.current = false;
     if (!firstStartRef.current) firstStartRef.current = performance.now();
     startedAtRef.current = performance.now();
     pausedRef.current = false;
@@ -1283,6 +1322,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
   const fineDown = (dir) => {
     const step = () => fineStep(simRef.current, difficulty, dir, { speed: speedRef.current });
     step();
+    markEngaged();
     if (fineRepeat.current) clearInterval(fineRepeat.current);
     fineRepeat.current = setInterval(step, 350);
   };
@@ -1407,6 +1447,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
                   const sm = simRef.current;
                   if (sm.center) disengageCenter(sm);
                   else engageCenter(sm, difficulty);
+                  markEngaged();
                 }}
               />
             )}
@@ -1421,6 +1462,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
                   const sm = simRef.current;
                   if (sm.stab) disengageStabilize(sm);
                   else engageStabilize(sm, difficulty);
+                  markEngaged();
                 }}
               />
             )}

@@ -25,7 +25,7 @@ export const RECORDS_SCHEMA = 1;
 const DIFFS = ["CADET", "ASTRONAUT", "COMMANDER"];
 const MARKS_MAX = 300;
 
-export const emptyRecords = () => ({ schema: RECORDS_SCHEMA, categories: {}, achievements: {}, counted: [], finished: [], legacyImported: false });
+export const emptyRecords = () => ({ schema: RECORDS_SCHEMA, categories: {}, achievements: {}, counted: [], finished: [], docked: [], legacyImported: false });
 export const emptyCategory = () => ({
   attempts: 0,
   successes: 0,
@@ -74,6 +74,7 @@ export function sanitizeRecords(raw) {
   });
   r.counted = Array.isArray(raw.counted) ? raw.counted.filter((x) => typeof x === "string").slice(-MARKS_MAX) : [];
   r.finished = Array.isArray(raw.finished) ? raw.finished.filter((x) => typeof x === "string").slice(-MARKS_MAX) : [];
+  r.docked = Array.isArray(raw.docked) ? raw.docked.filter((x) => typeof x === "string").slice(-MARKS_MAX) : [];
   r.legacyImported = !!raw.legacyImported;
   return r;
 }
@@ -210,9 +211,15 @@ export function applyLanding(rec, flight, L, at = Date.now()) {
   return unlockAll(rec, newAchievements("landing", { landing: L }, rec.achievements), flight, at);
 }
 
-/** The hard dock of an official flight (scoreDocking). */
+/**
+ * The hard dock of an official flight (scoreDocking). Counted once per flight: a
+ * flight resumed from a mission checkpoint (lib/missionSave) that docks again never
+ * adds a second docking to the category.
+ */
 export function applyDocking(rec, flight, D, at = Date.now()) {
   if (!D || !D.success) return [];
+  if (!Array.isArray(rec.docked)) rec.docked = [];
+  if (!mark(rec.docked, flight.id)) return [];
   const c = own(rec, flight.siteId, flight.difficulty);
   c.dockings += 1;
   if (D.firstAttempt) c.firstAttemptDockings += 1;
