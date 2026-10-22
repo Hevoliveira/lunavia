@@ -178,6 +178,9 @@ describe("the parachutes", () => {
     const chutesSrc = read("components/scenes/descent/Chutes.jsx");
     expect(chutesSrc).not.toMatch(/- uSink;/); // the sea never rises through the fabric
     expect(chutesSrc).toMatch(/1\.0 - smoothstep\(0\.15, 0\.85, uSink\)/);
+    // blended from the start: no new shader program compiled in the middle of the splashdown
+    expect(chutesSrc).toMatch(/transparent: true,\s*forceSinglePass: true,/);
+    expect(chutesSrc).not.toMatch(/mat\.needsUpdate = true/);
   });
 });
 

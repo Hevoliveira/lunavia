@@ -171,6 +171,10 @@ function canopyMaterial(atmo, rings) {
     vertexShader: canopyVertex,
     fragmentShader: canopyFragment,
     side: THREE.DoubleSide,
+    // blended from the start (opaque until the canopies go under): switching a material between
+    // opaque and transparent compiles a new shader program, a hitch in the middle of the splashdown
+    transparent: true,
+    forceSinglePass: true,
   });
 }
 
@@ -240,13 +244,8 @@ export default function Chutes({ simRef, viewRef, poseRef, atmo }) {
     const U = mat.uniforms;
     U.uFlat.value = rel ? rel.flat : 0;
     U.uSink.value = rel ? rel.sink : 0;
-    // blended only while it goes under (and hidden once it has)
-    const sinking = !!rel && rel.sink > 0.001;
-    if (mat.transparent !== sinking) {
-      mat.transparent = sinking;
-      mat.depthWrite = !sinking;
-      mat.needsUpdate = true;
-    }
+    // writing depth until it goes under (render state only: no new shader program)
+    mat.depthWrite = !(rel && rel.sink > 0.001);
     U.uSeaY.value = atmo.seaY;
     U.uDrift.value.set(atmo.drift, 0);
     U.uTime.value = t;
