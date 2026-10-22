@@ -3206,3 +3206,87 @@ phase banner on a lighter backing.
   drogue hand-over, which started at 15 units/s, is now eased.
 - **Regression.** A full mission on the packaged build, docking to splashdown, ran with no page
   errors, and SPLASHDOWN CONFIRMED came 0.8 s after contact.
+
+## 55. A faster descent, wind ripples, released canopies that go under as one sheet
+
+**Why.** §54 left the descent about 15–20% slower than the release before it (software
+rendering), the released canopies breaking up into separate islands as they sank, the distant
+clouds lumpy, and the near water mottled.
+
+**Where the time went (measured, not guessed).** A held frame (the simulation paused at one
+altitude) rendered 30 times back to back, each forced to finish (`gl.finish` by a 1-pixel read),
+gives the render's own cost without the 16.7 ms steps of the display. With parts hidden or their
+shaders replaced at runtime, in one page:
+- the sea costs most of the frame; most of that, in software rendering, is a fixed cost per sea
+  pixel that any non-constant shader pays (interpolation), not the waves. At 5 km the new descent
+  camera looks down on the clouds, so the sea fills about 75% of the frame (30% before): most of
+  the remaining difference there.
+- the sea's own shading: the swell and short waves (kept), the three detail lookups, the hull foam,
+  and, from altitude, the cloud shadows plus the NASA cloud cover read by every distant pixel.
+- the clouds: per pixel at 700 m (where they fill the frame), spread over all puffs at the
+  floating shot.
+
+**What changed (presentation only).**
+- Sea: each swell and wind wave is computed only where `keep()` is not 0 (the pixel covers less
+  than half its length): the same picture, none of the short waves from altitude. The NASA cloud
+  cover beyond the field is read per vertex (`vCover`, `textureLod`), not by every distant pixel;
+  the near shadow map only inside the field. The splash's ripples and churn end at 8 s (faded out
+  from 5 s). Powers by multiplication.
+- Wind ripples: the three detail scales are sampled in the wind's frame, stretched 2.2x across the
+  wind, and their slope turned back into the world with the same stretch, so the near water tilts
+  along the wind (streaks across it) instead of mottling.
+- Clouds: the fine noise only where a pixel can hold it (`fineK`, from the buffer's pixel size
+  `uPix`); far puffs (a few pixels wide) shaded as one mass (`farK`: less edge erosion, the
+  cloud-scale normal, no fold ring); an indexed 20-face bound (scale 1.2585, 1 / the inradius:
+  tested); the clouds' buffer drawn by `CloudPass`, mounted after the camera rig, before the main
+  pass (on a phone's tile-based GPU a render-target switch in the middle of the frame writes the
+  whole multisampled frame out and reads it back). Far clouds (beyond 9 km) are no taller than
+  they are wide, their turrets on the dome's shoulders, not its crown.
+- Released canopies: they lie down on the sea as they reach it (`flat` from 3.45 s, not in the
+  air), bunched (45% of the spread), and go under as one sheet: the folds settle, deep water over
+  it, fading out (`sink` 0..1 from 4.75 s, gone by 10.75 s). The sea never rises through the
+  fabric, so no islands and no pale patch.
+
+**What didn't help (software rendering).** Collapsing the sea grid's inner rings (~2.5 ms),
+lower cloud resolution at the floating shot (no change: the cost there is not per pixel), drawing
+the cloud buffer before the main pass (no change in software; kept for the phone), anisotropic
+filtering 1x instead of 2x (~5 ms at the floating shot, not taken: the grazing detail blurs).
+
+**Measured** (headless Chromium, SwiftShader CPU rendering at 852 × 393, both builds in the same
+session; not an iPhone GPU):
+
+| | 53bffc0 (before §54) | a0b5ec2 |
+|---|---|---|
+| Whole descent (6 km to 8 s after splashdown), mean | 57–59 ms | 65 ms |
+| Median | 50 ms | 67 ms |
+| 95th percentile | 83 ms | 100 ms |
+| 6–3 km (drogues) | 46–47 ms | 65–66 ms |
+| 3–1 km (mains, between the clouds) | 50–51 ms | 53–56 ms |
+| Last kilometre | 71–76 ms | 63–65 ms |
+| Floating (to 8 s) | 68–70 ms | 83–87 ms |
+| Held frames, 160 m / 700 m / 1.8 km / 5 km / 9 s afloat | 60 / 73 / 55 / 44 / 67 ms | 58 / 67 / 51 / 60 / 76 ms |
+| Held frames, average | 59.8 ms | 62.3 ms |
+
+- Measured the same way earlier the same day, §54's build (9364896) was about 25% over 53bffc0 on
+  the whole descent; this release is 12% over it (4% on the held frames), and faster than it from
+  1.8 km down to the water.
+- The two slower shots: at 5 km the camera looks down at the clouds, so the sea fills most of the
+  frame; afloat, the volumetric clouds overhead and the near water's detail cost more than the old
+  flat puffs and plain sea.
+- The first version of the canopies' fade switched their material from opaque to transparent as
+  they began to sink, which compiled a new shader program (three's OPAQUE define): a 180–250 ms
+  frame 5 s after splashdown. They are now blended from the start (tested); in the final run no
+  frame after the splash's first second was over 170 ms.
+- The measuring probe read the scene's view state each second; with the renderer attached to it
+  (for the held-frame renders) it serialised the whole scene and stalled the page for ~400 ms.
+  The probe now reads only the two numbers it needs; the table is from runs without it.
+
+- Against §54's build (9364896), the same held frames in one session: 5 km 72 → 60 ms, 1.8 km
+  63 → 51 ms, 5 s afloat 94 → 82 ms, 9 s afloat 85 → 81 ms (13% faster on average).
+
+**Regression.** A full mission on the packaged build (BUILD a0b5ec2, Sea of Tranquility, CADET):
+docking on the first attempt, the return and reentry to the splashdown (8.5 m/s), MISSION
+COMPLETE and the debrief (894/1000, GOLD), no page errors. 546 unit tests; `ios:verify` 126 checks.
+
+The reentry scene keeps `AdaptiveResolution`: on a device that cannot hold about 45 fps the pixel
+ratio steps down (to no lower than 1.25) rather than the frame rate dropping.
