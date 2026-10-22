@@ -1,18 +1,21 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD a5edd07**.
+This folder installs **BUILD 8691a17**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD a5edd07 · 2026-10-22 08:24 UTC**
+> **LUNAVIA iOS · BUILD 8691a17 · 2026-10-22 20:29 UTC**
 
-**This is a review build** (branch `claude/descent-prototypes`): two visual prototypes of the
-descent and splashdown for approval: the final descent at about 160 m and the capsule afloat
-after splashdown. The release branch `claude/ios-release` stays on BUILD a0b5ec2 until they are
-approved.
+It has the descent and splashdown of the reviewed prototypes (the sea, the framing of the whole
+parachute assembly, the splash and the released parachutes), with the clouds reshaped: broad,
+low cumulus spread across the sky in scattered groups, wider than they are tall, with open sky
+over the splashdown.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
-- **a0b5ec2** is the current release: the descent with the sculpted cloud towers, the striped
+- **a5edd07** is the review build of the two prototypes (branch `claude/descent-prototypes`): the
+  same sea, framing and splashdown, but the clouds still too tall (white towers and mountains on
+  the horizon during the low descent);
+- **a0b5ec2** is the previous release: the descent with the sculpted cloud towers, the striped
   sea, the far descent camera (canopies cropped, the capsule tiny), the spray as streaks and the
   released parachutes hanging over the capsule after splashdown;
 - **9364896** is the previous release: the clouds as volumes, the descent display and the recovery
@@ -116,11 +119,12 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Cloud descent and splashdown correction: volumetric cumulus the capsule falls between (no flat cards), one continuous descent camera (drogues, main parachutes between the clouds, a wide approach, the water contact, a close recovery shot), the descent display under the parachutes (altitude, descent rate, parachutes, capsule, SPLASHDOWN PREP) instead of the entry guidance, spray and foam in the water with no rings or discs, and the captions in a corner | #28 | 58fb217, 9364896 |
 | A faster descent: the sea and the clouds do only the work a pixel can show (most of the speed lost in the previous release recovered), wind ripples on the near water, squat distant cumulus, and the released parachutes lying down on the water as they reach it and going under as one sheet | #28 | 6906966, a0b5ec2 |
 | Descent and splashdown prototypes (review build): scattered cumulus traced through a weather map (no puff towers), the sea from a calibrated wave spectrum with a short-crested swell (no stripes) and one atmosphere for sky, sea and clouds, the whole parachute assembly framed at 160 m with its lines visible, spray as masses of water at contact, and the released parachutes falling on and lying downwind on the sea | — | a5edd07 |
+| Natural cloud formations: broad, low cumulus (2.5–4.5 times wider than tall) built as heaps of puffs, scattered in irregular groups with clear sky between them, a few thin broken stratocumulus sheets far off, open sky over the splashdown, taller cumulus only far away | — | 8691a17 |
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at a5edd07** with `yarn ios:sync` (`ios:verify`: 133 checks). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This review build** changes only how the descent and the splashdown look (HANDOFF §56): the clouds, the sea, the descent and recovery cameras, the suspension lines, the spray and the released parachutes. The reentry's physics, the parachutes' timing and descent rate, the time scale and the success rules, and everything before the reentry, are as in a0b5ec2. The notes below describe a0b5ec2.
+- **Built from the clean tree at 8691a17** with `yarn ios:sync` (`ios:verify`: 137 checks). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release changes only the clouds' shape and spread** over BUILD a5edd07 (HANDOFF §57); a5edd07 itself changed only how the descent and the splashdown look over a0b5ec2 (HANDOFF §56: the clouds, the sea, the descent and recovery cameras, the suspension lines, the spray and the released parachutes). The reentry's physics, the parachutes' timing and descent rate, the time scale and the success rules, and everything before the reentry, are as in a0b5ec2. The notes below describe a0b5ec2.
 - **This release makes the descent faster and finishes its look.** Nothing else changes: the reentry's physics, trajectory, controls, parachute timing and success rules, and everything before the reentry, are as in the previous release.
   - **Faster:** the sea computes each wave only where it can be seen (from altitude, none of the short ones), reads the distant cloud cover once per point of its grid instead of in every pixel, and stops the splash's ripples once they have died out; the clouds skip detail too small to see and draw their own buffer before the frame instead of in the middle of it (on a phone's GPU that saves writing the whole frame out and back).
   - **The near water:** wind ripples stretched across the wind, so the sea close to the capsule reads as wind-driven water, not mottled.
