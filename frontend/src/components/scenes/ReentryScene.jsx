@@ -2,12 +2,18 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Stars } from "@react-three/drei";
 import { useRef, useMemo, useEffect } from "react";
 import * as THREE from "three";
-import { R_EARTH, CAPSULE, CHUTES, OUTCOME } from "@/data/reentryPhysics";
+import { R_EARTH, CAPSULE, OUTCOME } from "@/data/reentryPhysics";
 import { PlanetEarth } from "@/components/planets/Planets";
 import { plasmaLevel } from "@/data/reentryGuidance";
 import CsmModel, { csmMaterials } from "@/components/spacecraft/CsmModel";
 import { CM_R, PARTS as CSM_PARTS, buildCM } from "@/data/csmDesign";
 import { SM_SEP, smOffset } from "@/data/earthReturn";
+import { CONFIRM, DROGUE_DRIFT_M, ENTRY_SIDE, FLOAT, M_PER_UNIT, chuteCamera, lowWorldFade, recoveryCamera, seaLevelY, seaSurface, splashBob } from "@/data/descentScene";
+import Ocean from "@/components/scenes/descent/Ocean";
+import CloudField, { CloudPass, cloudShadowMap, noiseTexture } from "@/components/scenes/descent/CloudField";
+import Splash from "@/components/scenes/descent/Splash";
+import Chutes from "@/components/scenes/descent/Chutes";
+import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
 
 /*
  * ReentryScene — rendered entirely from the live reentry simulation state
@@ -20,7 +26,6 @@ import { SM_SEP, smOffset } from "@/data/earthReturn";
 
 
 const EARTH_RS = 400; // scene radius of the Earth sphere (altitude scaled 1:1 in angle)
-const LOW_SCALE = 25; // metres per scene unit in the low-altitude world
 const DEG = Math.PI / 180;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const smooth = (x) => {
@@ -41,12 +46,6 @@ function velocityDir(s, out) {
   return out.set(-Math.cos(s.gamma), Math.sin(s.gamma), 0).normalize();
 }
 
-function chuteInflation(s, which) {
-  const t0 = which === "main" ? s.mainT : s.drogueT;
-  if (t0 === null || t0 === undefined) return 0;
-  const cfg = which === "main" ? CHUTES.main : CHUTES.drogue;
-  return clamp01((s.t - t0) / cfg.inflateTime);
-}
 
 /* ------------------------------- capsule ------------------------------- */
 
@@ -338,120 +337,20 @@ function ShoulderGlow({ levelRef }) {
   );
 }
 
-/* ------------------------------ parachutes ------------------------------ */
-
-function makeGoreTexture() {
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 32;
-  const ctx = c.getContext("2d");
-  for (let i = 0; i < 16; i++) {
-    ctx.fillStyle = i % 2 === 0 ? "#FF3B00" : "#f3f1ec";
-    ctx.fillRect(i * 16, 0, 16, 32);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-function Parachutes({ simRef }) {
-  const drogueRef = useRef();
-  const mainRef = useRef();
-  const canopies = useRef([]);
-  const goreTex = useMemo(() => makeGoreTexture(), []);
-  const lineGeo = useMemo(() => {
-    const pts = [];
-    for (let k = 0; k < 3; k++) {
-      const a = (k / 3) * Math.PI * 2;
-      const cx = Math.cos(a) * 1.9;
-      const cz = Math.sin(a) * 1.9;
-      for (let j = 0; j < 8; j++) {
-        const b = (j / 8) * Math.PI * 2;
-        pts.push(0, 0.78, 0, cx + Math.cos(b) * 2.2, 6.1, cz + Math.sin(b) * 2.2);
-      }
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-    return g;
-  }, []);
-  const drogueLines = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute([0, 0.78, 0, -0.45, 2.55, 0, 0, 0.78, 0, 0.45, 2.55, 0], 3));
-    return g;
-  }, []);
-
-  useFrame((state) => {
-    const s = simRef.current;
-    if (!s) return;
-    const dU = chuteInflation(s, "drogue");
-    const mU = chuteInflation(s, "main");
-    const t = state.clock.elapsedTime;
-    if (drogueRef.current) {
-      drogueRef.current.visible = s.drogueT !== null && mU < 0.6;
-      const k = 0.2 + 0.8 * dU;
-      drogueRef.current.scale.set(k, 0.4 + 0.6 * dU, k);
-      drogueRef.current.rotation.z = Math.sin(t * 2.3) * 0.08;
-    }
-    if (mainRef.current) {
-      mainRef.current.visible = s.mainT !== null;
-      const k = 0.12 + 0.88 * Math.pow(mU, 1.5);
-      mainRef.current.scale.set(k, 0.35 + 0.65 * Math.pow(mU, 0.8), k);
-      mainRef.current.rotation.z = Math.sin(t * 0.7) * 0.03;
-      canopies.current.forEach((c, i) => {
-        if (c) c.rotation.y = t * 0.08 + i;
-      });
-    }
-  });
-
-  return (
-    <group>
-      <group ref={drogueRef} visible={false}>
-        {[-0.45, 0.45].map((x, i) => (
-          <mesh key={i} position={[x, 2.75, 0]} rotation={[Math.PI, 0, 0]}>
-            <coneGeometry args={[0.32, 0.42, 16, 1, true]} />
-            <meshStandardMaterial map={goreTex} side={THREE.DoubleSide} roughness={0.9} />
-          </mesh>
-        ))}
-        <lineSegments geometry={drogueLines}>
-          <lineBasicMaterial color="#d8d4cc" transparent opacity={0.7} />
-        </lineSegments>
-      </group>
-      <group ref={mainRef} visible={false}>
-        {[0, 1, 2].map((k) => {
-          const a = (k / 3) * Math.PI * 2;
-          return (
-            <mesh
-              key={k}
-              ref={(el) => (canopies.current[k] = el)}
-              position={[Math.cos(a) * 1.9, 6.1, Math.sin(a) * 1.9]}
-              rotation={[Math.sin(a) * 0.22, 0, -Math.cos(a) * 0.22]}
-            >
-              <sphereGeometry args={[2.3, 32, 12, 0, Math.PI * 2, 0, Math.PI * 0.42]} />
-              <meshStandardMaterial map={goreTex} side={THREE.DoubleSide} roughness={0.85} />
-            </mesh>
-          );
-        })}
-        <lineSegments geometry={lineGeo}>
-          <lineBasicMaterial color="#e2ded6" transparent opacity={0.45} />
-        </lineSegments>
-      </group>
-    </group>
-  );
-}
-
 /* ------------------------------ environment ------------------------------ */
 
-function SkyDome({ simRef }) {
+function SkyDome({ simRef, atmo }) {
   const mat = useRef();
-  const uniforms = useMemo(() => ({ uTop: { value: new THREE.Color("#010103") }, uHor: { value: new THREE.Color("#04060c") } }), []);
+  const uniforms = useMemo(() => ({ uTop: { value: new THREE.Color("#010103") }, uHor: { value: new THREE.Color("#04060c") }, uSun: { value: atmo.sun }, uGlow: { value: 0 } }), [atmo]);
   const cols = useMemo(
     () => ({
       topSpace: new THREE.Color("#010103"),
       horSpace: new THREE.Color("#04060c"),
       topHigh: new THREE.Color("#050b1f"),
       horHigh: new THREE.Color("#2a5aa8"),
-      topLow: new THREE.Color("#3f78c4"),
-      horLow: new THREE.Color("#b9d3ea"),
+      topLow: new THREE.Color("#2f67b4"),
+      horLow: new THREE.Color("#aecbe3"),
+      hazeLow: new THREE.Color("#a7bfd4"),
       top: new THREE.Color(),
       hor: new THREE.Color(),
     }),
@@ -467,6 +366,11 @@ function SkyDome({ simRef }) {
     cols.hor.copy(cols.horSpace).lerp(cols.horHigh, hi).lerp(cols.horLow, lo);
     mat.current.uniforms.uTop.value.copy(cols.top);
     mat.current.uniforms.uHor.value.copy(cols.hor);
+    mat.current.uniforms.uGlow.value = lo;
+    // the sea and the clouds take the sky's own colours: one atmosphere
+    atmo.top.copy(cols.top);
+    atmo.hor.copy(cols.hor);
+    atmo.haze.copy(cols.hor).lerp(cols.hazeLow, lo * 0.45);
   });
   return (
     <mesh renderOrder={-2} frustumCulled={false}>
@@ -476,13 +380,47 @@ function SkyDome({ simRef }) {
         side={THREE.BackSide}
         depthWrite={false}
         uniforms={uniforms}
-        vertexShader={`varying vec3 vD; void main(){ vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);} `}
-        fragmentShader={`uniform vec3 uTop; uniform vec3 uHor; varying vec3 vD;
-          void main(){ float y = normalize(vD).y; float k = pow(clamp(y, 0.0, 1.0), 0.45);
-            gl_FragColor = vec4(mix(uHor, uTop, k), 1.0); }`}
+        vertexShader={`varying vec3 vD; void main(){ vD = position; vec4 p = modelViewMatrix * vec4(position,1.0); p.xyz += cameraPosition * 0.0; gl_Position = projectionMatrix * p;} `}
+        fragmentShader={`uniform vec3 uTop; uniform vec3 uHor; uniform vec3 uSun; uniform float uGlow; varying vec3 vD;
+          void main(){ vec3 d = normalize(vD); float y = d.y; float k = pow(clamp(y, 0.0, 1.0), 0.45);
+            vec3 c = mix(uHor, uTop, k);
+            // below the horizon: the haze over the sea (the sea itself is drawn over this)
+            c = mix(c, uHor * 0.92, smoothstep(0.0, -0.08, y));
+            // a soft brightening round the Sun (no flare)
+            float sd = max(dot(d, uSun), 0.0);
+            c += vec3(1.0, 0.93, 0.82) * (pow(sd, 6.0) * 0.16 + pow(sd, 64.0) * 0.35) * uGlow;
+            gl_FragColor = vec4(c, 1.0); }`}
       />
     </mesh>
   );
+}
+
+/*
+ * The descent's shared state, each frame before the rest of the scene (data/descentScene): how
+ * much of the low world is drawn, where the sea's surface is below the capsule (so that the heat
+ * shield touches the waves exactly when the simulation's altitude reaches zero), and how far the
+ * ground has drifted by under it since the drogues opened (the sea and the clouds move together).
+ */
+function AtmoState({ simRef, viewRef, poseRef, atmo, final }) {
+  const anchor = useRef(null);
+  const lowAtSplash = useRef(null);
+  useFrame(() => {
+    const s = simRef.current;
+    const v = viewRef.current;
+    if (!s) return;
+    const splashed = v.phase === "SPLASHED";
+    atmo.low = splashed ? 1 : lowWorldFade(v.phase === "APPROACH" || v.phase === "PREP" ? 200e3 : s.h);
+    if (s.drogueT !== null && anchor.current === null) anchor.current = s.s;
+    if (s.drogueT === null && !splashed) anchor.current = null;
+    atmo.drift = anchor.current === null ? 0 : -(s.s - anchor.current) / M_PER_UNIT;
+    // the MISSION COMPLETE backdrop: the same place on the same sea, under the same clouds
+    if (final) atmo.drift = -DROGUE_DRIFT_M / M_PER_UNIT;
+    const low = poseRef.current ? poseRef.current.low : -0.11;
+    if (splashed && lowAtSplash.current === null) lowAtSplash.current = low;
+    if (!splashed) lowAtSplash.current = null;
+    atmo.seaY = seaLevelY(s.h) + (lowAtSplash.current !== null ? lowAtSplash.current : low);
+  });
+  return null;
 }
 
 // The Sun of this scene (the directional light below): it lights the capsule and the Earth alike.
@@ -515,111 +453,6 @@ function OrbitalEarth({ simRef, viewRef }) {
   );
 }
 
-function LowWorld({ simRef, viewRef }) {
-  const ocean = useRef();
-  const cloudGroup = useRef();
-  const spray = useRef();
-  const foam = useRef();
-  const cloudBits = useMemo(() => {
-    const arr = [];
-    let seed = 11;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
-    for (let i = 0; i < 40; i++) {
-      const a = rnd() * Math.PI * 2;
-      const r = 90 + rnd() * 420;
-      arr.push({ x: Math.cos(a) * r, z: Math.sin(a) * r - 60, s: 25 + rnd() * 45, y: rnd() * 12 });
-    }
-    return arr;
-  }, []);
-  const puff = useMemo(() => {
-    const c = document.createElement("canvas");
-    c.width = c.height = 128;
-    const ctx = c.getContext("2d");
-    const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.5, "rgba(255,255,255,0.55)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 128, 128);
-    return new THREE.CanvasTexture(c);
-  }, []);
-  const oceanMat = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 }, uFade: { value: 0 } },
-        transparent: true,
-        vertexShader: `varying vec2 vW; varying vec3 vPos; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xz; vPos = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-        fragmentShader: `uniform float uTime; uniform float uFade; varying vec2 vW; varying vec3 vPos;
-          void main(){
-            float w = sin(vW.x * 0.35 + uTime * 1.3) * 0.5 + sin(vW.y * 0.27 - uTime * 1.1) * 0.5 + sin((vW.x + vW.y) * 0.9 + uTime * 2.1) * 0.25;
-            float dist = length(vPos - cameraPosition);
-            vec3 deep = vec3(0.03, 0.16, 0.30); vec3 lit = vec3(0.10, 0.34, 0.52);
-            vec3 col = mix(deep, lit, 0.5 + 0.25 * w);
-            col = mix(col, vec3(0.62, 0.76, 0.88), clamp(dist / 900.0, 0.0, 0.85));
-            gl_FragColor = vec4(col, uFade); }`,
-      }),
-    []
-  );
-  useFrame((state) => {
-    const s = simRef.current;
-    if (!s) return;
-    const v = viewRef.current;
-    const hKm = s.h / 1000;
-    const fade = smooth((25 - hKm) / 10);
-    const y = -s.h / LOW_SCALE;
-    oceanMat.uniforms.uTime.value = state.clock.elapsedTime;
-    oceanMat.uniforms.uFade.value = fade;
-    if (ocean.current) {
-      ocean.current.visible = fade > 0.01;
-      ocean.current.position.y = Math.min(y, -0.05);
-    }
-    if (cloudGroup.current) {
-      cloudGroup.current.visible = fade > 0.01 && s.h > 300;
-      cloudGroup.current.position.y = (2600 - s.h) / LOW_SCALE;
-      cloudGroup.current.children.forEach((c) => {
-        c.material.opacity = 0.55 * fade;
-        c.quaternion.copy(state.camera.quaternion);
-      });
-    }
-    const splashed = v.phase === "SPLASHED";
-    const st = splashed ? v.phaseT || 0 : 0;
-    if (spray.current) {
-      const u = clamp01(st / 2.2);
-      spray.current.visible = splashed && u < 1;
-      spray.current.scale.setScalar(0.6 + u * 3.2);
-      spray.current.material.opacity = 0.7 * (1 - u);
-    }
-    if (foam.current) {
-      foam.current.visible = splashed;
-      foam.current.scale.setScalar(1.2 + Math.min(1, st / 3) * 1.6);
-      foam.current.material.opacity = 0.35 * Math.max(0.3, 1 - st / 10);
-    }
-  });
-  return (
-    <group>
-      <mesh ref={ocean} rotation={[-Math.PI / 2, 0, 0]} material={oceanMat}>
-        <planeGeometry args={[4000, 4000, 1, 1]} />
-      </mesh>
-      <group ref={cloudGroup}>
-        {cloudBits.map((c, i) => (
-          <mesh key={i} position={[c.x, c.y, c.z]} scale={[c.s, c.s * 0.45, 1]}>
-            <planeGeometry args={[2, 2]} />
-            <meshBasicMaterial color="#f4f7fa" alphaMap={puff} transparent opacity={0} depthWrite={false} />
-          </mesh>
-        ))}
-      </group>
-      <mesh ref={spray} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]} visible={false}>
-        <ringGeometry args={[0.5, 0.9, 40]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0} depthWrite={false} />
-      </mesh>
-      <mesh ref={foam} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} visible={false}>
-        <circleGeometry args={[0.8, 40]} />
-        <meshBasicMaterial color="#d9ecf4" transparent opacity={0} depthWrite={false} />
-      </mesh>
-    </group>
-  );
-}
-
 /* ------------------------------ vehicle rig ------------------------------ */
 
 const DEBRIS = [
@@ -628,10 +461,13 @@ const DEBRIS = [
   [0.8, 0.05, -0.1],
 ];
 
-function Vehicle({ simRef, viewRef }) {
+// The heat shield's lowest points in the capsule's frame: the centre of the shield and its rim.
+const SHIELD_PTS = [[0, FLOAT.shieldBottomY, 0], ...Array.from({ length: 16 }, (_, i) => [Math.cos((i / 16) * Math.PI * 2) * FLOAT.rimR, 0.04, Math.sin((i / 16) * Math.PI * 2) * FLOAT.rimR])];
+const _lp = new THREE.Vector3();
+
+function Vehicle({ simRef, viewRef, poseRef, atmo }) {
   const attitude = useRef();
   const flow = useRef();
-  const hang = useRef();
   const light = useRef();
   const debris = useRef([]);
   const levelRef = useRef(0);
@@ -685,20 +521,47 @@ function Vehicle({ simRef, viewRef }) {
       const hangQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.sin(t * 0.9) * 0.06, 0, Math.cos(t * 0.7) * 0.05 + 0.3));
       target = target.clone().slerp(hangQ, smooth(upright.current));
     }
-    if (v.phase === "SPLASHED") {
-      target = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.sin(t * 0.8) * 0.07, 0, 0.35 + Math.cos(t * 0.6) * 0.06));
+    // Afloat: apex up, riding the waves (the slope of the very sea that is drawn), a gentle list
+    const splashed = v.phase === "SPLASHED";
+    let wave = null;
+    if (splashed) {
+      wave = seaSurface(atmo.drift * M_PER_UNIT, 0, t);
+      const ax = Math.atan(wave.dz) * 0.75 + FLOAT.tilt * Math.sin(t * 0.41);
+      const az = -Math.atan(wave.dx) * 0.75 + 0.05 + 0.03 * Math.sin(t * 0.33 + 1);
+      // from the hanging attitude into the floating one over the first seconds
+      const settle = smooth((v.phaseT || 0) / 2.4);
+      const floatQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(ax, 0.2, az));
+      const hangQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0.3));
+      target = hangQ.slerp(floatQ, settle);
     }
     if (failed && s.outcome === OUTCOME.STRUCTURAL) {
       target = new THREE.Quaternion().setFromEuler(new THREE.Euler(ft * 2.1, ft * 0.7, ft * 1.4)).multiply(flight);
     }
     attitude.current.quaternion.slerp(target, Math.min(1, dt * 3));
-    attitude.current.position.y = v.phase === "SPLASHED" ? Math.sin(t * 1.1) * 0.03 - 0.28 : 0;
+    if (splashed) {
+      // floating: the capsule's origin FLOAT.waterlineY below the wave under it (the heat shield
+      // and the lower cone in the water), after the plunge and bob of the impact
+      const pt = v.phaseT || 0;
+      const floatY = atmo.seaY + wave.h / M_PER_UNIT - FLOAT.waterlineY;
+      attitude.current.position.y = floatY * smooth(pt / 0.5) + splashBob(pt);
+    } else attitude.current.position.y = 0;
 
-    if (hang.current) {
-      hang.current.visible = chuting && v.phase !== "FAILED" && !(v.phase === "SPLASHED" && (v.phaseT || 0) > 1.2);
-      hang.current.quaternion.copy(attitude.current.quaternion);
-      hang.current.position.copy(attitude.current.position);
-    }
+    // the capsule's pose for the parachutes and the descent, and its lowest point (the sea meets it there)
+    const pose = poseRef.current;
+    pose.pos.copy(attitude.current.position);
+    pose.quat.copy(attitude.current.quaternion);
+    let low = Infinity;
+    let lx = 0;
+    let lz = 0;
+    SHIELD_PTS.forEach((q) => {
+      _lp.set(q[0], q[1], q[2]).applyQuaternion(attitude.current.quaternion);
+      if (_lp.y < low) [low, lx, lz] = [_lp.y, _lp.x, _lp.z];
+    });
+    if (!splashed) pose.low = low;
+    // contact: the splash starts where the heat shield first met the sea, and only then
+    if (splashed && !(v.splash && v.splash.on)) v.splash = { on: true, x: lx, y: atmo.seaY, z: lz, t: 0 };
+    if (!splashed && v.splash) v.splash = null;
+    if (v.splash) v.splash.t = v.phaseT || 0;
 
     // Heat shield glow tracks surface heating
     if (shieldMatRef.current) {
@@ -739,9 +602,6 @@ function Vehicle({ simRef, viewRef }) {
         <AblationSparks levelRef={levelRef} />
         <pointLight ref={light} color="#ff8a3b" distance={6} decay={2} position={[0, -0.5, 0]} />
       </group>
-      <group ref={hang} visible={false}>
-        <Parachutes simRef={simRef} />
-      </group>
       {DEBRIS.map((_, i) => (
         <mesh key={i} ref={(el) => (debris.current[i] = el)} visible={false}>
           <boxGeometry args={[0.12 - i * 0.02, 0.05, 0.09]} />
@@ -754,8 +614,9 @@ function Vehicle({ simRef, viewRef }) {
 
 /* ------------------------------ camera ------------------------------ */
 
-function CameraRig({ simRef, viewRef }) {
+function CameraRig({ simRef, viewRef, atmo }) {
   const { camera } = useThree();
+  const first = useRef(true);
   const pos = useRef(new THREE.Vector3(3, 1, 4.5));
   const look = useRef(new THREE.Vector3());
   const _p = useMemo(() => new THREE.Vector3(), []);
@@ -776,45 +637,82 @@ function CameraRig({ simRef, viewRef }) {
       _p.set(-1.9 + Math.sin(t * 0.1) * 0.2, 0.85, 4.6);
       _l.set(0.7, -0.3, 0);
     } else if (v.phase === "SPLASHED") {
-      _p.set(4.5, 1.1, 7.5);
-      _l.set(0, 0.6, 0);
+      // the recovery shot: from near the sea, slowly drawing back and round (data/descentScene)
+      const c = recoveryCamera(v.phaseT || 0);
+      _p.set(...c.pos);
+      _l.set(...c.look);
     } else if (v.phase === "FAILED" && s.outcome === OUTCOME.SKIP_OUT) {
       const k = Math.min(1, (v.failT || 0) / 4);
       _p.set(3 + k * 5, 1 + k * 3, 5 + k * 8);
       _l.set(0, -2 * k, 0);
-    } else if (s.mainT !== null) {
-      _p.set(6.5, -3.2, 12);
-      _l.set(0, 3.2, 0);
-    } else if (s.drogueT !== null) {
-      _p.set(3.6, -1.2, 6.2);
-      _l.set(0, 1.2, 0);
+    } else if (s.mainT !== null || s.drogueT !== null) {
+      // under the parachutes, one continuous move from the drogues to the water (data/descentScene)
+      const c = chuteCamera(s.h, s.mainT !== null ? s.t - s.mainT : null, t, s.drogueT !== null ? s.t - s.drogueT : Infinity);
+      _p.set(...c.pos);
+      _l.set(...c.look);
     } else if (s.v < 3000) {
-      _p.set(2.8, 0.4, 4.6);
-      _l.set(0.3, 0.1, 0);
+      _p.set(...ENTRY_SIDE.pos);
+      _l.set(...ENTRY_SIDE.look);
     } else {
       // Documentary side view: capsule left of frame, wake streaming right.
       const close = Math.min(1, L);
       _p.set(1.5 + Math.sin(t * 0.15) * 0.15, 0.55, 4.6 - close * 1.1);
       _l.set(0.9 + close * 0.6, 0.15, 0);
     }
+    if (first.current) {
+      // the first frame (the MISSION COMPLETE scene opening on the recovery shot): no sweep in
+      first.current = false;
+      pos.current.copy(_p);
+      look.current.copy(_l);
+    }
     pos.current.lerp(_p, Math.min(1, dt * 1.2));
     look.current.lerp(_l, Math.min(1, dt * 1.6));
+    // never below the waves: clear of the very swell under the camera
+    if (atmo.low > 0.5) {
+      const w = seaSurface((pos.current.x + atmo.drift) * M_PER_UNIT, pos.current.z * M_PER_UNIT, t);
+      pos.current.y = Math.max(pos.current.y, atmo.seaY + w.h / M_PER_UNIT + 0.32);
+    }
     camera.position.copy(pos.current);
     camera.lookAt(look.current);
+    // read-only, for the validation tooling: the camera, the sea and the splash each frame
+    if (typeof window !== "undefined") {
+      const w = window.__lvReentryView || (window.__lvReentryView = {});
+      w.cam = pos.current.toArray();
+      w.look = look.current.toArray();
+      w.seaY = atmo.seaY;
+      w.low = atmo.low;
+      w.phase = v.phase;
+      w.phaseT = v.phaseT;
+      w.splash = v.splash ? { x: v.splash.x, y: v.splash.y, z: v.splash.z, t: v.splash.t } : null;
+      w.calls = state.gl.info.render.calls;
+      w.tris = state.gl.info.render.triangles;
+    }
   });
   return null;
 }
 
-function Scene({ simRef, viewRef }) {
+function Scene({ simRef, viewRef, final = false }) {
   const starRef = useRef();
-  useFrame(() => {
+  // One atmosphere for the sky, the sea and the clouds (written by SkyDome and AtmoState).
+  const atmo = useMemo(
+    () => ({ sun: new THREE.Vector3(...REENTRY_SUN).normalize(), top: new THREE.Color(), hor: new THREE.Color(), haze: new THREE.Color("#b8cfe0"), low: 0, seaY: -1e4, drift: 0 }),
+    []
+  );
+  const poseRef = useRef({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), low: -0.11 });
+  const shadows = useMemo(() => cloudShadowMap(REENTRY_SUN.map((x) => x / Math.hypot(...REENTRY_SUN))), []);
+  const noise = useMemo(() => noiseTexture(), []);
+  const cloudPass = useRef(null);
+  useFrame((_, dt) => {
     const s = simRef.current;
     const ph = viewRef.current.phase;
+    // the MISSION COMPLETE scene: the recovery shot runs on from where the splashdown left it
+    if (final) viewRef.current.phaseT = (viewRef.current.phaseT || 0) + dt;
     if (starRef.current && s) starRef.current.visible = ph === "APPROACH" || ph === "PREP" || ((ph === "ENTRY" || ph === "FAILED") && s.h > 55e3);
   });
   return (
     <>
-      <SkyDome simRef={simRef} />
+      <AtmoState simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} final={final} />
+      <SkyDome simRef={simRef} atmo={atmo} />
       <group ref={starRef}>
         <Stars radius={500} depth={60} count={3500} factor={3} saturation={0} fade speed={0.2} />
       </group>
@@ -822,9 +720,14 @@ function Scene({ simRef, viewRef }) {
       <hemisphereLight args={["#9cc6ff", "#0b1a2c", 0.35]} />
       <directionalLight position={[-6, 7, 5]} intensity={2.6} color="#fff4e6" />
       <OrbitalEarth simRef={simRef} viewRef={viewRef} />
-      <LowWorld simRef={simRef} viewRef={viewRef} />
-      <Vehicle simRef={simRef} viewRef={viewRef} />
-      <CameraRig simRef={simRef} viewRef={viewRef} />
+      <Ocean simRef={simRef} viewRef={viewRef} atmo={atmo} cloudShadows={shadows} />
+      <CloudField simRef={simRef} atmo={atmo} passRef={cloudPass} />
+      <Vehicle simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
+      <Chutes simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
+      <Splash viewRef={viewRef} noise={noise} sun={atmo.sun} />
+      <CameraRig simRef={simRef} viewRef={viewRef} atmo={atmo} />
+      {/* after the camera rig: the clouds' buffer drawn from this frame's camera, before the main pass */}
+      <CloudPass passRef={cloudPass} />
     </>
   );
 }
@@ -839,18 +742,19 @@ function splashedState() {
 
 export default function ReentryScene({ simRef, viewRef, final = false }) {
   const localSim = useRef(splashedState());
-  const localView = useRef({ phase: "SPLASHED", phaseT: 10 });
+  const localView = useRef({ phase: "SPLASHED", phaseT: CONFIRM.done });
   const sRef = final || !simRef ? localSim : simRef;
   const vRef = final || !viewRef ? localView : viewRef;
   return (
     <div className="absolute inset-0 canvas-host" data-testid="reentry-canvas">
       <Canvas
-        camera={{ position: [3, 1, 4.5], fov: 45, near: 0.05, far: 3000 }}
+        camera={{ position: [3, 1, 4.5], fov: 45, near: 0.08, far: 160000 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false, toneMapping: THREE.ACESFilmicToneMapping, outputColorSpace: THREE.SRGBColorSpace }}
         onCreated={({ gl }) => gl.setClearColor("#020203")}
       >
-        <Scene simRef={sRef} viewRef={vRef} />
+        <Scene simRef={sRef} viewRef={vRef} final={final || !simRef} />
+        <AdaptiveResolution />
       </Canvas>
     </div>
   );

@@ -19,6 +19,7 @@ import useMissionAudio from "@/hooks/useMissionAudio";
 import MissionTitle from "@/components/MissionTitle";
 import MissionDebrief from "@/components/scoring/MissionDebrief";
 import { useAudioSettings } from "@/audio/audioSettings";
+import { setSubtitlePlacement } from "@/components/CommsSubtitles";
 import { createFlightScoring } from "@/data/flightScoring";
 import { applyDocking, applyFlightStart, applyLanding, applyMission, applyReentry, loadRecords, unlockedBy, updateRecords } from "@/lib/missionRecords";
 import { goForPdi } from "@/data/lunarOrbitShot";
@@ -638,6 +639,13 @@ export default function Mission({ entry = "opening" }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  // Over the splashdown and MISSION COMPLETE, a caption still on the air stays in its corner (CommsSubtitles).
+  useEffect(() => {
+    if (state !== STATES.COMPLETE) return undefined;
+    setSubtitlePlacement("corner");
+    return () => setSubtitlePlacement("default");
+  }, [state]);
+
   // MISSION COMPLETE holds for 5 s over the splashdown, then the debrief takes over (MISSION DEBRIEF opens it at once).
   useEffect(() => {
     if (state !== STATES.COMPLETE || !debrief || debriefOpen) return undefined;
@@ -837,13 +845,14 @@ export default function Mission({ entry = "opening" }) {
       {state === STATES.COMPLETE && !debriefOpen && (
         <div
           data-testid="complete-overlay"
-          className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-md z-50"
+          className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-black/10 via-black/35 to-black/55 z-50"
         >
           <div className="text-center max-w-2xl px-8 scan-in">
             <div className="font-mono text-[10px] tracking-[0.4em] text-[#FF3B00] blink mb-4">
               ● SPLASHDOWN · CREW SAFE
             </div>
-            <h2 className="font-display font-black text-white text-6xl md:text-7xl mb-6">
+            <div className="font-display font-bold text-zinc-300 text-xl md:text-2xl tracking-[0.3em] mb-1">LUNAVIA —</div>
+            <h2 className="font-display font-black text-white text-6xl md:text-7xl short:text-5xl mb-6">
               MISSION COMPLETE
             </h2>
             <p className="font-mono text-[11px] tracking-widest text-zinc-400 mb-10">

@@ -3025,3 +3025,268 @@ no contact) → return → reentry → splashdown. MISSION COMPLETE after 328 s,
   12.1 s and 21 s and 0 in every later frame.
 - The reentry took over at the end of the return, and the capsule entered heat shield first.
 
+
+## 53. Phase 2: clouds, open sea, parachutes and splashdown (presentation only)
+
+**Audit (why it looked artificial).**
+- **Scale.** The capsule was drawn at 3.9 m per unit, but the low world (sea and clouds) at 25 m
+  per unit. Next to its sea and clouds the capsule was 6.4× too big, and the waves, clouds and
+  parachutes could never read at their true size.
+- **Clouds.** 40 flat ellipses made from one radial-gradient texture, turned to face the camera,
+  with no lighting, in one layer at 2.6 km.
+- **Sea.** One flat 100 km plane with a three-sine colour shimmer: no wave geometry, normals,
+  reflection or sun glint, and its edge was visible from altitude. During the parachute descent
+  the camera looked up, so the sea first appeared at splashdown.
+- **Splashdown.** A white ring and a foam disc. The capsule sat on the plane, the parachutes
+  vanished, and MISSION COMPLETE remounted a frozen scene with a camera reset.
+
+**What changed** (`data/descentScene.js` is pure and tested; the drawing is in
+`components/scenes/descent/`). The reentry physics, controls, timings and success rules are
+untouched: the descent only reads the simulation's state.
+- **One scale** (1 unit = 3.9 m). The sea lies at −h/3.9 below the capsule, so the heat shield
+  meets the waves exactly when the simulation's altitude reaches zero.
+- **Ocean.js:**
+  - a polar grid that follows the camera, from 1 unit to 450 km, curving with the Earth; its rim
+    lies beyond the horizon, lost in the haze;
+  - four Gerstner waves of a recovery sea state (Hs ≈ 1.2 m, swell 96 m), displaced near the
+    camera; the floating capsule rides the same sum;
+  - two scales of procedural detail normals, faded with distance;
+  - Fresnel sky reflection, and a sun glint that widens into a glitter path far away;
+  - deep-navy water;
+  - the cumulus shadows, baked once into a 512² map;
+  - beyond 18 km, the NASA Blue Marble cloud cover from the map the Earth already uses;
+  - haze into the sky's own horizon colour;
+  - the splash's ripple ring and broken foam.
+- **CloudField.jsx:**
+  - 52 cumulus formations, a little over 1,000 puffs, in one instanced draw, sorted back to front;
+  - bases 650–950 m, tops 1.2–2.6 km;
+  - each puff is shaded per pixel as a sphere of vapour lit by the scene's Sun in world space:
+    lit tops, darker bases, flat condensation-level bases, a noise-broken edge;
+  - its alpha reaches zero inside the quad, so no straight edges show;
+  - haze with distance, and fades near the camera and at the field's rim, so nothing pops or
+    fills the screen;
+  - two formations are placed in shot so the capsule descends between them; its own path stays
+    clear (tested).
+- **Chutes.jsx:**
+  - the drogues (5 m) and three ringsail mains (25.4 m, 32 orange and white gores, a dark band,
+    a vent) on 41 m suspension lines converging on the riser above the apex;
+  - inflation comes from the simulation's deployment times; the canopies breathe and sway;
+  - at splashdown the mains are released, come down, collapse and lie wet on the sea, downwind.
+- **Splash.jsx:**
+  - starts only when the simulation reports the splashdown, at the heat shield's lowest point;
+  - droplets thrown out ballistically under real gravity, and a ragged spray crown rising out of
+    the water;
+  - the ripple ring and the foam are on the sea.
+- **Flotation:**
+  - the capsule plunges 0.9 m, bobs and settles;
+  - it floats apex up, its waterline 1.1 m above the heat shield's lowest point;
+  - it follows the slope of the drawn waves.
+- **Sky:** the dome gives the sea and the clouds their colours (one atmosphere) and has a soft
+  glow around the Sun.
+- **Cameras:**
+  - under the parachutes, the camera keeps the canopies, the capsule, the clouds and the sea in
+    shot, and stays above the waves;
+  - the drogue framing hands over to the mains framing by a slow drift;
+  - the recovery shot draws back slowly, and the MISSION COMPLETE scene continues it with no
+    reset.
+- **ReentryGame:** SPLASHDOWN CONFIRMED appears 0.6 s after contact and CREW SAFE at 2.4 s, only
+  in the SPLASHED state. SPLASHED lasts 6.5 s (was 4 s) before MISSION COMPLETE. Houston's
+  splashdown call still waits for that state.
+- **Mission:** LUNAVIA — MISSION COMPLETE, over a lighter overlay that leaves the floating capsule
+  visible.
+- **AdaptiveResolution** (as in the other scenes) on the reentry canvas.
+- **Tooling:** `window.__lvReentryView` (read-only): the camera, the sea level, the splash and the
+  draw calls.
+
+**Measured** (headless Chromium with SwiftShader, CPU rendering at 852 × 393, not an iPhone GPU):
+
+| | Before | After |
+|---|---|---|
+| Draw calls (max) | 33 | 17 |
+| Triangles (max) | 7.4k | 36k |
+| JS heap | 13.6 MB | 14.5 MB |
+| Median frame time, SwiftShader | 16.7 ms | 50 ms |
+
+The frame-time increase is per-pixel shading on a CPU rasterizer: the sea shader covers half the
+screen, and cloud puffs overlap. On a GPU this workload (17 draws, 36k triangles, about 6 texture
+reads per sea pixel) is light, and AdaptiveResolution lowers the pixel ratio if a device cannot
+hold 45 fps. There is no network use: the textures are procedural or the bundled NASA map.
+
+## 54. Critical visual correction: cloud descent and ocean splashdown
+
+**Why.** The iPhone review (IMG_6102 under the main parachutes at 1.8 km, IMG_6103 at
+splashdown) still showed flat speckled cloud discs, a pale ring and disc round the floating
+capsule, a tiny capsule in the recovery shot, the entry guidance (FPA, bank, roll, corridor) on
+screen under the parachutes, and the splashdown caption over the middle of the picture.
+
+**Clouds** (`descent/CloudField.jsx`, `data/descentScene.js cloudField`).
+- Every puff is a volume: an ellipsoid of vapour whose bound (a low-poly icosahedron drawn by its
+  back faces) only marks the pixels to trace. Each pixel traces its own ray through the ellipsoid
+  analytically: entry and exit, clipped at the cloud's flat base, and the vapour crossed (the
+  integral of a density highest at the centre) gives the opacity. A world-space noise erodes the
+  edges into billows; lighting blends the puff's roundness with the whole cloud's, with folds,
+  a darker lower cloud, grey flat bases and haze. No sprites, no camera-facing cards. Works with
+  the camera beside or inside a puff.
+- Cumulus are built as cumulus: base puffs cut flat at one condensation level (820 m ± 40 m for
+  the whole field), two or three overlapping columns with broad rounded tops, and cauliflower
+  turrets sunk into the upper puffs. About 800 puffs, one instanced draw.
+- The capsule descends between placed formations (two behind it, two near cumulus either side of
+  the main-chute shot); its column and the camera's column stay clear of cloud (tested).
+- Drawn at 0.42× resolution into their own buffer, then composited over the sky and the sea and
+  under the capsule and its parachutes (which the placement keeps in front of every cloud). The
+  clouds carry their own ACES and sRGB encoding so the composite matches the frame.
+
+**Continuous descent** (`chuteCamera`, `timeScaleFor`; the trajectory is unchanged).
+- Drogues: an eased move from the entry side view up and back, looking down past the capsule
+  at the cumulus below.
+- Mains: over their 8 s inflation, round to the main-chute shot (canopies above, the cloud towers
+  it falls between, the sea below).
+- Shot A from 1.3 km: wider and a little below, the whole parachute system in frame.
+- Last 400 m: round the column and in, coming down with the capsule (never faster than it) to
+  meet the water close by (shot B).
+- Pace under the mains (presentation only, fixed-step physics): 32× to the cloud tops, 20×
+  between the clouds, easing to 6× at 150 m and 3× at the water (about 24 s on screen from main
+  deployment, was about 12).
+
+**Splashdown** (`Ocean.jsx`, `Splash.jsx`, `recoveryCamera`).
+- No ring, no disc, no crown sheet. Spray: 520 streaks thrown out round the rim in ragged radial
+  jets (the Apollo impact photograph), falling back under gravity, and a short mist.
+- In the water itself: the surface pushed down and rebounding in a low ring, broken ripples that
+  run out and die, white churn round the impact for a few seconds, then a ragged lace of foam
+  hugging the hull and a lapping waterline.
+- Released canopies deflate as they fall downwind, drape on the very swell that is drawn, and
+  sink.
+- Shot B held through the splash, then round and in to shot C, the hero shot (about 20 m, 2 m
+  above the water, the capsule's lit face), circling slowly; MISSION COMPLETE runs on from it
+  under the same clouds.
+
+**Ocean.**
+- The four swell waves plus four short wind waves (9 m to 2 m) and three detail scales, each
+  kept only where the pixel resolves it (no moiré).
+- Gust patches of rougher and smoother water, deeper blue water, sparse whitecaps on the highest
+  crests, and anisotropic detail at grazing angles.
+
+**Parachutes.**
+- Canopy shader: the Sun on the outside and through the translucent fabric from below, ringsail
+  slots, seams, sky light in the shadows, muted Apollo orange.
+- 28 suspension lines per main.
+
+**HUD** (`data/descentHud.js`, tested). Under the parachutes (no lift, so bank and roll do
+nothing) the lift-vector dial, roll and trim buttons, corridor gauge and prediction go away.
+- Left panel: altitude, descent rate, chute state (inflation %), time to splashdown, capsule
+  condition, heat shield used.
+- Right panel: SPLASHDOWN PREP in Apollo's order: drogues, mains 3/3, VHF recovery beacon, RCS
+  propellant dump, main release armed, brace.
+- PAUSE and ABORT stay. The EI clock keeps the final time after splashdown.
+
+**Captions.** `setSubtitlePlacement("corner")` under the parachutes, over the splashdown and
+MISSION COMPLETE: the same caption, type, languages and timing, in the upper-left corner under the
+phase banner on a lighter backing.
+
+**Measured** (headless Chromium with SwiftShader, CPU rendering at 852 × 393, the same descent from
+6 km to 8 s after splashdown, both builds measured in the same session; not an iPhone GPU):
+
+| | 53bffc0 | 9364896 |
+|---|---|---|
+| Mean frame time | 61 ms | 71–75 ms |
+| Median frame time | 66.6 ms | 66.7 ms |
+| 95th percentile | 83 ms | 100 ms |
+| Draw calls (max) | 17 | 15–16 |
+| Triangles (max) | 36k | 74k |
+| JS heap (max) | 24.8 MB | 22–24.8 MB |
+
+- **Where the time goes.** With neither clouds nor sea the scene runs at 16.7 ms. The sea adds
+  about 33 ms. The clouds cost about 50 ms at full resolution (each puff traced per pixel,
+  overlapping), and about 17 ms in their reduced-resolution buffer (0.42 × 0.42, 18% of the pixels).
+- **What didn't help.** A depth pre-pass for the opaque cloud cores made it slower in software
+  (shaders that can discard don't benefit from early depth rejection), so it was dropped.
+- **Memory.** The cloud buffer adds one RGBA8 render target, about 2 MB at an iPhone's resolution.
+- **Animation.** A recorded descent from 8 km to 16 s after splashdown, analysed frame by frame:
+  no camera jumps. The fastest camera move is 7.9 units/s, the swing while the mains inflate; the
+  drogue hand-over, which started at 15 units/s, is now eased.
+- **Regression.** A full mission on the packaged build, docking to splashdown, ran with no page
+  errors, and SPLASHDOWN CONFIRMED came 0.8 s after contact.
+
+## 55. A faster descent, wind ripples, released canopies that go under as one sheet
+
+**Why.** §54 left the descent about 15–20% slower than the release before it (software
+rendering), the released canopies breaking up into separate islands as they sank, the distant
+clouds lumpy, and the near water mottled.
+
+**Where the time went (measured, not guessed).** A held frame (the simulation paused at one
+altitude) rendered 30 times back to back, each forced to finish (`gl.finish` by a 1-pixel read),
+gives the render's own cost without the 16.7 ms steps of the display. With parts hidden or their
+shaders replaced at runtime, in one page:
+- the sea costs most of the frame; most of that, in software rendering, is a fixed cost per sea
+  pixel that any non-constant shader pays (interpolation), not the waves. At 5 km the new descent
+  camera looks down on the clouds, so the sea fills about 75% of the frame (30% before): most of
+  the remaining difference there.
+- the sea's own shading: the swell and short waves (kept), the three detail lookups, the hull foam,
+  and, from altitude, the cloud shadows plus the NASA cloud cover read by every distant pixel.
+- the clouds: per pixel at 700 m (where they fill the frame), spread over all puffs at the
+  floating shot.
+
+**What changed (presentation only).**
+- Sea: each swell and wind wave is computed only where `keep()` is not 0 (the pixel covers less
+  than half its length): the same picture, none of the short waves from altitude. The NASA cloud
+  cover beyond the field is read per vertex (`vCover`, `textureLod`), not by every distant pixel;
+  the near shadow map only inside the field. The splash's ripples and churn end at 8 s (faded out
+  from 5 s). Powers by multiplication.
+- Wind ripples: the three detail scales are sampled in the wind's frame, stretched 2.2x across the
+  wind, and their slope turned back into the world with the same stretch, so the near water tilts
+  along the wind (streaks across it) instead of mottling.
+- Clouds: the fine noise only where a pixel can hold it (`fineK`, from the buffer's pixel size
+  `uPix`); far puffs (a few pixels wide) shaded as one mass (`farK`: less edge erosion, the
+  cloud-scale normal, no fold ring); an indexed 20-face bound (scale 1.2585, 1 / the inradius:
+  tested); the clouds' buffer drawn by `CloudPass`, mounted after the camera rig, before the main
+  pass (on a phone's tile-based GPU a render-target switch in the middle of the frame writes the
+  whole multisampled frame out and reads it back). Far clouds (beyond 9 km) are no taller than
+  they are wide, their turrets on the dome's shoulders, not its crown.
+- Released canopies: they lie down on the sea as they reach it (`flat` from 3.45 s, not in the
+  air), bunched (45% of the spread), and go under as one sheet: the folds settle, deep water over
+  it, fading out (`sink` 0..1 from 4.75 s, gone by 10.75 s). The sea never rises through the
+  fabric, so no islands and no pale patch.
+
+**What didn't help (software rendering).** Collapsing the sea grid's inner rings (~2.5 ms),
+lower cloud resolution at the floating shot (no change: the cost there is not per pixel), drawing
+the cloud buffer before the main pass (no change in software; kept for the phone), anisotropic
+filtering 1x instead of 2x (~5 ms at the floating shot, not taken: the grazing detail blurs).
+
+**Measured** (headless Chromium, SwiftShader CPU rendering at 852 × 393, both builds in the same
+session; not an iPhone GPU):
+
+| | 53bffc0 (before §54) | a0b5ec2 |
+|---|---|---|
+| Whole descent (6 km to 8 s after splashdown), mean | 57–59 ms | 65 ms |
+| Median | 50 ms | 67 ms |
+| 95th percentile | 83 ms | 100 ms |
+| 6–3 km (drogues) | 46–47 ms | 65–66 ms |
+| 3–1 km (mains, between the clouds) | 50–51 ms | 53–56 ms |
+| Last kilometre | 71–76 ms | 63–65 ms |
+| Floating (to 8 s) | 68–70 ms | 83–87 ms |
+| Held frames, 160 m / 700 m / 1.8 km / 5 km / 9 s afloat | 60 / 73 / 55 / 44 / 67 ms | 58 / 67 / 51 / 60 / 76 ms |
+| Held frames, average | 59.8 ms | 62.3 ms |
+
+- Measured the same way earlier the same day, §54's build (9364896) was about 25% over 53bffc0 on
+  the whole descent; this release is 12% over it (4% on the held frames), and faster than it from
+  1.8 km down to the water.
+- The two slower shots: at 5 km the camera looks down at the clouds, so the sea fills most of the
+  frame; afloat, the volumetric clouds overhead and the near water's detail cost more than the old
+  flat puffs and plain sea.
+- The first version of the canopies' fade switched their material from opaque to transparent as
+  they began to sink, which compiled a new shader program (three's OPAQUE define): a 180–250 ms
+  frame 5 s after splashdown. They are now blended from the start (tested); in the final run no
+  frame after the splash's first second was over 170 ms.
+- The measuring probe read the scene's view state each second; with the renderer attached to it
+  (for the held-frame renders) it serialised the whole scene and stalled the page for ~400 ms.
+  The probe now reads only the two numbers it needs; the table is from runs without it.
+
+- Against §54's build (9364896), the same held frames in one session: 5 km 72 → 60 ms, 1.8 km
+  63 → 51 ms, 5 s afloat 94 → 82 ms, 9 s afloat 85 → 81 ms (13% faster on average).
+
+**Regression.** A full mission on the packaged build (BUILD a0b5ec2, Sea of Tranquility, CADET):
+docking on the first attempt, the return and reentry to the splashdown (8.5 m/s), MISSION
+COMPLETE and the debrief (894/1000, GOLD), no page errors. 546 unit tests; `ios:verify` 126 checks.
+
+The reentry scene keeps `AdaptiveResolution`: on a device that cannot hold about 45 fps the pixel
+ratio steps down (to no lower than 1.25) rather than the frame rate dropping.

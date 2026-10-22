@@ -8,6 +8,9 @@ import { liftAgrees } from "@/data/trainingDebrief";
 import { createReentryMonitor } from "@/audio/reentryComms";
 import { VERBOSITY } from "@/audio/commsDirector";
 import { ATTITUDE_TURN, SEP_LONG_AGO } from "@/data/earthReturn";
+import { CONFIRM } from "@/data/descentScene";
+import { descentHud, formatAlt, formatToSplash } from "@/data/descentHud";
+import { setSubtitlePlacement } from "@/components/CommsSubtitles";
 
 
 const CTRL_BTN = "border border-white/40 hover:border-[#FF3B00] flex items-center justify-center text-white";
@@ -457,7 +460,8 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
             }
           }
         } else if (v.phase === "SPLASHED") {
-          if (v.phaseT > 4 && !doneRef.current) {
+          // the splashdown and the floating capsule are seen before MISSION COMPLETE (CONFIRM.done s)
+          if (v.phaseT > CONFIRM.done && !doneRef.current) {
             doneRef.current = true;
             if (onResult) onResult(resultData());
             else onComplete && onComplete(resultData()); // the entry as measured (peakG, peakHeatRate, splashV, …)
@@ -512,6 +516,9 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
           alt: v.phase === "ENTRY" || v.phase === "FAILED" || v.phase === "SPLASHED" ? s.h : EI_ALT + v.approachAlt,
           vel: s.v,
           fpa: (s.gamma * 180) / Math.PI,
+          gamma: s.gamma,
+          sinceDrogue: s.drogueT !== null ? s.t - s.drogueT : null,
+          sinceMain: s.mainT !== null ? s.t - s.mainT : null,
           bank: v.phase === "PREP" || v.phase === "APPROACH" ? p.bank : s.bank,
           g: s.gLoad,
           q: s.heatRate,
@@ -526,6 +533,7 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
           cue: guideRef.current.cue,
           pred: guideRef.current.pred,
           simT: s.t,
+          splashT: v.phase === "SPLASHED" ? v.phaseT : 0,
           ts: v.phase === "ENTRY" ? timeScaleFor(s) : 1,
           climbing: s.gamma > 0 && s.v > 7800,
           ei: s.ei,
@@ -588,6 +596,11 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
   const shieldDanger = u && (u.overheat > 0 || u.shield > 0.8);
   const inEntry = phase === "ENTRY";
   const pred = u && u.pred ? PRED_TEXT[u.pred] : null;
+  // Under the parachutes the entry guidance is over (no lift: bank and roll do nothing), and the
+  // display changes to the descent's own: altitude, descent rate, chutes, capsule, splashdown prep.
+  const dh = u && inEntry ? descentHud({ h: u.alt, v: u.vel, gamma: u.gamma, sinceDrogue: u.sinceDrogue, sinceMain: u.sinceMain, shield: u.shield, g: u.g }) : null;
+  const chuting = !!dh;
+  const guidanceOn = phase === "PREP" || (inEntry && !chuting);
 
   let status = { text: "", cls: "text-zinc-400" };
   if (u && inEntry) {
@@ -598,9 +611,17 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
     else status = { text: u.vel < 3000 ? "ENTRY COMPLETE · DESCENDING" : "IN CORRIDOR", cls: "text-emerald-400" };
   }
 
-  const clock = u && inEntry ? `EI+${String(Math.floor(u.simT / 60)).padStart(2, "0")}:${String(Math.floor(u.simT % 60)).padStart(2, "0")}` : u && phase === "PREP" ? `EI−00:${String(Math.max(0, Math.ceil(u.timeLeft))).padStart(2, "0")}` : "EI−--:--";
+  const clock = u && (inEntry || phase === "SPLASHED") ? `EI+${String(Math.floor(u.simT / 60)).padStart(2, "0")}:${String(Math.floor(u.simT % 60)).padStart(2, "0")}` : u && phase === "PREP" ? `EI−00:${String(Math.max(0, Math.ceil(u.timeLeft))).padStart(2, "0")}` : "EI−--:--";
   const failText = failure ? FAILURE_TEXT[failure] : null;
   const tip = coach && u ? coach({ ...u, inBand: !!inBand }) : null;
+
+  // Mission-control captions sit low in a corner under the parachutes and after splashdown,
+  // clear of the capsule, the canopies and the splash (same type, language and timing).
+  const lowCaptions = chuting || phase === "SPLASHED";
+  useEffect(() => {
+    setSubtitlePlacement(lowCaptions ? "corner" : "default");
+  }, [lowCaptions]);
+  useEffect(() => () => setSubtitlePlacement("default"), []);
 
   return (
     <div className="absolute inset-0" data-testid="reentry-game">
@@ -635,8 +656,70 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
         </button>
       </div>
 
+      {/* Splashdown: confirmed only once the simulation has the capsule safely in the water */}
+      {u && phase === "SPLASHED" && u.splashT >= CONFIRM.splashdown && (
+        <div className="absolute inset-x-0 bottom-14 short:bottom-6 flex flex-col items-center pointer-events-none z-30 scan-in" data-testid="splashdown-confirmed">
+          <div className="font-mono text-[10px] tracking-[0.45em] text-[#FF3B00]">● PACIFIC RECOVERY AREA</div>
+          <div className="font-display font-black text-white text-3xl md:text-4xl short:text-2xl tracking-tight mt-1">SPLASHDOWN CONFIRMED</div>
+          {u.splashT >= CONFIRM.crewSafe && (
+            <div className="font-mono text-[12px] tracking-[0.4em] text-emerald-400 mt-1 scan-in" data-testid="crew-safe">
+              CREW SAFE
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* LEFT under the parachutes: the descent's own telemetry */}
+      {dh && (
+        <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-4 py-3 short:px-3 short:py-2 w-[250px] short:w-[196px] narrow:w-[180px] z-30" data-testid="reentry-descent-panel">
+          <CoachCard tip={tip} className="-mx-2 mb-3 short:mb-1.5" />
+          <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-2 short:hidden">CM-1 · DESCENT · {difficulty}</div>
+          <div className="grid grid-cols-2 gap-3 short:gap-x-2 short:gap-y-1">
+            <Readout label="ALTITUDE" value={formatAlt(u.alt)} unit="m" testId="reentry-alt" />
+            <Readout label="DESCENT" value={dh.vs.toFixed(dh.vs < 20 ? 1 : 0)} unit="m/s" testId="reentry-vs" />
+          </div>
+          <div className="mt-2 short:mt-1 font-mono text-[9px] tracking-widest space-y-1 short:space-y-0.5">
+            <div className="flex justify-between gap-2" data-testid="reentry-chutes">
+              <span className="text-zinc-500">{dh.chute.name} ×{dh.chute.count}</span>
+              <span className={dh.chute.state === "INFLATING" ? "text-amber-400" : "text-emerald-400"}>
+                {dh.chute.state === "INFLATING" ? `INFLATING ${Math.round(dh.chute.inflate * 100)}%` : dh.chute.state}
+              </span>
+            </div>
+            {dh.chute.next && <div className="text-zinc-500">{dh.chute.next}</div>}
+            {dh.toSplash !== null && (
+              <div className="flex justify-between gap-2" data-testid="reentry-to-splash">
+                <span className="text-zinc-500">SPLASHDOWN</span>
+                <span className="text-white tabular">T−{formatToSplash(dh.toSplash)}</span>
+              </div>
+            )}
+            <div className="flex justify-between gap-2" data-testid="reentry-capsule">
+              <span className="text-zinc-500">CAPSULE</span>
+              <span className={dh.capsule === "NOMINAL" ? "text-white" : "text-amber-400"}>{dh.capsule}</span>
+            </div>
+            <div className="flex justify-between gap-2" data-testid="reentry-shield-used">
+              <span className="text-zinc-500">HEAT SHIELD</span>
+              <span className="text-white tabular">{dh.shieldPct}% USED</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RIGHT under the parachutes: splashdown preparation */}
+      {dh && (
+        <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-4 py-3 short:px-3 short:py-2 z-30 w-[230px] short:w-[188px] narrow:w-[176px]" data-testid="reentry-splash-prep">
+          <div className="font-mono text-[10px] short:text-[9px] tracking-[0.3em] text-zinc-500 mb-1.5 short:mb-1">SPLASHDOWN PREP</div>
+          <div className="space-y-1 short:space-y-0.5 font-mono text-[9px] short:text-[8px] tracking-widest">
+            {dh.prep.map((p) => (
+              <div key={p.id} data-testid={`prep-${p.id}`} data-state={p.state} className={p.state === "done" ? "text-emerald-400" : p.state === "active" ? "text-amber-400" : "text-zinc-600"}>
+                {p.state === "done" ? "✓" : p.state === "active" ? "…" : "·"} {p.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* LEFT: primary telemetry */}
-      {u && phase !== "SPLASHED" && (
+      {u && phase !== "SPLASHED" && !chuting && (
         <div className="absolute bottom-6 short:bottom-2 safe-mb left-4 md:left-8 safe-ml hud-panel corners px-5 py-4 short:px-3 short:py-2 w-[300px] short:w-[210px] narrow:w-[190px] z-30" data-testid="reentry-hud-left">
           <CoachCard tip={tip} className="-mx-2 mb-3 short:mb-1.5" />
           <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-3 short:hidden">CM-1 · ENTRY · {difficulty}</div>
@@ -689,8 +772,8 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
         </div>
       )}
 
-      {/* RIGHT: lift vector + controls */}
-      {u && (phase === "PREP" || phase === "ENTRY") && (
+      {/* RIGHT: lift vector + controls (entry prep and the guided entry; not under the parachutes) */}
+      {u && guidanceOn && (
         <div className="absolute bottom-6 short:bottom-2 safe-mb right-4 md:right-8 safe-mr hud-panel corners px-5 py-4 short:px-3 short:py-2 z-30 w-[230px] short:w-[200px] narrow:w-[188px]" data-testid="reentry-hud-right">
           <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-500 mb-2 short:hidden">LIFT VECTOR</div>
           <div className="flex items-center gap-3">
@@ -755,8 +838,8 @@ export default function ReentryGame({ difficulty = "ASTRONAUT", audio, onComplet
         </div>
       )}
 
-      {/* Bottom centre: corridor + status */}
-      {u && (phase === "PREP" || phase === "ENTRY") && (
+      {/* Bottom centre: corridor + status (until the parachutes) */}
+      {u && guidanceOn && (
         <div className="absolute bottom-6 short:bottom-2 safe-mb left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 short:gap-1 short:max-w-[240px] narrow:max-w-[195px] text-center">
           <CorridorGauge fpa={phase === "PREP" ? u.prepFpa : u.ei.fpa} cfg={cfg} label={phase === "PREP" ? "PLANNED EI ANGLE" : "FLOWN EI ANGLE"} />
           {phase === "PREP" && (

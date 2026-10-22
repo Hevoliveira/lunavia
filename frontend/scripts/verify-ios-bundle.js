@@ -111,6 +111,21 @@ const FEATURES = [
   ["Earth return: engine off, passive thermal control on the coast", "PASSIVE THERMAL CONTROL ROLL"],
   ["Earth return: the entry attitude before the SM separation", "SM SEPARATION NEXT"],
   ["Earth return: SKIP CINEMATIC to the reentry", "skip-return"],
+  ["Splashdown: SPLASHDOWN CONFIRMED, then CREW SAFE", "splashdown-confirmed"],
+  ["Descent: the cumulus field (one instanced draw)", "cloud-field"],
+  ["Descent: clouds as volumes (each ray through each puff, analytically)", "the vapour crossed"],
+  ["Descent: the clouds drawn at reduced resolution and composited", "cloud-composite"],
+  ["Descent: the open sea (gusts, roughness by distance)", "gusts: broad, slow patches of rougher and smoother water"],
+  ["Splashdown: foam round the floating capsule (no rings, no discs)", "foam round the floating capsule"],
+  ["Splashdown: the spray as streaks along their motion", "the streak: where it was a moment ago"],
+  ["Parachutes: canopies lit through the fabric", "the Sun through the fabric seen from the other side"],
+  ["Descent HUD under the parachutes", "reentry-descent-panel"],
+  ["Descent HUD: the splashdown checklist", "BRACE FOR SPLASHDOWN"],
+  ["Captions in a corner over the descent and splashdown", "max-w-[min(420px,40vw)]"],
+  ["Sea: the distant cloud cover read per vertex, not by every distant pixel", "beyond the 3D field, the NASA cloud cover: read here, per vertex"],
+  ["Sea: wind ripples stretched across the wind", "the water tilts mostly along the wind"],
+  ["Clouds: the fine billows only where a pixel can hold them", "the fine billows only where a pixel can hold them"],
+  ["Released canopies go under as one sheet", "going under: deep water over it, fading into the sea as one sheet"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -124,6 +139,12 @@ const REMOVED = [
   ["Lunar orbit insertion burn shot", "RETROGRADE BURN · OUT OF CONTACT WITH EARTH"],
   ["Four destinations as training exercises", "training-mission-start-"],
   ["The old return shot (the CSM broadside, no burn)", "THE LUNAR MODULE STAYED BEHIND"],
+  ["The old low world at 25 m per unit (the capsule 6x too big)", "metres per scene unit in the low-altitude world"],
+  ["The camera-facing cloud cards (billboards)", "the quad's corners: never inside the puff"],
+  ["The pale ring and foam disc round the splash", "the impact ring running out, its ripples and foam"],
+  ["The crown sheet round the splash", "the sheet flares outward as it rises"],
+  ["The sea rising through sinking canopies (left as islands)", "+ 0.07 - uSink"],
+  ["Every distant sea pixel reading the NASA cloud map", "float c0 = texture2D(uCover, uCoverUV + m * uCoverScale).b;"],
 ];
 
 function sourceText(dir) {
