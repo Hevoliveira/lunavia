@@ -100,15 +100,27 @@ export function blendSpec(a, b, u) {
   return out;
 }
 
-/** Idle: standing at ease, breathing in the suit, a slow shift of weight. */
+/**
+ * Idle: standing at ease in the suit. Breathing (~4 s), the weight shifting slowly from boot to
+ * boot with the hips (the loaded side rising, the torso rolling back to keep the helmet level), a
+ * slow look round, and the arms, gloves and wrists never quite still. Every motion is small and
+ * slow: a pressurised suit damps everything.
+ */
 export function standSpec(t = 0) {
   const s = baseSpec();
-  const br = Math.sin(t * 1.7);
-  s.pelvis[0] = 0.008 * Math.sin(t * 0.37);
-  s.pelvis[1] += 0.004 * br;
+  const br = Math.sin(t * 1.55);
+  const sway = Math.sin(t * 0.37);
+  const look = Math.sin(t * 0.23 + 1.3) * (0.6 + 0.4 * Math.sin(t * 0.11));
+  s.pelvis[0] = 0.014 * sway;
+  s.pelvis[1] += 0.004 * br - 0.005 * Math.abs(sway);
+  s.pelvisRot[2] = 0.022 * sway;
   s.torsoRot[0] += 0.012 * br;
-  s.hands[0][1] += 0.006 * br;
-  s.hands[1][1] += 0.006 * br;
+  s.torsoRot[1] = 0.075 * look;
+  s.torsoRot[2] = -0.016 * sway;
+  s.hands[0] = [0.31 + 0.012 * Math.sin(t * 0.61 + 0.4), 1.03 + 0.007 * br, 0.17 + 0.016 * Math.sin(t * 0.47)];
+  s.hands[1] = [-0.31 - 0.011 * Math.sin(t * 0.53 + 2), 1.03 + 0.007 * br, 0.17 + 0.014 * Math.sin(t * 0.41 + 1)];
+  s.grip = [0.35 + 0.07 * Math.sin(t * 0.29), 0.35 + 0.07 * Math.sin(t * 0.31 + 1.7)];
+  s.wrist = [0.15 + 0.06 * Math.sin(t * 0.33), 0.15 + 0.06 * Math.sin(t * 0.27 + 0.8)];
   return s;
 }
 
@@ -124,9 +136,12 @@ export function walkSpec({ phase = 0, speed = 0, turnPhase = 0, turning = 0, t =
   const dir = speed < 0 ? -1 : 1;
   const w = smooth(Math.abs(speed) / 0.22); // walking rather than standing
   const L = SUIT.stride * (0.55 + 0.45 * sf); // step length, as stepWalker counts it
-  const d = lerp(0.62, 0.38, sf); // each boot's share of the cycle on the ground (< 0.5: a float)
+  const d = lerp(0.62, 0.44, sf); // each boot's share of the cycle on the ground (< 0.5: a short float)
   const e = L * d * w; // half the distance a planted boot travels under the body
-  const lift = (0.045 + 0.075 * sf) * w;
+  const lift = (0.04 + 0.06 * sf) * w;
+  // the heel comes down first (toe up), the boot rolls flat, then onto its ball at toe-off;
+  // walking backwards the toe comes down first
+  const strike = dir > 0 ? -0.15 * sf * w : 0.08 * sf * w;
   // turning on the spot: small alternating steps
   const tw = (1 - w) * smooth(Math.abs(turning) / 0.4);
   const g = (x, z) => (groundAt ? groundAt(x, z) : 0);
@@ -141,13 +156,13 @@ export function walkSpec({ phase = 0, speed = 0, turnPhase = 0, turning = 0, t =
     if (q < d) {
       const u = q / d;
       z = dir * e * (1 - 2 * u);
-      // heel off at the end of the stance: the boot rolls onto its ball
-      p = 0.32 * sf * w * smooth((u - 0.72) / 0.28);
+      // heel strike rolling flat, then heel off at the end of the stance: onto the ball
+      p = strike * (1 - smooth(u / 0.16)) + 0.32 * sf * w * smooth((u - 0.72) / 0.28);
       y = pivotLift(p);
     } else {
       const u = (q - d) / (1 - d);
       z = dir * e * (-1 + 2 * smooth(u));
-      p = 0.32 * sf * w * (1 - smooth(u / 0.35)) - 0.16 * w * Math.sin(Math.PI * u);
+      p = 0.32 * sf * w * (1 - smooth(u / 0.35)) - 0.12 * w * Math.sin(Math.PI * u) + strike * smooth((u - 0.55) / 0.45);
       y = lift * Math.sin(Math.PI * u) + Math.max(0, pivotLift(p));
     }
     // the shuffle
@@ -162,10 +177,13 @@ export function walkSpec({ phase = 0, speed = 0, turnPhase = 0, turning = 0, t =
     [pitch[0], 0.06 * (1 - w) + 0.02, 0],
     [pitch[1], -0.06 * (1 - w) - 0.02, 0],
   ];
-  // the body: a little lower and leaning in at pace, rising in the float between steps
-  const bob = SUIT.bob * sf * w * (0.5 - 0.5 * Math.cos(2 * TAU * (phase - d / 2)));
+  // the body: a little lower and leaning in at pace, rising in the float between steps, and the
+  // knees giving a little as each boot takes the weight (the suit is heavy even at 1/6 g)
+  const bob = 0.72 * SUIT.bob * sf * w * (0.5 - 0.5 * Math.cos(2 * TAU * (phase - d / 2)));
+  const take = (q) => (q < 0.2 ? Math.sin((Math.PI * q) / 0.2) : 0);
+  const dip = 0.013 * sf * w * (take(mod1(phase)) + take(mod1(phase - 0.5)));
   const gy = (g(BODY.hipW, 0) + g(-BODY.hipW, 0)) / 2;
-  let y = BODY.hipY - 0.03 * sf * w + bob + gy;
+  let y = BODY.hipY - 0.03 * sf * w + bob - dip + gy;
   // never stretch a leg straight: the hips come down to where both boots can be reached
   const R = (BODY.thigh + BODY.shin) * 0.985;
   for (let i = 0; i < 2; i++) {
@@ -175,15 +193,25 @@ export function walkSpec({ phase = 0, speed = 0, turnPhase = 0, turning = 0, t =
     y = Math.min(y, fy + Math.sqrt(Math.max(0, R * R - h2)));
   }
   const yaw = -0.07 * Math.cos(TAU * phase) * sf * w * dir;
-  s.pelvis = [s.pelvis[0] * (1 - w), y + (s.pelvis[1] - BODY.hipY) * (1 - w), -0.02 * sf * w * dir];
-  s.pelvisRot = [0.03 + 0.05 * sf * w, yaw, 0.025 * Math.sin(TAU * phase) * sf * w];
-  s.torsoRot = [s.torsoRot[0] + 0.12 * sf * w * (dir > 0 ? 1 : 0.25), -0.6 * yaw, 0];
-  // the arms: held forward by the suit, a small swing opposite the legs
-  const A = 0.11 * sf * w;
-  s.hands = [
-    [0.31, 1.03 + y - BODY.hipY + 0.02 * sf * w, 0.17 + 0.05 * sf * w - A * Math.cos(TAU * phase) * dir],
-    [-0.31, 1.03 + y - BODY.hipY + 0.02 * sf * w, 0.17 + 0.05 * sf * w + A * Math.cos(TAU * phase) * dir],
+  // the hips over the boot that carries the weight, rolling with it
+  const shift = 0.013 * sf * w * Math.cos(TAU * (phase - d / 2));
+  const roll = 0.025 * Math.sin(TAU * phase) * sf * w;
+  s.pelvis = [s.pelvis[0] * (1 - w) + shift, y + (s.pelvis[1] - BODY.hipY) * (1 - w), -0.02 * sf * w * dir];
+  s.pelvisRot = [0.03 + 0.05 * sf * w, yaw + s.pelvisRot[1] * (1 - w), roll + s.pelvisRot[2] * (1 - w)];
+  s.torsoRot = [s.torsoRot[0] + 0.12 * sf * w * (dir > 0 ? 1 : 0.25), -0.6 * yaw + s.torsoRot[1] * (1 - w), -0.5 * roll + s.torsoRot[2] * (1 - w)];
+  // the arms: held forward by the suit, a swing opposite the legs a beat behind them, each hand
+  // rising a little and coming in towards the midline as it comes forward
+  const A = 0.13 * sf * w;
+  const sw = Math.cos(TAU * (phase - 0.035)) * dir;
+  const fwdL = Math.max(0, -sw);
+  const fwdR = Math.max(0, sw);
+  const hy = 1.03 + y - BODY.hipY + 0.02 * sf * w;
+  const walkHands = [
+    [0.31 - 0.02 * sf * w * fwdL, hy + 0.025 * sf * w * fwdL, 0.17 + 0.05 * sf * w - A * sw],
+    [-0.31 + 0.02 * sf * w * fwdR, hy + 0.025 * sf * w * fwdR, 0.17 + 0.05 * sf * w + A * sw],
   ];
+  s.hands = s.hands.map((h, i) => h.map((v, k) => lerp(v, walkHands[i][k], w)));
+  s.wrist = [lerp(s.wrist[0], 0.15 + 0.08 * fwdL, w), lerp(s.wrist[1], 0.15 + 0.08 * fwdR, w)];
   return s;
 }
 

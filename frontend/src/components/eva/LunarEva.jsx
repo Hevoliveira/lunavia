@@ -1,10 +1,14 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import LanderModel from "@/components/LanderModel";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import LanderModel, { lunarEnv } from "@/components/LanderModel";
 import { SiteRocks, SiteSky, SiteSun, SiteTerrain } from "@/components/scenes/LunarSite";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
 import Astronaut from "./Astronaut";
+import { ContactShadows, NearPebbles } from "./EvaGround";
+import { bootPrintTexture, regolithNearTexture } from "./evaTextures";
+import { GROUND, legFrames } from "@/data/lmDesign";
 import { evaText } from "./evaText";
 import { SUBTITLE_LANE as LANE, setSubtitlePlacement } from "@/components/CommsSubtitles";
 import { getSite } from "@/data/landingSites";
@@ -120,7 +124,29 @@ function bearingTo(sim, p) {
 function Hatch({ sim }) {
   const open = useRef();
   const door = useRef();
+  const shut = useRef();
+  const gl = useThree((s) => s.gl);
   const doorMat = useMemo(() => new THREE.MeshStandardMaterial({ color: "#46484e", roughness: 0.58, metalness: 0.15 }), []);
+  const metal = useMemo(() => new THREE.MeshStandardMaterial({ color: "#c9ccd2", roughness: 0.3, metalness: 0.85, envMap: lunarEnv(gl), envMapIntensity: 1.1 }), [gl]);
+  // the hatch's hardware (model units, in the hatch's frame): the trim round the opening, the
+  // hinges on its left, the handle on its right (on the door, so it swings in with it)
+  const hw = useMemo(() => {
+    const trim = mergeGeometries([
+      new THREE.BoxGeometry(0.186, 0.008, 0.003).translate(0, 0.078, 0.0075),
+      new THREE.BoxGeometry(0.186, 0.008, 0.003).translate(0, -0.078, 0.0075),
+      new THREE.BoxGeometry(0.008, 0.148, 0.003).translate(0.089, 0, 0.0075),
+      new THREE.BoxGeometry(0.008, 0.148, 0.003).translate(-0.089, 0, 0.0075),
+      new THREE.CylinderGeometry(0.0055, 0.0055, 0.026, 10).translate(-0.093, 0.046, 0.0095),
+      new THREE.CylinderGeometry(0.0055, 0.0055, 0.026, 10).translate(-0.093, -0.046, 0.0095),
+    ]);
+    const handle = mergeGeometries([
+      new THREE.BoxGeometry(0.006, 0.052, 0.006).translate(0, 0, 0.0048),
+      new THREE.BoxGeometry(0.006, 0.006, 0.006).translate(0, 0.023, 0.0018),
+      new THREE.BoxGeometry(0.006, 0.006, 0.006).translate(0, -0.023, 0.0018),
+      new THREE.CylinderGeometry(0.009, 0.009, 0.004, 12).rotateX(Math.PI / 2).translate(-0.085, 0.04, 0.001),
+    ]);
+    return { trim, handle };
+  }, []);
   const dark = useMemo(() => {
     const c = document.createElement("canvas");
     c.width = 8;
@@ -139,6 +165,7 @@ function Hatch({ sim }) {
   useFrame(() => {
     const h = sim.hatch;
     if (open.current) open.current.visible = h > 0.005;
+    if (shut.current) shut.current.visible = h <= 0.005;
     if (door.current) {
       door.current.visible = h > 0.005;
       // the door turns in about its hinge: seen from outside it narrows towards the hinge
@@ -156,7 +183,10 @@ function Hatch({ sim }) {
         <mesh position={[0.084, 0, 0]} material={doorMat} renderOrder={2}>
           <planeGeometry args={[0.168, 0.148]} />
         </mesh>
+        <mesh position={[0.084 + 0.058, 0, 0]} geometry={hw.handle} material={metal} />
       </group>
+      <mesh geometry={hw.trim} material={metal} castShadow />
+      <mesh ref={shut} position={[0.058, 0, 0.0068]} geometry={hw.handle} material={metal} castShadow />
     </group>
   );
 }
@@ -228,29 +258,11 @@ function Markers({ sim }) {
 }
 
 const MAX_PRINTS = 700;
-function bootPrintTexture() {
-  const c = document.createElement("canvas");
-  c.width = 64;
-  c.height = 128;
-  const g = c.getContext("2d");
-  g.clearRect(0, 0, 64, 128);
-  // the sole's outline, pressed into the regolith, and its ribs (the lunar overboot's tread)
-  g.fillStyle = "rgba(40,36,32,0.55)";
-  g.beginPath();
-  g.ellipse(32, 36, 22, 30, 0, 0, Math.PI * 2);
-  g.ellipse(32, 92, 19, 30, 0, 0, Math.PI * 2);
-  g.fill();
-  g.fillRect(14, 36, 36, 56);
-  g.fillStyle = "rgba(225,215,200,0.35)";
-  for (let y = 12; y < 120; y += 9) g.fillRect(12, y, 40, 3);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
 function Footprints({ sim }) {
   const ref = useRef();
+  // the overshoe's chevron tread pressed into the regolith, its rim of pushed-up dust (evaTextures)
   const mat = useMemo(() => new THREE.MeshStandardMaterial({ map: bootPrintTexture(), transparent: true, depthWrite: false, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2 }), []);
-  const geo = useMemo(() => new THREE.PlaneGeometry(0.15, 0.33).rotateX(-Math.PI / 2), []);
+  const geo = useMemo(() => new THREE.PlaneGeometry(0.19, 0.42).rotateX(-Math.PI / 2), []);
   const seen = useRef(0);
   const m = useMemo(() => new THREE.Matrix4(), []);
   const q = useMemo(() => new THREE.Quaternion(), []);
@@ -830,6 +842,14 @@ function updateCamera(S, camera, dt, camPos, camLook, camState, size) {
   camState.current.belowGround = cm.y / S_PER_M < S.world.ground(cm.x / S_PER_M, cm.z / S_PER_M);
   camera.position.copy(cm);
   camera.lookAt(camLook.current);
+  // development only (compiled out of production): a fixed camera for visual review captures,
+  // window.__lvEvaCam = { pos: [x, y, z], look: [x, y, z] (m), fov }
+  if (process.env.NODE_ENV !== "production" && typeof window !== "undefined" && window.__lvEvaCam) {
+    const o = window.__lvEvaCam;
+    camera.position.set(o.pos[0] * S_PER_M, o.pos[1] * S_PER_M, o.pos[2] * S_PER_M);
+    camera.lookAt(o.look[0] * S_PER_M, o.look[1] * S_PER_M, o.look[2] * S_PER_M);
+    if (o.fov) fov = o.fov;
+  }
   if (Math.abs(camera.fov - fov) > 0.01) {
     camera.fov = fov;
     camera.updateProjectionMatrix();
@@ -997,6 +1017,17 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
   const fx = useMemo(() => ({ thrust: 0, comp: (p.comp || [0, 0, 0, 0]).slice(), probe: (p.probe || [0, 0, 0, 0]).slice() }), [p.comp, p.probe]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sim = useMemo(() => makeSim({ site, pose: p, resume }), [site]);
+  // the ground at close range (scene units): the swept ground round the LM, occlusion under the
+  // descent stage and round each footpad (data/lmDesign: the pads where they stand)
+  const near = useMemo(() => {
+    const L = sim.lm;
+    const k = S_PER_M;
+    const pads = legFrames().map((f) => {
+      const q = L.toWorld([f.padTop.x, GROUND, f.padTop.z]);
+      return [q[0] * k, q[2] * k, L.padR * k];
+    });
+    return { tex: regolithNearTexture(), blast: [L.axis[0] * k, L.axis[1] * k, 11 * k], under: [L.axis[0] * k, L.axis[1] * k, 3.2 * k], pads };
+  }, [sim]);
   const astroRef = useRef(null);
   const camState = useRef({});
   const markerRefs = { marker: useRef(), arrow: useRef(), dist: useRef() };
@@ -1171,16 +1202,18 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
             <color attach="background" args={["#050505"]} />
             <SiteSky site={site} />
             <SiteSun site={site} box={24} focus={() => (astroRef.current ? [astroRef.current.pos[0] * S_PER_M, astroRef.current.pos[1] * S_PER_M, astroRef.current.pos[2] * S_PER_M] : base)} />
-            <SiteTerrain site={site} />
+            <SiteTerrain site={site} near={near} />
             <SiteRocks site={site} />
             <group position={base} rotation={[(p.pitch || 0) * DEG, 0, -(p.tilt || 0) * DEG]}>
-              <LanderModel scale={LM.scale} fx={fx} />
+              <LanderModel scale={LM.scale} fx={fx} quality="close" />
               <group scale={LM.scale}>
                 <Hatch sim={sim} />
               </group>
             </group>
             <group scale={S_PER_M}>
               <Astronaut stateRef={astroRef} />
+              <ContactShadows sim={sim} />
+              <NearPebbles sim={sim} color={site.palette.rock} />
               <Markers sim={sim} />
               <Footprints sim={sim} />
               <Dust sim={sim} />

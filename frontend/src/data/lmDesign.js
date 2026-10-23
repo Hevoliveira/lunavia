@@ -108,6 +108,59 @@ function dish(r, h, c, axis, seg = 18) {
   return g.translate(...c);
 }
 
+/** A repeatable hash of a grid point, 0..1. */
+function hash2(i, j, seed) {
+  let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(seed, 1442695041)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+/**
+ * A thermal blanket over a flat vertical face from p0 to p1 ([x, z]) between heights y0 and y1:
+ * puffed outward (away from the vehicle's axis) by up to `amp` between its edges, and crinkled.
+ * Its edges stay on the face, so neighbouring blankets meet. UVs in model units (the foil repeats).
+ */
+function pillow(p0, p1, y0, y1, { nu = 12, nv = 8, amp = 0.005, crinkle = 0.0016, seed = 1, uv0 = 0 } = {}) {
+  const dx = p1[0] - p0[0];
+  const dz = p1[1] - p0[1];
+  const w = Math.hypot(dx, dz);
+  let nx = dz / w;
+  let nz = -dx / w;
+  if (nx * (p0[0] + p1[0]) + nz * (p0[1] + p1[1]) < 0) {
+    nx = -nx;
+    nz = -nz;
+  }
+  const pos = [];
+  const uv = [];
+  const idx = [];
+  for (let j = 0; j <= nv; j++) {
+    for (let i = 0; i <= nu; i++) {
+      const u = i / nu;
+      const v = j / nv;
+      const env = Math.pow(Math.sin(Math.PI * u), 0.7) * Math.pow(Math.sin(Math.PI * v), 0.7);
+      const n = env * (amp + crinkle * (hash2(i, j, seed) * 2 - 1));
+      pos.push(p0[0] + dx * u + nx * n, y0 + (y1 - y0) * v, p0[1] + dz * u + nz * n);
+      uv.push(uv0 + w * u, y0 + (y1 - y0) * v);
+    }
+  }
+  // wind the quads to face outward: (along the face) × (up) points one way or the other
+  const flip = -dz * nx + dx * nz < 0;
+  for (let j = 0; j < nv; j++) {
+    for (let i = 0; i < nu; i++) {
+      const q = j * (nu + 1) + i;
+      const [A, B, C, D] = [q, q + 1, q + nu + 1, q + nu + 2];
+      if (flip) idx.push(A, D, B, A, C, D);
+      else idx.push(A, B, D, A, D, C);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 /** Merge geometries into one non-indexed geometry with position, normal and uv. */
 export function merge(list) {
   const parts = list.map((g) => (g.index ? g.toNonIndexed() : g));
@@ -181,14 +234,27 @@ export const PORCH_RAILS = [-0.1, 0.1].map((x) => ({
 export const ASC_ENGINE = { top: AS_Y, exitY: AS_Y - 0.085, throatR: 0.03, exitR: 0.062 };
 
 /** The parts of both stages, per material: { descent, ascent } (lists of geometries). */
-function collect() {
+function collect({ close = false } = {}) {
   const PD = Object.fromEntries(PARTS.map((k) => [k, []]));
   const PA = Object.fromEntries(PARTS.map((k) => [k, []]));
   let P = PD; // everything up to the interstage belongs to the descent stage
   const { a, c, y0, y1 } = DS;
 
-  // Descent stage: foil body, silver top deck, black heat shield and engine skirt.
-  P.foilGold.push(prism(octagon(a, c), y0 + 0.02, y1));
+  // Descent stage: foil body, silver top deck, black heat shield and engine skirt. At close range
+  // the blanket on each of the eight faces puffs out between its edges and crinkles, and bare
+  // metal trims the corners and the bottom edge.
+  if (close) {
+    const oct = octagon(a, c);
+    let run = 0;
+    oct.forEach((p0, i) => {
+      const p1 = oct[(i + 1) % 8];
+      const w = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+      P.foilGold.push(pillow(p0, p1, y0 + 0.02, y1, { nu: w > 0.4 ? 14 : 6, nv: 8, amp: 0.0045, crinkle: 0.0016, seed: 11 + i, uv0: run }));
+      run += w;
+    });
+    oct.forEach(([x, z]) => P.metal.push(box(0.014, y1 - y0 - 0.03, 0.014, x * 1.006, (y0 + y1) / 2 + 0.005, z * 1.006, 0, Math.atan2(x, z))));
+    P.metal.push(prism(octagon(a + 0.004, c), y0 + 0.019, y0 + 0.03)); // bottom band
+  } else P.foilGold.push(prism(octagon(a, c), y0 + 0.02, y1));
   P.metal.push(prism(octagon(a + 0.006, c), y1 - 0.022, y1 + 0.006)); // top rim band
   P.metal.push(prism(octagon(a - 0.02, c - 0.01), y1, y1 + 0.016)); // deck
   P.foilDark.push(prism(octagon(a - 0.008, c - 0.004), y0, y0 + 0.022)); // heat shield
@@ -196,7 +262,11 @@ function collect() {
   P.foilDark.push(new THREE.RingGeometry(0.075, 0.17, 8).rotateX(Math.PI / 2).rotateY(Math.PI / 8).translate(0, y0 - 0.049, 0));
 
   // Equipment bays on the four long faces: dark foil on the sides, gold-framed fore and aft.
-  const bay = (w, h, rot, mat, y = 0.17) => P[mat].push(faceBox(w, h, 0.014, 0, y, a + 0.006, rot));
+  const bay = (w, h, rot, mat, y = 0.17) => {
+    P[mat].push(faceBox(w, h, 0.014, 0, y, a + 0.006, rot));
+    // close range: the bay's blanket bulges between its frame
+    if (close) P[mat].push(pillow([-w / 2 + 0.004, a + 0.0132], [w / 2 - 0.004, a + 0.0132], y - h / 2 + 0.004, y + h / 2 - 0.004, { nu: 14, nv: 7, amp: 0.005, crinkle: 0.0018, seed: 31 + Math.round(rot * 10) }).rotateY(rot));
+  };
   bay(0.5, 0.2, 0, "foilGold", 0.16); // front (+Z), under the porch
   bay(0.5, 0.22, Math.PI, "foilGold"); // aft
   bay(0.5, 0.22, Math.PI / 2, "foilDark"); // +X side
@@ -233,9 +303,10 @@ function collect() {
     const t = i / 12;
     bell.push([throat.r + (EXIT_R - throat.r) * (1 - Math.pow(1 - t, 2.2)), throat.y + (EXIT_Y - throat.y) * t]);
   }
-  P.engine.push(lathe(bell, 28));
-  P.engineInner.push(lathe(bell.map(([r, y]) => [r * 0.965, y + 0.002]), 28));
-  P.engine.push(new THREE.TorusGeometry(EXIT_R, 0.006, 6, 28).rotateX(Math.PI / 2).translate(0, EXIT_Y + 0.003, 0));
+  const bs = close ? 44 : 28;
+  P.engine.push(lathe(bell, bs));
+  P.engineInner.push(lathe(bell.map(([r, y]) => [r * 0.965, y + 0.002]), bs));
+  P.engine.push(new THREE.TorusGeometry(EXIT_R, 0.006, 6, bs).rotateX(Math.PI / 2).translate(0, EXIT_Y + 0.003, 0));
 
   // The interstage (the descent stage's top fittings), then the ascent stage: faceted cabin with bevelled edges.
   P.black.push(prism(octagon(0.31, 0.1), y1 + 0.016, AS_Y + 0.006));
@@ -292,21 +363,21 @@ function collect() {
   });
   // Side propellant pods with orange LUNAVIA bands.
   [-1, 1].forEach((s) => {
-    P.paint.push(new THREE.CapsuleGeometry(0.095, 0.2, 4, 14).rotateX(Math.PI / 2).translate(s * 0.36, 0.5, -0.05));
-    P.accent.push(new THREE.CylinderGeometry(0.098, 0.098, 0.022, 14, 1, true).rotateX(Math.PI / 2).translate(s * 0.36, 0.5, 0.03));
+    P.paint.push(new THREE.CapsuleGeometry(0.095, 0.2, close ? 8 : 4, close ? 28 : 14).rotateX(Math.PI / 2).translate(s * 0.36, 0.5, -0.05));
+    P.accent.push(new THREE.CylinderGeometry(0.098, 0.098, 0.022, close ? 28 : 14, 1, true).rotateX(Math.PI / 2).translate(s * 0.36, 0.5, 0.03));
     P.black.push(box(0.05, 0.03, 0.2, s * 0.315, 0.5, -0.05)); // saddle to the cabin
   });
   // Aft equipment bay, with radiator ribs.
   P.paintDark.push(box(0.46, 0.27, 0.15, 0, 0.53, -0.31));
   [-0.15, -0.05, 0.05, 0.15].forEach((x) => P.metal.push(box(0.012, 0.25, 0.012, x, 0.53, -0.39)));
   // Docking tunnel and drogue ring on top.
-  P.metal.push(new THREE.CylinderGeometry(0.09, 0.095, 0.07, 18).translate(0, 0.87, -0.03));
-  P.black.push(new THREE.TorusGeometry(0.088, 0.01, 6, 18).rotateX(Math.PI / 2).translate(0, 0.905, -0.03));
+  P.metal.push(new THREE.CylinderGeometry(0.09, 0.095, 0.07, close ? 32 : 18).translate(0, 0.87, -0.03));
+  P.black.push(new THREE.TorusGeometry(0.088, 0.01, 6, close ? 32 : 18).rotateX(Math.PI / 2).translate(0, 0.905, -0.03));
   // Rendezvous radar (front right) and steerable S-band dish (aft left) on booms; two VHF whips.
   P.metal.push(rod([0.16, 0.84, 0.05], [0.18, 0.9, 0.07], 0.008, 6));
-  P.metal.push(dish(0.055, 0.02, [0.18, 0.905, 0.075], [0.15, 0.7, 0.7]));
+  P.metal.push(dish(0.055, 0.02, [0.18, 0.905, 0.075], [0.15, 0.7, 0.7], close ? 28 : 18));
   P.metal.push(rod([-0.22, 0.84, -0.12], [-0.29, 0.97, -0.17], 0.007, 6));
-  P.metal.push(dish(0.068, 0.024, [-0.29, 0.98, -0.17], [-0.3, 1, -0.2]));
+  P.metal.push(dish(0.068, 0.024, [-0.29, 0.98, -0.17], [-0.3, 1, -0.2], close ? 28 : 18));
   P.metal.push(rod([0.22, 0.84, -0.2], [0.26, TOP - 0.012, -0.23], 0.004, 5));
   P.metal.push(rod([-0.08, 0.84, -0.22], [-0.1, 1.04, -0.26], 0.004, 5));
   // RCS quads: a housing on a boom at each corner, four thrusters (up, down, outboard, fore or aft).
@@ -333,10 +404,47 @@ function collect() {
   return { descent: PD, ascent: PA };
 }
 
-/** The whole lunar module, stages joined: one merged geometry per material. */
-export function buildBody() {
-  const { descent, ascent } = collect();
-  return Object.fromEntries(PARTS.map((k) => [k, merge(descent[k].concat(ascent[k]))]));
+/**
+ * The whole lunar module, stages joined: one merged geometry per material. `close` builds the
+ * close-range body (the EVA): the same shape, with puffed and crinkled foil blankets and metal
+ * corner trims (buildCloseDetail adds the hardware).
+ */
+export function buildBody({ close = false } = {}) {
+  const { descent, ascent } = collect({ close });
+  return Object.fromEntries(
+    PARTS.map((k) => {
+      const g = merge(descent[k].concat(ascent[k]));
+      // close range: paint and foil textures at one scale everywhere (UVs in model units)
+      if (close && ["paint", "paintDark", "foilGold", "foilDark"].includes(k)) boxUV(g);
+      return [k, g];
+    })
+  );
+}
+
+/** UVs projected onto each triangle's main plane, in model units (a non-indexed geometry). */
+function boxUV(g) {
+  const p = g.attributes.position;
+  const uv = g.attributes.uv;
+  const A = new THREE.Vector3();
+  const B = new THREE.Vector3();
+  const C = new THREE.Vector3();
+  for (let t = 0; t + 2 < p.count; t += 3) {
+    A.fromBufferAttribute(p, t);
+    B.fromBufferAttribute(p, t + 1);
+    C.fromBufferAttribute(p, t + 2);
+    const f = B.clone().sub(A).cross(C.clone().sub(A));
+    const ax = Math.abs(f.x);
+    const ay = Math.abs(f.y);
+    const az = Math.abs(f.z);
+    for (let k = 0; k < 3; k++) {
+      const x = p.getX(t + k);
+      const y = p.getY(t + k);
+      const z = p.getZ(t + k);
+      if (ax >= ay && ax >= az) uv.setXY(t + k, z, y);
+      else if (ay >= az) uv.setXY(t + k, x, z);
+      else uv.setXY(t + k, x, y);
+    }
+  }
 }
 
 /**
@@ -413,20 +521,202 @@ export function legFrames() {
   });
 }
 
-/** The footpad: a dished pad with a rolled rim and the ball joint the strut sits in. Origin at its bottom centre. */
-export function buildPad() {
-  const pad = lathe(
-    [
-      [0, PAD_H - 0.004],
-      [0.05, PAD_H - 0.006],
-      [0.094, PAD_H - 0.014],
-      [PAD_SIZE, 0.018],
-      [PAD_SIZE - 0.002, 0.006],
-      [PAD_SIZE - 0.016, 0],
-      [0, 0],
-    ],
-    22
-  );
-  const ball = new THREE.SphereGeometry(0.02, 10, 6).translate(0, PAD_H + 0.008, 0);
-  return merge([pad, ball]);
+/**
+ * The footpad: a dished pad with a rolled rim and the ball joint the strut sits in. Origin at its
+ * bottom centre. `close` (the EVA): a finer dish, the rolled lip, radial stiffeners across its top
+ * and the socket round the ball.
+ */
+const PAD_TOP = [
+  [0, PAD_H - 0.004],
+  [0.05, PAD_H - 0.006],
+  [0.094, PAD_H - 0.014],
+  [PAD_SIZE, 0.018],
+];
+export function buildPad({ close = false } = {}) {
+  const pad = lathe([...PAD_TOP, [PAD_SIZE - 0.002, 0.006], [PAD_SIZE - 0.016, 0], [0, 0]], close ? 40 : 22);
+  const ball = new THREE.SphereGeometry(0.02, close ? 14 : 10, close ? 8 : 6).translate(0, PAD_H + 0.008, 0);
+  if (!close) return merge([pad, ball]);
+  const parts = [pad, ball];
+  parts.push(new THREE.TorusGeometry(PAD_SIZE - 0.004, 0.0055, 6, 40).rotateX(Math.PI / 2).translate(0, 0.013, 0));
+  parts.push(new THREE.CylinderGeometry(0.025, 0.03, 0.016, 16).translate(0, PAD_H + 0.002, 0));
+  const topAt = (r) => {
+    for (let i = 1; i < PAD_TOP.length; i++) {
+      const [r0, y0] = PAD_TOP[i - 1];
+      const [r1, y1] = PAD_TOP[i];
+      if (r <= r1) return y0 + ((y1 - y0) * (r - r0)) / (r1 - r0);
+    }
+    return PAD_TOP[PAD_TOP.length - 1][1];
+  };
+  for (let k = 0; k < 8; k++) {
+    const r0 = 0.032;
+    const r1 = PAD_SIZE - 0.012;
+    const yA = topAt(r0);
+    const yB = topAt(r1);
+    const len = Math.hypot(r1 - r0, yB - yA);
+    const rib = new THREE.BoxGeometry(0.005, 0.005, len)
+      .rotateX(Math.atan2(yA - yB, r1 - r0))
+      .translate(0, (yA + yB) / 2 + 0.002, (r0 + r1) / 2)
+      .rotateY((k * Math.PI) / 4 + Math.PI / 8);
+    parts.push(rib);
+  }
+  return merge(parts);
+}
+
+/**
+ * The ladder on the front leg's sleeve (model units): its two rails and seven rungs as [a, b]
+ * pairs of Vector3. It hangs on the sleeve, so it does not move with the piston; data/evaSim puts
+ * the boots on these rungs and the gloves on these rails.
+ */
+export function ladderParts() {
+  const L = legFrames().find((l) => l.ladder);
+  const off = (s) => L.side.clone().multiplyScalar(s).addScaledVector(L.dir, 0.035);
+  const top = L.upper.clone().addScaledVector(L.axis, -0.05);
+  const bottom = L.padTop.clone().addScaledVector(L.axis, 0.14);
+  const rails = [-1, 1].map((s) => [top.clone().add(off(s * 0.045)), bottom.clone().add(off(s * 0.045))]);
+  const rungs = [];
+  for (let i = 1; i <= 7; i++) {
+    const c = top.clone().lerp(bottom, i / 8);
+    rungs.push([c.clone().add(off(-0.045)), c.clone().add(off(0.045))]);
+  }
+  return { rails, rungs, leg: L };
+}
+
+/* ---- close range (the EVA): the hardware a camera a few metres away reads ---------------------- */
+/** Where the LM's decals sit in their atlas (LanderModel draws it): [x, y, w, h] px of 512 × 256. */
+export const LM_DECALS = {
+  plaque: [0, 0, 256, 168],
+  mesa: [264, 0, 248, 56],
+  wordmark: [264, 64, 248, 56],
+  emblem: [264, 128, 128, 128],
+};
+const decalPlane = (w, h, [x, y, pw, ph]) => {
+  const g = new THREE.PlaneGeometry(w, h);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (x + uv.getX(i) * pw) / 512, 1 - (y + (1 - uv.getY(i)) * ph) / 256);
+  return g;
+};
+/** A box `w` across (along `side`), `len` long from a to b, `d` deep (along side × the run). */
+function beam(a, b, w, d, side) {
+  const Y = new THREE.Vector3().subVectors(b, a);
+  const len = Y.length();
+  Y.normalize();
+  const X = side.clone().addScaledVector(Y, -side.dot(Y)).normalize();
+  const Z = new THREE.Vector3().crossVectors(X, Y);
+  const g = new THREE.BoxGeometry(w, len, d);
+  g.applyMatrix4(new THREE.Matrix4().makeBasis(X, Y, Z));
+  return g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+}
+/** A cylinder of radius r and height h centred at c, its axis along n. */
+function disc(r, h, c, n, seg = 14) {
+  const g = new THREE.CylinderGeometry(r, r, h, seg);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n.clone().normalize()));
+  return g.translate(c.x, c.y, c.z);
+}
+
+/**
+ * The close-range hardware, merged per material ({ metal, black, paintDark, decal }): the ladder's
+ * channel rails and flat treads (on the very rungs evaSim climbs), the strut sleeves' bands, end
+ * fittings and cable runs, the porch's anti-slip strips and lip, the equipment box's handle,
+ * latches, hinge and stencil, side equipment boxes, the commemorative plaque on the ladder strut,
+ * the antenna feeds, and the LUNAVIA marks. Static: none of it moves with the struts' pistons.
+ */
+export function buildCloseDetail() {
+  const P = { metal: [], black: [], paintDark: [], decal: [] };
+  const { a, y1 } = DS;
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const legs = legFrames();
+  // the ladder: channel rails and flat treads with a grip strip, on the same rungs
+  const { rails, rungs, leg: LL } = ladderParts();
+  const up = V(0, 1, 0);
+  rails.forEach(([p, q]) => {
+    P.metal.push(beam(p, q, 0.009, 0.02, LL.side));
+    P.metal.push(beam(p.clone().addScaledVector(LL.dir, 0.009), q.clone().addScaledVector(LL.dir, 0.009), 0.016, 0.003, LL.side));
+  });
+  rungs.forEach(([p, q]) => {
+    const cdir = LL.dir.clone().setY(0).normalize();
+    const m = p.clone().lerp(q, 0.5);
+    const tread = new THREE.BoxGeometry(0.098, 0.007, 0.026);
+    tread.applyMatrix4(new THREE.Matrix4().makeBasis(LL.side.clone().normalize(), up, new THREE.Vector3().crossVectors(LL.side.clone().normalize(), up)));
+    P.metal.push(tread.translate(m.x, m.y, m.z));
+    const grip = new THREE.BoxGeometry(0.088, 0.0015, 0.016);
+    grip.applyMatrix4(new THREE.Matrix4().makeBasis(LL.side.clone().normalize(), up, new THREE.Vector3().crossVectors(LL.side.clone().normalize(), up)));
+    P.black.push(grip.translate(m.x + cdir.x * 0.001, m.y + 0.0042, m.z + cdir.z * 0.001));
+  });
+  // the struts: tape bands round the foil sleeve, the fitting at the outrigger, the collar's bolt
+  // rings, a cable run down the back of the sleeve, the secondary struts' end fittings
+  legs.forEach((L) => {
+    const at = (t) => L.upper.clone().addScaledVector(L.axis, -L.len * t);
+    [0.1, 0.25, 0.4].forEach((t) => P.black.push(disc(0.0362, 0.007, at(t), L.axis, 16)));
+    P.metal.push(disc(0.04, 0.03, at(0.01), L.axis, 16));
+    const collar = at(SLEEVE);
+    P.metal.push(new THREE.TorusGeometry(0.044, 0.0035, 5, 18).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), L.axis)).translate(collar.x + L.axis.x * 0.012, collar.y + L.axis.y * 0.012, collar.z + L.axis.z * 0.012));
+    const back = L.dir.clone().multiplyScalar(-0.036).addScaledVector(L.side, 0.016);
+    const c0 = at(0.03).add(back);
+    const c1 = at(SLEEVE - 0.02).add(back);
+    P.black.push(beam(c0, c1, 0.006, 0.006, L.side));
+    L.sec.forEach((s) => P.metal.push(new THREE.SphereGeometry(0.017, 10, 6).translate(s.x, s.y, s.z)));
+  });
+  // the porch: anti-slip strips across its deck, a lip at its edge
+  for (let k = 0; k < 5; k++) P.black.push(box(0.18, 0.002, 0.009, 0, y1 + 0.0035, a + 0.012 + k * 0.021));
+  P.metal.push(box(0.2, 0.018, 0.005, 0, y1 - 0.004, a + 0.11));
+  // the equipment box beside the ladder: handle, latches, hinge, stencil
+  const mz = a + 0.0465;
+  P.metal.push(box(0.064, 0.006, 0.006, -0.24, 0.172, mz + 0.012));
+  [-1, 1].forEach((s) => P.metal.push(box(0.006, 0.006, 0.014, -0.24 + s * 0.029, 0.172, mz + 0.006)));
+  [-1, 1].forEach((s) => P.black.push(box(0.012, 0.016, 0.006, -0.24 + s * 0.055, 0.1, mz + 0.003)));
+  P.metal.push(new THREE.CylinderGeometry(0.004, 0.004, 0.14, 8).rotateZ(Math.PI / 2).translate(-0.24, 0.077, mz));
+  P.decal.push(decalPlane(0.11, 0.025, LM_DECALS.mesa).translate(-0.24, 0.13, mz + 0.0012));
+  // equipment boxes on the side and aft bays, strapped down
+  [
+    [Math.PI / 2, -0.07, 0.09],
+    [-Math.PI / 2, 0.07, 0.1],
+    [Math.PI, -0.06, 0.1],
+  ].forEach(([rot, s, y]) => {
+    P.paintDark.push(faceBox(0.14, 0.07, 0.034, s, y, a + 0.03, rot));
+    [-0.045, 0.045].forEach((o) => P.metal.push(faceBox(0.008, 0.074, 0.036, s + o, y, a + 0.031, rot)));
+  });
+  // the plaque on the ladder strut, between the second and third rungs, facing out
+  {
+    // a right-handed frame on the strut: X across it, Y up it, Z out of it (towards the ladder)
+    const Y = LL.axis.clone();
+    let X = LL.side.clone().normalize();
+    let Z = new THREE.Vector3().crossVectors(X, Y).normalize();
+    if (Z.dot(LL.dir) < 0) {
+      X = X.negate();
+      Z = new THREE.Vector3().crossVectors(X, Y).normalize();
+    }
+    const basis = new THREE.Matrix4().makeBasis(X, Y, Z);
+    const onAxis = rungs[1][0].clone().lerp(rungs[2][1], 0.5).addScaledVector(LL.dir, -0.035);
+    const m = onAxis.addScaledVector(Z, 0.0375);
+    P.metal.push(new THREE.BoxGeometry(0.054, 0.04, 0.003).applyMatrix4(basis).translate(m.x, m.y, m.z));
+    P.decal.push(decalPlane(0.05, 0.036, LM_DECALS.plaque).applyMatrix4(basis).translate(m.x + Z.x * 0.0018, m.y + Z.y * 0.0018, m.z + Z.z * 0.0018));
+  }
+  // the antenna feeds: a horn on a mast from each dish's centre, held by three thin struts
+  [
+    [0.055, [0.18, 0.905, 0.075], [0.15, 0.7, 0.7]],
+    [0.068, [-0.29, 0.98, -0.17], [-0.3, 1, -0.2]],
+  ].forEach(([r, c, ax]) => {
+    const n = V(...ax).normalize();
+    const C = V(...c);
+    const tip = C.clone().addScaledVector(n, r * 0.62);
+    P.metal.push(beam(C.clone().addScaledVector(n, -r * 0.3), tip, 0.004, 0.004, n.clone().cross(V(0, 0, 1)).normalize()));
+    P.black.push(disc(0.008, 0.012, tip, n, 10));
+    const u = new THREE.Vector3().crossVectors(n, V(0, 1, 0.3)).normalize();
+    const w = new THREE.Vector3().crossVectors(n, u);
+    for (let k = 0; k < 3; k++) {
+      const ang = (k * Math.PI * 2) / 3;
+      const rim = C.clone().addScaledVector(u, Math.cos(ang) * r * 0.92).addScaledVector(w, Math.sin(ang) * r * 0.92);
+      P.metal.push(beam(rim, tip, 0.002, 0.002, n));
+    }
+  });
+  // the VHF whips' base insulators
+  [
+    [0.22, 0.84, -0.2],
+    [-0.08, 0.84, -0.22],
+  ].forEach(([x, y, z]) => P.black.push(new THREE.CylinderGeometry(0.009, 0.011, 0.018, 10).translate(x, y + 0.009, z)));
+  // the LUNAVIA marks: the wordmark on the cabin's front beside the hatch, the emblem on the
+  // descent stage's front bay
+  P.decal.push(decalPlane(0.15, 0.034, LM_DECALS.wordmark).rotateX(0.124).translate(0.207, 0.505, 0.2795));
+  P.decal.push(decalPlane(0.07, 0.07, LM_DECALS.emblem).translate(0.19, 0.18, a + 0.0205));
+  return Object.fromEntries(Object.entries(P).map(([k, list]) => [k, merge(list)]));
 }

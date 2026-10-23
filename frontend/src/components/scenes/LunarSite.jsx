@@ -109,7 +109,71 @@ const SUNLIT = THREE.ShaderChunk.lights_fragment_begin.replace(
 );
 
 // Lambert: regolith is a rough, matte surface, and it is the cheapest lit material on a phone.
-function terrainMaterial(tex) {
+//
+// `near` (the lunar EVA only; scene units) adds the ground a walking astronaut sees at his feet,
+// faded out between 5 and 13 units (10–26 m) from the camera so it costs nothing further off:
+//   tex     the near regolith (R height: pebbles, clods, craterlets; G albedo grain), a 1.2 m tile
+//           and a 4.9 m one so it does not repeat, as albedo grain and as a bump on the normal;
+//   blast   [x, z, r]: the ground the descent engine swept round the LM, smoother and a little
+//           brighter, with radial streaks;
+//   pads    four [x, z, r]: occlusion under and round each footpad and the dust it pushed up;
+//   under   [x, z, r]: soft occlusion under the descent stage.
+const NEAR_FRAG = /* glsl */ `
+uniform sampler2D uNear;
+uniform vec3 uBlast;
+uniform vec3 uUnder;
+uniform vec3 uPads[4];
+float lvNearW;
+float lvBlastK;
+float lvH;
+vec3 lvPerturb( vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection ) {
+  vec3 vSigmaX = normalize( dFdx( surf_pos.xyz ) );
+  vec3 vSigmaY = normalize( dFdy( surf_pos.xyz ) );
+  vec3 R1 = cross( vSigmaY, surf_norm );
+  vec3 R2 = cross( surf_norm, vSigmaX );
+  float fDet = dot( vSigmaX, R1 ) * faceDirection;
+  vec3 vGrad = sign( fDet ) * ( dHdxy.x * R1 + dHdxy.y * R2 );
+  return normalize( abs( fDet ) * surf_norm - vGrad );
+}
+`;
+const NEAR_COLOR = /* glsl */ `
+  lvNearW = 1.0 - smoothstep( 5.0, 13.0, length( vViewPosition ) );
+  lvBlastK = 0.0;
+  lvH = 0.0;
+  {
+    float mul = 1.0;
+    // round the LM only: the swept ground (radial streaks, a little brighter), occlusion under the
+    // descent stage and round each footpad, the dust berm at each pad's rim
+    float rb = distance( vXZ, uBlast.xy );
+    if ( rb < uBlast.z * 1.05 ) {
+      lvBlastK = 1.0 - smoothstep( 0.45 * uBlast.z, uBlast.z, rb );
+      vec2 dv = vXZ - uBlast.xy;
+      float streak = texture2D( uNear, vec2( atan( dv.y, dv.x ) * 2.2282, rb * 0.04 ) ).g; // 14 tiles round the circle: no seam
+      mul *= 1.0 + lvBlastK * ( 0.07 + 0.16 * ( streak - 0.45 ) );
+      mul *= mix( 0.5, 1.0, smoothstep( 0.2 * uUnder.z, uUnder.z, distance( vXZ, uUnder.xy ) ) );
+      for ( int i = 0; i < 4; i ++ ) {
+        float d = distance( vXZ, uPads[ i ].xy ) / uPads[ i ].z;
+        mul *= mix( 0.42, 1.0, smoothstep( 0.95, 2.1, d ) );
+        mul *= 1.0 + 0.2 * exp( - pow( ( d - 1.45 ) / 0.18, 2.0 ) );
+      }
+    }
+    // the regolith's grain, near the camera only
+    if ( lvNearW > 0.001 ) {
+      vec4 n1 = texture2D( uNear, vXZ * 1.667 );
+      vec4 n2 = texture2D( uNear, vXZ * 0.41 + vec2( 0.37, 0.61 ) );
+      lvH = n1.r + 0.5 * n2.r;
+      mul *= mix( 1.0, ( 0.8 + 0.42 * n1.g ) * ( 0.9 + 0.2 * n2.g ) * ( 0.9 + 0.2 * n1.r ), lvNearW * ( 1.0 - 0.45 * lvBlastK ) );
+    }
+    diffuseColor.rgb *= mul;
+  }
+`;
+const NEAR_NORMAL = /* glsl */ `
+  if ( lvNearW > 0.001 ) {
+    vec2 dH = vec2( dFdx( lvH ), dFdy( lvH ) ) * 1.4 * lvNearW * ( 1.0 - 0.6 * lvBlastK );
+    normal = lvPerturb( - vViewPosition, normal, dH, faceDirection );
+  }
+`;
+function terrainMaterial(tex, near = null) {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uDetail = { value: tex };
@@ -117,14 +181,21 @@ function terrainMaterial(tex) {
       .replace("#include <common>", "#include <common>\nattribute float sunVis;\nvarying float vSunVis;\nvarying vec2 vXZ;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvSunVis = sunVis;\n\tvXZ = position.xz;");
     sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform sampler2D uDetail;\nvarying float vSunVis;\nvarying vec2 vXZ;")
+      .replace("#include <common>", "#include <common>\nuniform sampler2D uDetail;\nvarying float vSunVis;\nvarying vec2 vXZ;" + (near ? NEAR_FRAG : ""))
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\n\tfloat dA = texture2D( uDetail, vXZ * 0.21 ).r;\n\tfloat dB = texture2D( uDetail, vXZ * 0.037 + 0.37 ).r;\n\tdiffuseColor.rgb *= ( 0.5 + 0.68 * dA ) * ( 0.66 + 0.5 * dB );"
+        "#include <color_fragment>\n\tfloat dA = texture2D( uDetail, vXZ * 0.21 ).r;\n\tfloat dB = texture2D( uDetail, vXZ * 0.037 + 0.37 ).r;\n\tdiffuseColor.rgb *= ( 0.5 + 0.68 * dA ) * ( 0.66 + 0.5 * dB );" + (near ? NEAR_COLOR : "")
       )
       .replace("#include <lights_fragment_begin>", SUNLIT);
+    if (near) {
+      sh.uniforms.uNear = { value: near.tex };
+      sh.uniforms.uBlast = { value: new THREE.Vector3(...near.blast) };
+      sh.uniforms.uUnder = { value: new THREE.Vector3(...near.under) };
+      sh.uniforms.uPads = { value: near.pads.map((p) => new THREE.Vector3(...p)) };
+      sh.fragmentShader = sh.fragmentShader.replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + NEAR_NORMAL);
+    }
   };
-  m.customProgramCacheKey = () => "lv-terrain";
+  m.customProgramCacheKey = () => (near ? "lv-terrain-near" : "lv-terrain");
   return m;
 }
 
@@ -143,7 +214,7 @@ function rockMaterial() {
 }
 
 /* ---- terrain --------------------------------------------------------------------------- */
-export function SiteTerrain({ site }) {
+export function SiteTerrain({ site, near = null }) {
   const { geometry, material } = useMemo(() => {
     const t = buildTerrain(site);
     const g = new THREE.BufferGeometry();
@@ -153,8 +224,8 @@ export function SiteTerrain({ site }) {
     g.setAttribute("sunVis", new THREE.BufferAttribute(t.sunVis, 1));
     g.setIndex(new THREE.BufferAttribute(t.index, 1));
     g.computeBoundingSphere();
-    return { geometry: g, material: terrainMaterial(regolithTexture()) };
-  }, [site]);
+    return { geometry: g, material: terrainMaterial(regolithTexture(), near) };
+  }, [site, near]);
   useEffect(() => () => {
     geometry.dispose();
     material.dispose();

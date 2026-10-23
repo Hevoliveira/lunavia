@@ -93,6 +93,37 @@ describe("the suited body", () => {
   });
 });
 
+describe("the motion", () => {
+  test("walking forwards the heel comes down first and rolls flat; the toe pushes off at the end", () => {
+    const d = 0.44; // each boot's share of the cycle on the ground at full pace
+    const at = (q) => walkSpec({ phase: q, speed: SUIT.walk }).footRot[0][0]; // the left boot: stance from phase 0
+    expect(at(0.001)).toBeLessThan(-0.1); // toe up at heel strike
+    expect(Math.abs(at(d * 0.3))).toBeLessThan(0.02); // flat mid-stance
+    expect(at(d * 0.98)).toBeGreaterThan(0.2); // onto the ball at toe-off
+    const rig = solveRig(walkSpec({ phase: 0.001, speed: SUIT.walk }));
+    expect(Math.abs(soleLow(rig.footL))).toBeLessThan(0.01); // the heel on the ground, not in it
+  });
+
+  test("standing is never quite still, and never more than a suit allows", () => {
+    const xs = [];
+    const yaws = [];
+    for (let t = 0; t < 40; t += 0.5) {
+      const s = standSpec(t);
+      xs.push(s.pelvis[0]);
+      yaws.push(s.torsoRot[1]);
+      const rig = solveRig(s);
+      expect(Math.abs(soleLow(rig.footL))).toBeLessThan(0.01);
+      expect(Math.abs(soleLow(rig.footR))).toBeLessThan(0.01);
+      expect(rig.joints.reached.legL && rig.joints.reached.legR).toBe(true);
+    }
+    const span = (a) => Math.max(...a) - Math.min(...a);
+    expect(span(xs)).toBeGreaterThan(0.015); // the weight shifts from boot to boot
+    expect(span(xs)).toBeLessThan(0.04);
+    expect(span(yaws)).toBeGreaterThan(0.06); // a slow look round
+    expect(span(yaws)).toBeLessThan(0.2);
+  });
+});
+
 describe("the egress and the ingress on the LM's hardware", () => {
   const run = (at, T) => {
     const frames = [];

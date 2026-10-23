@@ -2,7 +2,8 @@ import { useRef, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { LM } from "@/data/touchdownFx";
-import { ASC_ENGINE, EXIT_R, EXIT_Y, PAD_H, PROBE_L, SLEEVE, buildBody, buildPad, buildStages, legFrames } from "@/data/lmDesign";
+import { ASC_ENGINE, EXIT_R, EXIT_Y, LM_DECALS, PAD_H, PROBE_L, SLEEVE, buildBody, buildCloseDetail, buildPad, buildStages, ladderParts, legFrames } from "@/data/lmDesign";
+import { foilTextures, lmDecalTexture, paintTextures } from "@/components/eva/evaTextures";
 
 /**
  * LUNAVIA's lunar module (shape: data/lmDesign.js).
@@ -36,6 +37,14 @@ import { ASC_ENGINE, EXIT_R, EXIT_Y, PAD_H, PROBE_L, SLEEVE, buildBody, buildPad
  * - every strut, probe and ladder part is one instance of a single
  *   InstancedMesh, and the four footpads are another (2);
  * - the plume is two additive cones (2).
+ *
+ * **Close range.** `quality="close"` (the lunar EVA, where the camera stands a few metres from the
+ * vehicle) draws the same LM for close viewing: puffed, crinkled foil blankets with a normal-mapped
+ * facet texture, painted panels with seams and rivet rows, metal corner trims, ribbed footpads,
+ * finer struts, and the hardware layer of data/lmDesign buildCloseDetail (channel ladder with flat
+ * treads on the same rungs, strut bands and cable runs, the equipment box's handle and stencil,
+ * the plaque, antenna feeds, the LUNAVIA marks) — four more merged meshes. Every other phase keeps
+ * the standard model.
  */
 
 const S = LM.scale;
@@ -278,23 +287,38 @@ function rodMatrix(a, b, r) {
 }
 
 // The ladder hangs on the front strut's sleeve, so it does not move with the piston.
-const LADDER = (() => {
-  const L = LEGS.find((l) => l.ladder);
-  const off = (s) => L.side.clone().multiplyScalar(s).addScaledVector(L.dir, 0.035);
-  const top = L.upper.clone().addScaledVector(L.axis, -0.05);
-  const bottom = L.padTop.clone().addScaledVector(L.axis, 0.14);
-  const rails = [-1, 1].map((s) => [top.clone().add(off(s * 0.045)), bottom.clone().add(off(s * 0.045))]);
-  const rungs = [];
-  for (let i = 1; i <= 7; i++) {
-    const c = top.clone().lerp(bottom, i / 8);
-    rungs.push([c.clone().add(off(-0.045)), c.clone().add(off(0.045))]);
-  }
-  return { rails, rungs };
-})();
+const LADDER = ladderParts();
 
-export default function LanderModel({ thrust = 0, scale = 1, fx = null, ascent = null, parts = "all" }) {
+/* ---- close range (the EVA) ---------------------------------------------------------------- */
+let CLOSE = null;
+const closeGeometry = () =>
+  CLOSE ||
+  (CLOSE = {
+    body: buildBody({ close: true }),
+    detail: buildCloseDetail(),
+    pad: buildPad({ close: true }),
+    rod: new THREE.CylinderGeometry(1, 1, 1, 16),
+  });
+function closeMaterials(env) {
+  const M = materials(env);
+  const F = foilTextures();
+  const P = paintTextures();
+  const std = (o) => new THREE.MeshStandardMaterial({ envMap: env, ...o });
+  const n = (k) => new THREE.Vector2(k, k);
+  M.foilGold = std({ color: "#e2b04f", map: F.map, normalMap: F.normalMap, normalScale: n(0.6), roughnessMap: F.roughnessMap, roughness: 0.95, metalness: 0.86, envMapIntensity: 1.35 });
+  M.foilDark = std({ color: "#3c352d", map: F.map, normalMap: F.normalMap, normalScale: n(0.55), roughnessMap: F.roughnessMap, roughness: 1, metalness: 0.65, envMapIntensity: 1.05 });
+  M.paint = std({ color: "#d0cdc4", map: P.map, normalMap: P.normalMap, normalScale: n(0.7), roughness: 0.62, metalness: 0.05, envMapIntensity: 0.4 });
+  M.paintDark = std({ color: "#4a4c52", map: P.map, normalMap: P.normalMap, normalScale: n(0.6), roughness: 0.55, metalness: 0.15, envMapIntensity: 0.45 });
+  M.metal = std({ color: "#c9ccd2", roughness: 0.3, metalness: 0.85, envMapIntensity: 1.15 });
+  M.decal = std({ map: lmDecalTexture(LM_DECALS), alphaTest: 0.5, roughness: 0.42, metalness: 0.35, envMapIntensity: 0.8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  return M;
+}
+
+export default function LanderModel({ thrust = 0, scale = 1, fx = null, ascent = null, parts = "all", quality = "standard" }) {
   const gl = useThree((s) => s.gl);
   const G = geometry();
+  const close = quality === "close";
+  const CG = close ? closeGeometry() : null;
   const split = !!ascent || parts !== "all";
   const ST = split ? stageGeometry() : null;
   const withDescent = parts !== "ascent";
@@ -304,7 +328,7 @@ export default function LanderModel({ thrust = 0, scale = 1, fx = null, ascent =
   const ascCoreRef = useRef();
   const ascPlumeMat = useMemo(() => plumeMaterial(0.7, "#fff3dc", "#ffb07a", false), []);
   const ascCoreMat = useMemo(() => plumeMaterial(1.5, "#ffffff", "#ffc27a", true), []);
-  const M = useMemo(() => materials(lunarEnv(gl)), [gl]);
+  const M = useMemo(() => (close ? closeMaterials(lunarEnv(gl)) : materials(lunarEnv(gl))), [gl, close]);
   // The ascent engine's lining glows on its own (not with the descent engine's).
   const ascInner = useMemo(() => M.engineInner.clone(), [M]);
   const plumeMat = useMemo(() => plumeMaterial(0.62, "#fff3dc", "#ffb07a", false), []);
@@ -386,8 +410,11 @@ export default function LanderModel({ thrust = 0, scale = 1, fx = null, ascent =
         put(root.clone(), _d.clone(), RAD.probe, COLOR.probe);
       }
     });
-    LADDER.rails.forEach(([a, b]) => put(a, b, RAD.rail, COLOR.ladder));
-    LADDER.rungs.forEach(([a, b]) => put(a, b, RAD.rung, COLOR.ladder));
+    // close range: the ladder is drawn in the hardware layer (channel rails, flat treads)
+    if (!close) {
+      LADDER.rails.forEach(([a, b]) => put(a, b, RAD.rail, COLOR.ladder));
+      LADDER.rungs.forEach(([a, b]) => put(a, b, RAD.rung, COLOR.ladder));
+    }
     rods.count = n;
     rods.instanceMatrix.needsUpdate = true;
     if (rods.instanceColor) rods.instanceColor.needsUpdate = true;
@@ -397,8 +424,13 @@ export default function LanderModel({ thrust = 0, scale = 1, fx = null, ascent =
   return (
     <group scale={scale} name="LM">
       {!split &&
-        Object.entries(G.body).map(([part, geo]) => (
+        Object.entries(close ? CG.body : G.body).map(([part, geo]) => (
           <mesh key={part} geometry={geo} material={M[part]} castShadow={part !== "glass"} receiveShadow />
+        ))}
+      {!split &&
+        close &&
+        Object.entries(CG.detail).map(([part, geo]) => (
+          <mesh key={`x-${part}`} geometry={geo} material={M[part]} castShadow={part !== "decal"} receiveShadow />
         ))}
       {split &&
         withDescent &&
@@ -416,11 +448,11 @@ export default function LanderModel({ thrust = 0, scale = 1, fx = null, ascent =
       )}
       {withDescent && (
         <>
-          <instancedMesh ref={rodsRef} args={[G.rod, undefined, ROD_COUNT]} frustumCulled={false} castShadow receiveShadow>
+          <instancedMesh key={close ? "rods-close" : "rods"} ref={rodsRef} args={[close ? CG.rod : G.rod, undefined, ROD_COUNT]} frustumCulled={false} castShadow receiveShadow>
             <meshStandardMaterial color="#ffffff" roughness={0.42} metalness={0.55} envMap={M.metal.envMap} envMapIntensity={0.9} />
           </instancedMesh>
-          <instancedMesh ref={padsRef} args={[G.pad, undefined, 4]} frustumCulled={false} castShadow receiveShadow>
-            <meshStandardMaterial color="#aeb1b7" roughness={0.42} metalness={0.65} envMap={M.metal.envMap} envMapIntensity={0.9} />
+          <instancedMesh key={close ? "pads-close" : "pads"} ref={padsRef} args={[close ? CG.pad : G.pad, undefined, 4]} frustumCulled={false} castShadow receiveShadow>
+            <meshStandardMaterial color={close ? "#c4c6cb" : "#aeb1b7"} roughness={close ? 0.5 : 0.42} metalness={close ? 0.42 : 0.65} envMap={M.metal.envMap} envMapIntensity={0.9} />
           </instancedMesh>
           <mesh ref={plumeRef} geometry={G.plume} material={plumeMat} position={[0, EXIT_Y, 0]} visible={false} renderOrder={2} />
           <mesh ref={coreRef} geometry={G.core} material={coreMat} position={[0, EXIT_Y, 0]} visible={false} renderOrder={2} />

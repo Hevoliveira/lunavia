@@ -108,3 +108,61 @@ describe("the two stages apart (lunar liftoff)", () => {
     expect(E.exitY).toBeGreaterThan(0.2);
   });
 });
+
+describe("close range (the lunar EVA): the same vehicle, more of it", () => {
+  const { buildCloseDetail, ladderParts, legFrames: legs } = require("./lmDesign");
+  const close = buildBody({ close: true });
+  const all = new THREE.Box3();
+  PARTS.forEach((k) => all.union(bounds(close[k])));
+  const detail = buildCloseDetail();
+  const hw = new THREE.Box3();
+  Object.values(detail).forEach((g) => hw.union(bounds(g)));
+
+  test("the contact contract holds: the nozzle exit lowest, nothing above the antenna limit, inside the footpad circle", () => {
+    expect(bounds(close.engine).min.y).toBeGreaterThan(EXIT_Y - 0.01);
+    expect(all.min.y).toBeGreaterThan(EXIT_Y - 0.01);
+    expect(all.max.y).toBeLessThanOrEqual(TOP + 1e-6);
+    expect(Math.max(-all.min.x, all.max.x, -all.min.z, all.max.z)).toBeLessThan(PAD_R - PAD_SIZE);
+    // the hardware (ladder, strut bands …) goes down the legs: above the footpad plane, inside the legs' reach
+    expect(hw.min.y).toBeGreaterThan(GROUND);
+    expect(hw.max.y).toBeLessThanOrEqual(TOP + 1e-6);
+    expect(Math.max(-hw.min.x, hw.max.x, -hw.min.z, hw.max.z)).toBeLessThan(PAD_R);
+  });
+
+  test("the puffed foil stays within a few centimetres of the flat body; every part keeps normals and UVs", () => {
+    const flat = bounds(buildBody().foilGold);
+    const puffed = bounds(close.foilGold);
+    expect(puffed.max.x - flat.max.x).toBeLessThan(0.012); // < 6 cm
+    expect(puffed.max.x - flat.max.x).toBeGreaterThan(-1e-6);
+    [...PARTS.map((k) => close[k]), ...Object.values(detail)].forEach((g) => {
+      expect(g.attributes.normal.count).toBe(g.attributes.position.count);
+      expect(g.attributes.uv.count).toBe(g.attributes.position.count);
+    });
+  });
+
+  test("the ladder's treads sit on the very rungs the EVA climbs (data/evaSim), the rails where the gloves slide", () => {
+    const L = legs().find((l) => l.ladder);
+    const top = L.upper.clone().addScaledVector(L.axis, -0.05).addScaledVector(L.dir, 0.035);
+    const bottom = L.padTop.clone().addScaledVector(L.axis, 0.14).addScaledVector(L.dir, 0.035);
+    const { rungs, rails } = ladderParts();
+    expect(rungs).toHaveLength(7);
+    rungs.forEach(([a, b], i) => {
+      const mid = a.clone().lerp(b, 0.5);
+      expect(mid.distanceTo(top.clone().lerp(bottom, (i + 1) / 8))).toBeLessThan(1e-9);
+      expect(a.distanceTo(b)).toBeCloseTo(0.09, 9);
+    });
+    rails.forEach(([a]) => expect(Math.abs(a.distanceTo(top) - 0.045)).toBeLessThan(1e-9));
+  });
+
+  test("an iPhone budget: body, hardware and four ribbed footpads under 22k triangles", () => {
+    let n = 0;
+    PARTS.forEach((k) => (n += tris(close[k])));
+    Object.values(detail).forEach((g) => (n += tris(g)));
+    n += 4 * tris(buildPad({ close: true }));
+    expect(n).toBeLessThan(22000);
+    // the footpad keeps its contact: bottom at its origin, the physics' radius (the rolled lip inside it)
+    const b = bounds(buildPad({ close: true }));
+    expect(b.min.y).toBeCloseTo(0, 6);
+    expect(Math.max(b.max.x, b.max.z)).toBeLessThanOrEqual(PAD_SIZE + 0.002);
+  });
+});
