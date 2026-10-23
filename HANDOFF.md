@@ -3622,8 +3622,8 @@ with the distance to the LM (and the exploration-limit warning as a row of its o
 astronaut walks, subtitles (the new `lane` placement of `CommsSubtitles`), the EVA's notices
 (SAMPLE STOWED · TQ-01, PHOTO RECORDED) and MISSION CHECKPOINT SAVED / MISSION RESUMED
 (`MissionSaveNotice` `below="lane"`) share the top strip between the objectives panel and PAUSE,
-above the astronaut's helmet; during the egress and ingress films the subtitles take the upper-left
-corner as in the reentry. A target marker floats over the current objective (SAMPLE · 8 m,
+above the astronaut's helmet (and, in the egress and ingress films, above the FIRST STEPS ON THE
+MOON and EVA COMPLETE banners). A target marker floats over the current objective (SAMPLE · 8 m,
 PHOTO POINT, LADDER/LM) and pins to the screen edge with an arrow when it is off-screen. All
 panels respect the safe areas; nothing sits over the astronaut. Desktop: WASD / arrows, mouse
 drag, E action, C camera, Space photo, Esc pause.
@@ -3631,7 +3631,10 @@ drag, E action, C camera, Space photo, Esc pause.
 **Camera.** Third person behind and above (5.6 m, slight downward pitch), orbit by drag, settles
 behind the walk after 2.2 s of no look input; swings to the side while the sample is taken. A
 clear-path test pulls it in at once when the LM, a leg or a boulder is in the way and eases back
-out; it is clamped above the terrain and kept out of the LM. Egress and ingress use framed
+out; a ray only counts as blocked where it goes deeper into a keep-out volume than the astronaut
+already stands (he can stand closer to the LM than the camera's margin). With the LM or a boulder
+right behind him, the camera rises over him and looks down instead of closing in on the backpack.
+It is clamped above the terrain, and a last guard keeps it out of the LM's body. Egress and ingress use framed
 cinematic angles on the hatch and ladder; the photo uses the chest camera's own view.
 
 **Objectives.** FIRST STEPS (done when the boot touches the surface; the FIRST STEPS ON THE MOON

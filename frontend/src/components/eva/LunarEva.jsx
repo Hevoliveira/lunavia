@@ -37,7 +37,7 @@ const PHOTO_VFOV = 59; // the square viewfinder (82% of the height) then spans P
 const PHOTO_FRAME_FOV = 50 * DEG;
 // third person: the look point a little above the helmet keeps the astronaut in the lower half of
 // the frame (the subtitles and the objective marker stay clear of him), the LM and the plain beyond
-const CAM = { dist: 5.6, pitch: 0.19, target: 1.65, minPitch: -0.08, maxPitch: 0.8 };
+const CAM = { dist: 5.6, pitch: 0.19, target: 1.65, minPitch: -0.08, maxPitch: 0.8, near: 1.8 };
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const smooth = (x) => {
   const u = clamp(x, 0, 1);
@@ -393,6 +393,8 @@ function Director({ sim, astroRef, camState, markerRefs, callbacks }) {
         cam: camera.position.toArray().map((v) => v / S_PER_M),
         camInsideLM: camState.current.insideLM,
         camBelowGround: camState.current.belowGround,
+        camGuard: camState.current.guarded,
+        camRange: camera.position.distanceTo(camLook.current) / S_PER_M,
         frame: { n: pf.n, avg: pf.n ? pf.acc / pf.n : 0, p95: pf.p95 || 0 },
         samples: S.samples.length,
         photos: S.photos.length,
@@ -681,6 +683,7 @@ function updateCamera(S, camera, dt, camPos, camLook, camState, size) {
   let C;
   let L;
   let fov = VFOV;
+  const yawBefore = S.camYaw;
   // the look drag
   const ld = S.look;
   if (ld.dx || ld.dy) {
@@ -731,20 +734,68 @@ function updateCamera(S, camera, dt, camPos, camLook, camState, size) {
     // third person: behind and above, orbiting with the drag; it settles behind the walk when
     // the player is not looking round. Taking the sample it swings round to the side, where the
     // scoop and the stone can be seen (from behind the backpack hides them).
-    if (S.mode === "sample") {
-      const side = wrapPi(w.heading + 1.25);
-      S.camYaw = wrapPi(S.camYaw + wrapPi(side - S.camYaw) * Math.min(1, dt * 1.6));
-    } else if (S.clock - S.lookAt > 2.2 && Math.abs(w.speed) > 0.35) S.camYaw = wrapPi(S.camYaw + wrapPi(w.heading - S.camYaw) * Math.min(1, dt * 0.6));
     const T = [w.x, w.y + CAM.target, w.z];
+    const at = (yw, q, dd) => [T[0] - Math.sin(yw) * dd * Math.cos(q), T[1] + Math.sin(q) * dd, T[2] - Math.cos(yw) * dd * Math.cos(q)];
+    const reach = (yw, q) => {
+      const f = clearPath(S, T, at(yw, q, CAM.dist));
+      return Math.hypot(f[0] - T[0], f[1] - T[1], f[2] - T[2]);
+    };
+    const pNow = S.camPitch + (S.camLift || 0);
+    const clear = (yw) => reach(yw, pNow) >= CAM.near;
+    // the camera never parks on a side where the LM, a strut or a boulder is right behind the
+    // astronaut (it would close in on the backpack): a drag into that side stops at its edge ...
+    if (S.camYaw !== yawBefore && !clear(S.camYaw) && clear(yawBefore)) {
+      let a0 = yawBefore;
+      let a1 = yawBefore + wrapPi(S.camYaw - yawBefore);
+      for (let i = 0; i < 6; i++) {
+        const m = (a0 + a1) / 2;
+        if (clear(m)) a0 = m;
+        else a1 = m;
+      }
+      S.camYaw = wrapPi(a0);
+    }
+    // ... the swing for the sample and the settle behind the walk only turn it towards clear sides ...
+    let aim = null;
+    if (S.mode === "sample") aim = wrapPi(w.heading + 1.25);
+    else if (S.clock - S.lookAt > 2.2 && Math.abs(w.speed) > 0.35) aim = w.heading;
+    if (aim !== null) {
+      const next = wrapPi(S.camYaw + wrapPi(aim - S.camYaw) * Math.min(1, dt * (S.mode === "sample" ? 1.6 : 0.6)));
+      if (clear(next) || !clear(S.camYaw)) S.camYaw = next;
+    }
+    // ... and if the astronaut backs up against something with the camera on that side, the camera
+    // slides round to the nearest clear side
+    if (!clear(S.camYaw)) {
+      let to = null;
+      for (let j = 1; j <= 16 && to === null; j++) {
+        for (const sg of [1, -1]) {
+          const y2 = wrapPi(S.camYaw + sg * j * 0.1);
+          if (clear(y2)) {
+            to = y2;
+            break;
+          }
+        }
+      }
+      if (to !== null) S.camYaw = wrapPi(S.camYaw + wrapPi(to - S.camYaw) * Math.min(1, dt * 6));
+    }
     const yaw = S.camYaw;
-    const p = S.camPitch;
-    const want = [T[0] - Math.sin(yaw) * CAM.dist * Math.cos(p), T[1] + Math.sin(p) * CAM.dist, T[2] - Math.cos(yaw) * CAM.dist * Math.cos(p)];
-    const free = clearPath(S, T, want);
-    const fd = Math.hypot(free[0] - T[0], free[1] - T[1], free[2] - T[2]);
+    // the drag's pitch, unless a boulder or a strut is still right behind: then the camera rises
+    // over the astronaut and looks down, and settles back as soon as the way behind is clear
+    let want = S.camPitch;
+    let best = reach(yaw, want);
+    for (let q = S.camPitch + 0.12; best < 2.4 && q <= 1.36; q += 0.12) {
+      const r = reach(yaw, q);
+      if (r > best + 0.05) {
+        best = r;
+        want = q;
+      }
+    }
+    S.camLift = (S.camLift || 0) + (want - S.camPitch - (S.camLift || 0)) * Math.min(1, dt * 5);
+    const p = S.camPitch + S.camLift;
+    const fd = reach(yaw, p);
     // pull in at once when something is in the way, ease back out
     S.camDist = fd < S.camDist ? fd : Math.min(fd, S.camDist + dt * 2.2);
     const d = Math.max(0.6, S.camDist);
-    C = [T[0] - Math.sin(yaw) * d * Math.cos(p), T[1] + Math.sin(p) * d, T[2] - Math.cos(yaw) * d * Math.cos(p)];
+    C = at(yaw, p, d);
     L = T;
   }
   _c.set(C[0] * S_PER_M, C[1] * S_PER_M, C[2] * S_PER_M);
@@ -766,8 +817,17 @@ function updateCamera(S, camera, dt, camPos, camLook, camState, size) {
   const cz = cm.z / S_PER_M;
   const g = S.world.ground(cx, cz);
   if (cy < g + 0.25) cm.y = (g + 0.25) * S_PER_M;
-  camState.current.insideLM = Math.hypot(cx - lm.axis[0], cz - lm.axis[1]) < 2.4 && cy < lm.base[1] + 6;
-  camState.current.belowGround = cy < g;
+  // and never inside the LM's body, whatever the pull-in left (a last guard: out to its side)
+  const rl = Math.hypot(cx - lm.axis[0], cz - lm.axis[1]);
+  camState.current.guarded = false;
+  if (rl < 2.55 && cy < lm.base[1] + 6.5 && S.mode !== "egress" && S.mode !== "ingress" && S.mode !== "done") {
+    const k = rl > 1e-3 ? 2.55 / rl : 1;
+    cm.x = (lm.axis[0] + (cx - lm.axis[0]) * k) * S_PER_M;
+    cm.z = (lm.axis[1] + (cz - lm.axis[1]) * k) * S_PER_M;
+    camState.current.guarded = true;
+  }
+  camState.current.insideLM = Math.hypot(cm.x / S_PER_M - lm.axis[0], cm.z / S_PER_M - lm.axis[1]) < 2.4 && cm.y / S_PER_M < lm.base[1] + 6;
+  camState.current.belowGround = cm.y / S_PER_M < S.world.ground(cm.x / S_PER_M, cm.z / S_PER_M);
   camera.position.copy(cm);
   camera.lookAt(camLook.current);
   if (Math.abs(camera.fov - fov) > 0.01) {
@@ -992,14 +1052,13 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // the egress and the ingress are films with banners in the upper middle: there the subtitles take
-  // the upper-left corner (and the objectives make way for them); walking, they take the top lane
-  // between the objectives and PAUSE, above the astronaut's helmet
-  const scriptedNow = hud.mode === "egress" || hud.mode === "ingress" || hud.mode === "done";
+  // the subtitles take the top lane between the objectives and PAUSE, above the astronaut's helmet,
+  // above the notices under them (checkpoint saved, sample stowed) and above the banners of the
+  // egress and ingress films (FIRST STEPS ON THE MOON, EVA COMPLETE) lower down
   useEffect(() => {
-    setSubtitlePlacement(scriptedNow ? "corner" : "lane");
-  }, [scriptedNow]);
-  useEffect(() => () => setSubtitlePlacement("default"), []);
+    setSubtitlePlacement("lane");
+    return () => setSubtitlePlacement("default");
+  }, []);
   useEffect(() => {
     if (!toast) return undefined;
     const t = setTimeout(() => setToast(null), 3000);
@@ -1136,7 +1195,7 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
       {!scripted && !paused && hud.mode !== "photo" && <Joystick sim={sim} label={T.move} />}
       {!scripted && !paused && <LookPad sim={sim} />}
 
-      {/* objectives, upper left (out of the way of the subtitles during the films) */}
+      {/* objectives, upper left (hidden during the egress and ingress films) */}
       <div style={scripted ? { display: "none" } : undefined} className="absolute top-[calc(var(--hud-top)+0.25rem)] left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] z-30 pointer-events-none bg-black/50 backdrop-blur-sm border-l-2 border-[#FF3B00] px-3 py-2 short:px-2.5 short:py-1.5 max-w-[min(260px,42vw)]" data-testid="eva-objectives">
         <div className="font-mono text-[9px] short:text-[8px] tracking-[0.35em] text-[#FF3B00]">● {T.title}</div>
         <ul className="mt-1 space-y-0.5 font-mono text-[10px] short:text-[9px] tracking-[0.14em]">
