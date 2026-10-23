@@ -1,20 +1,25 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 672b8ef**.
+This folder installs **BUILD 592b8c1**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 672b8ef · 2026-10-23 07:56 UTC**
+> **LUNAVIA iOS · BUILD 592b8c1 · 2026-10-23 20:26 UTC**
 
-It adds the **lunar EVA — first steps on the Moon** at the Sea of Tranquility: after a safe
-landing there, the ascent preparation offers **BEGIN EVA** (optional; PT: INICIAR EVA) under
-INITIATE LUNAR ASCENT. The astronaut climbs down the LM's ladder, takes the first steps, collects
-a lunar sample, photographs the landing site and climbs back in; then the mission continues to
-the ascent as before. The other three destinations, and everything else — the launch, the
-landing, the docking, the return, the splashdown, the scores and save and resume — are as in
-BUILD 3326bab.
+It is the **lunar EVA's close-range visual upgrade**: the same EVA at the Sea of Tranquility
+(after a safe landing, **BEGIN EVA** in the ascent preparation; PT: INICIAR EVA), now with a
+detailed astronaut (helmet with a gold visor that reflects the surroundings, chest unit, hoses,
+backpack, convolutes, gloves, overshoes), a livelier idle and a more grounded walk with contact
+shadows, a lunar module built for close viewing during the EVA (crinkled foil blankets, panel
+seams and rivets, a channel ladder with flat treads, ribbed footpads, strut details, the hatch's
+handle and hinges, a plaque, equipment boxes) and richer ground round the astronaut and the LM
+(regolith detail, pebbles, the engine-swept ground, footpad occlusion, treaded footprints).
+Mission flow, objectives, controls and HUD are as in BUILD 672b8ef; outside the EVA the game
+(and the LM in every other phase) is unchanged.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **672b8ef** is the previous release: the same EVA with the simpler astronaut (capsule limbs,
+  a box backpack, flat visor), flat foil and thin rod ladder on the LM, and smooth ground;
 - **3326bab** is the previous release: save and resume, but no BEGIN EVA after the landing;
 - **c88a530** and **2a8b97d** are earlier builds of save and resume (2a8b97d: MISSION RESUMED
   over the return's phase label, the menu cutting the checkpoint's name in Portuguese; both: the
@@ -131,6 +136,7 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Natural cloud formations: broad, low cumulus (2.5–4.5 times wider than tall) built as heaps of puffs, scattered in irregular groups with clear sky between them, a few thin broken stratocumulus sheets far off, open sky over the splashdown, taller cumulus only far away | — | 8691a17 |
 | Mission save and resume: automatic checkpoints (LUNAR DESCENT READY, LUNAR LANDING COMPLETE, DOCKING READY, DOCKING COMPLETE, EARTH REENTRY READY), kept in the app's own files and in the web view; RESUME MISSION on the startup screen and in the game menu; START A NEW MISSION? before a save is replaced; an interrupted maneuver flown again from the last safe checkpoint | — | 2a8b97d, c88a530, 3326bab |
 | Lunar EVA — first steps on the Moon (Sea of Tranquility): BEGIN EVA on the ascent preparation (optional), the astronaut out of the hatch and down the ladder, walking in lunar gravity, FIRST STEPS ON THE MOON, COLLECT LUNAR SAMPLE, DOCUMENT THE LANDING SITE with the chest camera, back up the ladder and the hatch closed, EVA checkpoints (LUNAR EVA, LUNAR EVA COMPLETE), the FIRST STEPS achievement, English and Portuguese | — | ed6e7ec, 672b8ef |
+| Lunar EVA close-range visuals: a detailed astronaut (LEVA helmet, a gold visor reflecting the surroundings, chest unit and camera, ribbed hoses, backpack, convolutes, gauntlets, overshoes with treads), a living idle, a grounded walk (heel strike, less float) and contact shadows; the LM built for close viewing in the EVA (crinkled foil blankets, painted panels with seams and rivets, channel ladder with flat treads, ribbed footpads, strut details, hatch handle and hinges, plaque, equipment boxes, antenna feeds); the ground round the astronaut and the LM (regolith detail, pebbles, the engine-swept ground, footpad occlusion, treaded footprints) | — | 592b8c1 |
 
 ## Try the lunar EVA on the iPhone
 
@@ -151,6 +157,12 @@ Not yet tried on a physical iPhone; the checks below were run in a desktop brows
 7. Walk far from the LM: at 24 m the objectives panel shows EXPLORATION LIMIT; at 31 m the
    astronaut stops. PAUSE (top right) stops everything.
 8. Skipping the EVA (INITIATE LUNAR ASCENT straight away) flies the mission exactly as before.
+9. **What to look at up close (BUILD 592b8c1):** drag the camera round the astronaut standing
+   still: the gold visor reflects the ground and the LM (it updates after a couple of metres of
+   walking), the chest unit's labels, the hoses, the backpack's panel; watch the boots while
+   walking (heel first, contact shadows, treaded footprints); walk to the LM: the crinkled foil,
+   the ladder's flat treads and the plaque on its strut, the ribbed footpads and the dark ring of
+   disturbed dust round them, the hatch's handle. Note the frame rate while walking near the LM.
 
 ## Try save and resume on the iPhone
 
@@ -174,7 +186,9 @@ project) the moment it is reached; it does not depend on the app being closed cl
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 672b8ef** with `yarn ios:sync` (`ios:verify`: 155 checks, now including the lunar EVA in English and Portuguese, its checkpoints and achievement, and every one of the 300 voice clips in the app). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **Built from the clean tree at 592b8c1** with `yarn ios:sync` (`ios:verify`: 160 checks, now including the EVA's close-range visuals: the suit's dust shader, the near regolith, the close footpads, the plaque and the equipment box stencil). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release is the lunar EVA's close-range visual upgrade** over BUILD 672b8ef (HANDOFF §60). Web game only: the Xcode project, Capacitor and the Swift package are unchanged, so the ZIP opens and builds in Xcode as before; the save format is unchanged (schema 2). Browser checks of this release: the full Sea of Tranquility mission with the EVA on the packaged files (24/24: two SIGKILLs and a clean close in the middle of it, no duplicate sample, no landing replayed, the score unchanged, FIRST STEPS once, no subtitle or notice over a control or the astronaut, no page errors), the EVA's controls and safety (18/18, the HUD at three iPhone sizes in English and Portuguese), Hadley flown straight through (12/12: the LM in its standard look, no BEGIN EVA), the unit tests (624/624), and before/after close-ups of the astronaut, the LM and the ground. Measured in software rendering (only the ratio means anything): the EVA's frame 1.87–1.95× the ascent preparation's (1.13–1.30× before), with fewer draw calls than before (59 against 107–111). Not run on a physical iPhone.
+- **672b8ef** was built from the clean tree at 672b8ef with `yarn ios:sync` (`ios:verify`: 155 checks, now including the lunar EVA in English and Portuguese, its checkpoints and achievement, and every one of the 300 voice clips in the app). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
 - **This release adds the lunar EVA** over BUILD 3326bab (HANDOFF §59). Web game only: the Xcode project, Capacitor and the Swift package are unchanged, so the ZIP opens and builds in Xcode as before. The save format moves to schema 2 (it still reads saves written by 3326bab; a mission saved by this build and then opened by 3326bab is reported as written by a newer version, never as damaged). Browser checks of this release: the full Sea of Tranquility mission with the EVA on the packaged files (24/24: two SIGKILLs and a clean close in the middle of it, no duplicate sample, no landing replayed, the score unchanged, FIRST STEPS unlocked once, no subtitle or notice over a control or the astronaut), the EVA's controls and safety (18/18: the touch joystick and camera, the 24 m warning and the 31 m limit, walking into the LM from four sides, the camera never inside the LM, under the ground or on the backpack, PAUSE, the HUD at 667 × 375, 844 × 390 and 932 × 430 in English and Portuguese), the Sea of Tranquility without the EVA and the other three destinations flown straight through (12/12 each, no BEGIN EVA away from Tranquility), and the bundle offline resuming a save written by 3326bab. Not run on a physical iPhone.
 - **3326bab** (the previous release) was built from its clean tree with 146 checks.
 - **3326bab added save and resume** over BUILD 8691a17 (HANDOFF §58). The Xcode project gains one Swift file (`App/MissionSaveStore.swift`) and one line in `SceneDelegate.swift`; Capacitor and the Swift package are unchanged (no new dependency), so the ZIP opens and builds in Xcode as before. Browser checks of this release: a full mission closed and relaunched at every checkpoint (three times by SIGKILL), 60 resumes across the 4 destinations × 3 difficulties × 5 checkpoints, damaged, torn, outdated and newer-version saves, START A NEW MISSION?, a mission flown straight through and the docking training, the packaged files offline. Not run on a physical iPhone.

@@ -149,6 +149,11 @@ const FEATURES = [
   ["Lunar EVA in Portuguese", "PRIMEIROS PASSOS NA LUA"],
   ["Lunar EVA checkpoints (EVA READY, EVA COMPLETE)", "EVA_COMPLETE"],
   ["Lunar EVA achievement: FIRST EVA", "FIRST_EVA"],
+  ["EVA close range: the astronaut's suit dust shader (skinned suit)", "lv-suit-dirt"],
+  ["EVA close range: the near regolith, swept ground and footpad occlusion", "lv-terrain-near"],
+  ["EVA close range: the LM's ribbed footpads (quality close)", "pads-close"],
+  ["EVA close range: the plaque on the ladder strut", "HERE THE LUNAVIA CREW"],
+  ["EVA close range: the equipment box stencil", "LUNAVIA  EQ-2"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar

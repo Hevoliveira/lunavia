@@ -227,7 +227,7 @@ the descent camera's visibility area is unchanged. See `TRAINING_CENTER.md`.
 
 ## Lunar EVA (Sea of Tranquility)
 
-The optional lunar EVA (HANDOFF §59) is offered by BEGIN EVA on the ascent preparation after a
+The optional lunar EVA (HANDOFF §59; close-range visuals §60) is offered by BEGIN EVA on the ascent preparation after a
 landing at the Sea of Tranquility. On a phone in landscape:
 - **Left thumb:** a floating joystick. The thumb can land anywhere in the lower left (44 % of the
   width, 62 % of the height) and the knob follows it; at rest a 104 pt ring is drawn bottom-left
@@ -239,15 +239,20 @@ landing at the Sea of Tranquility. On a phone in landscape:
 - No oxygen or time limit; nothing advances while PAUSE is open.
 - The voice lines (`voice/en|pt/eva.*.mp3`, 30 files, 0.7 MB) are bundled with the rest of the
   voice pack; `yarn ios:verify` now checks every clip in `voice/manifest.json` is in the app.
-- Cost: the EVA reuses the ascent preparation's terrain, rocks, sky, Sun (the same 2048² shadow
-  map, here over a tighter 24-unit box that follows the astronaut) and LM. It adds the astronaut
-  (42 meshes merged per segment and material, 20.9k triangles, casting shadows) and the
-  footprints. Measured against the ascent preparation in the same software renderer (Chromium +
-  SwiftShader on the CPU — only the ratio means anything, not the milliseconds): 1.13× its frame
-  time walking and 1.30× standing next to the LM; 107–111 draw calls against 38 (the astronaut is
-  drawn twice, for the Sun's shadow); 118–122k triangles against 81k. The adaptive resolution
-  (below about 45 fps the pixel ratio steps down) applies as in every scene. Not yet measured on
-  an iPhone GPU.
+- Cost (BUILD 592b8c1, the close-range visual upgrade, HANDOFF §60): the EVA reuses the ascent
+  preparation's terrain, rocks, sky and Sun (the same 2048² shadow map, here over a tighter
+  24-unit box that follows the astronaut). It adds the astronaut (one skinned mesh per material:
+  8 meshes, 6 casting shadows, ~30k triangles), the visor's reflection (a 128-px cube map, one
+  face per frame after the astronaut has moved 1.6 m), the LM's close-range model (~20k
+  triangles, four more meshes), the near ground (regolith detail faded out by 26 m, the swept
+  zone, footpad occlusion), ~900 instanced pebbles, contact shadows and the footprints. Textures
+  are generated on the device (no new files), at most 512², ~12 MB of GPU memory. Measured
+  against the ascent preparation in the same software renderer (Chromium + SwiftShader on the
+  CPU — only the ratio means anything, not the milliseconds): 1.87× its frame time walking and
+  1.95× standing next to the LM (1.13× and 1.30× before the upgrade); 59 draw calls (up to 104 on
+  a visor-capture frame) against 38 for the ascent preparation and 107–111 for the EVA before;
+  187–195k triangles against 81k. The adaptive resolution (below about 45 fps the pixel ratio
+  steps down) applies as in every scene. Not yet measured on an iPhone GPU.
 
 ## Audio on iOS
 

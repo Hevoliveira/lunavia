@@ -3715,3 +3715,135 @@ check counts game time, not wall time):
 
 Not verified here: a physical iPhone (touch feel, frame rate, thermals and memory on a real GPU,
 WKWebView), and the voice lines on a device speaker.
+
+## 60. Lunar EVA — close-range visual upgrade (astronaut, LM, near ground)
+
+A visual pass on the EVA of §59 for close views: the astronaut, the lunar module and the ground in
+the first metres round them. Mission structure, objectives, UI layout, controls, the egress and
+ingress paths, the launch, landing and docking, save and resume and scoring are unchanged. Every
+change is EVA-only: the LM keeps its standard model in every other phase (`LanderModel` default
+`quality`), and the terrain's near detail is an option only the EVA passes.
+
+**Astronaut** (`components/eva/astronautModel.js`, `Astronaut.jsx`, `evaTextures.js`).
+- An A7L-B-style suit built for close viewing: the LEVA shell with the visor's rim, pivot bosses
+  and the drawn-up eyeshade; neck ring and lock ring with latches; the chest control unit (knobs,
+  a labelled face: FAN, PUMP, O2 gauge, PTT) hanging on straps over the shoulders; the camera
+  (body, magazine, lens and ring) on its bracket; ribbed oxygen hoses with anodised connectors;
+  the backpack with edge bumpers, access panel and fasteners, tie-down bands, the purge unit with
+  its handle, valve and antenna; soft convolutes at the shoulders, elbows, knees and waist; thigh
+  pockets, the cuff checklist (left), a watch (right), the LUNAVIA emblem on the left shoulder and
+  right chest, the name tag; metal-weave gauntlets and palms, pre-curled fingers with blue tips;
+  overshoes with a Beta tongue, a heel strap with buckles, a heel latch, blue soles with a toe
+  bumper and a chevron tread.
+- Materials: a procedural Beta-cloth texture (weave, quilted seams every ~25 cm, soft folds) as
+  albedo and normal map, with UVs projected per segment (cylindrical on limbs, planar on boxes) so
+  the weave is one size everywhere; vertex tints let one white material cover suit, pack and
+  pockets. One dust shader greys each vertex by a per-segment dirt weight (boots, then shins) as
+  the walk goes on (`uDust` = distance walked / 160 m).
+- The gold visor (`MeshPhysicalMaterial`, metal, low roughness, a light clearcoat) reflects the
+  real surroundings: a 128-px cube map captured from the helmet's centre — the astronaut hidden,
+  the shadow maps not redrawn — one face per frame whenever the astronaut has moved 1.6 m (at most
+  every 1.2 s), all six at once on the first frame; three re-filters it for the visor's gloss
+  (`needsPMREMUpdate`, same target, no recompile).
+- Rigid skinning: one `SkinnedMesh` per material (suit, weave, shell, visor, metal, dark, colour,
+  decal: 8 meshes, 6 casting shadows) on a 17-bone skeleton (the 14 rig segments, the two finger
+  sets under the hands, the scoop, hidden by scaling its bone to zero). About 15 draw calls with
+  the shadow pass, against 84 for the old mesh-per-part astronaut; ~30k triangles.
+
+**Motion** (`data/astronautRig.js`) and **grounding** (`components/eva/EvaGround.jsx`).
+- Idle (`standSpec`): breathing (~4 s), the weight shifting from boot to boot with the hips
+  (loaded side up, the torso rolling back to keep the helmet level, ~17 s), a slow look round,
+  arms, grips and wrists drifting. All small: a pressurised suit damps everything.
+- Walk (`walkSpec`): each boot on the ground longer at pace (duty 0.62 → 0.44, was 0.38) and a
+  lower bob (72 %), so less float; a heel strike rolling flat and onto the ball (toe first when
+  walking backwards); the knees giving a little as each boot takes the weight; the hips over the
+  loaded boot; the arms swinging a beat behind the legs, rising and coming in as they come
+  forward. Planted boots still do not slide (the rig tests hold).
+- Contact shadows: a soft disc under each boot, darkest when it is down and fading as it lifts,
+  and a wide faint one under the body (three transparent quads, no extra shadow pass) — the low
+  Sun throws the real shadow metres away.
+
+**Lunar module, close range** (`LanderModel quality="close"`, `data/lmDesign.js`
+`buildBody({ close })`, `buildPad({ close })`, `buildCloseDetail()`, `ladderParts()`).
+- The descent stage's blankets puff out between their edges and crinkle (`pillow`: each of the
+  eight faces and the four bays, 2–3 cm), with metal trims on the eight corners and a bottom band.
+- Normal-mapped foil (`foilTextures`: broad wrinkles carrying fine crinkles, two-scale Voronoi
+  facets tilted at random, a roughness map; the colour barely changes, the look comes from the
+  reflections) and painted panels (`paintTextures`: recessed seams, rivet rows, light wear); paint
+  and foil UVs in model units so small parts (the hatch) do not tile a grid.
+- A hardware layer, merged per material (metal, black, dark paint, decals): the ladder as channel
+  rails and flat treads with grip strips on the very rungs `evaSim` climbs (`ladderParts`, shared
+  with the standard ladder and tested against the EVA's rungs), tape bands on the strut sleeves,
+  the strut fittings, the collars' bolt rings, cable runs, the secondary struts' end fittings; the
+  porch's anti-slip strips and lip; the equipment box's handle, latches, hinge and MESA stencil;
+  strapped equipment boxes on the side and aft bays; a commemorative plaque on the ladder strut
+  between the second and third rungs; feed horns and struts on both dishes, the VHF whips'
+  insulators; the LUNAVIA wordmark beside the hatch and the emblem on the front bay.
+- Ribbed footpads with a rolled lip and the socket round the ball; finer struts, pods, docking
+  tunnel, bell and dishes; the hatch's trim, hinges and handle (the handle swings in with the
+  door, `components/eva/LunarEva.jsx` `Hatch`).
+- Cost: ~20k triangles for body, hardware and footpads (standard: ~6k), four more meshes.
+
+**Near ground** (`components/scenes/LunarSite.jsx`, `terrainMaterial(tex, near)`; the EVA's
+`near` = { the 512² near-regolith texture, the swept zone, the descent stage, the four pads }).
+- Regolith detail at a 1.2 m and a 4.9 m tile (pebbles, clods, craterlets: albedo grain and a
+  derivative bump on the normal), faded out 10–26 m from the camera; computed only where it shows.
+- Round the LM only: the ground the descent engine swept (11 m: smoother, a little brighter,
+  radial streaks), occlusion under the descent stage, and round each footpad an occlusion ring
+  and the dust it pushed up.
+- ~900 instanced pebbles (4–26 cm, half buried, own tones, a little bounce light on their shaded
+  faces) from the footpads to ~26 m, fewer on the swept ground, none on the footpads, the ladder's
+  foot or the sample stone; one draw, no shadow pass of their own.
+- Footprints with the overshoe's chevron tread (heel narrower than the toe, a faint rim).
+- Lighting: no global change was needed; the new materials' environment response, the contact
+  shadows and the ground occlusion give the grounding and the readability.
+
+**Tests.** `data/lmDesign.test.js` (+4: the close body keeps the contact contract, the hardware
+stays above the footpad plane and inside the legs, the treads sit on the EVA's rungs and the rails
+where the gloves slide, ≤ 22k triangles with the footpads), `data/astronautRig.test.js` (+2: heel
+strike, flat mid-stance and toe-off; an idle that moves and stays within the suit's limits).
+`scripts/verify-ios-bundle.js`: five markers (the suit's dust shader, the near regolith, the
+close footpads, the plaque, the equipment box stencil).
+
+**Browser validation** (Chromium + SwiftShader, a CPU rasteriser, 844 × 390 touch viewport —
+*browser* tests, not an iPhone; timings count game time):
+- the full Tranquility · ASTRONAUT mission with the EVA on the packaged files of BUILD 592b8c1
+  (24/24: two SIGKILLs and a clean close in the middle, no duplicate sample, no landing replay,
+  FIRST STEPS once, the score on the 1,000-point model, no subtitle or notice over a control, the
+  objectives or the walking astronaut, no page errors);
+- the EVA's controls and safety on the same component (18/18: touch joystick and camera, no slide,
+  the 24 m warning and 31 m limit, the marker, the LM stops the astronaut at 2.81 m from four
+  sides, the camera never inside the LM, under the ground or on the backpack, PAUSE, the HUD at
+  667 × 375, 844 × 390 and 932 × 430 in English and Portuguese);
+- Hadley · ASTRONAUT flown straight through on the packaged files (12/12: no BEGIN EVA, the LM
+  and the landing, docking, return, splashdown, scoring and docking training as before);
+- the standard LM in the ascent preparation unchanged (screenshot), unit tests 624/624;
+- fixed close-up framings before and after (astronaut front, helmet, back, boots, full; LM front,
+  ladder and hatch, footpad, ascent stage, side; ground at the ladder and low; the game's own
+  camera), footprints from above, game-speed GIFs of the walk and the idle;
+- cost against the ascent preparation in the same software renderer (only the ratio means
+  anything): 1.87× its frame time walking and 1.95× standing by the LM (before this pass 1.13× and
+  1.30×); 59 draw calls (up to 104 on the frames that capture a face of the visor's cube map)
+  against 107–111 before; 187–195k triangles against 118–122k (the astronaut 30k, was 20.9k).
+  Splitting it (standing, same run): the near ground ≈ 45 ms of 334, the close LM ≈ 30 ms, the
+  pebbles nothing measurable, the new astronaut, visor and contact shadows ≈ 20 ms. The adaptive
+  resolution (the pixel ratio steps down below about 45 fps) applies as in every scene.
+
+**Mobile performance, by design.** Detail only where the camera can see it: the near ground fades
+out by 26 m and its maths runs only where it shows; the LM's close model only in the EVA; the
+visor's reflection captured one 128-px face per frame and only after the astronaut has moved;
+fewer draw calls than before (skinned astronaut, merged LM hardware, one instanced pebble draw);
+textures procedural (no new files in the app), at most 512², ~12 MB of GPU memory in all; no new
+shadow casters beyond the astronaut's six meshes and the LM's hardware; pebbles cast none.
+
+Not verified here: a physical iPhone (frame rate, thermals and memory on a real GPU, the visor's
+cube capture and PMREM filtering on WebKit, the textures' generation time at the EVA's start, which
+is a few hundred milliseconds of CPU at most), touch feel.
+
+**Future polish.** Fingers that bend per joint and a wrist with its own bone; finer gloves; the
+suit's fabric creasing with the joints (a morph or a normal-map blend); dust kicked up by each
+footfall with a soft trail; footprints that deform the ground (a height decal) and stay crisp at
+grazing angles; a dust skirt round each footpad and probe marks; the ascent stage's thermal
+blankets as their own material; a sharper reflection on the LM's windows; dynamic reflections on
+the LM's metal (the visor's capture could feed them); an LOD for the close LM and the astronaut
+seen from far off; measuring all of it on an iPhone.
