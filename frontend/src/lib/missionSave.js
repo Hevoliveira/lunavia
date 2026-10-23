@@ -8,6 +8,9 @@
  *
  *   DESCENT_READY      A  destination and pilot difficulty chosen, before powered descent
  *   LANDING_COMPLETE   B  a safe touchdown (the lunar module's pose on the terrain)
+ *   EVA_READY             the optional lunar EVA under way (Sea of Tranquility): its
+ *                         objectives so far; it resumes at the hatch or the ladder
+ *   EVA_COMPLETE          back in the LM, hatch closed: ascent preparation, EVA done
  *   DOCKING_READY      C  ascent and rendezvous flown: the player's docking
  *   DOCKING_COMPLETE   D  hard dock and crew transfer: the way home
  *   REENTRY_READY      E  the Earth approach: the reentry
@@ -32,9 +35,15 @@
  * Nothing here depends on a shutdown callback: a checkpoint is on disk as
  * soon as it is reached.
  */
-import { OFFICIAL_MISSION_IDS, PILOT_DIFFICULTIES } from "../data/missionConfig";
+import { OFFICIAL_MISSION_IDS, PILOT_DIFFICULTIES, evaAvailableAt } from "../data/missionConfig";
 
-export const SAVE_SCHEMA = 1;
+/**
+ * Schema 2 adds the lunar EVA (its checkpoints and the `eva` record). Schema 1 saves (written
+ * before the EVA existed) are still read; a build that only knows schema 1 sees a schema 2
+ * save as "written by a newer version" and leaves it alone, never as damaged.
+ */
+export const SAVE_SCHEMA = 2;
+const READABLE_SCHEMAS = [1, 2];
 export const SAVE_KIND = "lunavia.mission.checkpoint";
 const ENVELOPE = "lunavia-save";
 export const SLOT_KEYS = { a: "lunavia.mission.save.v1.a", b: "lunavia.mission.save.v1.b" };
@@ -45,23 +54,27 @@ const MAX_BODY = 64 * 1024;
 export const CP = {
   DESCENT_READY: "DESCENT_READY",
   LANDING_COMPLETE: "LANDING_COMPLETE",
+  EVA_READY: "EVA_READY",
+  EVA_COMPLETE: "EVA_COMPLETE",
   DOCKING_READY: "DOCKING_READY",
   DOCKING_COMPLETE: "DOCKING_COMPLETE",
   REENTRY_READY: "REENTRY_READY",
   MISSION_COMPLETE: "MISSION_COMPLETE",
 };
-export const CHECKPOINT_ORDER = [CP.DESCENT_READY, CP.LANDING_COMPLETE, CP.DOCKING_READY, CP.DOCKING_COMPLETE, CP.REENTRY_READY, CP.MISSION_COMPLETE];
+export const CHECKPOINT_ORDER = [CP.DESCENT_READY, CP.LANDING_COMPLETE, CP.EVA_READY, CP.EVA_COMPLETE, CP.DOCKING_READY, CP.DOCKING_COMPLETE, CP.REENTRY_READY, CP.MISSION_COMPLETE];
 export const cpRank = (cp) => CHECKPOINT_ORDER.indexOf(cp);
 /** The checkpoints a mission can be resumed from (MISSION_COMPLETE closes it). */
-export const RESUMABLE = CHECKPOINT_ORDER.slice(0, 5);
+export const RESUMABLE = CHECKPOINT_ORDER.filter((cp) => cp !== CP.MISSION_COMPLETE);
 
 /** What the player was doing when the save was last touched. */
-export const ACTIVITIES = ["briefing", "descent", "result", "ascent", "rendezvous", "docking", "dockFailed", "transfer", "return", "reentry", "ended"];
+export const ACTIVITIES = ["briefing", "descent", "result", "eva", "ascent", "rendezvous", "docking", "dockFailed", "transfer", "return", "reentry", "ended"];
 const STATUSES = ["active", "completed", "abandoned"];
 
 export const CHECKPOINT_TEXT = {
   DESCENT_READY: { en: "LUNAR DESCENT READY", pt: "DESCIDA LUNAR PRONTA" },
   LANDING_COMPLETE: { en: "LUNAR LANDING COMPLETE", pt: "POUSO LUNAR CONCLUÍDO" },
+  EVA_READY: { en: "LUNAR EVA · FIRST STEPS", pt: "EVA LUNAR · PRIMEIROS PASSOS" },
+  EVA_COMPLETE: { en: "LUNAR EVA COMPLETE", pt: "EVA LUNAR CONCLUÍDA" },
   DOCKING_READY: { en: "DOCKING READY", pt: "ACOPLAMENTO PRONTO" },
   DOCKING_COMPLETE: { en: "DOCKING COMPLETE", pt: "ACOPLAMENTO CONCLUÍDO" },
   REENTRY_READY: { en: "EARTH REENTRY READY", pt: "REENTRADA NA TERRA PRONTA" },
@@ -114,7 +127,7 @@ export function openEnvelope(raw) {
   if (!body || typeof body !== "object") return { ok: false, reason: "corrupt", seq: env.seq };
   if (body.kind !== SAVE_KIND) return { ok: false, reason: "invalid", seq: env.seq };
   if (Number.isInteger(body.schema) && body.schema > SAVE_SCHEMA) return { ok: false, reason: "unsupported", seq: env.seq };
-  if (body.schema !== SAVE_SCHEMA) return { ok: false, reason: "outdated", seq: env.seq };
+  if (!READABLE_SCHEMAS.includes(body.schema)) return { ok: false, reason: "outdated", seq: env.seq };
   const v = validateSave(body);
   if (!v.ok) return { ok: false, reason: "invalid", detail: v.reason, seq: env.seq };
   return { ok: true, seq: env.seq, save: v.save };
@@ -147,6 +160,32 @@ export function sanitizePose(pose, siteId) {
 
 const strList = (a, max = 50) => Array.isArray(a) && a.length <= max && a.every((x) => typeof x === "string" && x.length <= 40);
 
+/**
+ * The lunar EVA's record (components/eva/LunarEva's state): the objectives reached, the sample
+ * (one: TQ-01) and the photographs of the landing site, and whether the astronaut is back in the
+ * LM. A clean copy, or null when it is not consistent (an objective without its sample or
+ * photograph, a sample or photo without the objective, more than one sample): a save cannot
+ * claim an objective twice or one that was never done.
+ */
+export function cleanEva(e) {
+  if (!isObj(e) || !isObj(e.progress)) return null;
+  const p = { firstSteps: e.progress.firstSteps === true, sample: e.progress.sample === true, photo: e.progress.photo === true };
+  const samples = Array.isArray(e.samples) ? e.samples : [];
+  const photos = Array.isArray(e.photos) ? e.photos : [];
+  if (samples.length > 1 || photos.length > 8) return null;
+  if (!samples.every((x) => isObj(x) && typeof x.id === "string" && x.id.length <= 12 && fin(x.x) && fin(x.z))) return null;
+  if (!photos.every((x) => isObj(x) && x.subject === "LM" && fin(x.distance) && x.distance >= 0 && x.distance <= 200)) return null;
+  if (p.sample !== samples.length > 0 || p.photo !== photos.length > 0) return null;
+  if ((p.sample || p.photo || e.completed === true) && !p.firstSteps) return null;
+  return {
+    progress: p,
+    samples: samples.map((x) => ({ id: x.id, x: x.x, z: x.z })),
+    photos: photos.map((x) => ({ subject: "LM", distance: x.distance })),
+    completed: e.completed === true,
+    distance: fin(e.distance) && e.distance >= 0 && e.distance < 1e5 ? e.distance : 0,
+  };
+}
+
 /** The flight's scoring state (data/flightScoring `flight`), checked against the save it is in. */
 function validFlight(f, id, siteId, difficulty) {
   if (!isObj(f) || f.id !== id || f.siteId !== siteId || f.difficulty !== difficulty) return false;
@@ -168,10 +207,12 @@ function validFlight(f, id, siteId, difficulty) {
  */
 export function validateSave(s) {
   if (!isObj(s)) return { ok: false, reason: "not-an-object" };
-  if (s.kind !== SAVE_KIND || s.schema !== SAVE_SCHEMA) return { ok: false, reason: "kind" };
+  if (s.kind !== SAVE_KIND || !READABLE_SCHEMAS.includes(s.schema)) return { ok: false, reason: "kind" };
   if (!isFlightId(s.attemptId)) return { ok: false, reason: "attemptId" };
   if (!STATUSES.includes(s.status)) return { ok: false, reason: "status" };
   if (!CHECKPOINT_ORDER.includes(s.checkpoint)) return { ok: false, reason: "checkpoint" };
+  // a schema 1 save was written before the EVA: it cannot hold one
+  if (s.schema === 1 && (s.checkpoint === CP.EVA_READY || s.checkpoint === CP.EVA_COMPLETE || (s.eva !== null && s.eva !== undefined))) return { ok: false, reason: "kind" };
   if (!fin(s.savedAt) || s.savedAt <= 0) return { ok: false, reason: "savedAt" };
   const base = { schema: SAVE_SCHEMA, kind: SAVE_KIND, attemptId: s.attemptId, status: s.status, checkpoint: s.checkpoint, savedAt: s.savedAt, build: typeof s.build === "string" ? s.build.slice(0, 40) : "" };
   const m = s.mission;
@@ -191,6 +232,16 @@ export function validateSave(s) {
   if (rank < cpRank(CP.DOCKING_COMPLETE) && f.docking && f.docking.success === true) return { ok: false, reason: "docked-before-docking" };
   if (f.reentry && f.reentry.splashdown === true) return { ok: false, reason: "splashed-but-active" };
   if (f.ended) return { ok: false, reason: "ended-but-active" };
+  // the EVA: only at a destination that has one, only after the landing, finished before the
+  // ascent; EVA_READY is one under way, EVA_COMPLETE one with the hatch closed behind it
+  let eva = null;
+  if (s.eva !== null && s.eva !== undefined) {
+    eva = cleanEva(s.eva);
+    if (!eva || !evaAvailableAt(siteId) || rank < cpRank(CP.EVA_READY)) return { ok: false, reason: "eva" };
+    if (rank > cpRank(CP.EVA_READY) && !eva.completed) return { ok: false, reason: "eva" };
+  }
+  if (s.checkpoint === CP.EVA_READY && (!eva || eva.completed)) return { ok: false, reason: "eva" };
+  if (s.checkpoint === CP.EVA_COMPLETE && !eva) return { ok: false, reason: "eva" };
   const d = s.docking;
   let docking = null;
   if (d !== null && d !== undefined) {
@@ -225,6 +276,7 @@ export function validateSave(s) {
       activity,
       landing: rank >= cpRank(CP.LANDING_COMPLETE) ? { pose } : null,
       docking,
+      eva,
       flight,
     },
   };
@@ -235,7 +287,7 @@ export function validateSave(s) {
  * what the mission page writes when the flight reaches a checkpoint or when its
  * activity changes.
  */
-export function makeCheckpoint({ checkpoint, flight, activity = null, pose = null, docking = null, createdAt = null, now = Date.now(), build = "" }) {
+export function makeCheckpoint({ checkpoint, flight, activity = null, pose = null, docking = null, eva = null, createdAt = null, now = Date.now(), build = "" }) {
   return {
     schema: SAVE_SCHEMA,
     kind: SAVE_KIND,
@@ -246,6 +298,7 @@ export function makeCheckpoint({ checkpoint, flight, activity = null, pose = nul
     activity: activity ? { phase: activity.phase, engaged: !!activity.engaged, at: now } : null,
     landing: cpRank(checkpoint) >= cpRank(CP.LANDING_COMPLETE) ? { pose: pose || null } : null,
     docking: docking ? { attempts: docking.attempts, restarts: docking.restarts, contacts: docking.contacts } : null,
+    eva: eva ? cleanEva(eva) : null,
     flight: JSON.parse(JSON.stringify(flight)),
     createdAt: createdAt || now,
     savedAt: now,
@@ -472,6 +525,8 @@ export const _resetAppStore = () => {
 export const RESUME_AT = {
   DESCENT_READY: { state: "briefing", text: { en: "POWERED DESCENT · READINESS", pt: "DESCIDA MOTORIZADA · PRONTIDÃO" } },
   LANDING_COMPLETE: { state: "ascent", text: { en: "LUNAR SURFACE · ASCENT PREPARATION", pt: "SUPERFÍCIE LUNAR · PREPARAÇÃO DA DECOLAGEM" } },
+  EVA_READY: { state: "eva", text: { en: "LUNAR SURFACE · EVA", pt: "SUPERFÍCIE LUNAR · EVA" } },
+  EVA_COMPLETE: { state: "ascent", text: { en: "EVA COMPLETE · ASCENT PREPARATION", pt: "EVA CONCLUÍDA · PREPARAÇÃO DA DECOLAGEM" } },
   DOCKING_READY: { state: "docking", text: { en: "RENDEZVOUS COMPLETE · MANUAL DOCKING", pt: "ENCONTRO CONCLUÍDO · ACOPLAMENTO MANUAL" } },
   DOCKING_COMPLETE: { state: "return", text: { en: "TRANS-EARTH INJECTION", pt: "INJEÇÃO TRANSTERRESTRE" } },
   REENTRY_READY: { state: "reentry", text: { en: "EARTH REENTRY", pt: "REENTRADA NA TERRA" } },
@@ -481,6 +536,8 @@ export const RESUME_AT = {
 const INTERRUPTED = {
   DESCENT_READY: (a) => a.phase === "descent",
   LANDING_COMPLETE: (a) => a.phase === "ascent" || a.phase === "rendezvous",
+  EVA_READY: () => false, // the EVA resumes at a safe point of its own (the hatch, or the ladder's foot)
+  EVA_COMPLETE: (a) => a.phase === "ascent" || a.phase === "rendezvous",
   DOCKING_READY: (a) => a.phase === "docking" && a.engaged,
   DOCKING_COMPLETE: () => false,
   REENTRY_READY: (a) => a.phase === "reentry",
@@ -499,7 +556,7 @@ export function resumePlan(save) {
   if (!save || save.status !== "active" || !RESUME_AT[save.checkpoint]) return null;
   const a = save.activity || { phase: null, engaged: false };
   const interrupted = !!INTERRUPTED[save.checkpoint](a);
-  const plan = { checkpoint: save.checkpoint, state: RESUME_AT[save.checkpoint].state, interrupted, docking: null, restartReport: null };
+  const plan = { checkpoint: save.checkpoint, state: RESUME_AT[save.checkpoint].state, interrupted, docking: null, restartReport: null, eva: save.eva || null };
   if (save.checkpoint === CP.DOCKING_READY) {
     const d = save.docking || { attempts: 1, restarts: 0, contacts: 0 };
     if (interrupted) {

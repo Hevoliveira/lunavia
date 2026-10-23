@@ -333,3 +333,12 @@ input[type=range].lv-slider::-moz-range-thumb {
     width: 100% !important;
     height: 100% !important;
 }
+
+/* LUNAR EVA: the chest camera's shutter */
+@keyframes eva-flash {
+    from { opacity: 0.85; }
+    to { opacity: 0; }
+}
+.eva-flash {
+    animation: eva-flash 450ms ease-out forwards;
+}

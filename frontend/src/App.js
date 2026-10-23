@@ -1,4 +1,5 @@
 import "@/App.css";
+import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Landing from "@/pages/Landing";
 import Mission from "@/pages/Mission";
@@ -9,6 +10,10 @@ import Navbar from "@/components/Navbar";
 import CommsSubtitles from "@/components/CommsSubtitles";
 import { Toaster } from "sonner";
 import { useCompact } from "@/hooks/useMediaQuery";
+
+// Development only (stripped from production builds): the lunar EVA on its own, for checking the
+// astronaut and the scene without flying a mission to it.
+const EvaPreview = process.env.NODE_ENV === "development" ? lazy(() => import("@/pages/EvaPreview")) : null;
 
 function App() {
   // Landscape phones: mission toasts go bottom-left and narrow, clear of the
@@ -30,6 +35,16 @@ function App() {
           <Route path="/training" element={<Training />} />
           <Route path="/manifesto" element={<Manifesto />} />
           <Route path="/records" element={<Records />} />
+          {EvaPreview && (
+            <Route
+              path="/dev/eva"
+              element={
+                <Suspense fallback={null}>
+                  <EvaPreview />
+                </Suspense>
+              }
+            />
+          )}
         </Routes>
         <CommsSubtitles />
         <Toaster

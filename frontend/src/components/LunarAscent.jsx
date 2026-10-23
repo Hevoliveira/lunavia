@@ -133,7 +133,13 @@ const CHECKS = (farSide) => [
   ["EARTH LINK", farSide ? "UNAVAILABLE · FAR SIDE" : "HOUSTON · GO"],
 ];
 
-export default function LunarAscent({ siteId, pose = null, audio = null, farSide = false, onComplete, onInitiate = null }) {
+// BEGIN EVA, the optional lunar EVA before the liftoff (where the destination has one)
+const EVA_BUTTON = {
+  en: { label: "BEGIN EVA", sub: "OPTIONAL · FIRST STEPS ON THE MOON" },
+  pt: { label: "INICIAR EVA", sub: "OPCIONAL · PRIMEIROS PASSOS NA LUA" },
+};
+
+export default function LunarAscent({ siteId, pose = null, audio = null, farSide = false, onComplete, onInitiate = null, lang = "en", evaAvailable = false, onBeginEva = null }) {
   const site = useMemo(() => getSite(siteId), [siteId]);
   const p = pose || { x: 0, padY: site.contactGround ? site.scale.y(site.contactGround(0)) : 0, tilt: 0, pitch: 0, comp: [0, 0, 0, 0], probe: [0, 0, 0, 0] };
   const base = useMemo(() => [p.x, p.padY + LM.foot, 0], [p.x, p.padY]);
@@ -277,6 +283,18 @@ export default function LunarAscent({ siteId, pose = null, audio = null, farSide
             >
               INITIATE LUNAR ASCENT
             </button>
+            {evaAvailable && onBeginEva && (
+              <button
+                type="button"
+                onClick={() => stage === "prep" && onBeginEva()}
+                disabled={checks < 5}
+                data-testid="ascent-begin-eva"
+                className="mt-2 short:mt-1.5 w-full min-h-[46px] short:min-h-[42px] flex flex-col items-center justify-center font-mono text-white bg-black/40 hover:bg-white/10 border border-white/35 hover:border-white/60 disabled:opacity-40 touch-manipulation"
+              >
+                <span className="text-[11px] short:text-[10px] tracking-[0.35em] short:tracking-[0.2em]">{EVA_BUTTON[lang === "pt" ? "pt" : "en"].label}</span>
+                <span className="text-[7.5px] short:text-[7px] tracking-[0.2em] text-zinc-400 mt-0.5">{EVA_BUTTON[lang === "pt" ? "pt" : "en"].sub}</span>
+              </button>
+            )}
           </div>
         </div>
       )}

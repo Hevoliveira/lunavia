@@ -153,6 +153,25 @@ export const logMissionScoring = (id, scoring) =>
   });
 
 /**
+ * Flight `id`'s lunar EVA (recorded apart from the mission's score): the objectives done, the
+ * sample and photographs taken, the distance walked, whether the astronaut came back aboard.
+ */
+export const logMissionEva = (id, eva) =>
+  update(id, (e) => {
+    const p = (eva && eva.progress) || {};
+    e.eva = {
+      completed: !!(eva && eva.completed),
+      firstSteps: !!p.firstSteps,
+      sample: !!p.sample,
+      photo: !!p.photo,
+      samples: eva && Array.isArray(eva.samples) ? eva.samples.length : 0,
+      photos: eva && Array.isArray(eva.photos) ? eva.photos.length : 0,
+      distance: eva && typeof eva.distance === "number" && Number.isFinite(eva.distance) ? +eva.distance.toFixed(1) : null,
+      at: Date.now(),
+    };
+  });
+
+/**
  * Flight `id` was resumed from its mission checkpoint (lib/missionSave): counted on its
  * entry. If the log no longer has the entry (the web view's storage was cleared while the
  * app's own checkpoint file survived), it is written again with what the checkpoint

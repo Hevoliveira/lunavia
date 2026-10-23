@@ -212,6 +212,16 @@ export function applyLanding(rec, flight, L, at = Date.now()) {
 }
 
 /**
+ * The end of an official flight's lunar EVA (components/eva/LunarEva's record): FIRST STEPS when
+ * every objective was done and the astronaut is back in the LM. Nothing else in the records
+ * changes (the EVA is not part of the 1,000-point score). Once only, however often it is resumed.
+ */
+export function applyEva(rec, flight, eva, at = Date.now()) {
+  if (!eva || !eva.completed) return [];
+  return unlockAll(rec, newAchievements("eva", { eva }, rec.achievements), flight, at);
+}
+
+/**
  * The hard dock of an official flight (scoreDocking). Counted once per flight: a
  * flight resumed from a mission checkpoint (lib/missionSave) that docks again never
  * adds a second docking to the category.

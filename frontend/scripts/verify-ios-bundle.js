@@ -141,6 +141,14 @@ const FEATURES = [
   ["MISSION CHECKPOINT SAVED", "MISSION CHECKPOINT SAVED"],
   ["Resumed after an interruption: RESUMED FROM LAST SAFE CHECKPOINT", "RESUMED FROM LAST SAFE CHECKPOINT"],
   ["Resume notices in Portuguese", "RETOMADA DO "],
+  ["Lunar EVA: BEGIN EVA offered in the ascent preparation (optional)", "ascent-begin-eva"],
+  ["Lunar EVA: FIRST STEPS ON THE MOON", "FIRST STEPS ON THE MOON"],
+  ["Lunar EVA: the three objectives", "DOCUMENT THE LANDING SITE"],
+  ["Lunar EVA: the chest camera's framing check", "THE FOOTPADS ARE CUT OFF"],
+  ["Lunar EVA: return to the LM (BOARD THE LM)", "BOARD THE LM"],
+  ["Lunar EVA in Portuguese", "PRIMEIROS PASSOS NA LUA"],
+  ["Lunar EVA checkpoints (EVA READY, EVA COMPLETE)", "EVA_COMPLETE"],
+  ["Lunar EVA achievement: FIRST EVA", "FIRST_EVA"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
@@ -298,6 +306,27 @@ if (js) {
     fs.existsSync(path.join(pub, "textures/planets", f)) ? fail(`retired texture ${f} is still in the bundle`) : ok(`retired texture ${f} not bundled`)
   );
   fs.existsSync(path.join(pub, "textures/planets/SOURCES.md")) ? ok("planet texture sources and rights (SOURCES.md) bundled") : fail("textures/planets/SOURCES.md is missing");
+}
+
+// 10. The voice pack plays offline: every clip the manifest lists is in the app and matches the source.
+try {
+  const man = JSON.parse(read(path.join(pub, "voice/manifest.json")));
+  let n = 0;
+  const bad = [];
+  for (const lang of Object.values(man.langs || {}))
+    for (const takes of Object.values(lang.clips || {}))
+      for (const c of takes) {
+        n++;
+        const p = path.join(pub, "voice", c.f);
+        const src = path.join(root, "public/voice", c.f);
+        if (!fs.existsSync(p) || fs.statSync(p).size < 1000) bad.push(c.f);
+        else if (fs.existsSync(src) && !fs.readFileSync(src).equals(fs.readFileSync(p))) bad.push(`${c.f} (differs from the source copy)`);
+      }
+  bad.length
+    ? fail(`voice clips missing from the iOS bundle: ${bad.slice(0, 8).join(", ")}${bad.length > 8 ? ` (+${bad.length - 8})` : ""}`)
+    : ok(`the voice pack: all ${n} clips in voice/manifest.json are bundled`);
+} catch {
+  fail("voice/manifest.json is missing from the iOS bundle or unreadable");
 }
 
 console.log(failures.length ? `\n${failures.length} problem(s): the iOS app would not match this source.` : `\nThe iOS app will run BUILD ${info.commit}.`);

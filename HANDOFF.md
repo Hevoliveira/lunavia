@@ -3552,3 +3552,123 @@ closed gracefully or killed with SIGKILL and relaunched — *browser* tests, not
 Not verified here: the Swift store on a device (it was checked against Capacitor 8.5.2's sources
 and parsed by a Swift grammar, not compiled), WKWebView's own localStorage timing, and real iPhone
 termination, restart and App Store–style updates.
+
+## 59. Lunar EVA — first steps on the Moon (Sea of Tranquility, phase 1)
+
+After a safe landing at the Sea of Tranquility the ascent preparation offers **BEGIN EVA**
+("OPTIONAL · FIRST STEPS ON THE MOON"; PT: INICIAR EVA) under INITIATE LUNAR ASCENT. It is never
+forced: INITIATE LUNAR ASCENT works exactly as before, with or without the EVA. The other three
+destinations do not offer it (`EVA_SITES` in `data/missionConfig.js`). Nothing before the landing
+or after the liftoff changed: launch, transitions, mission selection, the four environments,
+landing physics, docking, the Earth return, reentry, splashdown, the 1,000-point score, medals and
+the Logbook are as in §58.
+
+**Flow.** ascent preparation → BEGIN EVA → (checkpoint EVA READY) → the hatch opens, the astronaut
+crawls out backwards onto the porch, lowers onto the ladder, climbs down the eight steps one at a
+time, drops from the last rung to the footpad, steps off onto the surface → FIRST STEPS ON THE MOON
+→ play: COLLECT LUNAR SAMPLE → DOCUMENT THE LANDING SITE → RETURN TO THE LM → BOARD THE LM at the
+ladder → up the ladder, across the porch, crawls in, the hatch closes → EVA COMPLETE (checkpoint)
+→ the ascent preparation again (BEGIN EVA gone) → INITIATE LUNAR ASCENT → rendezvous → docking →
+Earth return → reentry → splashdown → MISSION COMPLETE. Nothing teleports: the LM stays where and
+how it landed (the landing result's pose), and egress and ingress are animated on its own drawn
+hatch, porch, handrails, ladder rungs and footpad. Both sequences can be skipped (SKIP ›), which
+jumps along the same path to its end.
+
+**Files.**
+- `data/evaSim.js` (pure, tested): the LM's frame from the landing pose (`lmFrame`: hatch, porch,
+  handrails, ladder rails and rungs, footpad, boarding point, all in metres from the same transform
+  `LanderModel` is drawn with), colliders (descent stage, legs, footpads, the site's boulders),
+  walking (`createWalker`/`stepWalker`: lunar gravity, acceleration 1.1 m/s², braking 1.7 m/s²,
+  top walk 1.15 m/s, backwards 0.42 m/s, turning 105°/s, slopes slow it from 16° and stop it at
+  30°, the ground height from the site's terrain lookup), the exploration area (warning at 24 m
+  from the LM, a hard limit at 31 m), the egress and ingress timelines (`egressAt`/`ingressAt`,
+  ≈ 24 s and ≈ 20 s), the objectives (`OBJECTIVES`, `interactionAt`, `nextTask`), the sample and
+  photo spots (`evaWorld`: the sample about 10 m from the ladder on open ground, the photo stand
+  ≈ 15 m out with the Sun behind the photographer) and the photo check (`photoCheck`: the whole LM
+  in frame, 9–34 m, centred; verdicts AIM / TOO CLOSE / TOO FAR / TILT UP / TILT DOWN / FRAME /
+  CENTRE / READY).
+- `data/astronautRig.js` (pure, tested): proportions (1.88 m, Apollo A7L-like), pose specs for
+  standing, the walk (a lope: gait phase driven by distance walked, duty 0.62 slow → 0.38 at full
+  pace with a short float, bob 5.5 cm, forward lean, little arm swing), turning on the spot, the
+  crawl, the ladder (boots on rungs, gloves on the rails and porch handrails), the drop to the
+  footpad, the sample (crouch with the long scoop) and the chest camera; two-bone IK for arms and
+  legs so planted boots and gripping gloves stay put.
+- `components/eva/astronautModel.js` + `Astronaut.jsx`: the suit — white Beta-cloth layers with
+  bellows joints, helmet shell over the bubble with the gold reflective visor (environment-mapped),
+  backpack with the purge unit, chest control unit and camera, hoses, gloves with fingers that
+  close on a grip, overboots with blue soles, orange commander bands; parts merged per material
+  and segment; lower legs and boots dust up as the astronaut walks; real shadows from the site's
+  Sun.
+- `components/eva/LunarEva.jsx` + `evaText.js` (EN/PT): the scene (`LunarSite`'s terrain, rocks,
+  sky and Sun, the same `LanderModel`), the third-person camera, controls, HUD, objectives,
+  guidance, pause, save hooks. `pages/EvaPreview.jsx` (route `/dev/eva`) is development-only and
+  compiled out of production.
+- `components/LunarAscent.jsx` (BEGIN EVA button), `pages/Mission.jsx` (`STATES.EVA`, checkpoints,
+  restore, log and records), `lib/missionSave.js` (schema 2), `lib/missionRecords.js` (`applyEva`),
+  `lib/missionSelection.js` (`logMissionEva`), `data/missionScoring.js` + `scoringText.js`
+  (FIRST STEPS achievement), `data/lmDesign.js` (`PORCH_RAILS`: the porch's two handrails, which
+  replace the old crossbar so the astronaut can pass), `components/scenes/LunarSite.jsx` (the Sun's
+  shadow box and a fix for a shadow-map size race), `components/CommsSubtitles.jsx` (the `lane`
+  placement) and `components/missions/MissionSaveUI.jsx` (`below="lane"`), both used only by the
+  EVA, `audio/commsLines.json` + `public/voice/*/eva.*` (15 lines, EN and PT, rendered with the
+  existing Kokoro pipeline), `scripts/verify-ios-bundle.js` (EVA markers, every voice clip bundled).
+
+**Controls (iPhone landscape).** Left: a floating joystick (the thumb lands anywhere in the lower
+left; the ring is drawn at rest bottom-left, MOVE). Right half: drag to orbit the camera (yaw and
+pitch, clamped). Contextual action button (COLLECT SAMPLE / BOARD THE LM) appears only in reach;
+CAMERA (chest camera: viewfinder, TAKE PHOTO shutter, EXIT) bottom right; PAUSE top right
+(CONTINUE EVA / ABORT MISSION; the global ABORT is hidden in the EVA). Objectives panel top left
+with the distance to the LM (and the exploration-limit warning as a row of its own). While the
+astronaut walks, subtitles (the new `lane` placement of `CommsSubtitles`), the EVA's notices
+(SAMPLE STOWED · TQ-01, PHOTO RECORDED) and MISSION CHECKPOINT SAVED / MISSION RESUMED
+(`MissionSaveNotice` `below="lane"`) share the top strip between the objectives panel and PAUSE,
+above the astronaut's helmet; during the egress and ingress films the subtitles take the upper-left
+corner as in the reentry. A target marker floats over the current objective (SAMPLE · 8 m,
+PHOTO POINT, LADDER/LM) and pins to the screen edge with an arrow when it is off-screen. All
+panels respect the safe areas; nothing sits over the astronaut. Desktop: WASD / arrows, mouse
+drag, E action, C camera, Space photo, Esc pause.
+
+**Camera.** Third person behind and above (5.6 m, slight downward pitch), orbit by drag, settles
+behind the walk after 2.2 s of no look input; swings to the side while the sample is taken. A
+clear-path test pulls it in at once when the LM, a leg or a boulder is in the way and eases back
+out; it is clamped above the terrain and kept out of the LM. Egress and ingress use framed
+cinematic angles on the hatch and ladder; the photo uses the chest camera's own view.
+
+**Objectives.** FIRST STEPS (done when the boot touches the surface; the FIRST STEPS ON THE MOON
+banner), COLLECT LUNAR SAMPLE (walk to the marked stone, COLLECT SAMPLE: a 5.2 s crouch, scoop,
+stow; recorded as sample TQ-01 with its position), DOCUMENT THE LANDING SITE (go to the photo point,
+CAMERA, aim so the whole LM is framed and centred, TAKE PHOTO; a miss says why), RETURN TO THE LM.
+BOARD THE LM before the objectives are done asks first (OBJECTIVES REMAIN / BOARD THE LM / CONTINUE
+EVA). No science is invented: the sample is a regolith sample, the photograph documents the LM.
+No oxygen or time pressure.
+
+**Guidance.** The existing voice director and subtitles: CAPCOM authorizes the EVA, the crew
+reports hatch, ladder and first step, CAPCOM confirms and gives each next task, confirms the
+sample and the photo, and calls the return; each of these plays once per EVA. Only two lines can
+come back: the boundary call (again only after the astronaut has walked back inside 21 m, and at
+most every 20 s) and an idle reminder (after 80 s with no progress, at most every 90 s). The
+objectives panel always shows the next task.
+
+**Safety.** No falling through the terrain (the walker's height is the terrain lookup), no walking
+through the LM, its legs or boulders (circle and capsule colliders, pushed out every step), no
+leaving the area (warning in the objectives panel + voice at 24 m, hard stop at 31 m), the LM marker always on
+screen, the camera never inside the LM or under the ground. PAUSE always available.
+
+**Save and resume** (schema 2; schema 1 saves still load; a schema-1-only build reports a schema
+2 save as "newer version", never as damaged):
+| checkpoint | written when | RESUME opens |
+|---|---|---|
+| `EVA_READY` (LUNAR EVA · FIRST STEPS) | BEGIN EVA, and again at each objective (first steps, sample, photo) | the EVA: at the hatch if the first steps were not taken, otherwise at the foot of the ladder, the objectives done kept |
+| `EVA_COMPLETE` (LUNAR EVA COMPLETE) | hatch closed | the ascent preparation, BEGIN EVA gone |
+The `eva` record: progress {firstSteps, sample, photo}, samples (at most one), photos (subject LM,
+distance), completed, distance walked. `validateSave` rejects inconsistent records (an objective
+without its artifact or the reverse, a second sample, an EVA at another destination or before the
+landing, EVA_READY with a completed EVA). The landing is never replayed; an EVA interrupted mid-way
+resumes at its last safe point, an interruption during the ascent after EVA_COMPLETE resumes at
+the ascent preparation.
+
+**Scoring and achievements.** The 1,000-point model, medals and records are unchanged; the EVA
+adds no points. The mission log keeps the EVA separately (`entry.eva`: completed, objectives,
+samples, photos, distance). A new achievement **FIRST STEPS** (`FIRST_EVA`, group LANDING) unlocks
+once, when an EVA is completed with all three objectives; a resumed flight re-applies it
+idempotently (once per flight id).

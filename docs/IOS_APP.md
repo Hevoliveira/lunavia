@@ -225,6 +225,25 @@ It uses the same games, physics and touch controls as the mission. On phones, a 
 navbar like the mission's flight states. The instructor line lives inside the telemetry column, so
 the descent camera's visibility area is unchanged. See `TRAINING_CENTER.md`.
 
+## Lunar EVA (Sea of Tranquility)
+
+The optional lunar EVA (HANDOFF §59) is offered by BEGIN EVA on the ascent preparation after a
+landing at the Sea of Tranquility. On a phone in landscape:
+- **Left thumb:** a floating joystick. The thumb can land anywhere in the lower left (44 % of the
+  width, 62 % of the height) and the knob follows it; at rest a 104 pt ring is drawn bottom-left
+  inside the safe area.
+- **Right thumb:** drag anywhere on the right half to orbit the camera (yaw and pitch).
+- **Buttons** (all ≥ 44 pt, inside the safe areas, clear of the astronaut in the middle of the
+  screen): the contextual action (COLLECT SAMPLE / BOARD THE LM) only when it is in reach, CAMERA
+  bottom right (then TAKE PHOTO and EXIT), PAUSE top right. The objectives panel sits top left.
+- No oxygen or time limit; nothing advances while PAUSE is open.
+- The voice lines (`voice/en|pt/eva.*.mp3`, 30 files, 0.7 MB) are bundled with the rest of the
+  voice pack; `yarn ios:verify` now checks every clip in `voice/manifest.json` is in the app.
+- Cost: the EVA reuses the ascent preparation's terrain, rocks, sky, Sun (the same 2048² shadow
+  map, here over a tighter 24-unit box that follows the astronaut) and LM. It adds the astronaut
+  (merged meshes per segment and material) and the footprints; see Performance for the measured
+  frame cost against the ascent preparation.
+
 ## Audio on iOS
 
 WebKit only starts audio inside a user gesture, but LUNAVIA's engine rumble and comms are

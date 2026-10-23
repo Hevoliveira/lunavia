@@ -10,6 +10,7 @@ import {
   canResume,
   checkpointText,
   checksum,
+  cleanEva,
   createSaveStore,
   makeCheckpoint,
   makeClosing,
@@ -31,7 +32,7 @@ import { createEntryState, advance, recommendBank, rollToward, OUTCOME } from ".
 import { TARGET_FPA, timeScaleFor } from "../data/reentryGuidance";
 import { OFFICIAL_MISSION_IDS, PILOT_DIFFICULTIES } from "../data/missionConfig";
 import { scoreDocking, scoreLanding } from "../data/missionScoring";
-import { applyDocking, applyFlightStart, applyLanding, applyMission, applyReentry, emptyRecords, loadRecords, saveRecords, updateRecords } from "./missionRecords";
+import { applyDocking, applyEva, applyFlightStart, applyLanding, applyMission, applyReentry, emptyRecords, loadRecords, saveRecords, updateRecords } from "./missionRecords";
 import { loadMissionLog, logMissionResumed, logMissionStart } from "./missionSelection";
 
 /* ---- backends: a Map standing in for localStorage, and an iPhone app's files (async) --------------- */
@@ -74,14 +75,14 @@ function flightTo(cp, siteId = "hadley", difficulty = "ASTRONAUT") {
     sc.flight.flown = true;
     sc.landed(landed(difficulty));
   }
-  if (r >= 3) sc.docking(docked(difficulty));
+  if (r >= cpIndex(CP.DOCKING_COMPLETE)) sc.docking(docked(difficulty));
   return sc;
 }
 const cpIndex = (cp) => CHECKPOINT_ORDER.indexOf(cp);
 const docOf = (cp, sc, extra = {}) =>
   at(cp, sc, {
-    pose: cpIndex(cp) >= 1 ? poseFor(sc.flight.siteId) : null,
-    docking: cpIndex(cp) >= 2 ? { attempts: 1, restarts: 0, contacts: 0 } : null,
+    pose: cpIndex(cp) >= cpIndex(CP.LANDING_COMPLETE) ? poseFor(sc.flight.siteId) : null,
+    docking: cpIndex(cp) >= cpIndex(CP.DOCKING_READY) ? { attempts: 1, restarts: 0, contacts: 0 } : null,
     ...extra,
   });
 
@@ -150,7 +151,7 @@ describe("the save format: envelope, checksum, schema", () => {
     const doc = docOf(CP.LANDING_COMPLETE, b);
     expect(validateSave({ ...doc, flight: other.flight }).reason).toBe("flight");
     expect(validateSave({ ...doc, docking: { attempts: 0, restarts: 0, contacts: 0 } }).reason).toBe("docking");
-    expect(validateSave({ ...doc, activity: { phase: "eva" } }).reason).toBe("activity");
+    expect(validateSave({ ...doc, activity: { phase: "spacewalk" } }).reason).toBe("activity");
   });
 
   test("a lunar module pose that is not a sane position on that terrain is dropped (the site's own landing point is used)", () => {
@@ -616,4 +617,122 @@ describe("J. every destination × difficulty: close and reopen at every checkpoi
       })
     )
   );
+});
+
+/* ---- the lunar EVA (schema 2): EVA_READY and EVA_COMPLETE ------------------------------------------- */
+describe("the lunar EVA's checkpoints", () => {
+  const evaRec = (o = {}) => ({ progress: { firstSteps: true, sample: false, photo: false }, samples: [], photos: [], completed: false, distance: 12.5, ...o });
+  const done = () => evaRec({ progress: { firstSteps: true, sample: true, photo: true }, samples: [{ id: "TQ-01", x: 7.5, z: 8.5 }], photos: [{ subject: "LM", distance: 15.2 }], completed: true });
+  const tq = (cp) => flightTo(cp, "tranquillitatis", "ASTRONAUT");
+
+  test("EVA_READY and EVA_COMPLETE sit between the landing and the docking, and both can be resumed", () => {
+    expect(CHECKPOINT_ORDER.indexOf(CP.EVA_READY)).toBe(CHECKPOINT_ORDER.indexOf(CP.LANDING_COMPLETE) + 1);
+    expect(CHECKPOINT_ORDER.indexOf(CP.EVA_COMPLETE)).toBe(CHECKPOINT_ORDER.indexOf(CP.EVA_READY) + 1);
+    expect(CHECKPOINT_ORDER.indexOf(CP.DOCKING_READY)).toBe(CHECKPOINT_ORDER.indexOf(CP.EVA_COMPLETE) + 1);
+    expect(SAVE_SCHEMA).toBe(2);
+    [CP.EVA_READY, CP.EVA_COMPLETE].forEach((cp) => ["en", "pt"].forEach((l) => expect(checkpointText(cp, l).length).toBeGreaterThan(5)));
+  });
+
+  test("an EVA only at the Sea of Tranquility, only after a safe landing, its record consistent", () => {
+    const sc = tq(CP.EVA_READY);
+    expect(validateSave(docOf(CP.EVA_READY, sc, { eva: evaRec() })).ok).toBe(true);
+    // the other three destinations have no EVA
+    expect(validateSave(docOf(CP.EVA_READY, flightTo(CP.EVA_READY, "hadley"), { eva: evaRec() })).reason).toBe("eva");
+    expect(validateSave(docOf(CP.EVA_READY, flightTo(CP.EVA_READY, "far-side"), { eva: evaRec() })).reason).toBe("eva");
+    // no landing, no EVA
+    expect(validateSave(docOf(CP.EVA_READY, tq(CP.DESCENT_READY), { eva: evaRec() })).reason).toBe("no-safe-landing");
+    // an EVA under way needs its record; one marked complete belongs to EVA_COMPLETE
+    expect(validateSave(docOf(CP.EVA_READY, sc)).reason).toBe("eva");
+    expect(validateSave(docOf(CP.EVA_READY, sc, { eva: done() })).reason).toBe("eva");
+    expect(validateSave(docOf(CP.EVA_COMPLETE, sc, { eva: evaRec() })).reason).toBe("eva");
+    expect(validateSave(docOf(CP.EVA_COMPLETE, sc, { eva: done() })).ok).toBe(true);
+    // never an EVA record before the EVA, nor one left unfinished after it
+    expect(validateSave(docOf(CP.LANDING_COMPLETE, sc, { eva: evaRec() })).reason).toBe("eva");
+    expect(validateSave(docOf(CP.DOCKING_READY, sc, { eva: evaRec() })).reason).toBe("eva");
+    expect(validateSave(docOf(CP.DOCKING_READY, sc, { eva: done() })).ok).toBe(true);
+  });
+
+  test("no objective claimed without what it produced, none twice, nothing before the first steps", () => {
+    expect(cleanEva(evaRec({ progress: { firstSteps: true, sample: true, photo: false } }))).toBeNull(); // no sample
+    expect(cleanEva(evaRec({ samples: [{ id: "TQ-01", x: 1, z: 2 }] }))).toBeNull(); // a sample without the objective
+    expect(cleanEva(evaRec({ progress: { firstSteps: true, sample: true, photo: false }, samples: [{ id: "TQ-01", x: 1, z: 2 }, { id: "TQ-02", x: 3, z: 4 }] }))).toBeNull(); // two samples
+    expect(cleanEva(evaRec({ progress: { firstSteps: false, sample: false, photo: true }, photos: [{ subject: "LM", distance: 14 }] }))).toBeNull();
+    expect(cleanEva(evaRec({ photos: [{ subject: "CSM", distance: 14 }], progress: { firstSteps: true, sample: false, photo: true } }))).toBeNull();
+    expect(cleanEva({ progress: {} })).toEqual({ progress: { firstSteps: false, sample: false, photo: false }, samples: [], photos: [], completed: false, distance: 0 });
+    // what is kept is only what is known
+    const c = cleanEva({ ...done(), extra: "x", samples: [{ id: "TQ-01", x: 7.5, z: 8.5, junk: 1 }] });
+    expect(c.samples).toEqual([{ id: "TQ-01", x: 7.5, z: 8.5 }]);
+    expect(c.extra).toBeUndefined();
+  });
+
+  test("resuming: EVA_READY reopens the EVA with its objectives; EVA_COMPLETE the ascent, never the landing", () => {
+    const sc = tq(CP.EVA_READY);
+    const mid = validateSave(docOf(CP.EVA_READY, sc, { eva: evaRec({ progress: { firstSteps: true, sample: true, photo: false }, samples: [{ id: "TQ-01", x: 7.5, z: 8.5 }] }), activity: { phase: "eva" } }));
+    const p1 = resumePlan(mid.save);
+    expect(p1.state).toBe("eva");
+    expect(p1.interrupted).toBe(false);
+    expect(p1.eva.progress).toEqual({ firstSteps: true, sample: true, photo: false });
+    expect(p1.eva.samples.length).toBe(1);
+    expect(canResume({ status: "active", save: mid.save })).toBe(true);
+    const fin = validateSave(docOf(CP.EVA_COMPLETE, sc, { eva: done(), activity: { phase: "eva" } }));
+    const p2 = resumePlan(fin.save);
+    expect(p2.state).toBe("ascent");
+    expect(p2.eva.completed).toBe(true);
+    // a liftoff under way when the app was closed is flown again (the ascent is a maneuver)
+    const lift = resumePlan(validateSave(docOf(CP.EVA_COMPLETE, sc, { eva: done(), activity: { phase: "ascent" } })).save);
+    expect(lift.interrupted).toBe(true);
+    expect(lift.state).toBe("ascent");
+  });
+
+  test("schema 1 saves (before the EVA) are still read; none of them can hold an EVA; a newer schema is left alone", () => {
+    const sc = flightTo(CP.LANDING_COMPLETE);
+    const v1 = { ...validateSave(docOf(CP.LANDING_COMPLETE, sc)).save, schema: 1 };
+    delete v1.eva;
+    const opened = openEnvelope(sealEnvelope(v1, 4));
+    expect(opened.ok).toBe(true);
+    expect(resumePlan(opened.save).state).toBe("ascent");
+    expect(opened.save.eva).toBeNull();
+    const tqv = tq(CP.EVA_READY);
+    expect(validateSave({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 1 }).reason).toBe("kind");
+    expect(openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 3 }, 5)).reason).toBe("unsupported");
+  });
+
+  test("the store keeps the EVA's progress across a reopen, and a closed mission cannot bring it back", () => {
+    const local = memLocal();
+    const store = createSaveStore({ local });
+    const sc = tq(CP.EVA_READY);
+    expect(store.write(docOf(CP.LANDING_COMPLETE, sc)).ok).toBe(true);
+    expect(store.write(docOf(CP.EVA_READY, sc, { eva: evaRec() })).ok).toBe(true);
+    expect(store.write(docOf(CP.EVA_READY, sc, { eva: evaRec({ progress: { firstSteps: true, sample: true, photo: false }, samples: [{ id: "TQ-01", x: 7.5, z: 8.5 }] }) })).ok).toBe(true);
+    const reopened = createSaveStore({ local });
+    reopened.load();
+    const st = reopened.state();
+    expect(st.status).toBe("active");
+    expect(st.save.checkpoint).toBe(CP.EVA_READY);
+    expect(st.save.eva.progress.sample).toBe(true);
+    expect(st.save.eva.samples).toEqual([{ id: "TQ-01", x: 7.5, z: 8.5 }]);
+    reopened.write(makeClosing({ attemptId: sc.flight.id, status: "abandoned", mission: { siteId: "tranquillitatis", difficulty: "ASTRONAUT" } }));
+    const again = createSaveStore({ local });
+    again.load();
+    expect(again.state().status).toBe("closed");
+  });
+});
+
+describe("the lunar EVA in the records", () => {
+  test("FIRST STEPS once per player, only for a completed EVA, however often it is applied (a resume re-applies it)", () => {
+    const rec = emptyRecords();
+    const flight = { id: "ev12x-ab12", siteId: "tranquillitatis", difficulty: "ASTRONAUT" };
+    const half = { progress: { firstSteps: true, sample: true, photo: false }, completed: true };
+    expect(applyEva(rec, flight, half)).toEqual([]);
+    expect(applyEva(rec, flight, { progress: { firstSteps: true, sample: true, photo: true }, completed: false })).toEqual([]);
+    const full = { progress: { firstSteps: true, sample: true, photo: true }, completed: true };
+    expect(applyEva(rec, flight, full)).toEqual(["FIRST_EVA"]);
+    expect(applyEva(rec, flight, full)).toEqual([]);
+    expect(applyEva(rec, { ...flight, id: "ev99x-ab12" }, full)).toEqual([]);
+    expect(rec.achievements.FIRST_EVA.flightId).toBe(flight.id);
+    expect(rec.categories["tranquillitatis|ASTRONAUT"].achievements).toEqual(["FIRST_EVA"]);
+    // nothing else in the records moves: no attempt, no success, no score
+    const c = rec.categories["tranquillitatis|ASTRONAUT"];
+    expect([c.attempts, c.successes, c.bestTotal]).toEqual([0, 0, null]);
+  });
 });

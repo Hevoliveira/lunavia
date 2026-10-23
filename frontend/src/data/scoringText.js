@@ -284,6 +284,7 @@ export const ACHIEVEMENT_TEXT = {
     en: ["FUEL MASTER", `Land safely using at most ${(1 / AR.fuelEfficiency).toFixed(2)}× the fuel of the ideal braking burn.`],
     pt: ["MESTRE DO COMBUSTÍVEL", `Pouse usando no máximo ${(1 / AR.fuelEfficiency).toFixed(2).replace(".", ",")}× o combustível da queima ideal de frenagem.`],
   },
+  FIRST_EVA: { en: ["FIRST STEPS", "Walk on the Moon at the Sea of Tranquility: collect the sample, photograph the landing site and return to the LM."], pt: ["PRIMEIROS PASSOS", "Caminhe na Lua no Mar da Tranquilidade: colete a amostra, fotografe o local de pouso e retorne ao LM."] },
   FIRST_CONTACT: { en: ["FIRST CONTACT", "Complete your first manual docking with the CSM."], pt: ["PRIMEIRO CONTATO", "Conclua seu primeiro acoplamento manual com o CSM."] },
   PRECISION_DOCKING: {
     en: ["PRECISION DOCKING", `Capture with the probe within ${pctOf(AR.dockLateral)} of the alignment tolerance, the axes within ${pctOf(AR.dockAngle)} of the angle tolerance, contact speed at most ${pctOf(AR.dockClosing)} of the capture window and drift at most ${pctOf(AR.dockDrift)} of its limit.`],

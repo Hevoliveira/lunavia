@@ -350,16 +350,16 @@ describe("the flight's scoring follows the mission's events", () => {
 });
 
 describe("achievements", () => {
-  test("seventeen achievements, each with an explicit test and English and Portuguese text", () => {
+  test("eighteen achievements (FIRST STEPS: the lunar EVA), each with an explicit test and English and Portuguese text", () => {
     expect(ACHIEVEMENT_IDS).toEqual([
-      "FIRST_FOOTPRINT", "SOFT_TOUCHDOWN", "PRECISION_PILOT", "FUEL_MASTER",
+      "FIRST_FOOTPRINT", "SOFT_TOUCHDOWN", "PRECISION_PILOT", "FUEL_MASTER", "FIRST_EVA",
       "FIRST_CONTACT", "PRECISION_DOCKING", "FIRST_ATTEMPT_DOCKING", "RENDEZVOUS_MASTER",
       "WELCOME_HOME", "REENTRY_SPECIALIST",
       "FOUR_DESTINATIONS", "MOUNTAIN_NAVIGATOR", "CRATER_SPECIALIST", "SILENT_HORIZON_VETERAN",
       "COMMANDER_QUALIFIED", "PERFECT_EXPEDITION", "LUNAVIA_MASTER",
     ]);
     ACHIEVEMENTS.forEach((a) => {
-      expect(["landing", "docking", "reentry", "mission"]).toContain(a.on);
+      expect(["landing", "eva", "docking", "reentry", "mission"]).toContain(a.on);
       expect(ACHIEVEMENT_TEXT[a.id].en[0]).toMatch(/^[A-Z][A-Z –-]+$/);
       expect(ACHIEVEMENT_TEXT[a.id].pt[1].length).toBeGreaterThan(20);
     });
@@ -371,6 +371,17 @@ describe("achievements", () => {
     expect(at({ vy: 0.6, vx: 0.36, distance: 0.9, fuelLeft: tank - 111.1 / 0.9, initialFuel: tank })).toEqual(["FIRST_FOOTPRINT", "SOFT_TOUCHDOWN", "PRECISION_PILOT", "FUEL_MASTER"]);
     expect(at({ vy: 0.61, vx: 0.2, distance: 1.1, fuelLeft: tank - 111.1 / 0.87, initialFuel: tank })).toEqual(["FIRST_FOOTPRINT"]);
     expect(at({ crashed: true, reasons: ["UNSAFE TERRAIN"] })).toEqual([]);
+  });
+
+  test("FIRST STEPS: the whole EVA (sample, photograph, back aboard) and nothing less; no points", () => {
+    const eva = (o = {}) => ({ progress: { firstSteps: true, sample: true, photo: true }, completed: true, ...o });
+    expect(newAchievements("eva", { eva: eva() }, {})).toEqual(["FIRST_EVA"]);
+    expect(newAchievements("eva", { eva: eva({ completed: false }) }, {})).toEqual([]);
+    expect(newAchievements("eva", { eva: eva({ progress: { firstSteps: true, sample: true, photo: false } }) }, {})).toEqual([]);
+    expect(newAchievements("eva", { eva: eva() }, { FIRST_EVA: { at: 1 } })).toEqual([]);
+    expect(newAchievements("landing", { eva: eva() }, {})).toEqual([]);
+    // the 1,000-point model is untouched by it
+    expect(TOTAL_MAX).toBe(1000);
   });
 
   test("8. no duplicate unlocks: an achievement is unlocked once, on the flight that earned it", () => {

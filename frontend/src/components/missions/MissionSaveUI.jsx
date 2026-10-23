@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { getSite } from "@/data/landingSites";
 import { RESUME_AT, checkpointText } from "@/lib/missionSave";
+import { SUBTITLE_LANE } from "@/components/CommsSubtitles";
 
 /*
  * The mission checkpoint's screens and notices (lib/missionSave), in English and
@@ -160,20 +161,24 @@ export function MissionSaveNotice({ notice, lang = "en", below = "nav" }) {
   }, [notice]);
   if (!shown) return null;
   // under the site's navigation bar (--hud-top), or, in a phase with a top HUD bar (docking,
-  // reentry), under that bar too: never over an instrument or a control
-  const top = "absolute left-1/2 -translate-x-1/2 z-[75] pointer-events-none safe-mt";
-  const topStyle = { top: below === "hud" ? "calc(var(--hud-top) + 3.1rem)" : "calc(var(--hud-top) + 0.35rem)" };
+  // reentry), under that bar too: never over an instrument or a control. In the lunar EVA ("lane")
+  // in the top lane between its objectives panel and PAUSE, under the subtitles' line.
+  const lane = below === "lane";
+  const top = lane ? "min-w-0 max-w-full text-center" : "absolute left-1/2 -translate-x-1/2 z-[75] pointer-events-none safe-mt";
+  const topStyle = lane ? undefined : { top: below === "hud" ? "calc(var(--hud-top) + 3.1rem)" : "calc(var(--hud-top) + 0.35rem)" };
+  const place = (el) =>
+    lane ? <div className={`absolute ${SUBTITLE_LANE} top-[calc(var(--hud-top)+5rem)] short:top-[calc(var(--hud-top)+4.6rem)] z-[75] pointer-events-none flex justify-center`}>{el}</div> : el;
   if (shown.kind === "saved") {
-    return (
-      <div key={shown.at} style={topStyle} className={`${top} scan-in bg-black/55 backdrop-blur-sm border border-[#4fd1c5]/40 px-3 py-1.5 short:py-1 whitespace-nowrap`} data-testid="checkpoint-saved" data-checkpoint={shown.checkpoint}>
+    return place(
+      <div key={shown.at} style={topStyle} className={`${top} scan-in bg-black/55 backdrop-blur-sm border border-[#4fd1c5]/40 px-3 py-1.5 short:py-1 ${lane ? "" : "whitespace-nowrap"}`} data-testid="checkpoint-saved" data-checkpoint={shown.checkpoint}>
         <span className="font-mono text-[9px] short:text-[8px] tracking-[0.3em] short:tracking-[0.2em] text-[#4fd1c5]">✓ {t.savedChip}</span>
         <span className="font-mono text-[9px] short:text-[8px] tracking-[0.2em] short:tracking-[0.12em] text-zinc-300"> · {checkpointText(shown.checkpoint, lang)}</span>
       </div>
     );
   }
   const safe = shown.interrupted || shown.fallback;
-  return (
-    <div key={shown.at} style={topStyle} className={`${top} scan-in bg-black/65 backdrop-blur-sm border-l-2 ${safe ? "border-[#f5c451]" : "border-[#4fd1c5]"} px-4 py-2 short:px-3 short:py-1.5 max-w-[min(34rem,86vw)] text-center`} data-testid="mission-resumed" data-checkpoint={shown.checkpoint} data-interrupted={shown.interrupted ? "1" : "0"}>
+  return place(
+    <div key={shown.at} style={topStyle} className={`${top} scan-in bg-black/65 backdrop-blur-sm border-l-2 ${safe ? "border-[#f5c451]" : "border-[#4fd1c5]"} px-4 py-2 short:px-3 short:py-1.5 ${lane ? "" : "max-w-[min(34rem,86vw)]"} text-center`} data-testid="mission-resumed" data-checkpoint={shown.checkpoint} data-interrupted={shown.interrupted ? "1" : "0"}>
       <div className={`font-mono text-[10px] short:text-[9px] tracking-[0.32em] short:tracking-[0.22em] ${safe ? "text-[#f5c451]" : "text-[#4fd1c5]"}`}>● {safe ? t.resumedSafe : t.resumed}</div>
       <div className="font-mono text-[10px] short:text-[9px] tracking-[0.22em] short:tracking-[0.14em] text-white mt-0.5">{RESUME_AT[shown.checkpoint] ? RESUME_AT[shown.checkpoint].text[lang === "pt" ? "pt" : "en"] : ""}</div>
       {shown.interrupted && <div className="font-mono text-[9px] short:text-[8px] tracking-[0.06em] text-zinc-300 mt-0.5">{t.interruptedNote}</div>}

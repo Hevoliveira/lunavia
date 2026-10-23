@@ -340,7 +340,7 @@ const pct = (p, max) => p >= Math.round(max * A.phaseMaster);
 
 /*
  * Each achievement is decided at one moment of an official mission (`on`):
- * the landing result, the hard dock, the splashdown, or the end of a
+ * the landing result, the end of the lunar EVA, the hard dock, the splashdown, or the end of a
  * successful mission (with the records already updated by it). Training
  * flights never unlock achievements.
  */
@@ -358,6 +358,9 @@ export const ACHIEVEMENTS = Object.freeze([
   },
   { id: "PRECISION_PILOT", group: "LANDING", on: "landing", test: ({ landing }) => !!landing && landing.safe && landing.snapshot.distance <= A.precisionDistance },
   { id: "FUEL_MASTER", group: "LANDING", on: "landing", test: ({ landing }) => !!landing && landing.safe && landing.efficiency >= A.fuelEfficiency },
+  // the optional lunar EVA (phase 1: the Sea of Tranquility): recorded apart from the 1,000-point
+  // score, which it does not change
+  { id: "FIRST_EVA", group: "LANDING", on: "eva", test: ({ eva }) => !!eva && eva.completed && !!eva.progress && eva.progress.firstSteps && eva.progress.sample && eva.progress.photo },
   { id: "FIRST_CONTACT", group: "DOCKING", on: "docking", test: ({ docking }) => !!docking && docking.success },
   {
     id: "PRECISION_DOCKING",

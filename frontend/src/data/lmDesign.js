@@ -167,6 +167,15 @@ const WINDOWS = [
   ],
 ];
 
+/* ---- the porch handrails (model units; the EVA's hands hold them, data/evaSim) ---------- */
+export const PORCH_RAILS = [-0.1, 0.1].map((x) => ({
+  x,
+  front: [x, DS.y1, DS.a + 0.1], // the post at the porch's outer corner
+  top: [x, 0.55, DS.a + 0.085], // the rail's front end, about 1 m above the porch
+  back: [x, 0.55, 0.37], // the rail's back end, above the deck in front of the hatch
+  deck: [x, DS.y1 + 0.016, 0.37], // the rear post's foot on the deck
+}));
+
 /* ---- the static vehicle ------------------------------------------------------------ */
 // The ascent engine (under the cabin, inside the interstage while the stages are joined).
 export const ASC_ENGINE = { top: AS_Y, exitY: AS_Y - 0.085, throatR: 0.03, exitR: 0.062 };
@@ -203,11 +212,15 @@ function collect() {
     P.metal.push(faceBox(0.1, 0.08, 0.08, 0, 0.3, a + 0.03, r));
     P.black.push(faceBox(0.06, 0.05, 0.03, 0, 0.3, a + 0.075, r));
   });
-  // Front porch and its handrails, and the equipment box beside the ladder.
+  // Front porch and its handrails, and the equipment box beside the ladder. The rails run along
+  // both sides of the porch at about waist height (the front stays open onto the ladder): a front
+  // post at the porch's outer corner, the rail back towards the hatch and a post down to the deck.
   P.metal.push(box(0.2, 0.014, 0.11, 0, y1 - 0.004, a + 0.055));
-  P.metal.push(rod([-0.095, y1, a + 0.1], [-0.095, y1 + 0.09, a + 0.07], 0.005, 6));
-  P.metal.push(rod([0.095, y1, a + 0.1], [0.095, y1 + 0.09, a + 0.07], 0.005, 6));
-  P.metal.push(rod([-0.095, y1 + 0.09, a + 0.07], [0.095, y1 + 0.09, a + 0.07], 0.005, 6));
+  PORCH_RAILS.forEach(({ front, top, back, deck }) => {
+    P.metal.push(rod(front, top, 0.005, 6));
+    P.metal.push(rod(top, back, 0.005, 6));
+    P.metal.push(rod(back, deck, 0.005, 6));
+  });
   P.metal.push(box(0.15, 0.11, 0.045, -0.24, 0.13, a + 0.024));
   P.black.push(box(0.13, 0.008, 0.047, -0.24, 0.16, a + 0.025));
 

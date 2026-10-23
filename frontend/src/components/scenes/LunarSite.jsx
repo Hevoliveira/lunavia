@@ -340,8 +340,11 @@ export function SiteSky({ site }) {
 const SHADOW_BOX = 44; // scene units either side of the LM
 const SHADOW_MAP = 2048;
 
-/** The Sun and the fill light; the shadow map follows `focus()` ([x, y, z] scene units, e.g. the LM). */
-export function SiteSun({ site, focus = null }) {
+/**
+ * The Sun and the fill light; the shadow map follows `focus()` ([x, y, z] scene units, e.g. the LM).
+ * `box`: the shadow map's half-width (scene units); the EVA uses a tighter one for the astronaut.
+ */
+export function SiteSun({ site, focus = null, box = SHADOW_BOX }) {
   const light = useRef();
   const dir = useMemo(() => new THREE.Vector3(...skyDirection(site.sun)), [site]);
   const basis = useMemo(() => {
@@ -354,17 +357,25 @@ export function SiteSun({ site, focus = null }) {
     const l = light.current;
     if (!l) return;
     const cam = l.shadow.camera;
-    cam.left = -SHADOW_BOX;
-    cam.right = SHADOW_BOX;
-    cam.top = SHADOW_BOX;
-    cam.bottom = -SHADOW_BOX;
+    cam.left = -box;
+    cam.right = box;
+    cam.top = box;
+    cam.bottom = -box;
     cam.near = 1;
     cam.far = 900;
     cam.updateProjectionMatrix();
     l.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+    // three.js keeps a shadow map it has already made at its old size (512) and would then draw
+    // the 2048 pass into it, so the map holds a corner of the scene and the shadows go missing.
+    // That happens whenever a frame renders before this effect (a heavy scene: the lunar EVA);
+    // drop it here so it is made again at the right size.
+    if (l.shadow.map && l.shadow.map.width !== SHADOW_MAP) {
+      l.shadow.map.dispose();
+      l.shadow.map = null;
+    }
     l.shadow.bias = -0.0004;
     l.shadow.normalBias = 0.04;
-  }, []);
+  }, [box]);
   useFrame(() => {
     const l = light.current;
     if (!l) return;
@@ -372,7 +383,7 @@ export function SiteSun({ site, focus = null }) {
     const f = focus ? focus() : null;
     if (f) tmp.set(f[0], f[1], f[2]);
     else tmp.set(0, 0, 0);
-    const texel = (2 * SHADOW_BOX) / SHADOW_MAP;
+    const texel = (2 * box) / SHADOW_MAP;
     const a = tmp.dot(basis.right);
     const b = tmp.dot(basis.up);
     tmp.addScaledVector(basis.right, Math.round(a / texel) * texel - a).addScaledVector(basis.up, Math.round(b / texel) * texel - b);
@@ -387,7 +398,7 @@ export function SiteSun({ site, focus = null }) {
     <>
       <ambientLight intensity={0.1} />
       <hemisphereLight args={["#5b6a80", "#5a544b", 0.42]} />
-      <directionalLight ref={light} intensity={intensity} color="#fffaf1" castShadow />
+      <directionalLight ref={light} intensity={intensity} color="#fffaf1" castShadow shadow-mapSize={[SHADOW_MAP, SHADOW_MAP]} />
     </>
   );
 }
