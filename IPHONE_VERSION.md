@@ -1,19 +1,21 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 3326bab**.
+This folder installs **BUILD 672b8ef**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 3326bab · 2026-10-22 22:11 UTC**
+> **LUNAVIA iOS · BUILD 672b8ef · 2026-10-23 07:56 UTC**
 
-It adds **save and resume**: an unfinished official mission is kept on the iPhone at each safe
-checkpoint (descent ready, landing complete, docking ready, docking complete, Earth reentry
-ready) and, after the app is closed, THE ROAD TO THE MOON shows SAVED MISSION AVAILABLE with
-RESUME MISSION (CONTINUAR MISSÃO in Portuguese). Everything else — the launch, the four
-destinations, the landing, the docking, the return, the clouds, the sea and the splashdown — is
-as in BUILD 8691a17.
+It adds the **lunar EVA — first steps on the Moon** at the Sea of Tranquility: after a safe
+landing there, the ascent preparation offers **BEGIN EVA** (optional; PT: INICIAR EVA) under
+INITIATE LUNAR ASCENT. The astronaut climbs down the LM's ladder, takes the first steps, collects
+a lunar sample, photographs the landing site and climbs back in; then the mission continues to
+the ascent as before. The other three destinations, and everything else — the launch, the
+landing, the docking, the return, the splashdown, the scores and save and resume — are as in
+BUILD 3326bab.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **3326bab** is the previous release: save and resume, but no BEGIN EVA after the landing;
 - **c88a530** and **2a8b97d** are earlier builds of save and resume (2a8b97d: MISSION RESUMED
   over the return's phase label, the menu cutting the checkpoint's name in Portuguese; both: the
   note about a damaged save over the title of the startup screen);
@@ -128,6 +130,27 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Descent and splashdown prototypes (review build): scattered cumulus traced through a weather map (no puff towers), the sea from a calibrated wave spectrum with a short-crested swell (no stripes) and one atmosphere for sky, sea and clouds, the whole parachute assembly framed at 160 m with its lines visible, spray as masses of water at contact, and the released parachutes falling on and lying downwind on the sea | — | a5edd07 |
 | Natural cloud formations: broad, low cumulus (2.5–4.5 times wider than tall) built as heaps of puffs, scattered in irregular groups with clear sky between them, a few thin broken stratocumulus sheets far off, open sky over the splashdown, taller cumulus only far away | — | 8691a17 |
 | Mission save and resume: automatic checkpoints (LUNAR DESCENT READY, LUNAR LANDING COMPLETE, DOCKING READY, DOCKING COMPLETE, EARTH REENTRY READY), kept in the app's own files and in the web view; RESUME MISSION on the startup screen and in the game menu; START A NEW MISSION? before a save is replaced; an interrupted maneuver flown again from the last safe checkpoint | — | 2a8b97d, c88a530, 3326bab |
+| Lunar EVA — first steps on the Moon (Sea of Tranquility): BEGIN EVA on the ascent preparation (optional), the astronaut out of the hatch and down the ladder, walking in lunar gravity, FIRST STEPS ON THE MOON, COLLECT LUNAR SAMPLE, DOCUMENT THE LANDING SITE with the chest camera, back up the ladder and the hatch closed, EVA checkpoints (LUNAR EVA, LUNAR EVA COMPLETE), the FIRST STEPS achievement, English and Portuguese | — | ed6e7ec, 672b8ef |
+
+## Try the lunar EVA on the iPhone
+
+Not yet tried on a physical iPhone; the checks below were run in a desktop browser.
+1. Fly a mission to the **Sea of Tranquility** and land safely. On LUNAR SURFACE — ASCENT
+   PREPARATION, wait for the checklist, then press **BEGIN EVA** (under INITIATE LUNAR ASCENT).
+2. The hatch opens and the astronaut climbs down (SKIP › jumps to the surface). FIRST STEPS ON THE
+   MOON appears.
+3. **Left thumb:** put it down anywhere in the lower left and push to walk. **Right thumb:** drag to
+   look around. The objectives are top left; the diamond marker shows where to go.
+4. At the marked stone press **COLLECT SAMPLE**. At the photo point press **CAMERA**, turn until
+   the whole LM is in the frame (the viewfinder says what is wrong), then the round shutter.
+5. Walk back to the ladder and press **BOARD THE LM**. The astronaut climbs in, the hatch closes,
+   EVA COMPLETE, and the ascent preparation is back: INITIATE LUNAR ASCENT as usual.
+6. Close LUNAVIA in the middle of the EVA and open it again: RESUME MISSION brings you back to the
+   EVA (at the foot of the ladder) with the objectives already done kept. After the EVA, it brings
+   you back to the ascent preparation.
+7. Walk far from the LM: at 24 m the objectives panel shows EXPLORATION LIMIT; at 31 m the
+   astronaut stops. PAUSE (top right) stops everything.
+8. Skipping the EVA (INITIATE LUNAR ASCENT straight away) flies the mission exactly as before.
 
 ## Try save and resume on the iPhone
 
@@ -151,8 +174,10 @@ project) the moment it is reached; it does not depend on the app being closed cl
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 3326bab** with `yarn ios:sync` (`ios:verify`: 146 checks, including the checkpoint store compiled into the App target and registered, and the save/resume screens in English and Portuguese). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
-- **This release adds save and resume** over BUILD 8691a17 (HANDOFF §58). The Xcode project gains one Swift file (`App/MissionSaveStore.swift`) and one line in `SceneDelegate.swift`; Capacitor and the Swift package are unchanged (no new dependency), so the ZIP opens and builds in Xcode as before. Browser checks of this release: a full mission closed and relaunched at every checkpoint (three times by SIGKILL), 60 resumes across the 4 destinations × 3 difficulties × 5 checkpoints, damaged, torn, outdated and newer-version saves, START A NEW MISSION?, a mission flown straight through and the docking training, the packaged files offline. Not run on a physical iPhone.
+- **Built from the clean tree at 672b8ef** with `yarn ios:sync` (`ios:verify`: 155 checks, now including the lunar EVA in English and Portuguese, its checkpoints and achievement, and every one of the 300 voice clips in the app). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **This release adds the lunar EVA** over BUILD 3326bab (HANDOFF §59). Web game only: the Xcode project, Capacitor and the Swift package are unchanged, so the ZIP opens and builds in Xcode as before. The save format moves to schema 2 (it still reads saves written by 3326bab; a mission saved by this build and then opened by 3326bab is reported as written by a newer version, never as damaged). Browser checks of this release: the full Sea of Tranquility mission with the EVA on the packaged files (24/24: two SIGKILLs and a clean close in the middle of it, no duplicate sample, no landing replayed, the score unchanged, FIRST STEPS unlocked once, no subtitle or notice over a control or the astronaut), the EVA's controls and safety (18/18: the touch joystick and camera, the 24 m warning and the 31 m limit, walking into the LM from four sides, the camera never inside the LM, under the ground or on the backpack, PAUSE, the HUD at 667 × 375, 844 × 390 and 932 × 430 in English and Portuguese), the Sea of Tranquility without the EVA and the other three destinations flown straight through (12/12 each, no BEGIN EVA away from Tranquility), and the bundle offline resuming a save written by 3326bab. Not run on a physical iPhone.
+- **3326bab** (the previous release) was built from its clean tree with 146 checks.
+- **3326bab added save and resume** over BUILD 8691a17 (HANDOFF §58). The Xcode project gains one Swift file (`App/MissionSaveStore.swift`) and one line in `SceneDelegate.swift`; Capacitor and the Swift package are unchanged (no new dependency), so the ZIP opens and builds in Xcode as before. Browser checks of this release: a full mission closed and relaunched at every checkpoint (three times by SIGKILL), 60 resumes across the 4 destinations × 3 difficulties × 5 checkpoints, damaged, torn, outdated and newer-version saves, START A NEW MISSION?, a mission flown straight through and the docking training, the packaged files offline. Not run on a physical iPhone.
 - **8691a17** (the previous release, below) was built from its clean tree with 137 checks.
 - **This release changes only the clouds' shape and spread** over BUILD a5edd07 (HANDOFF §57); a5edd07 itself changed only how the descent and the splashdown look over a0b5ec2 (HANDOFF §56: the clouds, the sea, the descent and recovery cameras, the suspension lines, the spray and the released parachutes). The reentry's physics, the parachutes' timing and descent rate, the time scale and the success rules, and everything before the reentry, are as in a0b5ec2. The notes below describe a0b5ec2.
 - **This release makes the descent faster and finishes its look.** Nothing else changes: the reentry's physics, trajectory, controls, parachute timing and success rules, and everything before the reentry, are as in the previous release.

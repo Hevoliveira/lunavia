@@ -366,6 +366,96 @@
       "f": "en/dock.transfer.0.mp3"
      }
     ],
+    "eva.authorized": [
+     {
+      "d": 4.98,
+      "f": "en/eva.authorized.0.mp3"
+     }
+    ],
+    "eva.board": [
+     {
+      "d": 1.25,
+      "f": "en/eva.board.0.mp3"
+     }
+    ],
+    "eva.boundary": [
+     {
+      "d": 4.49,
+      "f": "en/eva.boundary.0.mp3"
+     }
+    ],
+    "eva.complete": [
+     {
+      "d": 4.36,
+      "f": "en/eva.complete.0.mp3"
+     }
+    ],
+    "eva.firstStep": [
+     {
+      "d": 3.89,
+      "f": "en/eva.firstStep.0.mp3"
+     }
+    ],
+    "eva.firstStepsCapcom": [
+     {
+      "d": 3.75,
+      "f": "en/eva.firstStepsCapcom.0.mp3"
+     }
+    ],
+    "eva.goPhoto": [
+     {
+      "d": 6.42,
+      "f": "en/eva.goPhoto.0.mp3"
+     }
+    ],
+    "eva.goSample": [
+     {
+      "d": 4.05,
+      "f": "en/eva.goSample.0.mp3"
+     }
+    ],
+    "eva.hatch": [
+     {
+      "d": 2.18,
+      "f": "en/eva.hatch.0.mp3"
+     }
+    ],
+    "eva.hatchClosed": [
+     {
+      "d": 1.87,
+      "f": "en/eva.hatchClosed.0.mp3"
+     }
+    ],
+    "eva.ladder": [
+     {
+      "d": 2.17,
+      "f": "en/eva.ladder.0.mp3"
+     }
+    ],
+    "eva.photoDone": [
+     {
+      "d": 1.77,
+      "f": "en/eva.photoDone.0.mp3"
+     }
+    ],
+    "eva.remind": [
+     {
+      "d": 3.3,
+      "f": "en/eva.remind.0.mp3"
+     }
+    ],
+    "eva.returnLM": [
+     {
+      "d": 2.18,
+      "f": "en/eva.returnLM.0.mp3"
+     }
+    ],
+    "eva.sampleDone": [
+     {
+      "d": 1.24,
+      "f": "en/eva.sampleDone.0.mp3"
+     }
+    ],
     "launch.count1": [
      {
       "d": 0.47,
@@ -1125,6 +1215,96 @@
      {
       "d": 5.22,
       "f": "pt/dock.transfer.0.mp3"
+     }
+    ],
+    "eva.authorized": [
+     {
+      "d": 5.73,
+      "f": "pt/eva.authorized.0.mp3"
+     }
+    ],
+    "eva.board": [
+     {
+      "d": 1.44,
+      "f": "pt/eva.board.0.mp3"
+     }
+    ],
+    "eva.boundary": [
+     {
+      "d": 5.02,
+      "f": "pt/eva.boundary.0.mp3"
+     }
+    ],
+    "eva.complete": [
+     {
+      "d": 5.49,
+      "f": "pt/eva.complete.0.mp3"
+     }
+    ],
+    "eva.firstStep": [
+     {
+      "d": 3.75,
+      "f": "pt/eva.firstStep.0.mp3"
+     }
+    ],
+    "eva.firstStepsCapcom": [
+     {
+      "d": 3.96,
+      "f": "pt/eva.firstStepsCapcom.0.mp3"
+     }
+    ],
+    "eva.goPhoto": [
+     {
+      "d": 6.78,
+      "f": "pt/eva.goPhoto.0.mp3"
+     }
+    ],
+    "eva.goSample": [
+     {
+      "d": 4.43,
+      "f": "pt/eva.goSample.0.mp3"
+     }
+    ],
+    "eva.hatch": [
+     {
+      "d": 3.28,
+      "f": "pt/eva.hatch.0.mp3"
+     }
+    ],
+    "eva.hatchClosed": [
+     {
+      "d": 2.42,
+      "f": "pt/eva.hatchClosed.0.mp3"
+     }
+    ],
+    "eva.ladder": [
+     {
+      "d": 2.51,
+      "f": "pt/eva.ladder.0.mp3"
+     }
+    ],
+    "eva.photoDone": [
+     {
+      "d": 2.25,
+      "f": "pt/eva.photoDone.0.mp3"
+     }
+    ],
+    "eva.remind": [
+     {
+      "d": 4.17,
+      "f": "pt/eva.remind.0.mp3"
+     }
+    ],
+    "eva.returnLM": [
+     {
+      "d": 2.55,
+      "f": "pt/eva.returnLM.0.mp3"
+     }
+    ],
+    "eva.sampleDone": [
+     {
+      "d": 2.04,
+      "f": "pt/eva.sampleDone.0.mp3"
      }
     ],
     "launch.count1": [
