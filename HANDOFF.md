@@ -3675,3 +3675,43 @@ adds no points. The mission log keeps the EVA separately (`entry.eva`: completed
 samples, photos, distance). A new achievement **FIRST STEPS** (`FIRST_EVA`, group LANDING) unlocks
 once, when an EVA is completed with all three objectives; a resumed flight re-applies it
 idempotently (once per flight id).
+
+**Tests.** `data/evaSim.test.js` (13: the LM frame on the drawn model, collisions with the LM,
+struts, pads and boulders, the area limit, walking and slopes, egress/ingress continuity and their
+exact ends, the deck, handrails and rails), `data/astronautRig.test.js` (10: proportions, planted
+boots, IK reach, no limb pops through the ladder sequences), `lib/missionSave.test.js` (schema 2,
+EVA consistency, resume plans, `applyEva` idempotency), `data/missionScoring.test.js` (FIRST STEPS,
+18 achievements). Whole suite: 618 tests, 38 suites.
+
+**Browser validation** (Chromium + SwiftShader, a CPU rasteriser, 844 × 390 touch viewport unless
+noted — *browser* tests, not an iPhone; SwiftShader draws a frame in ~200–450 ms, so every timing
+check counts game time, not wall time):
+- the full Tranquility · ASTRONAUT mission with the EVA on the packaged iOS files (served locally),
+  every EVA action through the game's own controls, two SIGKILLs and a clean close in the middle:
+  landing → BEGIN EVA → egress → FIRST STEPS → (SIGKILL, resume at the ladder) → sample →
+  (close, resume: no duplicate) → photograph → BOARD THE LM → ingress → EVA COMPLETE →
+  (SIGKILL, resume at the ascent preparation, BEGIN EVA gone, no landing replay) → ascent →
+  rendezvous → docking → return → reentry → splashdown → MISSION COMPLETE; the log keeps the EVA
+  apart, the score stays on the 1,000-point model (GOLD), FIRST STEPS unlocked once; a HUD sampler
+  watched every subtitle, toast and checkpoint notice for overlaps with the controls, the
+  objectives, each other and the walking astronaut;
+- safety and controls (`?at=ladder` preview of the same component): touch joystick (CDP touch
+  events) walks and stops without sliding, touch drag orbits the camera, the exploration warning
+  at 24.0 m and the hard stop at 31.00 m, the LM marker on screen at the limit, walking into the
+  LM from four sides stops at 2.81 m (descent stage 2.45 m + suit 0.36 m), the camera never inside
+  the LM, under the ground or on the backpack (pushing into the LM, and orbiting by touch at three
+  pitches pressed against it), PAUSE freezes everything;
+- HUD layout at 667 × 375, 844 × 390 and 932 × 430, English and Portuguese: controls inside the
+  screen, not overlapping, clear of the astronaut, every target ≥ 44 pt;
+- the other three destinations (Hadley, Tycho, Silent Horizon · ASTRONAUT) flown straight through:
+  no BEGIN EVA, landing, docking, return, splashdown and scoring as before; Tranquility without the
+  EVA (INITIATE LUNAR ASCENT straight away) flies the same mission; docking training untouched;
+- offline on the packaged files: a save written by BUILD 3326bab (schema 1) resumes;
+- motion: game-speed GIFs of the egress, the walk, the sample and the ingress;
+- cost against the ascent preparation in the same software renderer (only the ratio is
+  meaningful): 1.13× the frame time walking, 1.30× standing by the LM; 107–111 draw calls against
+  38 (the astronaut's 42 merged meshes, drawn again for the shadow map); 118–122k triangles against
+  81k (the astronaut is 20.9k).
+
+Not verified here: a physical iPhone (touch feel, frame rate, thermals and memory on a real GPU,
+WKWebView), and the voice lines on a device speaker.

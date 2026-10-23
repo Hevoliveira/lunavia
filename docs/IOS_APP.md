@@ -241,8 +241,13 @@ landing at the Sea of Tranquility. On a phone in landscape:
   voice pack; `yarn ios:verify` now checks every clip in `voice/manifest.json` is in the app.
 - Cost: the EVA reuses the ascent preparation's terrain, rocks, sky, Sun (the same 2048² shadow
   map, here over a tighter 24-unit box that follows the astronaut) and LM. It adds the astronaut
-  (merged meshes per segment and material) and the footprints; see Performance for the measured
-  frame cost against the ascent preparation.
+  (42 meshes merged per segment and material, 20.9k triangles, casting shadows) and the
+  footprints. Measured against the ascent preparation in the same software renderer (Chromium +
+  SwiftShader on the CPU — only the ratio means anything, not the milliseconds): 1.13× its frame
+  time walking and 1.30× standing next to the LM; 107–111 draw calls against 38 (the astronaut is
+  drawn twice, for the Sun's shadow); 118–122k triangles against 81k. The adaptive resolution
+  (below about 45 fps the pixel ratio steps down) applies as in every scene. Not yet measured on
+  an iPhone GPU.
 
 ## Audio on iOS
 
