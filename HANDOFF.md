@@ -3847,3 +3847,164 @@ grazing angles; a dust skirt round each footpad and probe marks; the ascent stag
 blankets as their own material; a sharper reflection on the LM's windows; dynamic reflections on
 the LM's metal (the visor's capture could feed them); an LOD for the close LM and the astronaut
 seen from far off; measuring all of it on an iPhone.
+
+## 61. Lunar EVA — four distinct expeditions (all four official destinations)
+
+The playable EVA of §59/§60 now runs at every official destination, each with its own scientific
+expedition. It is the same EVA — one engine (`data/evaSim`: walking, collisions, the LM's hatch and
+ladder; `components/eva/LunarEva.jsx`: the astronaut, camera, controls, HUD, boarding) — with one
+configuration per destination (`data/evaMissions.js`). Nothing was copied per site. Training is
+unchanged (lunar landings only, no EVA); the 1,000-point score, the landing, docking and return
+physics, the cinematics and the close-range visuals are unchanged.
+
+| Destination | Expedition | Objectives (then RETURN TO THE LM) |
+| --- | --- | --- |
+| SEA OF TRANQUILITY | First steps on the Moon (§59, unchanged) | first steps · sample TQ-01 · photo of the LM |
+| HADLEY–APENNINE | Geological expedition | surface deployment · geological survey (a rille-edge basalt boulder, INSPECT + science card) · two samples (HA-01 mare basalt at the boulder, HA-02 regolith breccia at a small crater's rim) · document the valley (Mons Hadley from an observation point) · deploy the passive seismometer |
+| TYCHO HIGHLANDS | Impact geology investigation | exit and survey · identify impact material (an ejecta block of a fresh crater) · two samples (TY-01 impact melt on the pond, TY-02 ejecta breccia) · document the crater from its rim (never inside) · place the gnomon by the block |
+| SILENT HORIZON | Far-side scientific expedition | begin far-side EVA · sample FS-01 · deploy the low-frequency radio antenna · document the far side (the basin ring) · confirm the science data on the receiver's own interface |
+
+**Configuration** (`EVA_MISSIONS[siteId]`): the objective sequence (`kind`: firstSteps, survey,
+sample, photo, instrument, data), the samples (ids, rock types, anchors), the survey, the
+instrument (kind, footprint, slope limit), the photo subject (the LM, a landmark — x, z, its summit
+from the drawn terrain — a crater, or a direction on the horizon), the exploration bounds (Hadley
+32/38 m, the others the §59 24/31 m), the communications (`earthLink`), the voice ids and every
+text in EN/PT (titles, objectives, briefing, science cards, sample names, the BEGIN EVA subtitle).
+`freshEva`, `cleanProgressFor`, `nextObjective`, `currentTarget`, `actionAt`, `photoCheckFor`,
+`validateEvaRecord`, `evaSummary` work for any configuration.
+
+**Placement relative to the LM where it landed** (`planEva(world)`, world = `evaWorld` from the
+saved landing pose). Each target tries its anchors in a fixed order — real site features within
+reach: boulders (`site.rocks`, nearest first, by label where it matters), crater rims
+(`site.features`), the melt pond the LM stands on, a bearing towards a landmark, beside another
+target — then open ground round the LM, flagged `fallback`. A candidate is accepted only if: 6.5 m
+or more from the LM's axis (nothing under the LM), short of the exploration warning, |z| inside the
+drawn patch, 3 m from the ladder, clear of the LM, its legs and every boulder (sample stones 1.3 m,
+stands 0.9 m, the antenna 3.2 m), on gentle ground (stones ≤ 14°, stands ≤ 16°, the seismometer
+and antenna ≤ 8° with a level footprint, the gnomon ≤ 14°), apart from the other targets (two
+samples ≥ 6 m; a sample or the gnomon may sit by the surveyed rock), and with a walkable route
+from the foot of the ladder no longer than 70 m (straight, or through waypoints round the LM and
+the boulders; no stretch steeper than 24°). The order is fixed and nothing is random, so the same
+landing always gives the same plan (save and resume rebuild it identically). The Sea of
+Tranquility uses §59's own places (`world.sample`, `world.photo`), so its EVA is unchanged.
+Fallbacks: Tycho photographs its central peak on the horizon when no crater rim is in reach (1 of
+38 safe landing positions); no forced placement anywhere (tested).
+
+**Never trapped.** The walker now also stops at the edge of ground too steep to walk down (more
+than 30° over the 0.6 m ahead: a fresh crater's inner wall, a rille side) as it already stopped at
+ground too steep to climb; the way back is always open. Nowhere in the Sea of Tranquility's areas is
+that steep (tested), so its walk is unchanged.
+
+**New interactions** (the same INTERACT button; nothing completes on its own):
+- INSPECT at the survey point: the astronaut turns to the rock or crater, leans in and points
+  (`inspectSpec`, 3.6 s), then a science card (right side, CLOSE, 20 s) explains what was seen.
+- DEPLOY at the deploy site: the folded package in both gloves, a deep crouch, set down
+  (`deploySpec`), then it unfolds — the seismometer's thermal skirt and two panels, the gnomon's
+  tripod and its rod swinging to true vertical, the antenna's four elements unrolling 2.4 m each
+  (6.2 s) — and its science card. Repeated parts are instanced (a few draws per instrument).
+- CHECK INSTRUMENT (far side, after the antenna): the receiver's own interface (antenna, power,
+  radio environment, the first data block recording for 24 s after deployment, then recorded).
+  CONFIRM DATA is disabled until the block is recorded and must be tapped. No invented
+  measurements: the panel is qualitative (there is no radio model behind it).
+- Photos: the viewfinder's verdict for the destination's subject — GO TO THE OBSERVATION POINT
+  (within 3.2 m), AIM AT / CENTRE the subject, TILT UP/DOWN until the summit and foot (a landmark)
+  or the crater's floor and far rim are in the frame. The LM photo keeps §59's check.
+- Two samples: both stones and rings shown, the marker guiding to the nearer; each has its own
+  rock type, shape and tone.
+
+**Navigation.** The objectives panel lists the destination's objectives with done/current marks
+and the sample count (1/2); the LM's distance now has a bearing arrow (up = straight ahead on
+screen); the marker shows the current target's label and distance and fills in when its action is
+in reach; it stays off the astronaut and at the screen's inner rim when the target is off screen;
+rings mark the targets on the ground (sample orange, survey green, photo point teal, deploy site
+and instrument blue, ladder amber).
+
+**Far side** (`comms.earthLink: false`). EARTH LINK UNAVAILABLE · ONBOARD COMPUTER under the title;
+the comms hub's Earth link is cut on entry (`audio.setEarthLink(false)`), so no Houston line can
+play; procedures come from the onboard computer (COMPUTER voice: `eva.fs.*`); the crew's
+suit-to-suit calls (`eva.hatch`, `eva.ladder`, `eva.firstStep`, `eva.sampleDone`, `eva.board`,
+`eva.hatchClosed`, `eva.photoTaken`, `eva.fs.firstSteps`, `eva.fs.instrumentDone`) are marked
+`throughBlackout`. No Earth in the sky (the site has none), black sky, no atmosphere or weather.
+
+**Voice.** 32 new lines × EN/PT (64 Kokoro clips, ~1.4 MB, the existing offline pipeline):
+`eva.ha.*`, `eva.ty.*` (CAPCOM and crew), `eva.fs.*` (COMPUTER and crew), and shared
+`eva.sampleOne`, `eva.goSecond`, `eva.samplesDone`, `eva.photoTaken`. The Sea of Tranquility's
+lines and timing are unchanged.
+
+**Save and resume** (`lib/missionSave.js`, schema 3; schemas 1 and 2 still read). The `eva`
+record is checked against its own destination (`validateEvaRecord`): only that destination's
+objective keys, sample ids (no duplicates), photo subject and instrument; an objective needs what it
+produced and vice versa; the far side's data need the antenna; anything needs the first steps. A
+schema 2 save can only hold the Sea of Tranquility's EVA. On resume the plan is rebuilt from the
+saved landing pose (identical), collected stones and the deployed instrument stay as they were, a
+receiver deployed before the interruption counts as recorded, and the distance walked continues.
+`EVA_READY` is saved at BEGIN EVA and after every objective; `EVA_COMPLETE` with the hatch closed.
+
+**Logbook and achievements** (a category of their own; the score is untouched). The log entry's
+`eva` gains the destination, the objectives done/total, the sample ids, the instruments, the data;
+the MISSION LOG row shows `EVA 5/5 · 2 SAMPLES`. Four achievements in a new LUNAR SURFACE group:
+VALLEY GEOLOGIST (Hadley), IMPACT INVESTIGATOR (Tycho), FAR-SIDE LISTENER (far side), LUNAR FIELD
+SCIENTIST (all four expeditions; progress n/4). FIRST STEPS stays the Sea of Tranquility's.
+
+**Flow.** BEGIN EVA is offered (optional) on the ascent preparation at every destination; its
+subtitle names the expedition. Board → ascent → rendezvous → docking → Earth return → reentry →
+splashdown → MISSION COMPLETE as before; the launch is never replayed, the site and difficulty
+never reset.
+
+**Files.** New: `data/evaMissions.js` (+ tests), `components/eva/EvaScience.jsx` (stones, rings,
+instruments), `components/eva/EvaPanels.jsx` (science card, receiver interface). Changed:
+`components/eva/LunarEva.jsx`, `evaText.js`, `data/evaSim.js` (area per world, the descent guard,
+`slopeAt` exported), `data/astronautRig.js` (`inspectSpec`, `deploySpec`, `consoleSpec`),
+`audio/commsLines.json`, `data/missionConfig.js` (`EVA_SITES` = all four), `lib/missionSave.js`,
+`lib/missionSelection.js`, `lib/missionRecords.js`, `data/missionScoring.js`, `data/scoringText.js`,
+`pages/Mission.jsx`, `pages/Records.jsx`, `components/LunarAscent.jsx`, `pages/EvaPreview.jsx`
+(`?site=`, `?x=`, `?done=`), `scripts/verify-ios-bundle.js` (12 markers).
+
+**Validation** (browser: Chromium + SwiftShader at iPhone landscape sizes, the game's own controls;
+NOT a physical iPhone).
+- Unit tests 656/656 (624 before): `data/evaMissions.test.js` (28) — the four configurations and
+  their texts (no Houston on the far side), Tranquility's record, places and voice identical to
+  §59; placement at every safe landing position of every site (226 landings: all targets on the
+  ground, clear, within the bounds, never under the LM, slopes, separations, routes ≤ 70 m, no
+  forced placement, fallbacks ≤ 5 %); determinism; the targets move with the LM; the primary zones
+  on their scientific anchors (Hadley's survey and HA-01 at a boulder, HA-02 at a crater; Tycho's
+  survey at a fresh crater's block, TY-01 on the melt pond, the crater photographed from outside
+  its rim, the gnomon by the block; the antenna's 3.2 m clearance); the real walker reaching every
+  target from the ladder at 16 landings; interactions only in reach and never before the first
+  steps; the data only after the antenna; the photo verdicts per subject; the save record per
+  destination; never trapped in a fresh crater; Tranquility's areas never steep enough for the
+  new guard. Plus the rig's survey, deployment and receiver poses (3), save schema 3 and the
+  expedition achievements (`missionSave`, `missionScoring`).
+- Each expedition played end to end in the browser (egress, every objective through INSPECT,
+  COLLECT, DEPLOY, CHECK INSTRUMENT / CONFIRM DATA and the camera, return, ingress): Hadley 18/18,
+  Tycho 18/18 (and 18/18 in Portuguese at 932×430), Silent Horizon 16/16 (and 16/16 in Portuguese
+  at 667×375); the far side's CONFIRM DATA disabled while the first data block records, a tap on it
+  doing nothing, then confirmed only by the player's tap (8/8); the voice sequence per site (far
+  side: only COMPUTER and crew lines, no CAPCOM).
+- Full missions with the EVA, SIGKILL and clean close in the middle of the EVA and SIGKILL after it
+  (landing → BEGIN EVA → expedition → EVA COMPLETE → ascent → rendezvous → docking → Earth return →
+  reentry → splashdown → MISSION COMPLETE; the same plan after each resume, nothing lost or
+  duplicated, the expedition's achievement once, the logbook entry, the score ≤ 1000 with no EVA
+  points): Hadley ASTRONAUT 28/28 (dev server) and CADET 28/28, Tycho CADET 28/28 and COMMANDER
+  28/28, Silent Horizon ASTRONAUT 27/27 and COMMANDER 27/27 (the packaged BUILD 6b2b32a); the
+  Sea of Tranquility's own §59 script unchanged: ASTRONAUT 24/24 (dev) and COMMANDER 24/24
+  (packaged), its HUD overlap probe included.
+- Regression of every destination × difficulty with the EVA skipped (BEGIN EVA offered, then the
+  ascent, docking, return and splashdown as before), packaged build: 12 combinations, 12/12
+  checks each.
+- iOS bundle: `yarn ios:sync` — BUILD 6b2b32a, the verifier 172/172 (12 new markers), all 364
+  voice clips bundled.
+- Cost (same software renderer, only ratios mean anything): walking with the instrument deployed,
+  66–71 draw calls and 191–212k triangles against 59 and 186k at the Sea of Tranquility; the
+  instruments themselves within the run-to-run noise (standing A/B with and without them); each
+  site's ascent preparation 214–222 ms per frame, its EVA 1.80× (Tranquility) to 2.40× (Tycho,
+  the most boulders in view).
+
+Not verified here: a physical iPhone (frame rate, thermals, touch feel of the new interactions),
+human listening to the 64 new clips beyond spot checks.
+
+**Known limitations.** The survey and the instruments use procedural shapes (no new art files);
+the receiver's panel is qualitative by design; Hadley's EVA area is wider (38 m) than the others'
+to reach the rille-edge boulders, the rille itself is out of reach; the off-zone landings that put
+no crater rim within reach at Tycho photograph the central peak instead (flagged fallback); the
+sample count per destination is fixed (no free collection of extra rocks).

@@ -225,20 +225,33 @@ It uses the same games, physics and touch controls as the mission. On phones, a 
 navbar like the mission's flight states. The instructor line lives inside the telemetry column, so
 the descent camera's visibility area is unchanged. See `TRAINING_CENTER.md`.
 
-## Lunar EVA (Sea of Tranquility)
+## Lunar EVA (four expeditions)
 
-The optional lunar EVA (HANDOFF §59; close-range visuals §60) is offered by BEGIN EVA on the ascent preparation after a
-landing at the Sea of Tranquility. On a phone in landscape:
+The optional lunar EVA (HANDOFF §59; close-range visuals §60; the four expeditions §61) is offered
+by BEGIN EVA on the ascent preparation after a safe landing at any of the four official
+destinations, each its own expedition (Sea of Tranquility: first steps; Hadley–Apennine:
+geological expedition; Tycho Highlands: impact geology; Silent Horizon: far-side science, no
+Earth link). On a phone in landscape:
 - **Left thumb:** a floating joystick. The thumb can land anywhere in the lower left (44 % of the
   width, 62 % of the height) and the knob follows it; at rest a 104 pt ring is drawn bottom-left
   inside the safe area.
 - **Right thumb:** drag anywhere on the right half to orbit the camera (yaw and pitch).
 - **Buttons** (all ≥ 44 pt, inside the safe areas, clear of the astronaut in the middle of the
-  screen): the contextual action (COLLECT SAMPLE / BOARD THE LM) only when it is in reach, CAMERA
-  bottom right (then TAKE PHOTO and EXIT), PAUSE top right. The objectives panel sits top left.
+  screen): the contextual action (COLLECT SAMPLE / INSPECT / DEPLOY / CHECK INSTRUMENT / BOARD THE
+  LM) only when it is in reach, CAMERA bottom right (then TAKE PHOTO and EXIT), PAUSE top right.
+  The objectives panel sits top left (with the LM's distance and bearing); the science card and
+  the far side's receiver panel sit on the right, between PAUSE and the action buttons.
 - No oxygen or time limit; nothing advances while PAUSE is open.
-- The voice lines (`voice/en|pt/eva.*.mp3`, 30 files, 0.7 MB) are bundled with the rest of the
-  voice pack; `yarn ios:verify` now checks every clip in `voice/manifest.json` is in the app.
+- The voice lines (`voice/en|pt/eva.*.mp3`, 94 files, 2.2 MB) are bundled with the rest of the
+  voice pack; `yarn ios:verify` checks every clip in `voice/manifest.json` is in the app.
+- Cost of the expeditions (BUILD 6b2b32a, HANDOFF §61): per destination two sample stones at
+  most, a few ground rings and one instrument (3–5 draws, repeated parts instanced, < 1k
+  triangles, no new textures; the foil maps are shared with the LM). Measured in the same
+  software renderer, walking with the instrument deployed: 66–71 draw calls and 191–212k
+  triangles (the Sea of Tranquility 59 and 186k); standing A/B with and without the deployed
+  instrument: no measurable difference (within the run-to-run noise). The objective placement
+  runs once at the EVA's start (≤ 0.12 s in Node for the hardest landing). Not yet measured on
+  an iPhone GPU.
 - Cost (BUILD 592b8c1, the close-range visual upgrade, HANDOFF §60): the EVA reuses the ascent
   preparation's terrain, rocks, sky and Sun (the same 2048² shadow map, here over a tighter
   24-unit box that follows the astronaut). It adds the astronaut (one skinned mesh per material:

@@ -1,23 +1,31 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 592b8c1**.
+This folder installs **BUILD 6b2b32a**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 592b8c1 · 2026-10-23 20:26 UTC**
+> **LUNAVIA iOS · BUILD 6b2b32a · 2026-10-24 14:10 UTC**
 
-It is the **lunar EVA's close-range visual upgrade**: the same EVA at the Sea of Tranquility
-(after a safe landing, **BEGIN EVA** in the ascent preparation; PT: INICIAR EVA), now with a
-detailed astronaut (helmet with a gold visor that reflects the surroundings, chest unit, hoses,
-backpack, convolutes, gloves, overshoes), a livelier idle and a more grounded walk with contact
-shadows, a lunar module built for close viewing during the EVA (crinkled foil blankets, panel
-seams and rivets, a channel ladder with flat treads, ribbed footpads, strut details, the hatch's
-handle and hinges, a plaque, equipment boxes) and richer ground round the astronaut and the LM
-(regolith detail, pebbles, the engine-swept ground, footpad occlusion, treaded footprints).
-Mission flow, objectives, controls and HUD are as in BUILD 672b8ef; outside the EVA the game
-(and the LM in every other phase) is unchanged.
+It is the **four lunar EVA expeditions**: after a safe landing at any of the four official
+destinations, **BEGIN EVA** in the ascent preparation (PT: INICIAR EVA; optional, never forced)
+starts that destination's own expedition, with the same astronaut, camera, controls and boarding:
+- **Sea of Tranquility** — first steps on the Moon, exactly as before (sample TQ-01, the photo of
+  the LM);
+- **Hadley–Apennine** — geological expedition: INSPECT a rille-edge basalt boulder, two samples
+  (HA-01, HA-02), photograph Mons Hadley from the observation point, DEPLOY the seismometer;
+- **Tycho Highlands** — impact geology: INSPECT an ejecta block, two samples (TY-01 melt, TY-02
+  ejecta), photograph the crater from its rim (never inside it), place the gnomon;
+- **Silent Horizon** (far side) — a sample, DEPLOY the low-frequency radio antenna, photograph the
+  basin ring, then CHECK INSTRUMENT and CONFIRM DATA on the receiver; EARTH LINK UNAVAILABLE, the
+  onboard computer gives the procedures (no Houston).
+Every objective is placed round the LM where it landed; samples, instruments and photos are kept
+when the app is closed and the mission resumed; the logbook records each expedition apart from
+the 1,000-point score, and four new achievements (LUNAR SURFACE) mark them. The rest of the game is
+as in BUILD 592b8c1.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **592b8c1** is the previous release: the EVA with the close-range visuals, but only at the Sea
+  of Tranquility (no BEGIN EVA at Hadley, Tycho or Silent Horizon);
 - **672b8ef** is the previous release: the same EVA with the simpler astronaut (capsule limbs,
   a box backpack, flat visor), flat foil and thin rod ladder on the LM, and smooth ground;
 - **3326bab** is the previous release: save and resume, but no BEGIN EVA after the landing;
