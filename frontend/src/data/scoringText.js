@@ -291,6 +291,8 @@ export const ACHIEVEMENT_TEXT = {
   IMPACT_INVESTIGATOR: { en: ["IMPACT INVESTIGATOR", "Complete the Tycho impact geology investigation: the impact material, both samples, the crater documented from its rim and the gnomon placed."], pt: ["INVESTIGADOR DE IMPACTOS", "Conclua a investigação de geologia de impacto em Tycho: o material de impacto, as duas amostras, a cratera documentada da borda e o gnômon posicionado."] },
   FAR_SIDE_LISTENER: { en: ["FAR-SIDE LISTENER", "Complete the far-side expedition at Silent Horizon: the sample, the radio antenna, the basin ring photographed and the receiver's data confirmed."], pt: ["OUVINTE DO LADO OCULTO", "Conclua a expedição ao lado oculto no Horizonte Silencioso: a amostra, a antena de rádio, a foto do anel da bacia e os dados do receptor confirmados."] },
   FIELD_SCIENTIST: { en: ["LUNAR FIELD SCIENTIST", "Complete every objective of the EVA at all four official destinations (any difficulty)."], pt: ["CIENTISTA DE CAMPO LUNAR", "Cumpra todos os objetivos da EVA nos quatro destinos oficiais (qualquer dificuldade)."] },
+  HAND_FLOWN_ASCENT: { en: ["HAND-FLOWN ASCENT", "Fly the MANUAL ASCENT from the lunar surface into a stable orbit the rendezvous can reach."], pt: ["ASCENSÃO NA MÃO", "Voe a ASCENSÃO MANUAL da superfície lunar até uma órbita estável alcançável pelo encontro."] },
+  PRECISE_INSERTION: { en: ["PRECISE INSERTION", "End a manual ascent within 2 km of the target orbit (apoapsis 96 km, periapsis 18 km or more)."], pt: ["INSERÇÃO PRECISA", "Termine uma ascensão manual a menos de 2 km da órbita alvo (apoapsis 96 km, periapsis de 18 km ou mais)."] },
   FIRST_CONTACT: { en: ["FIRST CONTACT", "Complete your first manual docking with the CSM."], pt: ["PRIMEIRO CONTATO", "Conclua seu primeiro acoplamento manual com o CSM."] },
   PRECISION_DOCKING: {
     en: ["PRECISION DOCKING", `Capture with the probe within ${pctOf(AR.dockLateral)} of the alignment tolerance, the axes within ${pctOf(AR.dockAngle)} of the angle tolerance, contact speed at most ${pctOf(AR.dockClosing)} of the capture window and drift at most ${pctOf(AR.dockDrift)} of its limit.`],
@@ -313,7 +315,7 @@ export const ACHIEVEMENT_TEXT = {
 };
 export const achievementName = (id, lang) => (ACHIEVEMENT_TEXT[id][lang] || ACHIEVEMENT_TEXT[id].en)[0];
 export const achievementDesc = (id, lang) => (ACHIEVEMENT_TEXT[id][lang] || ACHIEVEMENT_TEXT[id].en)[1];
-const GROUP = { LANDING: { en: "LUNAR LANDING", pt: "POUSO LUNAR" }, SURFACE: { en: "LUNAR SURFACE · EVA", pt: "SUPERFÍCIE LUNAR · EVA" }, DOCKING: { en: "ORBITAL DOCKING", pt: "ACOPLAMENTO ORBITAL" }, "EARTH RETURN": { en: "EARTH RETURN", pt: "RETORNO À TERRA" }, DESTINATIONS: { en: "DESTINATIONS", pt: "DESTINOS" }, ELITE: { en: "ELITE", pt: "ELITE" } };
+const GROUP = { LANDING: { en: "LUNAR LANDING", pt: "POUSO LUNAR" }, SURFACE: { en: "LUNAR SURFACE · EVA", pt: "SUPERFÍCIE LUNAR · EVA" }, ASCENT: { en: "LUNAR ASCENT", pt: "ASCENSÃO LUNAR" }, DOCKING: { en: "ORBITAL DOCKING", pt: "ACOPLAMENTO ORBITAL" }, "EARTH RETURN": { en: "EARTH RETURN", pt: "RETORNO À TERRA" }, DESTINATIONS: { en: "DESTINATIONS", pt: "DESTINOS" }, ELITE: { en: "ELITE", pt: "ELITE" } };
 export const groupName = (g, lang) => GROUP[g][lang] || GROUP[g].en;
 
 /* ---- the recommendation --------------------------------------------------------------------- */

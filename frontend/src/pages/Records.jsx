@@ -212,6 +212,13 @@ function LogTab({ log, records, lang, onReview }) {
           const done = e.eva.total ? e.eva.done : [e.eva.firstSteps, e.eva.sample, e.eva.photo].filter(Boolean).length;
           tags.push(`EVA ${done}/${total}${e.eva.samples ? ` · ${e.eva.samples} ${t.evaSamples}` : ""}`);
         }
+        // the manual ascent: its own record (the orbit flown, the attempts), never points
+        if (e.ascent && e.ascent.mode === "manual") {
+          const a = e.ascent;
+          const word = lang === "pt" ? "ASC MANUAL" : "MANUAL ASC";
+          const tries = a.attempts > 1 ? ` · ${a.attempts} ${lang === "pt" ? "TENT." : "ATT."}` : "";
+          tags.push(a.success ? `${word} ${a.apoKm}×${a.periKm} KM${a.accuracy ? ` ${a.accuracy.grade}` : ""}${tries}` : `${word} ✗${tries}`);
+        }
         const canReview = !!(s && s.snaps && s.snaps.landing);
         return (
           <button

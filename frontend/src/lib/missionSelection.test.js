@@ -70,3 +70,25 @@ describe("the official missions' log (separate from training records)", () => {
     expect(loadMissionLog().find((x) => x.id === b).docking.firstAttempt).toBe(true);
   });
 });
+
+describe("the manual ascent in the logbook (apart from the score)", () => {
+  const { logMissionAscent } = require("./missionSelection");
+  test("failed attempts, then one success: one record, attempts never go down, the success never written twice", () => {
+    const id = logMissionStart({ siteId: "hadley", difficulty: "ASTRONAUT" });
+    logMissionAscent(id, { success: false, failure: "premature", attempts: 1 });
+    logMissionAscent(id, { success: false, failure: "impact", attempts: 2 });
+    let e = loadMissionLog().find((x) => x.id === id);
+    expect(e.ascent).toMatchObject({ mode: "manual", attempts: 2, failures: ["premature", "impact"], success: false });
+    const ok = { success: true, attempts: 3, apo: 96400, peri: 18000, fuelKg: 174.4, fuelPct: 7.41, accuracy: { grade: "PRECISE", miss: 0.4 }, cutoffBy: "auto", difficulty: "ASTRONAUT" };
+    logMissionAscent(id, ok);
+    logMissionAscent(id, { ...ok, apo: 120000 }); // a second report of the same insertion is ignored
+    logMissionAscent(id, { success: false, failure: "impact", attempts: 1 }); // an older count cannot lower it
+    e = loadMissionLog().find((x) => x.id === id);
+    expect(e.ascent.success).toBe(true);
+    expect(e.ascent.apoKm).toBe(96.4);
+    expect(e.ascent.periKm).toBe(18);
+    expect(e.ascent.accuracy).toEqual({ grade: "PRECISE", missKm: 0.4 });
+    expect(e.ascent.attempts).toBe(3);
+    expect(e.scoring).toBeUndefined(); // nothing scored
+  });
+});

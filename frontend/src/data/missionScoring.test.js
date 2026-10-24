@@ -350,17 +350,18 @@ describe("the flight's scoring follows the mission's events", () => {
 });
 
 describe("achievements", () => {
-  test("twenty-two achievements (the lunar EVA's under LANDING and SURFACE), each with an explicit test and English and Portuguese text", () => {
+  test("twenty-four achievements (the lunar EVA's under LANDING and SURFACE, the manual ascent's under ASCENT), each with an explicit test and English and Portuguese text", () => {
     expect(ACHIEVEMENT_IDS).toEqual([
       "FIRST_FOOTPRINT", "SOFT_TOUCHDOWN", "PRECISION_PILOT", "FUEL_MASTER", "FIRST_EVA",
       "VALLEY_GEOLOGIST", "IMPACT_INVESTIGATOR", "FAR_SIDE_LISTENER", "FIELD_SCIENTIST",
+      "HAND_FLOWN_ASCENT", "PRECISE_INSERTION",
       "FIRST_CONTACT", "PRECISION_DOCKING", "FIRST_ATTEMPT_DOCKING", "RENDEZVOUS_MASTER",
       "WELCOME_HOME", "REENTRY_SPECIALIST",
       "FOUR_DESTINATIONS", "MOUNTAIN_NAVIGATOR", "CRATER_SPECIALIST", "SILENT_HORIZON_VETERAN",
       "COMMANDER_QUALIFIED", "PERFECT_EXPEDITION", "LUNAVIA_MASTER",
     ]);
     ACHIEVEMENTS.forEach((a) => {
-      expect(["landing", "eva", "docking", "reentry", "mission"]).toContain(a.on);
+      expect(["landing", "eva", "ascent", "docking", "reentry", "mission"]).toContain(a.on);
       expect(ACHIEVEMENT_TEXT[a.id].en[0]).toMatch(/^[A-Z][A-Z –-]+$/);
       expect(ACHIEVEMENT_TEXT[a.id].pt[1].length).toBeGreaterThan(20);
     });
@@ -670,5 +671,21 @@ describe("18. scoring never touches the spacecraft physics", () => {
     expect(r.score).toBe(Object.values(r.breakdown).reduce((a, b) => a + b.score, 0));
     const s = checkpointState("CADET");
     expect(s.prop).toBe(DOCKING.CADET.prop);
+  });
+});
+
+
+describe("the manual ascent's achievements (outside the score)", () => {
+  const { newAchievements: na, TOTAL_MAX: TM, PHASES: PH } = require("./missionScoring");
+  test("a manual insertion unlocks HAND-FLOWN ASCENT, a precise one PRECISE INSERTION; the guided ascent or a failure nothing", () => {
+    expect(na("ascent", { ascent: { mode: "manual", success: true, accuracy: { grade: "GOOD", miss: 4 } } }, {})).toEqual(["HAND_FLOWN_ASCENT"]);
+    expect(na("ascent", { ascent: { mode: "manual", success: true, accuracy: { grade: "PRECISE", miss: 0.4 } } }, {})).toEqual(["HAND_FLOWN_ASCENT", "PRECISE_INSERTION"]);
+    expect(na("ascent", { ascent: { mode: "guided", success: true } }, {})).toEqual([]);
+    expect(na("ascent", { ascent: { mode: "manual", success: false } }, {})).toEqual([]);
+    expect(na("ascent", { ascent: { mode: "manual", success: true, accuracy: { grade: "PRECISE" } } }, { HAND_FLOWN_ASCENT: {} })).toEqual(["PRECISE_INSERTION"]);
+  });
+  test("the score is unchanged: 1,000 points over landing, docking and reentry only", () => {
+    expect(TM).toBe(1000);
+    expect(PH).toEqual(["landing", "docking", "reentry"]);
   });
 });

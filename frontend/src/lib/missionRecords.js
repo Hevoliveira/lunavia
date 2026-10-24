@@ -212,6 +212,15 @@ export function applyLanding(rec, flight, L, at = Date.now()) {
 }
 
 /**
+ * An official flight's MANUAL ASCENT into a stable orbit (its record: mode, success, accuracy):
+ * its own achievements only — the 1,000-point score does not include the ascent.
+ */
+export function applyAscent(rec, flight, ascent, at = Date.now()) {
+  if (!ascent || ascent.mode !== "manual" || ascent.success !== true) return [];
+  return unlockAll(rec, newAchievements("ascent", { ascent, siteId: flight.siteId, unlocked: rec.achievements }, rec.achievements), flight, at);
+}
+
+/**
  * The end of an official flight's lunar EVA (components/eva/LunarEva's record): the expedition's
  * achievement when every objective was done and the astronaut is back in the LM (FIRST STEPS at
  * the Sea of Tranquility, and one for each of the other three; all four: LUNAR FIELD SCIENTIST).

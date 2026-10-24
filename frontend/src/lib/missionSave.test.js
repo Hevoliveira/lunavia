@@ -628,8 +628,10 @@ describe("the lunar EVA's checkpoints", () => {
   test("EVA_READY and EVA_COMPLETE sit between the landing and the docking, and both can be resumed", () => {
     expect(CHECKPOINT_ORDER.indexOf(CP.EVA_READY)).toBe(CHECKPOINT_ORDER.indexOf(CP.LANDING_COMPLETE) + 1);
     expect(CHECKPOINT_ORDER.indexOf(CP.EVA_COMPLETE)).toBe(CHECKPOINT_ORDER.indexOf(CP.EVA_READY) + 1);
-    expect(CHECKPOINT_ORDER.indexOf(CP.DOCKING_READY)).toBe(CHECKPOINT_ORDER.indexOf(CP.EVA_COMPLETE) + 1);
-    expect(SAVE_SCHEMA).toBe(3);
+    // (schema 4: the manual ascent's ORBITAL INSERTION COMPLETE sits between them and the docking)
+    expect(CHECKPOINT_ORDER.indexOf(CP.ORBIT_INSERTION)).toBe(CHECKPOINT_ORDER.indexOf(CP.EVA_COMPLETE) + 1);
+    expect(CHECKPOINT_ORDER.indexOf(CP.DOCKING_READY)).toBe(CHECKPOINT_ORDER.indexOf(CP.ORBIT_INSERTION) + 1);
+    expect(SAVE_SCHEMA).toBe(4);
     [CP.EVA_READY, CP.EVA_COMPLETE].forEach((cp) => ["en", "pt"].forEach((l) => expect(checkpointText(cp, l).length).toBeGreaterThan(5)));
   });
 
@@ -700,7 +702,7 @@ describe("the lunar EVA's checkpoints", () => {
     expect(opened.save.eva).toBeNull();
     const tqv = tq(CP.EVA_READY);
     expect(validateSave({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 1 }).reason).toBe("kind");
-    expect(openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 4 }, 5)).reason).toBe("unsupported");
+    expect(openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 5 }, 5)).reason).toBe("unsupported");
     // a schema 2 save (phase 1) is still read, its EVA the Sea of Tranquility's; it never held another destination's
     const v2 = openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 2 }, 6));
     expect(v2.ok).toBe(true);
@@ -745,5 +747,74 @@ describe("the lunar EVA in the records", () => {
     // nothing else in the records moves: no attempt, no success, no score
     const c = rec.categories["tranquillitatis|ASTRONAUT"];
     expect([c.attempts, c.successes, c.bestTotal]).toEqual([0, 0, null]);
+  });
+});
+
+
+/* ---- the MANUAL ASCENT (schema 4): the ascent record and ORBITAL INSERTION COMPLETE ------------------ */
+describe("the manual ascent's checkpoint", () => {
+  const { simulate, guidanceProgram, cutoffRecord, STAGE } = require("../data/manualAscent");
+  const flown = simulate(guidanceProgram, { difficulty: "ASTRONAUT" }).state;
+  const e = flown.evaluation;
+  const outcome = (o = {}) => ({ success: true, apo: e.apo, peri: e.peri, fuelKg: e.fuelKg, fuelPct: e.fuelPct, accuracy: e.accuracy, cutoffBy: "pilot", burn: e.burn, cut: cutoffRecord(flown), ...o });
+  const asc = (o = {}) => ({ mode: "manual", attempts: 2, outcome: outcome(), ...o });
+
+  test("ORBITAL INSERTION COMPLETE: a manual ascent's orbit, judged again from its cutoff, resumes at the rendezvous", () => {
+    const sc = flightTo(CP.ORBIT_INSERTION);
+    const v = validateSave(docOf(CP.ORBIT_INSERTION, sc, { ascent: asc(), activity: { phase: "rendezvous" } }));
+    expect(v.ok).toBe(true);
+    expect(v.save.ascent.mode).toBe("manual");
+    expect(v.save.ascent.attempts).toBe(2);
+    expect(v.save.ascent.outcome.apo).toBeCloseTo(e.apo, 3);
+    expect(v.save.ascent.outcome.accuracy.grade).toBe("PRECISE");
+    const plan = resumePlan(v.save);
+    expect(plan.state).toBe("insertion");
+    expect(plan.interrupted).toBe(false);
+    expect(RESUME_AT.ORBIT_INSERTION.state).toBe("insertion");
+    ["en", "pt"].forEach((l) => expect(checkpointText(CP.ORBIT_INSERTION, l).length).toBeGreaterThan(10));
+    // and it survives sealing and opening
+    expect(openEnvelope(sealEnvelope(v.save, 3)).ok).toBe(true);
+  });
+  test("a save cannot claim an orbit the physics does not accept", () => {
+    const sc = flightTo(CP.ORBIT_INSERTION);
+    const bad = (o) => validateSave(docOf(CP.ORBIT_INSERTION, sc, { ascent: asc({ outcome: outcome(o) }) })).reason;
+    expect(bad({ cut: { ...cutoffRecord(flown), vt: 1500 } })).toBe("ascent"); // suborbital: periapsis below the surface
+    expect(bad({ cut: { ...cutoffRecord(flown), vt: 1800 } })).toBe("ascent"); // apoapsis above the CSM
+    expect(bad({ cut: { ...cutoffRecord(flown), prop: STAGE.prop + 1 } })).toBe("ascent"); // more propellant than loaded
+    expect(bad({ cut: null })).toBe("ascent");
+    expect(bad({ success: false })).toBe("ascent");
+    // the claimed numbers are not trusted: they are recomputed from the cutoff state
+    const v = validateSave(docOf(CP.ORBIT_INSERTION, sc, { ascent: asc({ outcome: outcome({ apo: 96000, accuracy: { grade: "PRECISE", miss: 0 }, fuelKg: 999 }) }) }));
+    expect(v.save.ascent.outcome.fuelKg).toBeCloseTo(flown.prop, 6);
+  });
+  test("ORBIT_INSERTION needs the insertion; an insertion only at ORBIT_INSERTION or later", () => {
+    const sc = flightTo(CP.ORBIT_INSERTION);
+    expect(validateSave(docOf(CP.ORBIT_INSERTION, sc)).reason).toBe("ascent");
+    expect(validateSave(docOf(CP.ORBIT_INSERTION, sc, { ascent: asc({ outcome: null }) })).reason).toBe("ascent");
+    const early = flightTo(CP.LANDING_COMPLETE);
+    expect(validateSave(docOf(CP.LANDING_COMPLETE, early, { ascent: asc() })).reason).toBe("ascent");
+    // the attempts alone are kept at the ascent preparation (no fuel or attempt reset by a reload)
+    const v = validateSave(docOf(CP.LANDING_COMPLETE, early, { ascent: { mode: "manual", attempts: 3, outcome: null }, activity: { phase: "manualAscent" } }));
+    expect(v.ok).toBe(true);
+    expect(v.save.ascent.attempts).toBe(3);
+    // a manual ascent cut short by closing the app is flown again from the ascent preparation
+    const plan = resumePlan(v.save);
+    expect(plan.state).toBe("ascent");
+    expect(plan.interrupted).toBe(true);
+    // the docking checkpoint after a manual insertion keeps it (the guided route has none)
+    const later = flightTo(CP.DOCKING_READY);
+    expect(validateSave(docOf(CP.DOCKING_READY, later, { ascent: asc() })).ok).toBe(true);
+    expect(validateSave(docOf(CP.DOCKING_READY, later)).ok).toBe(true);
+    expect(validateSave(docOf(CP.DOCKING_READY, later, { ascent: { mode: "warp", attempts: 1, outcome: null } })).reason).toBe("ascent");
+    expect(validateSave(docOf(CP.DOCKING_READY, later, { ascent: { mode: "manual", attempts: -1, outcome: null } })).reason).toBe("ascent");
+  });
+  test("schema 3 saves (before the manual ascent) are still read", () => {
+    const sc = flightTo(CP.DOCKING_READY);
+    const v3 = { ...validateSave(docOf(CP.DOCKING_READY, sc)).save, schema: 3 };
+    delete v3.ascent;
+    const o = openEnvelope(sealEnvelope(v3, 9));
+    expect(o.ok).toBe(true);
+    expect(o.save.ascent).toBeNull();
+    expect(resumePlan(o.save).state).toBe("docking");
   });
 });

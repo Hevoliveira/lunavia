@@ -36,7 +36,8 @@ import {
   stepDocking,
   telemetry,
 } from "@/data/dockingSim";
-import { COAST, FINAL, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf } from "@/data/rendezvous";
+import { FINAL, PLAY_S, TRANSFER, planRendezvous, playToMission, rangeOf } from "@/data/rendezvous";
+import { rendezvousFromCutoff } from "@/data/manualAscent";
 import { ASSIST_UI, CONTROLS, COPILOT_NAMES, GUIDANCE_VOICE, STEPS, UI as GUI, copilotSteps, copilotText, createGuidance, guidanceText, guidedPilot } from "@/data/dockingGuidance";
 import { FIRST_PERSON, ORBIT_DEFAULT, VIEWS, VIEW_LABEL, orbitDrag, orbitZoom, viewCamera } from "@/data/dockingViews";
 import { CabinLight, Cockpit, WindowFrame, rcsLevels } from "@/components/DockingCabin";
@@ -128,13 +129,17 @@ const smooth = (x) => {
 /* ---- the Moon below (camera-relative, turning with the orbit) -------------------------------- */
 // From 110 km the fine regolith detail is part of the picture.
 const MOON_DETAIL = () => 0.3;
-function MoonBelow({ clockRef }) {
+function MoonBelow({ clockRef, exact = false }) {
   const ref = useRef();
   const spin = useRef();
   const { camera } = useThree();
   useFrame(() => {
     if (!ref.current) return;
-    ref.current.position.set(camera.position.x, camera.position.y, camera.position.z - MOON_D * MOON_SCALE * 1000);
+    // `exact` (a manual ascent's rendezvous, which starts ~90 km below the CSM): the Moon's centre
+    // scaled from the camera's own height (scene z is radial); otherwise drawn from the CSM's
+    // height, as it always has been
+    const below = exact ? (MOON_D * 1000 + camera.position.z) * MOON_SCALE : MOON_D * MOON_SCALE * 1000;
+    ref.current.position.set(camera.position.x, camera.position.y, camera.position.z - below);
     // the surface turns under the orbit (about the orbit normal, the CSM frame's X)
     spin.current.rotation.x = -MEAN_MOTION * (clockRef.current || 0) + 0.6;
   });
@@ -182,7 +187,11 @@ function Vehicles({ simRef, viewRef, phaseRef }) {
 
 /* ---- camera and the screen-space markers ------------------------------------------------------ */
 const FAR_AXIS = [0, DOCK_Y - 7, 0]; // a point on the probe's axis inside the CSM (the far mark of the alignment display)
-function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef, orbitRef, markerApiRef }) {
+function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef, orbitRef, markerApiRef, follow = false }) {
+  // `follow` (a manual ascent's rendezvous: the film runs ~600× faster and the stage closes at up to
+  // ~150 m/s, km per frame): during the insertion and the rendezvous the camera is eased relative
+  // to the ascent stage, so it never falls behind it
+  const rel = useRef(null);
   const { camera, size } = useThree();
   const pos = useRef(new THREE.Vector3(0, 60, 20));
   const look = useRef(new THREE.Vector3());
@@ -275,7 +284,17 @@ function Director({ simRef, viewRef, phaseRef, markRef, sizeRef, clockRef, orbit
         L = [C[0] + (d[0] / dl) * 40, C[1] + (d[1] / dl) * 40, C[2] + (d[2] / dl) * 40];
       }
     }
-    if (first.current || snap) {
+    if (follow && (ph === "insertion" || ph === "rendezvous")) {
+      const want = [P[0] - C[0], P[1] - C[1], P[2] - C[2], L[0] - C[0], L[1] - C[1], L[2] - C[2]];
+      if (!rel.current || first.current) rel.current = want.slice();
+      const k = Math.min(1, delta * 3);
+      for (let i = 0; i < 6; i++) rel.current[i] += (want[i] - rel.current[i]) * k;
+      pos.current.set(C[0] + rel.current[0], C[1] + rel.current[1], C[2] + rel.current[2]);
+      look.current.set(C[0] + rel.current[3], C[1] + rel.current[4], C[2] + rel.current[5]);
+      if (first.current) up.current.set(...U);
+      else up.current.lerp(_v.set(...U), k).normalize();
+      first.current = false;
+    } else if (first.current || snap) {
       pos.current.set(...P);
       look.current.set(...L);
       up.current.set(...U);
@@ -766,11 +785,15 @@ function saveGuidanceOn(difficulty, on) {
  * per attempt, the player's first control input (a jet, AUTO-CENTER, MATCH VELOCITY or a
  * FINE APPROACH step), so an attempt interrupted by closing the app counts as a restart.
  */
-export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, audio = null, onComplete, onAbort, onResult, training = null, resume = null, onPhase = null, onEngaged = null }) {
+export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, audio = null, onComplete, onAbort, onResult, training = null, resume = null, onPhase = null, onEngaged = null, insertion = null }) {
   const cfg = DOCKING[difficulty];
   const lang = useAudioSettings().subLang === "pt" ? "pt" : "en";
   const ui = GUI[lang];
-  const plan = useMemo(() => planRendezvous(difficulty), [difficulty]);
+  // the guided ascent's rendezvous, or (MANUAL ASCENT) the guidance's plan from the very orbit
+  // the pilot flew (`insertion`: the engine cutoff, data/manualAscent cutoffRecord); either ends
+  // on the same docking checkpoint
+  const plan = useMemo(() => (insertion ? rendezvousFromCutoff(difficulty, insertion) : planRendezvous(difficulty)), [difficulty, insertion]);
+  const COAST = plan.tpiAt; // TPI: the guided rendezvous's COAST, or after the manual insertion's co-elliptic burn
   const trainingStart = training ? training.start || null : null;
   const makeCheckpoint = useCallback(() => checkpointState(difficulty, trainingStart || {}), [difficulty, trainingStart]);
   const simRef = useRef(null);
@@ -985,7 +1008,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
     }
     // orbit insertion: the end of the ascent burn, told as a title over the scene
     if (farSide) audio && audio.setEarthLink(false);
-    say(farSide ? "ascent.insertionCrew" : "ascent.insertion", { delay: 0.6 });
+    say(farSide ? "ascent.insertionCrew" : insertion ? "rdv.manualGuidance" : "ascent.insertion", { delay: 0.6 });
     const t = setTimeout(() => setPhase("rendezvous"), 3200);
     return () => {
       clearTimeout(t);
@@ -1513,14 +1536,14 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
           <hemisphereLight args={["#1a1d24", "#6d6a64", 0.35]} />
           <Stars radius={2500} depth={300} count={4000} factor={60} saturation={0} fade speed={0} />
           <Suspense fallback={null}>
-            <MoonBelow clockRef={clockRef} />
+            <MoonBelow clockRef={clockRef} exact={!!insertion} />
             <Vehicles simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} />
             <ApproachCorridor simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} difficulty={difficulty} statusRef={statusRef} guideRef={guideRef} />
           </Suspense>
           <WindowFrame simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} />
           <Cockpit simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} difficulty={difficulty} extraRef={extraRef} />
           <CabinLight simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} />
-          <Director simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} markRef={markRef} sizeRef={sizeRef} clockRef={clockRef} orbitRef={orbitRef} markerApiRef={markerApiRef} />
+          <Director simRef={simRef} viewRef={viewRef} phaseRef={phaseRef} markRef={markRef} sizeRef={sizeRef} clockRef={clockRef} orbitRef={orbitRef} markerApiRef={markerApiRef} follow={!!insertion} />
           <SimLoop speedRef={speedRef} simRef={simRef} inputRef={inputRef} phaseRef={phaseRef} difficulty={difficulty} alignRef={alignRef} pausedRef={pausedRef} onEvent={onEvent} plan={plan} />
           <AdaptiveResolution />
         </Canvas>
@@ -1537,7 +1560,13 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
               {phase === "insertion" ? "ASCENT STAGE IN LUNAR ORBIT" : "CLOSING ON THE CSM"}
             </div>
             <div className="font-mono text-[10px] short:text-[9px] tracking-[0.18em] text-zinc-300 mt-0.5">
-              {phase === "insertion" ? "14 KM BELOW AND 46 KM BEHIND THE CSM · CO-ELLIPTIC" : "AUTOMATIC GUIDANCE · TPI → MIDCOURSE → GATE → BRAKING · FINAL DOCKING BY THE CREW"}
+              {phase === "insertion"
+                ? plan.manual
+                  ? `MANUAL INSERTION · ${(Math.abs(plan.insertion[0]) / 1000).toFixed(0)} KM BELOW AND ${(Math.abs(plan.insertion[1]) / 1000).toFixed(0)} KM ${plan.insertion[1] < 0 ? "BEHIND" : "AHEAD OF"} THE CSM · CO-ELLIPTIC BURN AT APOAPSIS`
+                  : "14 KM BELOW AND 46 KM BEHIND THE CSM · CO-ELLIPTIC"
+                : plan.manual
+                  ? "AUTOMATIC GUIDANCE · CSI → TPI → MIDCOURSE → GATE → BRAKING · FINAL DOCKING BY THE CREW"
+                  : "AUTOMATIC GUIDANCE · TPI → MIDCOURSE → GATE → BRAKING · FINAL DOCKING BY THE CREW"}
             </div>
           </div>
           {rendezvousRange && (
@@ -1550,7 +1579,7 @@ export default function DockingOps({ difficulty = "ASTRONAUT", farSide = false, 
               <div className="text-zinc-400 mt-0.5">
                 {(() => {
                   const tm = simRef.current.missionT || 0;
-                  return tm < COAST ? "CO-ELLIPTIC COAST" : tm < COAST + 0.5 * TRANSFER ? "TPI · TRANSFER" : tm < COAST + TRANSFER ? "MIDCOURSE · TRANSFER" : tm < COAST + TRANSFER + 0.85 * FINAL ? "GATE · FINAL APPROACH" : "BRAKING";
+                  return plan.manual && tm < plan.csiAt ? "COAST TO APOAPSIS · CSI" : tm < COAST ? "CO-ELLIPTIC COAST" : tm < COAST + 0.5 * TRANSFER ? "TPI · TRANSFER" : tm < COAST + TRANSFER ? "MIDCOURSE · TRANSFER" : tm < COAST + TRANSFER + 0.85 * FINAL ? "GATE · FINAL APPROACH" : "BRAKING";
                 })()}
               </div>
               <div className="text-zinc-500">MET +{Math.floor((simRef.current.missionT || 0) / 60)} min</div>

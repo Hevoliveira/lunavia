@@ -374,6 +374,9 @@ export const ACHIEVEMENTS = Object.freeze([
     on: "eva",
     test: ({ eva, siteId, unlocked = {} }) => DESTINATIONS.every((s) => !!unlocked[EXPEDITION_ACHIEVEMENT[s]] || (s === (siteId || "tranquillitatis") && (s === "tranquillitatis" ? !!eva && eva.completed && !!eva.progress && eva.progress.firstSteps && eva.progress.sample && eva.progress.photo : expeditionDone(eva)))),
   },
+  // the optional MANUAL ASCENT (data/manualAscent): recorded apart from the 1,000-point score, which it does not change
+  { id: "HAND_FLOWN_ASCENT", group: "ASCENT", on: "ascent", test: ({ ascent }) => !!ascent && ascent.mode === "manual" && ascent.success === true },
+  { id: "PRECISE_INSERTION", group: "ASCENT", on: "ascent", test: ({ ascent }) => !!ascent && ascent.mode === "manual" && ascent.success === true && !!ascent.accuracy && ascent.accuracy.grade === "PRECISE" },
   { id: "FIRST_CONTACT", group: "DOCKING", on: "docking", test: ({ docking }) => !!docking && docking.success },
   {
     id: "PRECISION_DOCKING",
@@ -404,7 +407,7 @@ export const ACHIEVEMENTS = Object.freeze([
   { id: "LUNAVIA_MASTER", group: "ELITE", on: "mission", test: ({ records }) => DESTINATIONS.every((id) => commanderPlatinum(records, id)) },
 ]);
 export const ACHIEVEMENT_IDS = ACHIEVEMENTS.map((a) => a.id);
-export const ACHIEVEMENT_GROUPS = ["LANDING", "SURFACE", "DOCKING", "EARTH RETURN", "DESTINATIONS", "ELITE"];
+export const ACHIEVEMENT_GROUPS = ["LANDING", "SURFACE", "ASCENT", "DOCKING", "EARTH RETURN", "DESTINATIONS", "ELITE"];
 
 export const categoryKey = (siteId, difficulty) => `${siteId}|${difficulty}`;
 const cat = (records, siteId, difficulty) => (records && records.categories && records.categories[categoryKey(siteId, difficulty)]) || null;

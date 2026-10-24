@@ -4008,3 +4008,210 @@ the receiver's panel is qualitative by design; Hadley's EVA area is wider (38 m)
 to reach the rille-edge boulders, the rille itself is out of reach; the off-zone landings that put
 no crater rim within reach at Tycho photograph the central peak instead (flagged fallback); the
 sample count per destination is fixed (no free collection of extra rocks).
+
+## 62. Manual lunar ascent and orbital insertion (optional)
+
+After a safe landing (and the optional EVA) the ascent preparation now offers **LUNAR ASCENT —
+READY** with two choices (PT: ASCENSÃO LUNAR — PRONTA), at all four destinations and every pilot
+difficulty:
+- **GUIDED ASCENT** — `ascent-initiate`, the existing automatic liftoff film, unchanged (same
+  countdown, cameras, voice; the same rendezvous from 14 km below and 46 km behind the CSM);
+- **MANUAL ASCENT** — `ascent-manual`: the player flies the ascent stage from the descent stage's
+  deck into lunar orbit; the guidance's automatic rendezvous then starts from the orbit actually
+  flown and ends on the same docking checkpoint, where the docking is the player's as before.
+
+**Physics** (`data/manualAscent.js`, pure, one fixed 20-ms step: frame-rate and time-acceleration
+independent). The flight is integrated (RK4) in the CSM's orbital plane around the Moon's centre:
+radius r and downrange angle θ, with the docking's Moon (`dockingSim.MU_MOON`, a 1737.4-km sphere).
+- Gravity μ/r²; the centrifugal and Coriolis terms of the polar equations (so orbit and curvature
+  are real, not scripted).
+- The ascent engine: the guided liftoff's own numbers (`lunarAscent.ASCENT`: 15.6 kN, Isp 311 s,
+  4.8 t at liftoff), **fixed thrust, no throttle**, 2,353 kg of propellant (Apollo 11's load:
+  ≈ 460 s of burn, Δv ≈ 2,050 m/s); the mass falls with the flow (5.1 kg/s); **one burn** (once cut
+  off the engine is not relit).
+- Attitude: the pitch from the local vertical, changed **only by the RCS** (an angular acceleration;
+  the engine does not gimbal), with its propellant counted (120 kg for the ascent and rendezvous).
+  CADET/ASTRONAUT: rate command with attitude hold (released, the stage keeps its pitch, turning
+  with the local vertical); COMMANDER: direct — a firing changes the rate and only the opposite
+  jets stop it.
+- The orbit: apoapsis and periapsis from the two-body conic of the current state (exact).
+- The descent stage stays where it landed (its own model, legs as they settled); the ascent stage
+  alone (4.8 t) separates at ignition: the stages are drawn apart (`LanderModel parts`), never a
+  whole LM and never two ascent stages.
+- Simplifications (documented): the Moon does not turn (4.6 m/s at the equator ignored); point-mass
+  gravity, spherical surface at the mean radius; the flight stays in the CSM's plane (no cross-range);
+  the landed tilt is cosmetic (the stage starts vertical; it is levelled in the first 2 s); rigid
+  stage, fixed RCS authority; the engine starts and stops within one step.
+
+**Target, derived from the rendezvous design** (no universal number). The guided ascent inserts on a
+co-elliptic orbit 14 km below the CSM's 110-km orbit (`rendezvous.INSERTION`), so the manual
+insertion targets an **apoapsis of 96 km** with a **periapsis of at least 15 km** (Apollo inserted at
+~17 km; the guidance aims at 18 km). The guidance (`guidancePitch`) is an explicit linear-tangent
+"E-guidance" of the kind Apollo's LM ascent used: the pitch that brings the stage to 18 km with no
+vertical speed exactly when the horizontal speed reaches 1,689 m/s; flown perfectly it cuts off at
+426 s on 18 × 96.2 km with 175 kg left (Apollo 11: ~435 s). The cutoff call (`cutoffDue`): apoapsis
+at the target *and* a safe periapsis.
+
+**Judgement at cutoff** (`evaluateInsertion`, pure; never a fake success):
+- PREMATURE CUTOFF / INSUFFICIENT VELOCITY — periapsis below 15 km after the pilot's cutoff;
+- PROPELLANT DEPLETED — the same when the propellant ran out;
+- SURFACE IMPACT — the stage came back to the surface during the burn;
+- TRAJECTORY UNRECOVERABLE — during the burn, the least speed any stable orbit through the current
+  point would need (vis-viva, `minOrbitSpeed`) minus the speed it has exceeds the engine's Δv left
+  (a strict lower bound: a flight that could still make orbit is never called lost);
+- WRONG TRAJECTORY · APOAPSIS ABOVE THE CSM — apoapsis above 106 km (the rendezvous needs the stage
+  below the CSM);
+- ORBIT NOT RENDEZVOUS-CAPABLE — a stable but too-low orbit passes the CSM before the rendezvous can
+  start (in practice an apoapsis under ~65 km), or one too close below it to catch it within five
+  orbits;
+- INSUFFICIENT PROPELLANT FOR RENDEZVOUS — the rendezvous from that orbit needs more Δv than the
+  ascent propellant left plus a 30-m/s RCS reserve.
+Otherwise **STABLE ORBIT ACHIEVED · RENDEZVOUS READY**, with the orbit, the accuracy (the apoapsis
+miss plus any periapsis shortfall below 18 km: PRECISE ≤ 2 km, GOOD ≤ 6, FAIR ≤ 15, WIDE), the
+propellant left, the burn time and who cut off (pilot/auto), the rendezvous Δv needed/available.
+
+**Handoff to the rendezvous** (`rendezvous.planRendezvous(difficulty, { insertion })`; the guided
+call without it is byte-for-byte the old plan). From the engine cutoff (`cutoffRecord`) the coast
+to the next apoapsis is flown exactly (two-body RK4, `coastToApoapsis`) — the linear Clohessy–
+Wiltshire motion is not accurate 90 km below the CSM — and there the guidance's co-elliptic burn
+(CSI: Apollo's CSI and CDH in one) leaves the stage on a co-elliptic orbit ~14 km below; it coasts
+until the CSM stands 27° above its horizon, then the same TPI, midcourse, gate and braking as the
+guided rendezvous, ending exactly on the difficulty's docking checkpoint (tested). The CSM's phase is
+fixed (`csmAngle`) so that the guidance's own ascent is 150 km behind it at CSI: a lower insertion
+gains faster, a higher one slower, both still catch it within five orbits (stable orbits with an apoapsis of ~65–106 km). The film is DockingOps'
+own (34 s, the guidance's clock): MANUAL INSERTION · x KM BELOW AND y KM BEHIND THE CSM · CO-ELLIPTIC
+BURN AT APOAPSIS, then CSI → TPI → MIDCOURSE → GATE → BRAKING, the radar's range and rate from the
+plan. For it the camera follows the stage relatively and the Moon below is drawn from the stage's
+real height (`follow`, `exact`: only with a manual insertion; the guided view is unchanged).
+
+**Difficulties** (`ASCENT_DIFFICULTY`):
+- CADET (assisted): attitude hold; PITCH ASSIST (the computer flies the guidance's pitch) once the
+  pilot has started the pitch-over by hand; AUTO CUTOFF on; the pitch cue; the strongest warnings
+  (FOLLOW THE PITCH CUE, HOLD PITCH ▼ TO START THE PITCH OVER, …); a cutoff below orbit asks
+  CONFIRM CUTOFF · NO ORBIT YET first; a tip on the failure panel.
+- ASTRONAUT (semi-manual): attitude hold, the pitch cue and CUT OFF NOW; AUTO CUTOFF available but
+  off unless the pilot arms it.
+- COMMANDER (manual): direct RCS (no hold), no cue, no automatic cutoff; only the orbit's numbers
+  and the critical warnings (DESCENDING · PITCH UP, propellant).
+
+**HUD** (`components/ManualAscent.jsx`, every value from the simulation): LUNAR ASCENT — altitude,
+vertical, horizontal and total speed, pitch (and the cue), heading 270° W and flight-path angle,
+propellant (kg, %), burn time left, engine (ARMED/ON 15.6 kN/CUTOFF/DEPLETED), RCS (HOLD/AUTO/DIRECT,
+%, firing ◆); ORBITAL GUIDANCE — apoapsis, periapsis (BELOW SURFACE when the conic meets the
+ground), TARGET ORBIT, INSERTION (SUBORBITAL / ORBIT · PERIAPSIS LOW / STABLE · APOAPSIS LOW / STABLE ·
+ON TARGET / APOAPSIS ABOVE LIMIT), the CSM's range, and for CADET and ASTRONAUT the time to go
+(CUTOFF IN x S: the burn still needed along the present thrust for the apoapsis to reach 96 km,
+as the LM's ascent program displayed TGO; near cutoff the apoapsis climbs ~13 km a second) then
+▶ CUT OFF NOW. The step message (ASCENT ENGINE IGNITION →
+VERTICAL ASCENT → BEGIN PITCH PROGRAM → BUILD HORIZONTAL VELOCITY → ORBITAL INSERTION → ENGINE
+CUTOFF → STABLE ORBIT ACHIEVED → RENDEZVOUS READY), the onboard computer's line and at most two
+subtle alerts sit in the top centre, clear of the horizon and the stage.
+
+**Controls (iPhone landscape)**: ENGINE IGNITION / ENGINE CUTOFF (bottom left), PITCH ▲ TOWARD
+VERTICAL and PITCH ▼ TOWARD HORIZON (bottom right; held = RCS on, a tap = a pulse; multi-touch),
+PITCH ASSIST and AUTO CUTOFF by difficulty, EXTERNAL / COCKPIT / NAV and ×1/×2/×4 time (same
+physics, more steps per frame) top right, PAUSE (RESUME, RETRY ASCENT, RETURN TO MENU) top left.
+Keyboard: W/↑, S/↓, Space, 1-3. No jet stays on when the app loses focus.
+
+**Cameras.** EXTERNAL: on the pad and the first seconds low by the descent stage looking up at the
+separation, then a chase camera behind and above the stage, its distance growing with altitude
+(16 → 70 m), the horizon ahead. COCKPIT: at the forward window (its frame drawn), looking ahead and
+down as the crew did; as the stage pitches over (the windows face the ground) the line of sight
+stays within 55° of the window's axis, so the horizon stays in the upper part. NAV: the orbit's
+plane, Moon-centred, the stage at the top — the surface, the predicted conic (`orbitPath`), the
+target 96 km and safe 15 km circles, the CSM's orbit and the CSM, the velocity and thrust vectors.
+A view change eases in over 0.6 s; the docking's NAV is a different component and is untouched.
+
+**Scene.** The landing site itself (terrain, rocks, horizon, Sun: `LunarSite`), the stage's true
+position around the Moon placed in the site's frame (it climbs away from the site, which falls
+behind and below, and the curvature is real). The whole Moon (the shared NASA LRO globe, turned so
+the site's real selenographic coordinates are straight up and the flight goes west) is drawn at
+1/1000 around the camera in a background pass of its own (with the stars and the Earth), so it can
+never cover the site or the stage; not drawn below 60 m (the site fills the view). The site's
+rocks, horizon ring and terrain fade out between 0.3 and 5 km. The ignition: a flash on the deck
+and a short burst of foil and dust flecks (lunar gravity, 2.6 s, near the surface only); the
+vacuum plume is LanderModel's own (no smoke). After cutoff the stage coasts on along its conic
+(display only).
+
+**Comms.** Near side: CAPCOM (`capcom.manualAscentGo`, the existing `ascent.pitchover`,
+`capcom.manualOrbit`, then `rdv.manualGuidance`). Silent Horizon: `audio.setEarthLink(false)`, no
+Houston line at all; the onboard computer (COMPUTER role, `throughBlackout`):
+ASCENT CONFIGURATION VERIFIED · IGNITION AUTHORIZED · BEGIN PITCH PROGRAM · VELOCITY BELOW TARGET ·
+ORBITAL INSERTION APPROACHING · ENGINE CUTOFF RECOMMENDED · STABLE LUNAR ORBIT CONFIRMED — each
+spoken only when the simulation is in that state; the crew's `ascent.proceed` and (rendezvous)
+`ascent.insertionCrew`. 10 new lines × EN/PT (20 Kokoro clips, 317 KB, the offline pipeline).
+
+**Failure and retry.** The failure panel names what happened, why, and the numbers; RETRY ASCENT
+puts the ascent stage back on the descent stage with its full load (the checkpoint before the
+ascent); RETURN TO MENU leaves the mission resumable at that checkpoint. Nothing is faked and
+nothing is carried over.
+
+**Save and resume** (`lib/missionSave.js`, schema 4; 1–3 still read). New checkpoint
+**ORBIT_INSERTION** (ORBITAL INSERTION COMPLETE, between EVA_COMPLETE and DOCKING_READY) and an
+`ascent` record { mode, attempts, outcome }. Attempts are counted at ignition (closing the app
+mid-ascent cannot hide one); a manual ascent cut short resumes at the ascent preparation (marked
+interrupted: never a half-initialised ascent; no landing or EVA replayed); ORBIT_INSERTION resumes at
+the rendezvous from the orbit flown. The insertion is **judged again from its cutoff state** when a
+save is read (`cleanAscent` → `evaluateInsertion`), so a save cannot hold an orbit the physics would
+not accept, nor more propellant than was loaded. The guided ascent writes no new checkpoint.
+
+**Scoring.** The 1,000-point score is unchanged (landing 400, docking 300, reentry 300; no ascent
+points, no docking points for it). The logbook entry gains `ascent` { mode, attempts, failures,
+success, apo/peri km, propellant left, accuracy, who cut off } — one record per flight, never
+duplicated — and the MISSION LOG row `MANUAL ASC 98.4×18 KM GOOD`. Two achievements in a new LUNAR
+ASCENT group: HAND-FLOWN ASCENT and PRECISE INSERTION.
+
+**Files.** New: `data/manualAscent.js` (+ 41 tests), `components/ManualAscent.jsx`. Changed:
+`data/rendezvous.js` (`planRendezvous(…, { insertion })`, `csiTime`), `components/LunarAscent.jsx`
+(the choice), `components/DockingOps.jsx` (`insertion`), `components/scenes/LunarSite.jsx` (`Horizon`
+exported), `pages/Mission.jsx` (MANUAL_ASCENT state, ORBIT_INSERTION restore, attempts),
+`lib/missionSave.js`, `lib/missionSelection.js` (`logMissionAscent`), `lib/missionRecords.js`
+(`applyAscent`), `data/missionScoring.js`, `data/scoringText.js`, `pages/Records.jsx`,
+`audio/commsLines.json`, `public/voice/*`, `scripts/verify-ios-bundle.js` (12 markers).
+
+**Validation** (browser: Chromium + SwiftShader at 844×390 iPhone-landscape size with touch, the
+game's own buttons; scripted pilots give the player's commands — pitch control and cutoff — never
+positions; NOT a physical iPhone).
+- Unit tests 704/704 (656 before): `data/manualAscent.test.js` (41) — the stage alone on the pad,
+  nothing moving before ignition; thrust/mass − gravity at liftoff; propellant flow and mass;
+  gravity on the coast; attitude changing the trajectory; fixed thrust (the burn always lasts its
+  460 s); frame-rate independence and determinism; the target from the rendezvous design; the
+  guidance's reference flight (18 × 96 km at ~426 s); every failure (premature, insufficient
+  velocity at the target apoapsis, impact, propellant, unrecoverable, apoapsis above the CSM,
+  phasing, rendezvous propellant) and the strict bound never calling a recoverable flight lost;
+  four pilots → four different measured orbits; the three difficulties' RCS laws and assists;
+  the TGO predicting the real cutoff within 0.5 s; the apoapsis window (70–105.5 km accepted);
+  the handoff (exact coast to apoapsis, CSI 14 km below and 150 km behind, then CSI/TPI/MCC/GATE/
+  BRAKING ending on each difficulty's docking checkpoint, the last kilometre from behind, the plan
+  rebuilt identically from a saved cutoff; the guided plan unchanged); the NAV conic. Plus save
+  schema 4 (the insertion re-judged from its cutoff, suborbital / above-the-CSM / overfuelled
+  claims rejected, attempts kept, interruption → ascent preparation, schema 3 still read), the
+  ascent achievements and the unchanged 1,000-point model, the logbook record.
+- Manual ascents flown in the browser, each with the choice screen, ignition by a tap, the
+  pitch-over begun by a held PITCH ▼, the three views and the judgement: Sea of Tranquility
+  ASTRONAUT (98.2–101.6 × 18.0 km), Silent Horizon CADET (96.3 × 18.0, PRECISE, automatic cutoff)
+  and COMMANDER (98.6 × 18.0), Hadley CADET premature cutoff (CONFIRM CUTOFF asked, PREMATURE
+  CUTOFF shown, attempt counted, RETRY ASCENT → attempt 2 with full propellant), Tycho ASTRONAUT
+  (pitched to the horizon too early → TRAJECTORY UNRECOVERABLE with 920 kg left).
+- Full missions with the manual ascent to splashdown and MISSION COMPLETE: Sea of Tranquility
+  ASTRONAUT 12/12 (946 GOLD), Hadley COMMANDER 13/13 (954 PLATINUM), Tycho CADET 13/13 (923 GOLD),
+  Silent Horizon ASTRONAUT 14/14 (953 GOLD; only the onboard computer and the crew during the
+  ascent), Hadley ASTRONAUT with the full geological EVA first and SIGKILLs during it 31/31 (955
+  GOLD; ORBITAL INSERTION COMPLETE keeps the EVA). Each: the logbook's ascent record apart from the
+  score, HAND-FLOWN ASCENT once, docking first attempt.
+- Save and resume: SIGKILL mid-ascent → RESUME at the ascent preparation (marked interrupted),
+  attempt 2 from the pad, then a stable orbit, SIGKILL during the rendezvous → RESUME at
+  ORBITAL INSERTION COMPLETE (no ascent, landing or EVA repeated) → DOCKING READY, the logbook with
+  one record of 2 attempts (9/9); resuming generated ORBIT_INSERTION saves (rendezvous from the
+  orbit, DOCKING READY).
+- The guided route unchanged: the regression script (launch → landing → GUIDED ASCENT → rendezvous
+  → docking → return → reentry → splashdown, plus the docking training untouching the save) 12/12
+  at the Sea of Tranquility CADET (916 GOLD) and Silent Horizon COMMANDER (954 PLATINUM).
+- Cost: see docs/IOS_APP.md (Manual lunar ascent): on the pad and at liftoff within ~10 % of the
+  guided scene in the same software renderer, lighter at altitude. Not measured on an iPhone GPU.
+
+**Known limits.** One burn (no relight); in-plane flight (no cross-range or plane change); no
+lunar rotation; the descent stage's landed tilt is cosmetic for the ascent; the rendezvous is the
+guidance's film (34 s) as on the guided route, not flown by the player; near cutoff the apoapsis
+climbs ~13 km/s, so a hand cutoff lands within a few km (the TGO, CUT OFF NOW and AUTO CUTOFF are
+there for that); not yet played on a physical iPhone.

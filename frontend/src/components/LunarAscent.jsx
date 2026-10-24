@@ -140,7 +140,13 @@ const EVA_BUTTON = {
   pt: { label: "INICIAR EVA", sub: "OPCIONAL · PRIMEIROS PASSOS NA LUA" },
 };
 
-export default function LunarAscent({ siteId, pose = null, audio = null, farSide = false, onComplete, onInitiate = null, lang = "en", evaAvailable = false, onBeginEva = null }) {
+// LUNAR ASCENT — READY: the guided ascent (this film, unchanged) or the manual one (components/ManualAscent)
+const CHOICE = {
+  en: { ready: "LUNAR ASCENT — READY", guided: "GUIDED ASCENT", guidedSub: "AUTOMATIC · INITIATE LUNAR ASCENT", manual: "MANUAL ASCENT", manualSub: "PILOT THE ASCENT STAGE TO ORBIT" },
+  pt: { ready: "ASCENSÃO LUNAR — PRONTA", guided: "ASCENSÃO GUIADA", guidedSub: "AUTOMÁTICA · INICIAR ASCENSÃO LUNAR", manual: "ASCENSÃO MANUAL", manualSub: "PILOTE O ESTÁGIO ATÉ A ÓRBITA" },
+};
+
+export default function LunarAscent({ siteId, pose = null, audio = null, farSide = false, onComplete, onInitiate = null, lang = "en", evaAvailable = false, onBeginEva = null, onManual = null }) {
   const site = useMemo(() => getSite(siteId), [siteId]);
   const p = pose || { x: 0, padY: site.contactGround ? site.scale.y(site.contactGround(0)) : 0, tilt: 0, pitch: 0, comp: [0, 0, 0, 0], probe: [0, 0, 0, 0] };
   const base = useMemo(() => [p.x, p.padY + LM.foot, 0], [p.x, p.padY]);
@@ -275,15 +281,35 @@ export default function LunarAscent({ siteId, pose = null, audio = null, farSide
               ))}
             </ul>
             <div className="mt-2 short:mt-1 font-mono text-[9px] short:text-[7px] tracking-[0.15em] short:tracking-[0.08em] text-zinc-500">THE DESCENT STAGE STAYS ON THE MOON AS THE LAUNCH PAD.</div>
-            <button
-              type="button"
-              onClick={initiate}
-              disabled={checks < 5}
-              data-testid="ascent-initiate"
-              className="mt-4 short:mt-2 w-full min-h-[52px] short:min-h-[46px] font-mono text-[12px] short:text-[11px] tracking-[0.35em] short:tracking-[0.2em] text-white bg-[#FF3B00]/90 hover:bg-[#FF3B00] active:bg-[#d93200] border border-[#FF3B00] disabled:opacity-40 touch-manipulation"
-            >
-              INITIATE LUNAR ASCENT
-            </button>
+            {onManual && (
+              <div className="mt-3 short:mt-1.5 font-mono text-[9px] short:text-[8px] tracking-[0.35em] text-[#FF3B00]" data-testid="ascent-ready">
+                ● {CHOICE[lang === "pt" ? "pt" : "en"].ready}
+              </div>
+            )}
+            <div className={onManual ? "mt-1.5 short:mt-1 grid grid-cols-2 gap-2" : ""}>
+              <button
+                type="button"
+                onClick={initiate}
+                disabled={checks < 5}
+                data-testid="ascent-initiate"
+                className={`${onManual ? "" : "mt-4 short:mt-2 "}w-full min-h-[52px] short:min-h-[46px] flex flex-col items-center justify-center font-mono text-white bg-[#FF3B00]/90 hover:bg-[#FF3B00] active:bg-[#d93200] border border-[#FF3B00] disabled:opacity-40 touch-manipulation`}
+              >
+                <span className={onManual ? "text-[11px] short:text-[10px] tracking-[0.3em] short:tracking-[0.18em]" : "text-[12px] short:text-[11px] tracking-[0.35em] short:tracking-[0.2em]"}>{onManual ? CHOICE[lang === "pt" ? "pt" : "en"].guided : "INITIATE LUNAR ASCENT"}</span>
+                {onManual && <span className="text-[7.5px] short:text-[7px] tracking-[0.15em] text-white/80 mt-0.5">{CHOICE[lang === "pt" ? "pt" : "en"].guidedSub}</span>}
+              </button>
+              {onManual && (
+                <button
+                  type="button"
+                  onClick={() => stage === "prep" && checks >= 5 && onManual()}
+                  disabled={checks < 5}
+                  data-testid="ascent-manual"
+                  className="w-full min-h-[52px] short:min-h-[46px] flex flex-col items-center justify-center font-mono text-white bg-black/45 hover:bg-white/10 border border-[#FF3B00] disabled:opacity-40 touch-manipulation"
+                >
+                  <span className="text-[11px] short:text-[10px] tracking-[0.3em] short:tracking-[0.18em]">{CHOICE[lang === "pt" ? "pt" : "en"].manual}</span>
+                  <span className="text-[7.5px] short:text-[7px] tracking-[0.15em] text-zinc-400 mt-0.5">{CHOICE[lang === "pt" ? "pt" : "en"].manualSub}</span>
+                </button>
+              )}
+            </div>
             {evaAvailable && onBeginEva && (
               <button
                 type="button"

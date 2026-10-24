@@ -309,7 +309,7 @@ export function SiteRocks({ site }) {
 /* ---- sky ------------------------------------------------------------------------------------ */
 const SKY_R = 1800;
 
-function Horizon({ site }) {
+export function Horizon({ site }) {
   const geometry = useMemo(() => {
     if (!site.horizon || !site.horizon.length) return null;
     const D = 1500;

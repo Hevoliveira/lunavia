@@ -267,6 +267,28 @@ Earth link). On a phone in landscape:
   187–195k triangles against 81k. The adaptive resolution (below about 45 fps the pixel ratio
   steps down) applies as in every scene. Not yet measured on an iPhone GPU.
 
+## Manual lunar ascent
+
+MANUAL ASCENT (HANDOFF §62) is offered beside GUIDED ASCENT on the ascent preparation
+(LUNAR ASCENT — READY) at every destination; the guided liftoff is unchanged. On a phone in
+landscape:
+- **Left thumb:** ENGINE IGNITION, then ENGINE CUTOFF (60 pt; CADET asks to confirm a cutoff
+  below orbit); PITCH ASSIST (CADET) and AUTO CUTOFF (CADET, ASTRONAUT) under it.
+- **Right thumb:** PITCH ▲ TOWARD VERTICAL and PITCH ▼ TOWARD HORIZON (58 pt, `touch-none`, pointer
+  capture: held = RCS on, a tap = a pulse; both thumbs can be down at once).
+- **Top:** PAUSE and the attempt (left), EXTERNAL / COCKPIT / NAV and the time rate ×1/×2/×4
+  (right); the LUNAR ASCENT and ORBITAL GUIDANCE panels down the two sides; the step message,
+  the onboard computer and at most two alerts in the top centre. The middle of the screen — the
+  stage, its plume and the horizon — stays clear.
+- Losing the screen (a call, the app switcher) lets go of every held control; PAUSE stops the
+  simulation (a fixed 20-ms step, so the flight does not depend on the frame rate).
+- 20 new voice clips (`voice/en|pt/comp.*`, `capcom.manual*`, `rdv.manualGuidance`, 317 KB).
+- Cost (measured in Chromium + SwiftShader on the CPU, DPR 1, 844×390 — only the ratios mean
+  anything): on the pad 182 ms per frame against 193 for the guided preparation in the same run;
+  the first seconds of flight 146 against 133 for the guided liftoff film; at 20 km 64 ms (the
+  site faded out), the cockpit 64, NAV 30. The whole Moon is drawn in a background pass only
+  above 60 m (below, the site fills the view). Not yet measured on an iPhone GPU.
+
 ## Audio on iOS
 
 WebKit only starts audio inside a user gesture, but LUNAVIA's engine rumble and comms are

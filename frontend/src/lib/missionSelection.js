@@ -186,6 +186,34 @@ export const logMissionEva = (id, eva) =>
   });
 
 /**
+ * Flight `id`'s MANUAL ASCENT (data/manualAscent; recorded apart from the mission's score, which
+ * it does not change): the attempts flown, why each failed one failed, and the insertion — orbit,
+ * accuracy, propellant left. One record per flight: a success is never written twice, and an
+ * attempt count never goes down (the mission save's count is the authority).
+ */
+export const logMissionAscent = (id, a) =>
+  update(id, (e) => {
+    const prev = e.ascent && e.ascent.mode === "manual" ? e.ascent : { mode: "manual", attempts: 0, failures: [], success: false };
+    if (prev.success && a.success) return; // already recorded
+    const n = (v, d = 1) => (typeof v === "number" && Number.isFinite(v) ? +v.toFixed(d) : null);
+    const out = { ...prev, failures: (prev.failures || []).slice(-19) };
+    out.attempts = Math.max(prev.attempts || 0, a.attempts || 0);
+    if (!a.success && a.failure) out.failures.push(a.failure);
+    if (a.success) {
+      out.success = true;
+      out.apoKm = n(a.apo / 1000);
+      out.periKm = n(a.peri / 1000);
+      out.fuelKg = n(a.fuelKg, 0);
+      out.fuelPct = n(a.fuelPct);
+      out.accuracy = a.accuracy ? { grade: a.accuracy.grade, missKm: n(a.accuracy.miss, 2) } : null;
+      out.cutoffBy = a.cutoffBy || null;
+      out.difficulty = a.difficulty || e.difficulty || null;
+    }
+    out.at = Date.now();
+    e.ascent = out;
+  });
+
+/**
  * Flight `id` was resumed from its mission checkpoint (lib/missionSave): counted on its
  * entry. If the log no longer has the entry (the web view's storage was cleared while the
  * app's own checkpoint file survived), it is written again with what the checkpoint

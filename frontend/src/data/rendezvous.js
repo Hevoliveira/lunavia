@@ -80,7 +80,8 @@ const norm3 = (a) => Math.hypot(a[0], a[1], a[2]);
  * arcs between burns. sample(t) gives the LVLH state at any time from
  * insertion (t = 0) to handover (t = total).
  */
-export function planRendezvous(difficulty = "ASTRONAUT") {
+export function planRendezvous(difficulty = "ASTRONAUT", opts = {}) {
+  if (opts && opts.insertion) return planFromInsertion(difficulty, opts.insertion);
   const cp = checkpointState(difficulty);
   const rC = frames.toL(cp.pos);
   const vC = frames.toL(cp.vel);
@@ -128,7 +129,114 @@ export function planRendezvous(difficulty = "ASTRONAUT") {
     return st;
   };
   const totalDv = burns.reduce((acc, b) => acc + norm3(b.dv), 0);
-  return { difficulty, burns, total, sample, checkpoint: { r: rC, v: vC }, totalDv, insertion: s0 };
+  return { difficulty, burns, total, sample, checkpoint: { r: rC, v: vC }, totalDv, insertion: s0, csiAt: null, tpiAt: COAST, manual: false, feasible: true };
+}
+
+/** The co-elliptic burn's time from an LVLH state: the relative orbit's next highest point (vx → 0 from above). */
+export function csiTime(st, n = N) {
+  const P = (2 * Math.PI) / n;
+  let prev = cwPropagate(st, 60, n);
+  for (let t = 90; t <= 60 + P; t += 30) {
+    const cur = cwPropagate(st, t, n);
+    if (prev[3] > 0 && cur[3] <= 0) {
+      let lo = t - 30;
+      let hi = t;
+      for (let i = 0; i < 30; i++) {
+        const mid = (lo + hi) / 2;
+        if (cwPropagate(st, mid, n)[3] > 0) lo = mid;
+        else hi = mid;
+      }
+      return (lo + hi) / 2;
+    }
+    prev = cur;
+  }
+  return 60; // no apoapsis ahead (an almost circular relative orbit): the burn comes at once
+}
+export const CSI_MAX_COAST = 5 * PERIOD; // s: a CSM the stage cannot catch within five orbits is out of reach
+export const RDV_MIN_RANGE = 1000; // m: before the gate the transfer never comes closer to the CSM
+
+/**
+ * The rendezvous from an insertion the pilot flew (MANUAL ASCENT, data/manualAscent): the
+ * stage's actual LVLH state at engine cutoff, `s0`. At the relative orbit's next apoapsis the
+ * guidance's co-elliptic burn (CSI, Apollo's CSI and CDH in one) leaves it on a co-elliptic
+ * orbit; it coasts until the CSM stands TPI_ELEVATION above its horizon, then the same TPI,
+ * midcourse, gate and braking as the guided rendezvous, ending on the same docking checkpoint.
+ * `feasible` is false when, after CSI, the stage is not below and behind the CSM, it would take
+ * more than five orbits to close, or the transfer would pass closer than RDV_MIN_RANGE; `reason`
+ * says which ("ahead": a low orbit has already passed the CSM; "above": not below it; "slow": too
+ * close below it to catch it in time; "close": the transfer passes too near).
+ */
+function planFromInsertion(difficulty, insertion) {
+  const cp = checkpointState(difficulty);
+  const rC = frames.toL(cp.pos);
+  const vC = frames.toL(cp.vel);
+  const n = N;
+  // an LVLH state at insertion (coasted with the linear relative motion), or the exact coast
+  // the ascent flew: { csiAt, csi (LVLH at the burn), coast(t) (LVLH before it) }
+  const exact = !Array.isArray(insertion);
+  const s0 = exact ? insertion.coast(0) : insertion.slice(0, 6);
+  const burns = [];
+  const csiAt = exact ? insertion.csiAt : csiTime(s0);
+  const sCsi = exact ? insertion.csi.slice(0, 6) : cwPropagate(s0, csiAt);
+  const x = sCsi[0];
+  const y = sCsi[1];
+  const vCo = [0, -1.5 * n * x, 0];
+  burns.push({ t: csiAt, kind: "CSI", dv: sub3(vCo, sCsi.slice(3)) });
+  const afterCsi = [x, y, 0, ...vCo];
+  let feasible = x < -2000 && y < -2000;
+  let reason = null;
+  if (!(x < -2000)) reason = "above";
+  else if (!(y < -2000)) reason = "ahead";
+  // coast on the co-elliptic orbit until the CSM is TPI_ELEVATION above the local horizon
+  let coast = feasible ? (x / Math.tan((TPI_ELEVATION * Math.PI) / 180) - y) / (1.5 * n * -x) : 120;
+  if (!(coast >= 120)) coast = 120;
+  if (coast > CSI_MAX_COAST) {
+    feasible = false;
+    reason = reason || "slow";
+  }
+  const tpiAt = csiAt + Math.min(coast, CSI_MAX_COAST);
+  const sTpi = cwPropagate(afterCsi, tpiAt - csiAt);
+  const vWant = cwTarget(sTpi.slice(0, 3), GATE, TRANSFER);
+  const dvTpi = sub3(vWant, sTpi.slice(3));
+  const dvExec = dvTpi.map((v, i) => v * (1 + TPI_ERROR[i]));
+  burns.push({ t: tpiAt, kind: "TPI", dv: dvExec, planned: dvTpi });
+  const afterTpi = [...sTpi.slice(0, 3), ...sTpi.slice(3).map((v, i) => v + dvExec[i])];
+  const tm = TRANSFER * MCC_AT;
+  const sMcc = cwPropagate(afterTpi, tm);
+  const vMcc = cwTarget(sMcc.slice(0, 3), GATE, TRANSFER - tm);
+  burns.push({ t: tpiAt + tm, kind: "MCC", dv: sub3(vMcc, sMcc.slice(3)) });
+  const afterMcc = [...sMcc.slice(0, 3), ...vMcc];
+  const sGate = cwPropagate(afterMcc, TRANSFER - tm);
+  const vFinal = cwTarget(sGate.slice(0, 3), rC, FINAL);
+  burns.push({ t: tpiAt + TRANSFER, kind: "GATE", dv: sub3(vFinal, sGate.slice(3)) });
+  const afterGate = [...sGate.slice(0, 3), ...vFinal];
+  const sArr = cwPropagate(afterGate, FINAL);
+  burns.push({ t: tpiAt + TRANSFER + FINAL, kind: "BRAKING", dv: sub3(vC, sArr.slice(3)) });
+  const total = tpiAt + TRANSFER + FINAL;
+  const arcs = [
+    { t0: 0, s: s0 },
+    { t0: csiAt, s: afterCsi },
+    { t0: tpiAt, s: afterTpi },
+    { t0: tpiAt + tm, s: afterMcc },
+    { t0: tpiAt + TRANSFER, s: afterGate },
+  ];
+  const sample = (t) => {
+    const tt = Math.max(0, Math.min(total, t));
+    let arc = arcs[0];
+    for (const a of arcs) if (tt >= a.t0) arc = a;
+    if (tt >= total) return [...rC, ...vC];
+    if (exact && tt < csiAt) return insertion.coast(tt);
+    return cwPropagate(arc.s, tt - arc.t0);
+  };
+  // the path before the gate never comes close to the CSM
+  let minRange = Infinity;
+  for (let t = 0; t <= tpiAt + TRANSFER; t += 20) minRange = Math.min(minRange, norm3(sample(t).slice(0, 3)));
+  if (minRange < RDV_MIN_RANGE) {
+    feasible = false;
+    reason = reason || "close";
+  }
+  const totalDv = burns.reduce((acc, b) => acc + norm3(b.dv), 0);
+  return { difficulty, burns, total, sample, checkpoint: { r: rC, v: vC }, totalDv, insertion: s0, csiAt, tpiAt, manual: true, feasible, reason: feasible ? null : reason, minRange };
 }
 
 /** Range and range rate (m, m/s) of an LVLH state. */
