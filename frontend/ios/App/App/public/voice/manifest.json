@@ -52,6 +52,60 @@
       "f": "en/ascent.proceed.0.mp3"
      }
     ],
+    "capcom.manualAscentGo": [
+     {
+      "d": 4.71,
+      "f": "en/capcom.manualAscentGo.0.mp3"
+     }
+    ],
+    "capcom.manualOrbit": [
+     {
+      "d": 5.06,
+      "f": "en/capcom.manualOrbit.0.mp3"
+     }
+    ],
+    "comp.ascentVerified": [
+     {
+      "d": 2.05,
+      "f": "en/comp.ascentVerified.0.mp3"
+     }
+    ],
+    "comp.beginPitch": [
+     {
+      "d": 1.39,
+      "f": "en/comp.beginPitch.0.mp3"
+     }
+    ],
+    "comp.cutoffRecommended": [
+     {
+      "d": 1.72,
+      "f": "en/comp.cutoffRecommended.0.mp3"
+     }
+    ],
+    "comp.ignitionAuthorized": [
+     {
+      "d": 1.48,
+      "f": "en/comp.ignitionAuthorized.0.mp3"
+     }
+    ],
+    "comp.insertionApproaching": [
+     {
+      "d": 1.8,
+      "f": "en/comp.insertionApproaching.0.mp3"
+     }
+    ],
+    "comp.orbitConfirmed": [
+     {
+      "d": 2.04,
+      "f": "en/comp.orbitConfirmed.0.mp3"
+     }
+    ],
+    "comp.velocityLow": [
+     {
+      "d": 1.74,
+      "f": "en/comp.velocityLow.0.mp3"
+     }
+    ],
     "cruise.ambient": [
      {
       "d": 3.9,
@@ -810,6 +864,12 @@
       "f": "en/rdv.handoverCrew.0.mp3"
      }
     ],
+    "rdv.manualGuidance": [
+     {
+      "d": 3.81,
+      "f": "en/rdv.manualGuidance.0.mp3"
+     }
+    ],
     "rdv.mcc": [
      {
       "d": 2.04,
@@ -1093,6 +1153,60 @@
      {
       "d": 2.72,
       "f": "pt/ascent.proceed.0.mp3"
+     }
+    ],
+    "capcom.manualAscentGo": [
+     {
+      "d": 4.62,
+      "f": "pt/capcom.manualAscentGo.0.mp3"
+     }
+    ],
+    "capcom.manualOrbit": [
+     {
+      "d": 5.54,
+      "f": "pt/capcom.manualOrbit.0.mp3"
+     }
+    ],
+    "comp.ascentVerified": [
+     {
+      "d": 2.27,
+      "f": "pt/comp.ascentVerified.0.mp3"
+     }
+    ],
+    "comp.beginPitch": [
+     {
+      "d": 1.95,
+      "f": "pt/comp.beginPitch.0.mp3"
+     }
+    ],
+    "comp.cutoffRecommended": [
+     {
+      "d": 1.88,
+      "f": "pt/comp.cutoffRecommended.0.mp3"
+     }
+    ],
+    "comp.ignitionAuthorized": [
+     {
+      "d": 1.39,
+      "f": "pt/comp.ignitionAuthorized.0.mp3"
+     }
+    ],
+    "comp.insertionApproaching": [
+     {
+      "d": 1.92,
+      "f": "pt/comp.insertionApproaching.0.mp3"
+     }
+    ],
+    "comp.orbitConfirmed": [
+     {
+      "d": 2.22,
+      "f": "pt/comp.orbitConfirmed.0.mp3"
+     }
+    ],
+    "comp.velocityLow": [
+     {
+      "d": 1.76,
+      "f": "pt/comp.velocityLow.0.mp3"
      }
     ],
     "cruise.ambient": [
@@ -1851,6 +1965,12 @@
      {
       "d": 4.06,
       "f": "pt/rdv.handoverCrew.0.mp3"
+     }
+    ],
+    "rdv.manualGuidance": [
+     {
+      "d": 3.59,
+      "f": "pt/rdv.manualGuidance.0.mp3"
      }
     ],
     "rdv.mcc": [
