@@ -1,29 +1,30 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 6b2b32a**.
+This folder installs **BUILD b6f976d**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 6b2b32a · 2026-10-24 14:10 UTC**
+> **LUNAVIA iOS · BUILD b6f976d · 2026-10-24 19:31 UTC**
 
-It is the **four lunar EVA expeditions**: after a safe landing at any of the four official
-destinations, **BEGIN EVA** in the ascent preparation (PT: INICIAR EVA; optional, never forced)
-starts that destination's own expedition, with the same astronaut, camera, controls and boarding:
-- **Sea of Tranquility** — first steps on the Moon, exactly as before (sample TQ-01, the photo of
-  the LM);
-- **Hadley–Apennine** — geological expedition: INSPECT a rille-edge basalt boulder, two samples
-  (HA-01, HA-02), photograph Mons Hadley from the observation point, DEPLOY the seismometer;
-- **Tycho Highlands** — impact geology: INSPECT an ejecta block, two samples (TY-01 melt, TY-02
-  ejecta), photograph the crater from its rim (never inside it), place the gnomon;
-- **Silent Horizon** (far side) — a sample, DEPLOY the low-frequency radio antenna, photograph the
-  basin ring, then CHECK INSTRUMENT and CONFIRM DATA on the receiver; EARTH LINK UNAVAILABLE, the
-  onboard computer gives the procedures (no Houston).
-Every objective is placed round the LM where it landed; samples, instruments and photos are kept
-when the app is closed and the mission resumed; the logbook records each expedition apart from
-the 1,000-point score, and four new achievements (LUNAR SURFACE) mark them. The rest of the game is
-as in BUILD 592b8c1.
+It is the **manual lunar ascent**: after a safe landing (and the optional EVA) the ascent
+preparation shows **LUNAR ASCENT — READY** (PT: ASCENSÃO LUNAR — PRONTA) with two choices, at all
+four destinations and every difficulty:
+- **GUIDED ASCENT** — the automatic liftoff exactly as before;
+- **MANUAL ASCENT** — you fly the ascent stage off the descent stage (which stays on the Moon) into
+  lunar orbit: ENGINE IGNITION (bottom left), PITCH ▲ / PITCH ▼ on the RCS (bottom right; the engine
+  has fixed thrust and does not throttle), ENGINE CUTOFF when the apoapsis reaches about 96 km with
+  a periapsis above 15 km. CADET has PITCH ASSIST and AUTO CUTOFF; ASTRONAUT the pitch cue, the time
+  to cutoff and an optional AUTO CUTOFF; COMMANDER flies with no cue and no attitude hold.
+  EXTERNAL, COCKPIT and NAV views; RETRY ASCENT after a failed attempt; the rendezvous then starts
+  from the orbit you flew and the docking is yours as before.
+Silent Horizon keeps EARTH LINK UNAVAILABLE (the onboard computer talks, Houston does not). The
+orbit you reach is saved (ORBITAL INSERTION COMPLETE), the logbook records the manual ascent apart
+from the 1,000-point score, and two new achievements (LUNAR ASCENT) mark it. The rest of the game is
+as in BUILD 6b2b32a.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **6b2b32a** is the previous release: the four EVA expeditions, but only the guided ascent (no
+  LUNAR ASCENT — READY, no MANUAL ASCENT);
 - **592b8c1** is the previous release: the EVA with the close-range visuals, but only at the Sea
   of Tranquility (no BEGIN EVA at Hadley, Tycho or Silent Horizon);
 - **672b8ef** is the previous release: the same EVA with the simpler astronaut (capsule limbs,
