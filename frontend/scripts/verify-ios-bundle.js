@@ -178,6 +178,18 @@ const FEATURES = [
   ["Manual ascent: ORBITAL INSERTION COMPLETE checkpoint", "ORBIT_INSERTION"],
   ["Manual ascent: the rendezvous from the orbit flown (CSI)", "COAST TO APOAPSIS"],
   ["Manual ascent: achievements", "HAND_FLOWN_ASCENT"],
+  ["LM cabin: ENTER CABIN after the landing", "result-enter-cabin"],
+  ["LM cabin: ENTER / RETURN TO CABIN on the ascent preparation", "ascent-enter-cabin"],
+  ["LM cabin: the cabin scene", "lm-cabin"],
+  ["LM cabin: the five stations", "cabin-station-"],
+  ["LM cabin: panel hotspots", "cabin-hotspot-"],
+  ["LM cabin: EVA preparation (SUIT CHECK)", "SUIT CHECK"],
+  ["LM cabin: BEGIN EVA from the cabin", "cabin-begin-eva"],
+  ["LM cabin: ascent preparation (CABIN SECURE)", "CABIN SECURE"],
+  ["LM cabin: CONTINUE TO ASCENT", "cabin-to-ascent"],
+  ["LM cabin: the panels in Portuguese", "ENTRAR NA CABINE"],
+  ["LM cabin: the crew and CAPCOM calls", "cabin.evaGo"],
+  ["LM cabin: resumed in the cabin", "CABINE DO LM"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar

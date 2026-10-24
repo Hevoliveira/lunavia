@@ -13,6 +13,7 @@ import FarSideIntro from "@/components/training/FarSideIntro";
 import PdiBriefing from "@/components/PdiBriefing";
 import MissionResult from "@/components/MissionResult";
 import LunarAscent from "@/components/LunarAscent";
+import LmCabin from "@/components/cabin/LmCabin";
 import ManualAscent from "@/components/ManualAscent";
 import LunarEva from "@/components/eva/LunarEva";
 import DockingOps from "@/components/DockingOps";
@@ -108,6 +109,7 @@ const STATES = {
   MANUAL_DESCENT: "manual_descent",
   RESULT: "result",
   ASCENT: "ascent",            // LUNAR SURFACE — ASCENT PREPARATION, then the lunar liftoff
+  CABIN: "cabin",              // LM CABIN (optional): inside the landed lunar module, before or after the EVA
   EVA: "eva",                  // the optional lunar EVA from the ascent preparation (every destination), back to it
   MANUAL_ASCENT: "manual_ascent", // MANUAL ASCENT (optional, from the ascent preparation): the player flies the ascent stage to orbit
   DOCKING: "docking",          // orbit insertion, rendezvous, the player's docking, crew transfer
@@ -186,6 +188,7 @@ const FLIGHT_STATES = new Set([
   STATES.FAR_SIDE,
   STATES.MANUAL_DESCENT,
   STATES.ASCENT,
+  STATES.CABIN,
   STATES.EVA,
   STATES.MANUAL_ASCENT,
   STATES.DOCKING,
@@ -263,6 +266,8 @@ export default function Mission({ entry = "opening" }) {
   // The lunar EVA (optional, from the ascent preparation): done on this flight (BEGIN EVA gives
   // way to the ascent alone), and the record a resumed EVA carries on from.
   const [evaDone, setEvaDone] = useState(false);
+  // the ascent preparation was completed in the LM CABIN: the surface checklist shows it done
+  const [ascentPrimed, setAscentPrimed] = useState(false);
   const [evaResume, setEvaResume] = useState(null);
   // MANUAL ASCENT: the attempt on screen (a retry remounts it), and the orbit the pilot flew,
   // which the rendezvous is planned from (null: the guided ascent's insertion)
@@ -469,6 +474,7 @@ export default function Mission({ entry = "opening" }) {
     scoringRef.current = createFlightScoring({ id: flightIdRef.current, ...next });
     setDockResume(null);
     setEvaDone(false);
+    setAscentPrimed(false);
     setEvaResume(null);
     // checkpoint A — LUNAR DESCENT READY: the destination and difficulty, before powered descent
     persist(CP.DESCENT_READY, { activity: { phase: "briefing" }, createdAt: Date.now() });
@@ -726,12 +732,36 @@ export default function Mission({ entry = "opening" }) {
     setState(STATES.DOCKING);
   };
 
+  /* ---- LM CABIN (optional) --------------------------------------------------------------- */
+  // ENTER CABIN on a safe landing's results or on the ascent preparation (before or after the
+  // EVA): the inside of the landed LM. The checkpoint stays what it was (LANDING COMPLETE or EVA
+  // COMPLETE); the save notes the player is in the cabin, so a resume reopens it.
+  const handleEnterCabin = () => {
+    const s0 = stateRef.current;
+    if (s0 === STATES.RESULT) {
+      if (!descentResult || descentResult.crashed) return;
+      landingRef.current = descentResult;
+      setDescentResult(null);
+    } else if (s0 !== STATES.ASCENT) return;
+    setAscentPrimed(false);
+    persist(null, { activity: { phase: "cabin" } });
+    setState(STATES.CABIN);
+  };
+  // EXIT CABIN, or CONTINUE TO ASCENT once the ascent preparation is done: the approved ascent
+  // preparation on the surface (GUIDED or MANUAL ASCENT, BEGIN EVA if it is still to come)
+  const handleCabinExit = (primed = false) => {
+    if (stateRef.current !== STATES.CABIN) return;
+    setAscentPrimed(!!primed);
+    persist(null, { activity: { phase: "result" } });
+    setState(STATES.ASCENT);
+  };
+
   // BEGIN EVA on the ascent preparation (every destination its own expedition: data/evaMissions;
   // optional, never forced): the lunar EVA, the LM where it landed. EVA READY is saved at once and
   // with each objective done; back aboard with the hatch closed (EVA COMPLETE) the ascent
   // preparation returns, BEGIN EVA gone.
   const handleBeginEva = () => {
-    if (stateRef.current !== STATES.ASCENT || evaDone || !evaAvailableAt(missionRef.current.siteId)) return;
+    if ((stateRef.current !== STATES.ASCENT && stateRef.current !== STATES.CABIN) || evaDone || !evaAvailableAt(missionRef.current.siteId)) return;
     persist(CP.EVA_READY, { eva: freshEva(missionRef.current.siteId), activity: { phase: "eva" } });
     setEvaResume(null);
     setState(STATES.EVA);
@@ -869,6 +899,14 @@ export default function Mission({ entry = "opening" }) {
     persist(null, { activity: { phase: "result" } });
     setState(STATES.ASCENT);
   };
+  // LANDING / EVA COMPLETE with the player in the LM CABIN: the cabin again, from its start
+  // (the window station, its checklists fresh: a short preparation is simply done again)
+  const restoreCabin = (save) => {
+    landingRef.current = { pose: save.landing ? save.landing.pose : null };
+    setEvaDone(!!(save.eva && save.eva.completed));
+    persist(null, { activity: { phase: "cabin" } });
+    setState(STATES.CABIN);
+  };
   // EVA READY: the lunar EVA again, the LM where it landed, the objectives already done kept (at
   // the foot of the ladder once the first steps are taken, otherwise from the hatch).
   const restoreEvaReady = (save, plan) => {
@@ -906,7 +944,7 @@ export default function Mission({ entry = "opening" }) {
   };
   // E — EARTH REENTRY READY: the reentry from its start (EARTH APPROACH).
   const restoreReentryReady = () => setState(STATES.REENTRY);
-  const RESTORE = { briefing: restoreDescentReady, ascent: restoreLandingComplete, eva: restoreEvaReady, insertion: restoreOrbitInsertion, docking: restoreDockingReady, return: restoreDockingComplete, reentry: restoreReentryReady };
+  const RESTORE = { briefing: restoreDescentReady, ascent: restoreLandingComplete, cabin: restoreCabin, eva: restoreEvaReady, insertion: restoreOrbitInsertion, docking: restoreDockingReady, return: restoreDockingComplete, reentry: restoreReentryReady };
 
   /**
    * RESUME MISSION (startup screen or game menu, never automatic): the saved flight carries on
@@ -964,7 +1002,7 @@ export default function Mission({ entry = "opening" }) {
     setDockResume(null);
     setInsertion(null);
     RESTORE[plan.state](save, plan);
-    setNotice({ kind: "resumed", checkpoint: save.checkpoint, interrupted: plan.interrupted, fallback: !!st.fallback, at: Date.now() });
+    setNotice({ kind: "resumed", checkpoint: save.checkpoint, interrupted: plan.interrupted, fallback: !!st.fallback, cabin: plan.state === "cabin", at: Date.now() });
   };
 
   // The way home and the reentry, however they are reached (the return's end, SKIP, a resume):
@@ -1120,6 +1158,8 @@ export default function Mission({ entry = "opening" }) {
             siteName={mission.name}
             onRestart={handleRestartDescent}
             onContinue={handleContinueFromResult}
+            onEnterCabin={handleEnterCabin}
+            lang={lang}
             onEndMission={handleEndFailedMission}
           />
         </div>
@@ -1138,6 +1178,26 @@ export default function Mission({ entry = "opening" }) {
           evaAvailable={evaAvailableAt(mission.siteId) && !evaDone}
           onBeginEva={handleBeginEva}
           onManual={handleManualAscent}
+          onEnterCabin={handleEnterCabin}
+          cabinAgain={evaDone}
+          primed={ascentPrimed}
+        />
+      )}
+
+      {/* LM CABIN: inside the landed lunar module (optional); out to the EVA or to the ascent preparation */}
+      {state === STATES.CABIN && (
+        <LmCabin
+          siteId={mission.siteId}
+          pose={landingRef.current && landingRef.current.pose}
+          result={landingRef.current && landingRef.current.touchdownSpeed !== undefined ? landingRef.current : null}
+          audio={audio}
+          lang={lang}
+          farSide={mission.comms.farSide}
+          evaAvailable={evaAvailableAt(mission.siteId)}
+          evaDone={evaDone}
+          onBeginEva={handleBeginEva}
+          onAscent={() => handleCabinExit(true)}
+          onExit={() => handleCabinExit(false)}
         />
       )}
 
@@ -1207,7 +1267,7 @@ export default function Mission({ entry = "opening" }) {
       {state === STATES.COMPLETE && <ReentryScene final />}
 
       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
-      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && state !== STATES.ASCENT && state !== STATES.EVA && state !== STATES.MANUAL_ASCENT && state !== STATES.DOCKING && state !== STATES.DEBRIEF && (
+      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && state !== STATES.ASCENT && state !== STATES.CABIN && state !== STATES.EVA && state !== STATES.MANUAL_ASCENT && state !== STATES.DOCKING && state !== STATES.DEBRIEF && (
         <div
           data-testid="mission-hud-min"
           className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
@@ -1324,6 +1384,7 @@ export default function Mission({ entry = "opening" }) {
           the lunar EVA has its own too (PAUSE → ABORT MISSION) */}
       {state !== STATES.CONTROL &&
         state !== STATES.EVA &&
+        state !== STATES.CABIN &&
         state !== STATES.MANUAL_ASCENT &&
         state !== STATES.SELECT &&
         state !== STATES.MENU &&

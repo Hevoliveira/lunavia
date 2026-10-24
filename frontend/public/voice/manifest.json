@@ -52,6 +52,30 @@
       "f": "en/ascent.proceed.0.mp3"
      }
     ],
+    "cabin.ascentGo": [
+     {
+      "d": 4.24,
+      "f": "en/cabin.ascentGo.0.mp3"
+     }
+    ],
+    "cabin.ascentReady": [
+     {
+      "d": 3.69,
+      "f": "en/cabin.ascentReady.0.mp3"
+     }
+    ],
+    "cabin.evaGo": [
+     {
+      "d": 4.05,
+      "f": "en/cabin.evaGo.0.mp3"
+     }
+    ],
+    "cabin.evaReady": [
+     {
+      "d": 4.72,
+      "f": "en/cabin.evaReady.0.mp3"
+     }
+    ],
     "capcom.manualAscentGo": [
      {
       "d": 4.71,
@@ -1153,6 +1177,30 @@
      {
       "d": 2.72,
       "f": "pt/ascent.proceed.0.mp3"
+     }
+    ],
+    "cabin.ascentGo": [
+     {
+      "d": 4.54,
+      "f": "pt/cabin.ascentGo.0.mp3"
+     }
+    ],
+    "cabin.ascentReady": [
+     {
+      "d": 4.71,
+      "f": "pt/cabin.ascentReady.0.mp3"
+     }
+    ],
+    "cabin.evaGo": [
+     {
+      "d": 4.37,
+      "f": "pt/cabin.evaGo.0.mp3"
+     }
+    ],
+    "cabin.evaReady": [
+     {
+      "d": 5.69,
+      "f": "pt/cabin.evaReady.0.mp3"
      }
     ],
     "capcom.manualAscentGo": [

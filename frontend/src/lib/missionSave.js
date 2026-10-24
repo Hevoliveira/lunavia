@@ -47,10 +47,12 @@ import { STAGE as ASCENT_STAGE, R_MOON, evaluateInsertion } from "../data/manual
  * instrument: data/evaMissions). Older saves are still read (a schema 2 EVA is Tranquility's); a
  * build that only knows an older schema sees a newer save as "written by a newer version" and
  * leaves it alone, never as damaged. Schema 4 adds the MANUAL ASCENT: the ORBIT_INSERTION
- * checkpoint and the `ascent` record (attempts, and the insertion the pilot flew).
+ * checkpoint and the `ascent` record (attempts, and the insertion the pilot flew). Schema 5 adds
+ * the LM CABIN: the "cabin" activity (the player inside the landed LM at LANDING COMPLETE or EVA
+ * COMPLETE), so a resume reopens the cabin; an older build leaves such a save alone.
  */
-export const SAVE_SCHEMA = 4;
-const READABLE_SCHEMAS = [1, 2, 3, 4];
+export const SAVE_SCHEMA = 5;
+const READABLE_SCHEMAS = [1, 2, 3, 4, 5];
 export const SAVE_KIND = "lunavia.mission.checkpoint";
 const ENVELOPE = "lunavia-save";
 export const SLOT_KEYS = { a: "lunavia.mission.save.v1.a", b: "lunavia.mission.save.v1.b" };
@@ -75,7 +77,7 @@ export const cpRank = (cp) => CHECKPOINT_ORDER.indexOf(cp);
 export const RESUMABLE = CHECKPOINT_ORDER.filter((cp) => cp !== CP.MISSION_COMPLETE);
 
 /** What the player was doing when the save was last touched. */
-export const ACTIVITIES = ["briefing", "descent", "result", "eva", "ascent", "manualAscent", "rendezvous", "docking", "dockFailed", "transfer", "return", "reentry", "ended"];
+export const ACTIVITIES = ["briefing", "descent", "result", "cabin", "eva", "ascent", "manualAscent", "rendezvous", "docking", "dockFailed", "transfer", "return", "reentry", "ended"];
 const STATUSES = ["active", "completed", "abandoned"];
 
 export const CHECKPOINT_TEXT = {
@@ -607,7 +609,9 @@ export function resumePlan(save) {
   if (!save || save.status !== "active" || !RESUME_AT[save.checkpoint]) return null;
   const a = save.activity || { phase: null, engaged: false };
   const interrupted = !!INTERRUPTED[save.checkpoint](a);
-  const plan = { checkpoint: save.checkpoint, state: RESUME_AT[save.checkpoint].state, interrupted, docking: null, restartReport: null, eva: save.eva || null, ascent: save.ascent || null };
+  // in the LM CABIN (at the landing or after the EVA): the cabin again, from its start
+  const inCabin = a.phase === "cabin" && (save.checkpoint === CP.LANDING_COMPLETE || save.checkpoint === CP.EVA_COMPLETE);
+  const plan = { checkpoint: save.checkpoint, state: inCabin ? "cabin" : RESUME_AT[save.checkpoint].state, interrupted, docking: null, restartReport: null, eva: save.eva || null, ascent: save.ascent || null };
   if (save.checkpoint === CP.DOCKING_READY) {
     const d = save.docking || { attempts: 1, restarts: 0, contacts: 0 };
     if (interrupted) {
@@ -620,6 +624,15 @@ export function resumePlan(save) {
     }
   }
   return plan;
+}
+
+/** Where a resume takes the player, as named on RESUME MISSION (the LM CABIN when they were in it). */
+export const CABIN_RESUME_TEXT = { en: "LUNAR SURFACE · LM CABIN", pt: "SUPERFÍCIE LUNAR · CABINE DO LM" };
+export function resumeText(save, lang = "en") {
+  if (!save || !RESUME_AT[save.checkpoint]) return "";
+  const l = lang === "pt" ? "pt" : "en";
+  const plan = resumePlan({ ...save, status: "active" });
+  return plan && plan.state === "cabin" ? CABIN_RESUME_TEXT[l] : RESUME_AT[save.checkpoint].text[l];
 }
 
 /** True when `state` holds a mission the player can resume. */

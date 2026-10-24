@@ -1,11 +1,12 @@
 import { RotateCcw, ArrowUpRight, XCircle, CheckCircle2, Home } from "lucide-react";
 import { Link } from "react-router-dom";
+import { cabinText } from "@/data/lmCabin";
 
 /**
  * MissionResult — post-touchdown explanation.
  * All values are captured touchdown-frame quantities from the simulation.
  */
-export default function MissionResult({ result, onRestart, onContinue, onEndMission, difficulty, siteName = null }) {
+export default function MissionResult({ result, onRestart, onContinue, onEndMission, difficulty, siteName = null, onEnterCabin = null, lang = "en" }) {
   const isCrash = !!result.crashed;
   const b = result.breakdown;
 
@@ -175,6 +176,11 @@ export default function MissionResult({ result, onRestart, onContinue, onEndMiss
               className="btn-hud"
             >
               CONTINUE MISSION <ArrowUpRight size={14} />
+            </button>
+          )}
+          {!isCrash && onEnterCabin && (
+            <button onClick={onEnterCabin} data-testid="result-enter-cabin" className="btn-hud">
+              {cabinText(lang).enter}
             </button>
           )}
           <Link to="/manifesto" data-testid="result-manifesto" className="btn-hud">

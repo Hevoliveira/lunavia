@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { getSite } from "@/data/landingSites";
-import { RESUME_AT, checkpointText } from "@/lib/missionSave";
+import { CABIN_RESUME_TEXT, RESUME_AT, checkpointText } from "@/lib/missionSave";
 import { SUBTITLE_LANE } from "@/components/CommsSubtitles";
 
 /*
@@ -180,7 +180,7 @@ export function MissionSaveNotice({ notice, lang = "en", below = "nav" }) {
   return place(
     <div key={shown.at} style={topStyle} className={`${top} scan-in bg-black/65 backdrop-blur-sm border-l-2 ${safe ? "border-[#f5c451]" : "border-[#4fd1c5]"} px-4 py-2 short:px-3 short:py-1.5 ${lane ? "" : "max-w-[min(34rem,86vw)]"} text-center`} data-testid="mission-resumed" data-checkpoint={shown.checkpoint} data-interrupted={shown.interrupted ? "1" : "0"}>
       <div className={`font-mono text-[10px] short:text-[9px] tracking-[0.32em] short:tracking-[0.22em] ${safe ? "text-[#f5c451]" : "text-[#4fd1c5]"}`}>● {safe ? t.resumedSafe : t.resumed}</div>
-      <div className="font-mono text-[10px] short:text-[9px] tracking-[0.22em] short:tracking-[0.14em] text-white mt-0.5">{RESUME_AT[shown.checkpoint] ? RESUME_AT[shown.checkpoint].text[lang === "pt" ? "pt" : "en"] : ""}</div>
+      <div className="font-mono text-[10px] short:text-[9px] tracking-[0.22em] short:tracking-[0.14em] text-white mt-0.5">{shown.cabin ? CABIN_RESUME_TEXT[lang === "pt" ? "pt" : "en"] : RESUME_AT[shown.checkpoint] ? RESUME_AT[shown.checkpoint].text[lang === "pt" ? "pt" : "en"] : ""}</div>
       {shown.interrupted && <div className="font-mono text-[9px] short:text-[8px] tracking-[0.06em] text-zinc-300 mt-0.5">{t.interruptedNote}</div>}
       {!shown.interrupted && shown.fallback && <div className="font-mono text-[9px] short:text-[8px] tracking-[0.06em] text-zinc-300 mt-0.5">{t.fallbackNote}</div>}
     </div>

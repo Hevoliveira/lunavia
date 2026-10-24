@@ -44,7 +44,19 @@ export const PROBE_L = PROBE_LENGTH / S;
 // Descent stage: an octagon, long faces on the leg axes.
 const DS = { a: 0.43, c: 0.14, y0: 0.0, y1: 0.34 };
 // Ascent stage base.
-const AS_Y = 0.375;
+export const AS_Y = 0.375;
+/** The crew cabin's side profile [z, y] (model units), extruded across X from -CABIN_HALF_X to +CABIN_HALF_X. */
+export const CABIN_PROFILE = [
+  [-0.24, AS_Y],
+  [0.2, AS_Y],
+  [0.27, 0.46],
+  [0.29, 0.62],
+  [0.22, 0.76],
+  [0.1, 0.84],
+  [-0.18, 0.84],
+  [-0.24, 0.78],
+];
+export const CABIN_HALF_X = 0.3;
 
 /** Materials the shape is split into (LanderModel gives each its look). */
 export const PARTS = ["paint", "paintDark", "foilGold", "foilDark", "metal", "engine", "engineInner", "glass", "black", "accent"];
@@ -188,7 +200,7 @@ export function merge(list) {
 
 /* ---- the ascent stage's window facet -------------------------------------------- */
 // The upper front facet runs from (z 0.22, y 0.76) back up to (z 0.10, y 0.84).
-const SLOPE = { c: [0, 0.8, 0.16], v: [0, 0.555, -0.832], n: [0, 0.832, 0.555] };
+export const WINDOW_SLOPE = { c: [0, 0.8, 0.16], v: [0, 0.555, -0.832], n: [0, 0.832, 0.555] };
 function onSlope(tri, lift, grow = 1) {
   const cu = (tri[0][0] + tri[1][0] + tri[2][0]) / 3;
   const cv = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
@@ -196,18 +208,19 @@ function onSlope(tri, lift, grow = 1) {
     const uu = cu + (u - cu) * grow;
     const vv = cv + (v - cv) * grow;
     return [
-      SLOPE.c[0] + uu + SLOPE.n[0] * lift,
-      SLOPE.c[1] + vv * SLOPE.v[1] + SLOPE.n[1] * lift,
-      SLOPE.c[2] + vv * SLOPE.v[2] + SLOPE.n[2] * lift,
+      WINDOW_SLOPE.c[0] + uu + WINDOW_SLOPE.n[0] * lift,
+      WINDOW_SLOPE.c[1] + vv * WINDOW_SLOPE.v[1] + WINDOW_SLOPE.n[1] * lift,
+      WINDOW_SLOPE.c[2] + vv * WINDOW_SLOPE.v[2] + WINDOW_SLOPE.n[2] * lift,
     ];
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(p.flat(), 3));
-  g.setAttribute("normal", new THREE.Float32BufferAttribute([...SLOPE.n, ...SLOPE.n, ...SLOPE.n], 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute([...WINDOW_SLOPE.n, ...WINDOW_SLOPE.n, ...WINDOW_SLOPE.n], 3));
   g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2));
   return g;
 }
-const WINDOWS = [
+/** The two triangular windows on the facet, as [u (x), v (along the slope)] corners. */
+export const WINDOWS = [
   [
     [-0.035, -0.04],
     [-0.035, 0.045],
@@ -311,16 +324,7 @@ function collect({ close = false } = {}) {
   // The interstage (the descent stage's top fittings), then the ascent stage: faceted cabin with bevelled edges.
   P.black.push(prism(octagon(0.31, 0.1), y1 + 0.016, AS_Y + 0.006));
   P = PA;
-  const profile = [
-    [-0.24, AS_Y],
-    [0.2, AS_Y],
-    [0.27, 0.46],
-    [0.29, 0.62],
-    [0.22, 0.76],
-    [0.1, 0.84],
-    [-0.18, 0.84],
-    [-0.24, 0.78],
-  ];
+  const profile = CABIN_PROFILE;
   const cabin = new THREE.ExtrudeGeometry(new THREE.Shape(profile.map(([z, y]) => new THREE.Vector2(z, y))), {
     depth: 0.6,
     bevelEnabled: true,

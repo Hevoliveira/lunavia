@@ -20,6 +20,9 @@ import {
   sealEnvelope,
   validateSave,
   RESUME_AT,
+  CABIN_RESUME_TEXT,
+  resumeText,
+  ACTIVITIES,
 } from "./missionSave";
 import { createFlightScoring, restoreFlightScoring } from "../data/flightScoring";
 import { DIFFICULTY } from "../data/landingPhysics";
@@ -397,6 +400,21 @@ describe("resuming a checkpoint", () => {
     expect(checkpointText(CP.DOCKING_COMPLETE, "pt")).toBe("ACOPLAMENTO CONCLUÍDO");
   });
 
+  test("the LM CABIN (schema 5): a save made inside the cabin reopens it, at the landing or after the EVA", () => {
+    const p1 = plan(CP.LANDING_COMPLETE, { phase: "cabin" });
+    expect(p1.state).toBe("cabin");
+    expect(p1.interrupted).toBe(false); // nothing was under way: the cabin is a safe place
+    const sc = flightTo(CP.EVA_COMPLETE, "tranquillitatis", "ASTRONAUT");
+    const eva = { mission: "tranquillitatis", progress: { firstSteps: true, sample: true, photo: true }, samples: [{ id: "TQ-01", x: 7.5, z: 8.5 }], photos: [{ subject: "LM", distance: 15.2 }], completed: true };
+    const v = validateSave(docOf(CP.EVA_COMPLETE, sc, { activity: { phase: "cabin" }, eva }));
+    if (v.ok) expect(resumePlan(v.save).state).toBe("cabin");
+    // anywhere else "cabin" means nothing special: the checkpoint's own phase
+    expect(plan(CP.DESCENT_READY, { phase: "cabin" }).state).toBe("briefing");
+    expect(resumeText({ ...validateSave(docOf(CP.LANDING_COMPLETE, flightTo(CP.LANDING_COMPLETE), { activity: { phase: "cabin" } })).save }, "pt")).toBe(CABIN_RESUME_TEXT.pt);
+    expect(resumeText({ ...validateSave(docOf(CP.LANDING_COMPLETE, flightTo(CP.LANDING_COMPLETE), { activity: { phase: "result" } })).save }, "en")).toBe(RESUME_AT.LANDING_COMPLETE.text.en);
+    expect(ACTIVITIES).toContain("cabin");
+  });
+
   test("a maneuver cut short is flown again and flagged; films are not", () => {
     expect(plan(CP.DESCENT_READY, { phase: "descent" }).interrupted).toBe(true);
     expect(plan(CP.DESCENT_READY, { phase: "briefing" }).interrupted).toBe(false);
@@ -631,7 +649,7 @@ describe("the lunar EVA's checkpoints", () => {
     // (schema 4: the manual ascent's ORBITAL INSERTION COMPLETE sits between them and the docking)
     expect(CHECKPOINT_ORDER.indexOf(CP.ORBIT_INSERTION)).toBe(CHECKPOINT_ORDER.indexOf(CP.EVA_COMPLETE) + 1);
     expect(CHECKPOINT_ORDER.indexOf(CP.DOCKING_READY)).toBe(CHECKPOINT_ORDER.indexOf(CP.ORBIT_INSERTION) + 1);
-    expect(SAVE_SCHEMA).toBe(4);
+    expect(SAVE_SCHEMA).toBe(5);
     [CP.EVA_READY, CP.EVA_COMPLETE].forEach((cp) => ["en", "pt"].forEach((l) => expect(checkpointText(cp, l).length).toBeGreaterThan(5)));
   });
 
@@ -702,7 +720,7 @@ describe("the lunar EVA's checkpoints", () => {
     expect(opened.save.eva).toBeNull();
     const tqv = tq(CP.EVA_READY);
     expect(validateSave({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 1 }).reason).toBe("kind");
-    expect(openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 5 }, 5)).reason).toBe("unsupported");
+    expect(openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: SAVE_SCHEMA + 1 }, 5)).reason).toBe("unsupported");
     // a schema 2 save (phase 1) is still read, its EVA the Sea of Tranquility's; it never held another destination's
     const v2 = openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 2 }, 6));
     expect(v2.ok).toBe(true);

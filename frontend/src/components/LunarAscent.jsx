@@ -8,6 +8,7 @@ import { getSite } from "@/data/landingSites";
 import { evaMission, evaMissionText } from "@/data/evaMissions";
 import { LM } from "@/data/touchdownFx";
 import { ASCENT, COUNTDOWN, ascentAt } from "@/data/lunarAscent";
+import { cabinText } from "@/data/lmCabin";
 
 /**
  * LUNAR SURFACE — ASCENT PREPARATION, then the lunar liftoff (automatic).
@@ -146,7 +147,7 @@ const CHOICE = {
   pt: { ready: "ASCENSÃO LUNAR — PRONTA", guided: "ASCENSÃO GUIADA", guidedSub: "AUTOMÁTICA · INICIAR ASCENSÃO LUNAR", manual: "ASCENSÃO MANUAL", manualSub: "PILOTE O ESTÁGIO ATÉ A ÓRBITA" },
 };
 
-export default function LunarAscent({ siteId, pose = null, audio = null, farSide = false, onComplete, onInitiate = null, lang = "en", evaAvailable = false, onBeginEva = null, onManual = null }) {
+export default function LunarAscent({ siteId, pose = null, audio = null, farSide = false, onComplete, onInitiate = null, lang = "en", evaAvailable = false, onBeginEva = null, onManual = null, onEnterCabin = null, cabinAgain = false, primed = false }) {
   const site = useMemo(() => getSite(siteId), [siteId]);
   const p = pose || { x: 0, padY: site.contactGround ? site.scale.y(site.contactGround(0)) : 0, tilt: 0, pitch: 0, comp: [0, 0, 0, 0], probe: [0, 0, 0, 0] };
   const base = useMemo(() => [p.x, p.padY + LM.foot, 0], [p.x, p.padY]);
@@ -156,7 +157,7 @@ export default function LunarAscent({ siteId, pose = null, audio = null, farSide
   const clockRef = useRef(null); // the canvas clock, to stamp the countdown and ignition
   const [stage, setStage] = useState("prep"); // prep | countdown | liftoff
   const [tick, setTick] = useState(0);
-  const [checks, setChecks] = useState(0);
+  const [checks, setChecks] = useState(primed ? 5 : 0); // prepared in the LM cabin: already done
   const doneRef = useRef(false);
 
   // The far side has no line of sight to the Earth while on the surface.
@@ -310,6 +311,17 @@ export default function LunarAscent({ siteId, pose = null, audio = null, farSide
                 </button>
               )}
             </div>
+            {onEnterCabin && (
+              <button
+                type="button"
+                onClick={() => stage === "prep" && onEnterCabin()}
+                data-testid="ascent-enter-cabin"
+                className="mt-2 short:mt-1.5 w-full min-h-[46px] short:min-h-[42px] flex flex-col items-center justify-center font-mono text-white bg-black/40 hover:bg-white/10 border border-white/35 hover:border-white/60 touch-manipulation"
+              >
+                <span className="text-[11px] short:text-[10px] tracking-[0.35em] short:tracking-[0.2em]">{cabinAgain ? cabinText(lang).back : cabinText(lang).enter}</span>
+                <span className="text-[7.5px] short:text-[7px] tracking-[0.2em] text-zinc-400 mt-0.5">{cabinAgain ? cabinText(lang).backSub : cabinText(lang).enterSub}</span>
+              </button>
+            )}
             {evaAvailable && onBeginEva && (
               <button
                 type="button"
