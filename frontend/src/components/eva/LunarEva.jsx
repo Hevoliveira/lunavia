@@ -14,17 +14,23 @@ import { SUBTITLE_LANE as LANE, setSubtitlePlacement } from "@/components/CommsS
 import { getSite } from "@/data/landingSites";
 import { buildTerrain } from "@/data/terrainMesh";
 import { LM } from "@/data/touchdownFx";
-import { SAMPLE_TIME, cleanProgress, createWalker, egressAt, egressLength, evaWorld, ingressAt, ingressLength, interactionAt, ladderPoints, nextTask, photoCheck, stepWalker } from "@/data/evaSim";
-import { chestCamera, photoSpec, sampleSpec, sequenceSpec, solveRig, toLocal, toWorld, walkSpec } from "@/data/astronautRig";
+import { SAMPLE_TIME, createWalker, egressAt, egressLength, evaWorld, ingressAt, ingressLength, ladderPoints, stepWalker } from "@/data/evaSim";
+import { DATA_TIME, DEPLOY_TIME, SURVEY_TIME, actionAt, cleanProgressFor, currentTarget, evaMission, evaMissionText, nextObjective, objectiveIds, photoCheckFor, planEva, routeBetween } from "@/data/evaMissions";
+import { chestCamera, consoleSpec, deploySpec, inspectSpec, photoSpec, sampleSpec, sequenceSpec, solveRig, toLocal, toWorld, walkSpec } from "@/data/astronautRig";
+import { Instrument, RING, SampleStones, ScienceMarkers, stoneLift } from "./EvaScience";
+import { DataPanel, InfoCard } from "./EvaPanels";
 
 /**
- * LUNAR EVA — FIRST STEPS ON THE MOON (phase 1: the Sea of Tranquility).
+ * LUNAR EVA — the four expeditions (data/evaMissions): one EVA, one configuration per destination.
  *
  * An optional extravehicular activity between the landing and the lunar ascent: the same site
  * (terrain, rocks, sky, Sun) and the lunar module exactly where and how it landed. The astronaut
  * leaves the cabin through the forward hatch, climbs down the ladder, takes the first steps and
- * then walks freely: collect the marked sample, photograph the landing site with the chest
- * camera, and return up the ladder into the LM. Then the mission goes on to the ascent.
+ * then walks freely through the destination's objectives (the Sea of Tranquility: the marked
+ * sample and a photograph of the landing site; Hadley: a geological survey, two samples, Mons
+ * Hadley, the seismometer; Tycho: impact material, two samples, a crater from its rim, the gnomon;
+ * the far side: a sample, the radio antenna, the basin ring, the receiver's data, with no Earth
+ * link), and returns up the ladder into the LM. Then the mission goes on to the ascent.
  *
  * Simulation in data/evaSim (walking, collisions, the exploration area, the egress and ingress,
  * the objectives), the body in data/astronautRig, the suit in components/eva. Everything here is
@@ -53,10 +59,15 @@ const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 function makeSim({ site, pose, resume }) {
   const terrain = buildTerrain(site);
   const ground = (x, z) => terrain.lookup(x, z);
-  const world = evaWorld({ site, pose, ground });
+  const cfg = evaMission(site.id);
+  const world = evaWorld({ site, pose, ground, area: cfg.area });
+  const plan = planEva(world);
   const lm = world.lm;
   const P = ladderPoints(lm);
-  const progress = cleanProgress(resume && resume.progress);
+  const progress = cleanProgressFor(cfg, resume && resume.progress);
+  const sampleObj = cfg.objectives.find((o) => o.kind === "sample");
+  const instObj = cfg.objectives.find((o) => o.kind === "instrument");
+  const sampleIds = plan.samples.map((x) => x.id);
   const out = [Math.sin(P.outward), Math.cos(P.outward)];
   let side = [out[1], -out[0]];
   if (side[0] * world.sunH[0] + side[1] * world.sunH[1] < 0) side = [-side[0], -side[1]]; // the camera on the sunlit side
@@ -70,9 +81,19 @@ function makeSim({ site, pose, resume }) {
     mode: progress.firstSteps ? "explore" : "egress",
     t: 0,
     walker: createWalker(world, lm.board[0], lm.board[2], P.outward),
+    cfg,
+    plan,
     progress,
-    samples: (resume && Array.isArray(resume.samples) ? resume.samples : []).slice(0, 4),
+    samples: (resume && Array.isArray(resume.samples) ? resume.samples : []).filter((x) => x && sampleIds.includes(x.id)).slice(0, 4),
     photos: (resume && Array.isArray(resume.photos) ? resume.photos : []).slice(0, 8),
+    instruments: (resume && Array.isArray(resume.instruments) ? resume.instruments : []).slice(0, 1),
+    sampleObjective: sampleObj ? sampleObj.id : null,
+    instrumentObjective: instObj ? instObj.id : null,
+    sampleObjectiveDone: !!(sampleObj && progress[sampleObj.id]),
+    survey: null,
+    deploy: null,
+    // a receiver deployed before a save has recorded while the crew was away
+    dataReadyAt: instObj && progress[instObj.id] ? 0 : null,
     input: { x: 0, y: 0 },
     keys: new Set(),
     look: { dx: 0, dy: 0 },
@@ -97,19 +118,26 @@ function makeSim({ site, pose, resume }) {
     hud: {},
     resumed: !!progress.firstSteps,
   };
+  // a resumed EVA goes on counting the distance walked before the interruption
+  if (resume && typeof resume.distance === "number" && Number.isFinite(resume.distance) && resume.distance > 0) {
+    sim.walker.distance = resume.distance;
+    sim.distance = resume.distance;
+  }
   // the first look: towards the next target, from behind the astronaut
   sim.camYaw = bearingTo(sim, targetOf(sim)) ?? P.outward;
   if (progress.firstSteps) sim.walker.heading = sim.camYaw;
   return sim;
 }
 
+/** The current target, during the egress the first one after it: { kind, objective, id?, p [x, y, z] }. */
+function targetInfo(sim) {
+  const st = sim.progress.firstSteps ? sim : { ...sim, progress: { ...sim.progress, firstSteps: true } };
+  const t = currentTarget(sim.plan, st, sim.walker);
+  if (t.kind === "board" || t.x == null) return { ...t, kind: "board", p: [sim.lm.board[0], sim.lm.board[1], sim.lm.board[2]] };
+  return { ...t, p: [t.x, t.y, t.z] };
+}
 function targetOf(sim) {
-  const t0 = nextTask(sim.progress);
-  const task = t0 === "firstSteps" ? "sample" : t0; // during the egress: the first task after it
-  const w = sim.world;
-  if (task === "sample") return [w.sample.x, w.sample.y, w.sample.z];
-  if (task === "photo") return [w.photo.x, w.photo.y, w.photo.z];
-  return [sim.lm.board[0], sim.lm.board[1], sim.lm.board[2]];
+  return targetInfo(sim).p;
 }
 function bearingTo(sim, p) {
   if (!p) return null;
@@ -191,72 +219,7 @@ function Hatch({ sim }) {
   );
 }
 
-/* ---- the sample, the markers, footprints and dust --------------------------------------------- */
-function rockGeometry() {
-  const g = new THREE.IcosahedronGeometry(0.065, 1);
-  const p = g.attributes.position;
-  let s = 5;
-  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  const seen = new Map();
-  for (let i = 0; i < p.count; i++) {
-    const key = `${p.getX(i).toFixed(4)},${p.getY(i).toFixed(4)},${p.getZ(i).toFixed(4)}`;
-    if (!seen.has(key)) seen.set(key, 0.75 + r() * 0.5);
-    const k = seen.get(key);
-    p.setXYZ(i, p.getX(i) * k * 1.15, p.getY(i) * k * 0.7, p.getZ(i) * k);
-  }
-  g.computeVertexNormals();
-  return g;
-}
-
-function Markers({ sim }) {
-  const stone = useRef();
-  const sampleRing = useRef();
-  const photoRing = useRef();
-  const ladderRing = useRef();
-  const rock = useMemo(rockGeometry, []);
-  const w = sim.world;
-  useFrame((state) => {
-    const t = state.clock.elapsedTime;
-    const task = sim.mode === "egress" ? null : nextTask(sim.progress);
-    const pulse = 0.75 + 0.25 * Math.sin(t * 3);
-    if (sampleRing.current) {
-      sampleRing.current.visible = task === "sample";
-      sampleRing.current.material.opacity = 0.8 * pulse;
-    }
-    if (photoRing.current) {
-      photoRing.current.visible = task === "photo";
-      photoRing.current.material.opacity = 0.75 * pulse;
-    }
-    if (ladderRing.current) {
-      ladderRing.current.visible = task === "return" && sim.mode === "explore";
-      ladderRing.current.material.opacity = 0.75 * pulse;
-    }
-    const st = stone.current;
-    if (st) {
-      const where = sim.sample ? sim.sample.stoneIn : sim.progress.sample ? "bag" : "ground";
-      st.visible = where !== "bag";
-      if (where === "scoop" && sim.sample && sim.sample.head) st.position.set(...sim.sample.head);
-      else st.position.set(w.sample.x, w.sample.y + 0.035, w.sample.z);
-    }
-  });
-  const ring = (ref, at, color, r = 0.62) => (
-    <mesh ref={ref} position={[at.x, at.y + 0.03, at.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={3}>
-      <ringGeometry args={[r * 0.86, r, 48]} />
-      <meshBasicMaterial color={color} transparent opacity={0.8} depthWrite={false} toneMapped={false} />
-    </mesh>
-  );
-  return (
-    <>
-      <mesh ref={stone} geometry={rock} castShadow receiveShadow>
-        <meshStandardMaterial color="#5f5a53" roughness={0.95} metalness={0} />
-      </mesh>
-      {ring(sampleRing, w.sample, "#FF3B00", 0.55)}
-      {ring(photoRing, w.photo, "#4fd1c5", 0.8)}
-      {ring(ladderRing, { x: sim.lm.board[0], y: sim.lm.board[1], z: sim.lm.board[2] }, "#f5c451", 0.7)}
-    </>
-  );
-}
-
+/* ---- footprints and dust (the stones, rings and instruments: EvaScience) ------------------------ */
 const MAX_PRINTS = 700;
 function Footprints({ sim }) {
   const ref = useRef();
@@ -410,21 +373,55 @@ function Director({ sim, astroRef, camState, markerRefs, callbacks }) {
         frame: { n: pf.n, avg: pf.n ? pf.acc / pf.n : 0, p95: pf.p95 || 0 },
         samples: S.samples.length,
         photos: S.photos.length,
+        site: S.site.id,
+        objective: nextObjective(S.cfg, S.progress),
+        targetKind: targetInfo(S).kind,
+        sampleIds: S.samples.map((x) => x.id),
+        instruments: S.instruments.length,
+        dataReady: S.dataReadyAt != null && S.clock >= S.dataReadyAt,
+        deployU: S.deploy ? S.deploy.t / DEPLOY_TIME : null,
+        surveyU: S.survey ? S.survey.t / SURVEY_TIME : null,
       };
+      if (!window.__lvEvaRoute) window.__lvEvaRoute = (x, z) => routeBetween(S.world, [S.walker.x, S.walker.z], [x, z]); // validation tooling
+      if (!window.__lvEvaPlan || window.__lvEvaPlan.site !== S.site.id) {
+        const P = S.plan;
+        const pt = (t) => t && { x: t.x, y: t.y, z: t.z, fallback: !!t.fallback, formation: t.formation || null, route: t.route ? t.route.points : null };
+        window.__lvEvaPlan = { site: S.site.id, lm: S.lm.axis, board: [S.lm.board[0], S.lm.board[2]], samples: P.samples.map((t) => ({ id: t.id, ...pt(t) })), survey: pt(P.survey), look: P.survey ? P.survey.look : null, photo: { ...pt(P.photo), subject: P.photo.subject }, instrument: P.instrument ? { ...pt(P.instrument), kind: P.instrument.kind } : null, fallbacks: P.fallbacks };
+      }
     }
   });
   return null;
+}
+
+/** A line once per EVA (the reminder and the boundary call have their own cooldowns). */
+function sayOnce(S, cb, id, opts) {
+  if (!id || S.said.has(id)) return;
+  S.said.add(id);
+  cb.say(id, opts);
+}
+
+/**
+ * An objective done: recorded, said (the crew's call, then the next task from the destination's
+ * voice: Houston, or the onboard computer on the far side), and a safe point to save.
+ */
+function completeObjective(S, id, cb, { delay = 2.6 } = {}) {
+  if (S.progress[id]) return;
+  S.progress[id] = true;
+  S.lastProgressAt = S.clock;
+  S.events.push(`done:${id}`);
+  const V = S.cfg.voice;
+  sayOnce(S, cb, V.done[id]);
+  const next = nextObjective(S.cfg, S.progress);
+  sayOnce(S, cb, next === "return" ? V.returnLM : V.go[next], { delay });
+  cb.checkpoint();
 }
 
 /** One step of the EVA (everything but the camera). */
 function advance(S, dt, now, cb) {
   const lm = S.lm;
   const w = S.walker;
-  const say = (id, opts) => {
-    if (S.said.has(id)) return;
-    S.said.add(id);
-    cb.say(id, opts);
-  };
+  const V = S.cfg.voice;
+  const say = (id, opts) => sayOnce(S, cb, id, opts);
   if (S.mode === "egress") {
     S.t += dt;
     const T = egressLength();
@@ -440,7 +437,7 @@ function advance(S, dt, now, cb) {
       // the first bootprints, off the footpad
       S.prints.push({ x: lm.board[0] + S.side[0] * 0.13 + S.out[0] * -0.42, y: S.world.ground(lm.board[0], lm.board[2]), z: lm.board[2] + S.side[1] * 0.13 + S.out[1] * -0.42, heading: f.heading + Math.PI });
       say("eva.firstStep");
-      say("eva.firstStepsCapcom", { delay: 5.5 });
+      say(V.firstSteps, { delay: 5.5 });
     }
     const spec = sequenceSpec(lm, f, now);
     S.astro = { pos: f.pos, heading: f.heading, rig: solveRig(spec), hidden: !!f.hidden, dust: S.distance / 160 };
@@ -453,7 +450,8 @@ function advance(S, dt, now, cb) {
       w.speed = 0;
       S.prints.push({ x: w.x - S.side[0] * 0.13, y: w.y, z: w.z - S.side[1] * 0.13, heading: w.heading });
       S.events.push("explore");
-      say("eva.goSample", { delay: 2.5 });
+      const next = nextObjective(S.cfg, S.progress);
+      say(next === "return" ? V.returnLM : V.go[next], { delay: 2.5 });
       cb.checkpoint();
     }
     return;
@@ -473,7 +471,7 @@ function advance(S, dt, now, cb) {
       S.doneAt = S.clock;
       S.events.push("hatchClosed");
       say("eva.hatchClosed");
-      say("eva.complete", { delay: 3.2 });
+      say(V.complete, { delay: 3.2 });
     }
     return;
   }
@@ -485,7 +483,7 @@ function advance(S, dt, now, cb) {
     return;
   }
 
-  // ---- on the surface: explore, approach, sample, photo ----
+  // ---- on the surface: explore, approach, sample, survey, deploy, the receiver's panel, photo ----
   let input = { x: 0, y: 0, camYaw: S.camYaw };
   const keyX = (S.keys.has("d") || S.keys.has("arrowright") ? 1 : 0) - (S.keys.has("a") || S.keys.has("arrowleft") ? 1 : 0);
   const keyY = (S.keys.has("w") || S.keys.has("arrowup") ? 1 : 0) - (S.keys.has("s") || S.keys.has("arrowdown") ? 1 : 0);
@@ -506,12 +504,15 @@ function advance(S, dt, now, cb) {
       input = { x: 0, y: 0.6, camYaw: face, turnOnly: true };
       if (Math.abs(diff) < 0.06 && Math.abs(w.speed) < 0.03) {
         w.heading = face;
-        if (A.then === "sample") startSample(S, now);
+        if (A.then === "sample") startSample(S, now, A.id);
+        else if (A.then === "survey") startSurvey(S);
+        else if (A.then === "deploy") startDeploy(S);
+        else if (A.then === "console") startConsole(S);
         else if (A.then === "ingress") startIngress(S, cb);
         S.approach = null;
       }
     }
-    if (S.clock - A.at > 12) {
+    if (S.approach && S.clock - A.at > 12) {
       // never stuck walking into something
       S.approach = null;
       S.mode = "explore";
@@ -520,7 +521,7 @@ function advance(S, dt, now, cb) {
     // the stick turns the body; the camera's on the chest
     w.heading = wrapPi(w.heading - stick.x * 0.9 * dt);
     input = { x: 0, y: 0, camYaw: S.camYaw, locked: true };
-  } else if (S.mode === "sample") {
+  } else if (S.mode === "sample" || S.mode === "survey" || S.mode === "deploy" || S.mode === "console") {
     input = { x: 0, y: 0, camYaw: S.camYaw, locked: true };
   }
   if (S.mode === "ingress") return;
@@ -535,28 +536,63 @@ function advance(S, dt, now, cb) {
 
   // the body
   let spec;
+  const root = [w.x, w.y, w.z];
   if (S.mode === "sample") {
     const sm = S.sample;
     sm.t += dt;
     const u = sm.t / SAMPLE_TIME;
     spec = sampleSpec(Math.min(1, u), sm.stoneLocal, now);
     sm.stoneIn = spec.stoneIn;
-    sm.head = spec.scoop ? toWorld([w.x, w.y, w.z], w.heading, spec.scoop.head) : null;
+    sm.head = spec.scoop ? toWorld(root, w.heading, spec.scoop.head) : null;
     if (u >= 1) {
+      const st = S.plan.samples.find((x) => x.id === sm.id);
       S.sample = null;
       S.mode = "explore";
-      S.progress.sample = true;
-      S.samples = [{ id: "TQ-01", site: S.site.id, x: +S.world.sample.x.toFixed(2), z: +S.world.sample.z.toFixed(2), at: new Date().toISOString() }];
+      S.samples = [...S.samples.filter((x) => x.id !== st.id), { id: st.id, site: S.site.id, x: +st.x.toFixed(2), z: +st.z.toFixed(2), at: new Date().toISOString() }];
       S.lastProgressAt = S.clock;
-      S.events.push("sampleDone");
-      say("eva.sampleDone");
-      say("eva.goPhoto", { delay: 2.6 });
-      cb.checkpoint();
+      S.events.push(`sample:${st.id}`);
+      const all = S.plan.samples.every((x) => S.samples.some((y) => y.id === x.id));
+      if (all) {
+        S.sampleObjectiveDone = true;
+        completeObjective(S, S.sampleObjective, cb);
+      } else {
+        say(V.sampleOne);
+        say(V.goSecond, { delay: 2.4 });
+        cb.checkpoint();
+      }
     }
+  } else if (S.mode === "survey") {
+    const sv = S.survey;
+    sv.t += dt;
+    const u = sv.t / SURVEY_TIME;
+    spec = inspectSpec(Math.min(1, u), toLocal(root, w.heading, S.plan.survey.look), now);
+    if (u >= 1) {
+      S.survey = null;
+      S.mode = "explore";
+      S.events.push("survey");
+      completeObjective(S, "survey", cb, { delay: 6 });
+    }
+  } else if (S.mode === "deploy") {
+    const D = S.deploy;
+    D.t += dt;
+    const u = D.t / DEPLOY_TIME;
+    spec = deploySpec(Math.min(1, u), now);
+    D.pack = spec.pack ? toWorld(root, w.heading, spec.pack) : null;
+    if (u >= 1) {
+      const I = S.plan.instrument;
+      S.deploy = null;
+      S.mode = "explore";
+      S.instruments = [{ id: I.id, site: S.site.id, x: +I.x.toFixed(2), z: +I.z.toFixed(2), at: new Date().toISOString() }];
+      S.instrumentHeading = D.heading;
+      S.dataReadyAt = S.clock + DATA_TIME;
+      S.events.push("instrument");
+      completeObjective(S, S.instrumentObjective, cb, { delay: 6 });
+    }
+  } else if (S.mode === "console") {
+    spec = consoleSpec(now);
   } else if (S.mode === "photo") {
     spec = photoSpec(S.photoPitch, now);
   } else {
-    const root = [w.x, w.y, w.z];
     spec = walkSpec({
       phase: w.phase,
       speed: w.speed,
@@ -589,12 +625,13 @@ function advance(S, dt, now, cb) {
   // what the astronaut can do here, and the photo's verdict; BOARD THE LM once he has walked away
   // from the ladder (or when it is the task), not the moment he steps off it
   if (!S.leftLadder && Math.hypot(w.x - lm.board[0], w.z - lm.board[2]) > 3) S.leftLadder = true;
-  let can = S.mode === "explore" ? interactionAt(S.world, w, S.progress) : null;
-  if (can === "board" && !S.leftLadder && nextTask(S.progress) !== "return") can = null;
-  S.hud.interact = can;
+  let can = S.mode === "explore" ? actionAt(S.plan, S.world, w, S) : null;
+  if (can && can.kind === "board" && !S.leftLadder && nextObjective(S.cfg, S.progress) !== "return") can = null;
+  S.hud.action = can;
+  S.hud.interact = can ? can.kind : null;
   if (S.mode === "photo") {
     const view = photoView(S, rig);
-    const v = photoCheck(S.world, view);
+    const v = photoCheckFor(S.plan, S.world, view);
     S.hud.verdict = v.verdict;
     S.hud.photoDist = v.distance;
   } else S.hud.verdict = null;
@@ -602,21 +639,43 @@ function advance(S, dt, now, cb) {
   if (w.warn && !S.warned) {
     S.warned = true;
     S.events.push("boundary");
-    cb.say("eva.boundary");
+    cb.say(V.boundary);
   }
-  if (!w.warn && S.warned && Math.hypot(w.x - lm.axis[0], w.z - lm.axis[1]) < 21) S.warned = false;
+  if (!w.warn && S.warned && Math.hypot(w.x - lm.axis[0], w.z - lm.axis[1]) < S.cfg.area.warn - 3) S.warned = false;
   // a gentle reminder when nothing has happened for a while
   if (S.clock - S.lastProgressAt > 80 && S.mode === "explore") {
     S.lastProgressAt = S.clock;
-    cb.say("eva.remind");
+    cb.say(V.remind);
   }
 }
 
-function startSample(S, now) {
+function startSample(S, now, id) {
   const w = S.walker;
-  const st = S.world.sample;
+  const st = S.plan.samples.find((x) => x.id === id) || S.plan.samples[0];
   S.mode = "sample";
-  S.sample = { t: 0, stoneLocal: toLocal([w.x, w.y, w.z], w.heading, [st.x, st.y + 0.035, st.z]), stoneIn: "ground", head: null, at: now };
+  S.sample = { id: st.id, t: 0, stoneLocal: toLocal([w.x, w.y, w.z], w.heading, [st.x, st.y + stoneLift(st.type), st.z]), stoneIn: "ground", head: null, at: now };
+}
+function startSurvey(S) {
+  S.mode = "survey";
+  S.walker.speed = 0;
+  S.survey = { t: 0 };
+}
+function startDeploy(S) {
+  const w = S.walker;
+  const I = S.plan.instrument;
+  // the instrument turned to the astronaut: the seismometer's and the gnomon's front, or the gap
+  // between two of the antenna's elements (they unroll clear of his boots)
+  const dx = w.x - I.x;
+  const dz = w.z - I.z;
+  const heading = I.kind === "antenna" ? Math.atan2(-dz, dx) : Math.atan2(dx, dz);
+  S.mode = "deploy";
+  w.speed = 0;
+  S.deploy = { t: 0, heading, pack: null };
+}
+function startConsole(S) {
+  S.mode = "console";
+  S.walker.speed = 0;
+  S.events.push("console");
 }
 function startIngress(S, cb) {
   S.mode = "ingress";
@@ -768,10 +827,11 @@ function updateCamera(S, camera, dt, camPos, camLook, camState, size) {
     }
     // ... the swing for the sample and the settle behind the walk only turn it towards clear sides ...
     let aim = null;
-    if (S.mode === "sample") aim = wrapPi(w.heading + 1.25);
+    const busy = S.mode === "sample" || S.mode === "survey" || S.mode === "deploy" || S.mode === "console";
+    if (busy) aim = wrapPi(w.heading + 1.25);
     else if (S.clock - S.lookAt > 2.2 && Math.abs(w.speed) > 0.35) aim = w.heading;
     if (aim !== null) {
-      const next = wrapPi(S.camYaw + wrapPi(aim - S.camYaw) * Math.min(1, dt * (S.mode === "sample" ? 1.6 : 0.6)));
+      const next = wrapPi(S.camYaw + wrapPi(aim - S.camYaw) * Math.min(1, dt * (busy ? 1.6 : 0.6)));
       if (clear(next) || !clear(S.camYaw)) S.camYaw = next;
     }
     // ... and if the astronaut backs up against something with the camera on that side, the camera
@@ -812,7 +872,7 @@ function updateCamera(S, camera, dt, camPos, camLook, camState, size) {
   }
   _c.set(C[0] * S_PER_M, C[1] * S_PER_M, C[2] * S_PER_M);
   _t.set(L[0] * S_PER_M, L[1] * S_PER_M, L[2] * S_PER_M);
-  const follow = S.mode === "explore" || S.mode === "approach" || S.mode === "sample";
+  const follow = S.mode === "explore" || S.mode === "approach" || S.mode === "sample" || S.mode === "survey" || S.mode === "deploy" || S.mode === "console";
   if (!camPos.current || S.mode === "photo") {
     // the first frame, and the chest camera (it is where the body is)
     camPos.current = camPos.current || new THREE.Vector3();
@@ -866,9 +926,9 @@ function placeMarkers(S, camera, size, refs) {
     el.style.opacity = "0";
     return;
   }
-  const p = targetOf(S);
-  const task = nextTask(S.progress);
-  _v.set(p[0] * S_PER_M, (p[1] + (task === "return" ? 1.2 : 0.5)) * S_PER_M, p[2] * S_PER_M).project(camera);
+  const tg = targetInfo(S);
+  const p = tg.p;
+  _v.set(p[0] * S_PER_M, (p[1] + (tg.kind === "board" ? 1.2 : 0.5)) * S_PER_M, p[2] * S_PER_M).project(camera);
   const behind = _v.z > 1;
   let x = (_v.x * 0.5 + 0.5) * size.width;
   let y = (-_v.y * 0.5 + 0.5) * size.height;
@@ -915,6 +975,7 @@ function placeMarkers(S, camera, size, refs) {
     refs.arrow.current.style.transform = `rotate(${ang}rad)`;
   }
   if (refs.dist.current) refs.dist.current.textContent = `${d.toFixed(0)} m`;
+  el.dataset.kind = tg.kind;
 }
 
 /* ---- touch: the joystick (left), the look drag (right) ---------------------------------------- */
@@ -1009,6 +1070,8 @@ function LookPad({ sim }) {
 }
 
 /* ---- the EVA ---------------------------------------------------------------------------------------- */
+const KIND_COLOR = { sample: RING.sample, photo: RING.photo, board: RING.board, survey: RING.survey, instrument: RING.instrument, data: RING.data };
+
 export default function LunarEva({ siteId = "tranquillitatis", pose = null, audio = null, lang = "en", resume = null, onCheckpoint = null, onComplete = null, onAbort = null }) {
   const T = evaText(lang);
   const site = useMemo(() => getSite(siteId), [siteId]);
@@ -1017,6 +1080,10 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
   const fx = useMemo(() => ({ thrust: 0, comp: (p.comp || [0, 0, 0, 0]).slice(), probe: (p.probe || [0, 0, 0, 0]).slice() }), [p.comp, p.probe]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sim = useMemo(() => makeSim({ site, pose: p, resume }), [site]);
+  const cfg = sim.cfg;
+  const MT = evaMissionText(cfg, lang);
+  const legacy = cfg.id === "tranquillitatis"; // phase 1's own wording, unchanged
+  const farSide = cfg.comms.earthLink === false;
   // the ground at close range (scene units): the swept ground round the LM, occlusion under the
   // descent stage and round each footpad (data/lmDesign: the pads where they stand)
   const near = useMemo(() => {
@@ -1034,48 +1101,77 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
   const [hud, setHud] = useState({ mode: sim.mode, progress: { ...sim.progress } });
   const [banner, setBanner] = useState(null); // { kind, title, sub }
   const [toast, setToast] = useState(null);
+  const [card, setCard] = useState(null); // the science card after a survey or a deployment
+  const [dataDone, setDataDone] = useState(false);
   const [confirmBoard, setConfirmBoard] = useState(false);
   const [paused, setPaused] = useState(false);
   const [flash, setFlash] = useState(0);
   const cbs = useRef({});
 
-  const evaState = () => ({ progress: { ...sim.progress }, samples: sim.samples.slice(), photos: sim.photos.slice(), completed: sim.mode === "done", distance: +sim.distance.toFixed(1) });
+  const evaState = () => {
+    const e = { progress: { ...sim.progress }, samples: sim.samples.slice(), photos: sim.photos.slice(), completed: sim.mode === "done", distance: +sim.distance.toFixed(1) };
+    if (cfg.instrument) e.instruments = sim.instruments.slice();
+    return e;
+  };
   cbs.current.say = (id, opts) => audio && audio.say(id, opts);
   cbs.current.checkpoint = () => onCheckpoint && onCheckpoint(evaState());
   cbs.current.complete = () => onComplete && onComplete({ ...evaState(), completed: true });
 
-  // the start: EVA authorized (a fresh EVA), or back at the foot of the ladder (resumed)
+  // the start: EVA authorized (a fresh EVA), or back at the foot of the ladder (resumed). On the
+  // far side there is no Earth link: only the onboard computer and the crew are heard
   useEffect(() => {
-    if (!sim.resumed) audio && audio.say("eva.authorized");
+    if (farSide && audio && audio.setEarthLink) audio.setEarthLink(false);
+    if (!sim.resumed) audio && audio.say(cfg.voice.authorized);
     else {
-      setBanner({ kind: "resume", title: T.title, sub: T.objectives[nextTask(sim.progress)] });
+      const next = nextObjective(cfg, sim.progress);
+      setBanner({ kind: "resume", title: MT.title, sub: next === "return" ? T.objectives.return : MT.objectives[next] });
       setTimeout(() => setBanner(null), 3200);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // the HUD reads the simulation ten times a second; events become banners and toasts
+  // the HUD reads the simulation ten times a second; events become banners, toasts and cards
   useEffect(() => {
     const id = setInterval(() => {
       const w = sim.walker;
+      const lmB = Math.atan2(sim.lm.axis[0] - w.x, sim.lm.axis[1] - w.z);
       setHud({
         mode: sim.mode,
         progress: { ...sim.progress },
         interact: sim.hud.interact || null,
+        action: sim.hud.action || null,
         verdict: sim.hud.verdict || null,
         warn: !!w.warn && (sim.mode === "explore" || sim.mode === "approach"),
         lmDist: Math.hypot(w.x - sim.lm.axis[0], w.z - sim.lm.axis[1]),
+        lmBearing: wrapPi(lmB - sim.camYaw), // 0: straight ahead on screen
         sampleU: sim.sample ? sim.sample.t / SAMPLE_TIME : null,
+        surveyU: sim.survey ? sim.survey.t / SURVEY_TIME : null,
+        deployU: sim.deploy ? sim.deploy.t / DEPLOY_TIME : null,
+        dataU: sim.dataReadyAt == null ? 0 : clamp(1 - (sim.dataReadyAt - sim.clock) / DATA_TIME, 0, 1),
+        dataReady: sim.dataReadyAt != null && sim.clock >= sim.dataReadyAt,
+        samples: sim.samples.map((x) => x.id),
+        target: targetInfo(sim),
         pose: sim.pose,
       });
       while (sim.events.length) {
         const e = sim.events.shift();
         if (e === "firstSteps") {
-          setBanner({ kind: "first", title: T.firstSteps, sub: T.firstStepsSub });
+          setBanner({ kind: "first", title: T.firstSteps, sub: MT.banner });
           setTimeout(() => setBanner((b) => (b && b.kind === "first" ? null : b)), 5200);
-        } else if (e === "sampleDone") setToast({ text: T.sampleDone, at: Date.now() });
-        else if (e === "photoDone") setToast({ text: T.photoDone, at: Date.now() });
+        } else if (e.startsWith("sample:")) {
+          const sid = e.slice(7);
+          setToast({ text: legacy ? T.sampleDone : `${T.sampleStowed} · ${sid} · ${MT.samples[sid] || ""}`, at: Date.now() });
+        } else if (e === "photoDone") setToast({ text: legacy ? T.photoDone : `${T.photoRecorded} · ${photoSubjectName()}`, at: Date.now() });
+        else if (e === "survey") {
+          const f = sim.plan.survey.formation;
+          const [title, body] = MT.survey[f] || MT.survey.regolith;
+          setCard({ kind: "survey", tag: MT.objectives.survey, title, body, color: RING.survey, at: Date.now() });
+        } else if (e === "instrument") {
+          const [title, body] = MT.instrument;
+          setCard({ kind: "instrument", tag: `${title} · ${T.instrumentDone}`, title, body, color: RING.instrument, at: Date.now() });
+        } else if (e === "console") setCard(null);
         else if (e === "hatchClosed") {
+          setCard(null);
           setBanner({ kind: "complete", title: T.complete, sub: T.completeSub });
         }
       }
@@ -1088,13 +1184,25 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
   // egress and ingress films (FIRST STEPS ON THE MOON, EVA COMPLETE) lower down
   useEffect(() => {
     setSubtitlePlacement("lane");
-    return () => setSubtitlePlacement("default");
+    return () => {
+      setSubtitlePlacement("default");
+      if (typeof window !== "undefined") {
+        delete window.__lvEvaRoute;
+        delete window.__lvEvaPlan;
+      }
+    };
   }, []);
   useEffect(() => {
     if (!toast) return undefined;
     const t = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(t);
   }, [toast]);
+  // the science card stays while it is read, then goes (or with CLOSE)
+  useEffect(() => {
+    if (!card) return undefined;
+    const t = setTimeout(() => setCard((c) => (c && c.at === card.at ? null : c)), 20000);
+    return () => clearTimeout(t);
+  }, [card]);
 
   // keyboard (desktop)
   useEffect(() => {
@@ -1104,8 +1212,10 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
       if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) {
         sim.keys.add(k);
         e.preventDefault();
-      } else if (k === "e" || k === "enter") act();
-      else if (k === "c") toggleCamera();
+      } else if (k === "e" || k === "enter") {
+        if (sim.mode === "console") confirmData();
+        else act();
+      } else if (k === "c") toggleCamera();
       else if (k === " ") {
         if (sim.mode === "photo") shutter();
         e.preventDefault();
@@ -1123,23 +1233,56 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const photoSubjectName = () => {
+    const s = sim.plan.photo.subject;
+    if (s.kind === "horizon" && MT.subjectFallback) return MT.subjectFallback;
+    return MT.subject;
+  };
   const act = () => {
     if (sim.paused || sim.mode !== "explore") return;
-    const what = interactionAt(sim.world, sim.walker, sim.progress);
-    if (what === "sample") {
-      const st = sim.world.sample;
+    const what = actionAt(sim.plan, sim.world, sim.walker, sim);
+    if (!what) return;
+    const P = sim.plan;
+    if (what.kind === "sample") {
+      const st = P.samples.find((x) => x.id === what.id);
       sim.mode = "approach";
-      sim.approach = { x: st.x, z: st.z, standoff: 0.85, face: null, then: "sample", at: sim.clock };
-    } else if (what === "board") {
-      if (!sim.progress.sample || !sim.progress.photo) setConfirmBoard(true);
+      sim.approach = { x: st.x, z: st.z, standoff: 0.85, face: null, then: "sample", id: st.id, at: sim.clock };
+    } else if (what.kind === "survey") {
+      const sv = P.survey;
+      sim.mode = "approach";
+      sim.approach = { x: sv.x, z: sv.z, standoff: 0.05, face: Math.atan2(sv.look[0] - sv.x, sv.look[2] - sv.z), then: "survey", at: sim.clock };
+    } else if (what.kind === "instrument") {
+      const I = P.instrument;
+      sim.mode = "approach";
+      sim.approach = { x: I.x, z: I.z, standoff: 0.6, face: null, then: "deploy", at: sim.clock };
+    } else if (what.kind === "data") {
+      const I = P.instrument;
+      sim.mode = "approach";
+      sim.approach = { x: I.x, z: I.z, standoff: 0.75, face: null, then: "console", at: sim.clock };
+    } else if (what.kind === "board") {
+      if (cfg.objectives.some((o) => !sim.progress[o.id])) setConfirmBoard(true);
       else board();
     }
   };
   const board = () => {
     setConfirmBoard(false);
+    setCard(null);
     const lm = sim.lm;
     sim.mode = "approach";
     sim.approach = { x: lm.board[0], z: lm.board[2], standoff: 0.05, face: sim.P.facingLM, then: "ingress", at: sim.clock };
+  };
+  const confirmData = () => {
+    if (sim.mode !== "console" || sim.paused) return;
+    if (!(sim.dataReadyAt != null && sim.clock >= sim.dataReadyAt)) return;
+    setDataDone(true);
+    completeObjective(sim, "data", cbs.current, { delay: 2.2 });
+    setTimeout(() => {
+      if (sim.mode === "console") sim.mode = "explore";
+      setDataDone(false);
+    }, 2600);
+  };
+  const closeConsole = () => {
+    if (sim.mode === "console") sim.mode = "explore";
   };
   const toggleCamera = () => {
     if (sim.paused) return;
@@ -1152,25 +1295,35 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
       sim.photoPitch = 0;
     }
   };
+  const photoObj = cfg.objectives.find((o) => o.kind === "photo").id;
   const shutter = () => {
     if (sim.mode !== "photo" || sim.paused) return;
     setFlash((n) => n + 1);
     const v = sim.hud.verdict;
     if (v === "ok") {
-      const first = !sim.progress.photo;
-      sim.progress.photo = true;
-      sim.photos = [...sim.photos, { subject: "LM", site: sim.site.id, distance: +(sim.hud.photoDist || 0).toFixed(1), at: new Date().toISOString() }].slice(-8);
+      const first = !sim.progress[photoObj];
+      sim.photos = [...sim.photos, { subject: cfg.photo.subject.id, site: sim.site.id, distance: +(sim.hud.photoDist || 0).toFixed(1), at: new Date().toISOString() }].slice(-8);
       sim.lastProgressAt = sim.clock;
       if (first) {
         sim.events.push("photoDone");
-        cbs.current.say("eva.photoDone");
-        if (audio) audio.say("eva.returnLM", { delay: 2.6 });
-        cbs.current.checkpoint();
+        completeObjective(sim, photoObj, cbs.current);
         setTimeout(() => {
           if (sim.mode === "photo") toggleCamera();
         }, 1400);
-      } else setToast({ text: T.photoDone, at: Date.now() });
-    } else setToast({ text: `${T.photoMiss} — ${T.verdict[v] || ""}`, at: Date.now(), warn: true });
+      } else setToast({ text: legacy ? T.photoDone : `${T.photoRecorded} · ${photoSubjectName()}`, at: Date.now() });
+    } else setToast({ text: `${T.photoMiss} — ${verdictText(v)}`, at: Date.now(), warn: true });
+  };
+  const verdictText = (v) => {
+    if (!v) return "";
+    if (sim.plan.photo.subject.kind === "lm") return T.verdict[v] || "";
+    const SV = T.subjectVerdict;
+    const name = photoSubjectName();
+    if (v === "goToPoint") return SV.goToPoint;
+    if (v === "aimSubject") return SV.aimSubject(name);
+    if (v === "centreSubject") return SV.centreSubject(name);
+    if (v === "tiltUp") return SV.tiltUp;
+    if (v === "tiltDown") return sim.plan.photo.subject.kind === "crater" ? SV.tiltDownCrater : SV.tiltDown;
+    return T.verdict[v] || "";
   };
   const togglePause = () => {
     sim.paused = !sim.paused;
@@ -1184,12 +1337,25 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
   };
 
   const pr = hud.progress || sim.progress;
-  const task = nextTask(pr);
+  const task = nextObjective(cfg, pr);
   const scripted = hud.mode === "egress" || hud.mode === "ingress" || hud.mode === "done";
-  const objectives = ["firstSteps", "sample", "photo", "return"];
+  const objectives = objectiveIds(cfg);
+  const tg = hud.target || targetInfo(sim);
+  const tKind = tg.kind;
+  const markerLabel = () => {
+    if (tKind === "sample") return legacy ? T.sampleLabel : `${T.sampleLabel} ${tg.id}`;
+    if (tKind === "photo") return T.photoLabel;
+    if (tKind === "survey") return T.surveyLabel;
+    if (tKind === "instrument") return T.deployLabel;
+    if (tKind === "data") return T.instrumentLabel;
+    return T.ladderLabel;
+  };
+  const actLabel = (k) => ({ sample: T.collect, survey: T.inspect, instrument: T.deploy, data: T.checkInstrument, board: T.board })[k] || T.board;
+  const nSamples = cfg.samples.length;
+  const ready = hud.interact && hud.interact === tKind;
 
   return (
-    <div className="absolute inset-0 bg-[#050505]" data-testid="lunar-eva" data-mode={hud.mode} data-task={task}>
+    <div className="absolute inset-0 bg-[#050505]" data-testid="lunar-eva" data-mode={hud.mode} data-task={task} data-site={cfg.id}>
       <div className="absolute inset-0 canvas-host">
         <Canvas
           camera={{ position: [p.x + 6, p.padY + 3, 8], fov: VFOV, near: 0.05, far: 6000 }}
@@ -1214,7 +1380,9 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
               <Astronaut stateRef={astroRef} />
               <ContactShadows sim={sim} />
               <NearPebbles sim={sim} color={site.palette.rock} />
-              <Markers sim={sim} />
+              <SampleStones sim={sim} />
+              <ScienceMarkers sim={sim} />
+              <Instrument sim={sim} />
               <Footprints sim={sim} />
               <Dust sim={sim} />
             </group>
@@ -1225,27 +1393,43 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
       </div>
 
       {/* the controls: nothing over the astronaut (the middle of the screen) */}
-      {!scripted && !paused && hud.mode !== "photo" && <Joystick sim={sim} label={T.move} />}
+      {!scripted && !paused && hud.mode !== "photo" && hud.mode !== "console" && <Joystick sim={sim} label={T.move} />}
       {!scripted && !paused && <LookPad sim={sim} />}
 
       {/* objectives, upper left (hidden during the egress and ingress films) */}
       <div style={scripted ? { display: "none" } : undefined} className="absolute top-[calc(var(--hud-top)+0.25rem)] left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] z-30 pointer-events-none bg-black/50 backdrop-blur-sm border-l-2 border-[#FF3B00] px-3 py-2 short:px-2.5 short:py-1.5 max-w-[min(260px,42vw)]" data-testid="eva-objectives">
-        <div className="font-mono text-[9px] short:text-[8px] tracking-[0.35em] text-[#FF3B00]">● {T.title}</div>
+        <div className="font-mono text-[9px] short:text-[8px] tracking-[0.35em] text-[#FF3B00]">● {MT.title}</div>
+        {farSide && (
+          <div className="font-mono text-[7.5px] short:text-[7px] tracking-[0.2em] text-[#9fb6cc] mt-0.5" data-testid="eva-earth-link">
+            ◌ {T.earthLink} · {T.onboard}
+          </div>
+        )}
         <ul className="mt-1 space-y-0.5 font-mono text-[10px] short:text-[9px] tracking-[0.14em]">
           {objectives.map((k) => {
             const done = k === "return" ? hud.mode === "done" || hud.mode === "ingress" : pr[k];
             const cur = !done && task === k && !scripted;
+            const label = k === "return" ? T.objectives.return : MT.objectives[k];
+            const count = k === sim.sampleObjective && nSamples > 1 ? ` ${(hud.samples || sim.samples.map((x) => x.id)).length}/${nSamples}` : "";
             return (
               <li key={k} className={`flex items-center gap-2 ${done ? "text-[#4fd1c5]" : cur ? "text-white" : "text-zinc-500"}`} data-testid={`eva-obj-${k}`} data-done={done ? "1" : "0"} data-current={cur ? "1" : "0"}>
                 <span className="w-3 text-center">{done ? "✓" : cur ? "›" : "·"}</span>
-                <span>{T.objectives[k]}</span>
+                <span>
+                  {label}
+                  {count && <span className="tabular text-zinc-300">{count}</span>}
+                </span>
               </li>
             );
           })}
         </ul>
         {!scripted && (
-          <div className={`mt-1 font-mono text-[8px] tracking-[0.2em] tabular ${hud.warn ? "text-[#f5c451]" : "text-zinc-400"}`} data-testid="eva-lm-dist">
-            {T.lm} {hud.lmDist != null ? hud.lmDist.toFixed(0) : "–"} m
+          <div className={`mt-1 flex items-center gap-1.5 font-mono text-[8px] tracking-[0.2em] tabular ${hud.warn ? "text-[#f5c451]" : "text-zinc-400"}`} data-testid="eva-lm-dist">
+            {/* the way back to the LM, relative to the view: up is straight ahead */}
+            <span className="inline-block text-[9px] leading-none" style={{ transform: `rotate(${hud.lmBearing != null ? -hud.lmBearing : 0}rad)` }} data-testid="eva-lm-arrow">
+              ▲
+            </span>
+            <span>
+              {T.lm} {hud.lmDist != null ? hud.lmDist.toFixed(0) : "–"} m
+            </span>
           </div>
         )}
         {/* the exploration limit: part of the panel, so it never covers the scene or another control */}
@@ -1266,21 +1450,21 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
         II <span className="hidden md:inline">{T.pause}</span>
       </button>
 
-      {/* the objective marker (placed by the director) */}
-      <div ref={markerRefs.marker} className="absolute left-0 top-0 z-20 pointer-events-none" style={{ opacity: 0 }} data-testid="eva-marker">
+      {/* the objective marker (placed by the director): filled when the action is in reach */}
+      <div ref={markerRefs.marker} className="absolute left-0 top-0 z-20 pointer-events-none" style={{ opacity: 0 }} data-testid="eva-marker" data-ready={ready ? "1" : "0"}>
         <div className="-translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
           <div ref={markerRefs.arrow} className="absolute text-[#f5c451] text-[14px]" style={{ display: "none" }}>
             <span className="inline-block translate-x-[18px]">➤</span>
           </div>
-          <div className={`w-3 h-3 rotate-45 border-2 ${task === "sample" ? "border-[#FF3B00]" : task === "photo" ? "border-[#4fd1c5]" : "border-[#f5c451]"} bg-black/30`} />
+          <div className="w-3 h-3 rotate-45 border-2" style={{ borderColor: KIND_COLOR[tKind] || RING.board, background: ready ? KIND_COLOR[tKind] : "rgba(0,0,0,0.3)" }} />
           <div className="mt-1 font-mono text-[8px] tracking-[0.25em] text-white bg-black/45 px-1 whitespace-nowrap">
-            {task === "sample" ? T.sampleLabel : task === "photo" ? T.photoLabel : T.ladderLabel} · <span ref={markerRefs.dist} className="tabular">–</span>
+            {markerLabel()} · <span ref={markerRefs.dist} className="tabular">–</span>
           </div>
         </div>
       </div>
 
       {/* actions, lower right: INTERACT (when there is something to do), CAMERA, the shutter */}
-      {!scripted && !paused && (
+      {!scripted && !paused && hud.mode !== "console" && (
         <div className="absolute right-[calc(var(--sar)+1rem)] md:right-[calc(var(--sar)+2rem)] bottom-[calc(var(--sab)+1.25rem)] short:bottom-[calc(var(--sab)+0.75rem)] z-30 flex items-end gap-2.5">
           {hud.mode === "photo" ? (
             <>
@@ -1304,8 +1488,8 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
                   onClick={toggleCamera}
                   disabled={hud.mode !== "explore"}
                   data-testid="eva-camera"
-                  data-hint={task === "photo" ? "1" : "0"}
-                  className={`min-w-[60px] min-h-[52px] short:min-h-[46px] px-2 font-mono text-[9px] tracking-[0.2em] text-white bg-black/55 border touch-manipulation disabled:opacity-40 ${task === "photo" ? "border-[#4fd1c5] shadow-[0_0_0_2px_#4fd1c5,0_0_14px_rgba(79,209,197,0.45)]" : "border-white/25"}`}
+                  data-hint={task === photoObj ? "1" : "0"}
+                  className={`min-w-[60px] min-h-[52px] short:min-h-[46px] px-2 font-mono text-[9px] tracking-[0.2em] text-white bg-black/55 border touch-manipulation disabled:opacity-40 ${task === photoObj ? "border-[#4fd1c5] shadow-[0_0_0_2px_#4fd1c5,0_0_14px_rgba(79,209,197,0.45)]" : "border-white/25"}`}
                 >
                   ◉ {T.camera}
                 </button>
@@ -1318,7 +1502,7 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
                   data-action={hud.interact}
                   className="min-w-[150px] short:min-w-[132px] min-h-[52px] short:min-h-[46px] px-4 font-mono text-[11px] short:text-[10px] tracking-[0.25em] text-white bg-[#FF3B00]/90 hover:bg-[#FF3B00] border border-[#FF3B00] touch-manipulation veil-in"
                 >
-                  {hud.interact === "sample" ? T.collect : T.board}
+                  {actLabel(hud.interact)}
                 </button>
               )}
             </>
@@ -1336,19 +1520,27 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
             <div className="absolute left-1/2 top-1/2 w-5 h-px bg-white/70 -translate-x-1/2" />
             <div className="absolute left-1/2 top-1/2 h-5 w-px bg-white/70 -translate-y-1/2" />
             <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 translate-y-full font-mono text-[10px] short:text-[9px] tracking-[0.25em] px-2 py-0.5 whitespace-nowrap ${hud.verdict === "ok" ? "text-[#4fd1c5]" : "text-white"} bg-black/50`} data-testid="eva-verdict">
-              {T.verdict[hud.verdict] || ""}
+              {verdictText(hud.verdict)}
             </div>
           </div>
         </div>
       )}
       {flash > 0 && <div key={flash} className="absolute inset-0 z-[19] bg-white pointer-events-none eva-flash" />}
 
-      {/* collecting */}
-      {hud.mode === "sample" && (
-        <div className="absolute bottom-[calc(var(--sab)+1.5rem)] left-1/2 -translate-x-1/2 z-30 pointer-events-none font-mono text-[10px] tracking-[0.3em] text-white bg-black/50 px-3 py-1.5" data-testid="eva-collecting">
-          {T.collecting} <span className="inline-block w-16 h-1 bg-white/20 align-middle ml-2"><span className="block h-1 bg-[#FF3B00]" style={{ width: `${Math.min(100, (hud.sampleU || 0) * 100)}%` }} /></span>
+      {/* collecting, surveying, deploying */}
+      {(hud.mode === "sample" || hud.mode === "survey" || hud.mode === "deploy") && (
+        <div className="absolute bottom-[calc(var(--sab)+1.5rem)] left-1/2 -translate-x-1/2 z-30 pointer-events-none font-mono text-[10px] tracking-[0.3em] text-white bg-black/50 px-3 py-1.5 whitespace-nowrap" data-testid={hud.mode === "sample" ? "eva-collecting" : hud.mode === "survey" ? "eva-surveying" : "eva-deploying"}>
+          {hud.mode === "sample" ? T.collecting : hud.mode === "survey" ? T.surveying : T.deploying}{" "}
+          <span className="inline-block w-16 h-1 bg-white/20 align-middle ml-2">
+            <span className="block h-1" style={{ width: `${Math.min(100, ((hud.mode === "sample" ? hud.sampleU : hud.mode === "survey" ? hud.surveyU : hud.deployU) || 0) * 100)}%`, background: hud.mode === "sample" ? RING.sample : hud.mode === "survey" ? RING.survey : RING.instrument }} />
+          </span>
         </div>
       )}
+
+      {/* the science of what was surveyed or deployed */}
+      {!scripted && !paused && hud.mode !== "photo" && hud.mode !== "console" && <InfoCard card={card} T={T} onClose={() => setCard(null)} />}
+      {/* the far side's receiver: its own interface */}
+      {hud.mode === "console" && !paused && <DataPanel T={T} u={hud.dataU || 0} ready={!!hud.dataReady} confirmed={dataDone || !!pr.data} onConfirm={confirmData} onClose={closeConsole} />}
 
       {/* egress / ingress caption and skip */}
       {scripted && hud.mode !== "done" && (
@@ -1364,7 +1556,7 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
 
       {/* banners: FIRST STEPS ON THE MOON, EVA COMPLETE */}
       {banner && (
-        <div className="absolute inset-x-0 top-[28%] short:top-[24%] z-30 pointer-events-none flex flex-col items-center text-center px-4 scan-in" data-testid={`eva-banner-${banner.kind}`}>
+        <div className="absolute inset-x-0 top-[30%] short:top-[29%] z-30 pointer-events-none flex flex-col items-center text-center px-4 scan-in" data-testid={`eva-banner-${banner.kind}`}>
           <div className="font-mono text-[10px] short:text-[9px] tracking-[0.45em] text-[#FF3B00]">● {banner.sub}</div>
           <div className="font-display font-black text-white text-4xl md:text-6xl short:text-3xl tracking-tight mt-1 drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">{banner.title}</div>
         </div>

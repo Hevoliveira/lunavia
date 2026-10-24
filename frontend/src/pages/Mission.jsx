@@ -30,6 +30,7 @@ import { formatMET } from "@/data/missionPhases";
 import { TD } from "@/data/transposition";
 import { TITLE } from "@/data/titleReveal";
 import { MODE, createMissionConfig, evaAvailableAt } from "@/data/missionConfig";
+import { freshEva } from "@/data/evaMissions";
 import { loadMissionLog, loadSelection, logMissionComplete, logMissionDocking, logMissionEva, logMissionFlown, logMissionLanding, logMissionReentry, logMissionResumed, logMissionScoring, logMissionStart, saveSelection } from "@/lib/missionSelection";
 import { CP, canResume, cpRank, makeCheckpoint, makeClosing, missionSaveStore, resumePlan } from "@/lib/missionSave";
 import { BUILD_COMMIT } from "@/lib/buildInfo";
@@ -106,7 +107,7 @@ const STATES = {
   MANUAL_DESCENT: "manual_descent",
   RESULT: "result",
   ASCENT: "ascent",            // LUNAR SURFACE — ASCENT PREPARATION, then the lunar liftoff
-  EVA: "eva",                  // the optional lunar EVA from the ascent preparation (Sea of Tranquility), back to it
+  EVA: "eva",                  // the optional lunar EVA from the ascent preparation (every destination), back to it
   DOCKING: "docking",          // orbit insertion, rendezvous, the player's docking, crew transfer
   RETURN: "return",
   REENTRY: "reentry",
@@ -660,12 +661,13 @@ export default function Mission({ entry = "opening" }) {
   // INITIATE LUNAR ASCENT: the liftoff is under way (cut short, it is flown again from B)
   const handleAscentInitiate = () => persist(null, { activity: { phase: "ascent" } });
 
-  // BEGIN EVA on the ascent preparation (the Sea of Tranquility; optional, never forced): the
-  // lunar EVA, the LM where it landed. EVA READY is saved at once and with each objective done;
-  // back aboard with the hatch closed (EVA COMPLETE) the ascent preparation returns, BEGIN EVA gone.
+  // BEGIN EVA on the ascent preparation (every destination its own expedition: data/evaMissions;
+  // optional, never forced): the lunar EVA, the LM where it landed. EVA READY is saved at once and
+  // with each objective done; back aboard with the hatch closed (EVA COMPLETE) the ascent
+  // preparation returns, BEGIN EVA gone.
   const handleBeginEva = () => {
     if (stateRef.current !== STATES.ASCENT || evaDone || !evaAvailableAt(missionRef.current.siteId)) return;
-    persist(CP.EVA_READY, { eva: { progress: { firstSteps: false, sample: false, photo: false }, samples: [], photos: [], completed: false, distance: 0 }, activity: { phase: "eva" } });
+    persist(CP.EVA_READY, { eva: freshEva(missionRef.current.siteId), activity: { phase: "eva" } });
     setEvaResume(null);
     setState(STATES.EVA);
   };
@@ -676,7 +678,7 @@ export default function Mission({ entry = "opening" }) {
     persist(CP.EVA_COMPLETE, { eva: done, activity: { phase: "eva" } });
     const sc = scoringRef.current;
     if (flightIdRef.current) setMissionLog(logMissionEva(flightIdRef.current, done));
-    // FIRST STEPS (an achievement only: the 1,000-point score does not include the EVA)
+    // the expedition's achievements only: the 1,000-point score does not include the EVA
     if (sc && flightIdRef.current) updateRecords((r) => applyEva(r, sc.flight, done));
     setEvaDone(true);
     setEvaResume(null);
@@ -1051,7 +1053,7 @@ export default function Mission({ entry = "opening" }) {
         />
       )}
 
-      {/* The lunar EVA (Sea of Tranquility): the LM where it landed; back aboard, the ascent preparation */}
+      {/* The lunar EVA (the destination's expedition): the LM where it landed; back aboard, the ascent preparation */}
       {state === STATES.EVA && (
         <LunarEva
           siteId={mission.siteId}

@@ -212,13 +212,15 @@ export function applyLanding(rec, flight, L, at = Date.now()) {
 }
 
 /**
- * The end of an official flight's lunar EVA (components/eva/LunarEva's record): FIRST STEPS when
- * every objective was done and the astronaut is back in the LM. Nothing else in the records
- * changes (the EVA is not part of the 1,000-point score). Once only, however often it is resumed.
+ * The end of an official flight's lunar EVA (components/eva/LunarEva's record): the expedition's
+ * achievement when every objective was done and the astronaut is back in the LM (FIRST STEPS at
+ * the Sea of Tranquility, and one for each of the other three; all four: LUNAR FIELD SCIENTIST).
+ * Nothing else in the records changes (the EVA is not part of the 1,000-point score). Once only,
+ * however often it is resumed.
  */
 export function applyEva(rec, flight, eva, at = Date.now()) {
   if (!eva || !eva.completed) return [];
-  return unlockAll(rec, newAchievements("eva", { eva }, rec.achievements), flight, at);
+  return unlockAll(rec, newAchievements("eva", { eva, siteId: flight.siteId, unlocked: rec.achievements }, rec.achievements), flight, at);
 }
 
 /**

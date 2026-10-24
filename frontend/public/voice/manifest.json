@@ -402,6 +402,78 @@
       "f": "en/eva.firstStepsCapcom.0.mp3"
      }
     ],
+    "eva.fs.authorized": [
+     {
+      "d": 5.57,
+      "f": "en/eva.fs.authorized.0.mp3"
+     }
+    ],
+    "eva.fs.boundary": [
+     {
+      "d": 2.71,
+      "f": "en/eva.fs.boundary.0.mp3"
+     }
+    ],
+    "eva.fs.complete": [
+     {
+      "d": 3.48,
+      "f": "en/eva.fs.complete.0.mp3"
+     }
+    ],
+    "eva.fs.dataDone": [
+     {
+      "d": 3.27,
+      "f": "en/eva.fs.dataDone.0.mp3"
+     }
+    ],
+    "eva.fs.firstSteps": [
+     {
+      "d": 4.34,
+      "f": "en/eva.fs.firstSteps.0.mp3"
+     }
+    ],
+    "eva.fs.goData": [
+     {
+      "d": 3.86,
+      "f": "en/eva.fs.goData.0.mp3"
+     }
+    ],
+    "eva.fs.goInstrument": [
+     {
+      "d": 4.2,
+      "f": "en/eva.fs.goInstrument.0.mp3"
+     }
+    ],
+    "eva.fs.goPhoto": [
+     {
+      "d": 3.99,
+      "f": "en/eva.fs.goPhoto.0.mp3"
+     }
+    ],
+    "eva.fs.goSample": [
+     {
+      "d": 3.78,
+      "f": "en/eva.fs.goSample.0.mp3"
+     }
+    ],
+    "eva.fs.instrumentDone": [
+     {
+      "d": 2.38,
+      "f": "en/eva.fs.instrumentDone.0.mp3"
+     }
+    ],
+    "eva.fs.remind": [
+     {
+      "d": 2.09,
+      "f": "en/eva.fs.remind.0.mp3"
+     }
+    ],
+    "eva.fs.returnLM": [
+     {
+      "d": 3.47,
+      "f": "en/eva.fs.returnLM.0.mp3"
+     }
+    ],
     "eva.goPhoto": [
      {
       "d": 6.42,
@@ -412,6 +484,60 @@
      {
       "d": 4.05,
       "f": "en/eva.goSample.0.mp3"
+     }
+    ],
+    "eva.goSecond": [
+     {
+      "d": 3.65,
+      "f": "en/eva.goSecond.0.mp3"
+     }
+    ],
+    "eva.ha.authorized": [
+     {
+      "d": 6.63,
+      "f": "en/eva.ha.authorized.0.mp3"
+     }
+    ],
+    "eva.ha.firstSteps": [
+     {
+      "d": 3.22,
+      "f": "en/eva.ha.firstSteps.0.mp3"
+     }
+    ],
+    "eva.ha.goInstrument": [
+     {
+      "d": 4.42,
+      "f": "en/eva.ha.goInstrument.0.mp3"
+     }
+    ],
+    "eva.ha.goPhoto": [
+     {
+      "d": 4.45,
+      "f": "en/eva.ha.goPhoto.0.mp3"
+     }
+    ],
+    "eva.ha.goSamples": [
+     {
+      "d": 3.11,
+      "f": "en/eva.ha.goSamples.0.mp3"
+     }
+    ],
+    "eva.ha.goSurvey": [
+     {
+      "d": 4.51,
+      "f": "en/eva.ha.goSurvey.0.mp3"
+     }
+    ],
+    "eva.ha.instrumentDone": [
+     {
+      "d": 2.64,
+      "f": "en/eva.ha.instrumentDone.0.mp3"
+     }
+    ],
+    "eva.ha.surveyDone": [
+     {
+      "d": 1.88,
+      "f": "en/eva.ha.surveyDone.0.mp3"
      }
     ],
     "eva.hatch": [
@@ -438,6 +564,12 @@
       "f": "en/eva.photoDone.0.mp3"
      }
     ],
+    "eva.photoTaken": [
+     {
+      "d": 1.2,
+      "f": "en/eva.photoTaken.0.mp3"
+     }
+    ],
     "eva.remind": [
      {
       "d": 3.3,
@@ -454,6 +586,66 @@
      {
       "d": 1.24,
       "f": "en/eva.sampleDone.0.mp3"
+     }
+    ],
+    "eva.sampleOne": [
+     {
+      "d": 1.51,
+      "f": "en/eva.sampleOne.0.mp3"
+     }
+    ],
+    "eva.samplesDone": [
+     {
+      "d": 1.37,
+      "f": "en/eva.samplesDone.0.mp3"
+     }
+    ],
+    "eva.ty.authorized": [
+     {
+      "d": 5.54,
+      "f": "en/eva.ty.authorized.0.mp3"
+     }
+    ],
+    "eva.ty.firstSteps": [
+     {
+      "d": 3.61,
+      "f": "en/eva.ty.firstSteps.0.mp3"
+     }
+    ],
+    "eva.ty.goInstrument": [
+     {
+      "d": 3.16,
+      "f": "en/eva.ty.goInstrument.0.mp3"
+     }
+    ],
+    "eva.ty.goPhoto": [
+     {
+      "d": 3.67,
+      "f": "en/eva.ty.goPhoto.0.mp3"
+     }
+    ],
+    "eva.ty.goSamples": [
+     {
+      "d": 4.01,
+      "f": "en/eva.ty.goSamples.0.mp3"
+     }
+    ],
+    "eva.ty.goSurvey": [
+     {
+      "d": 3.69,
+      "f": "en/eva.ty.goSurvey.0.mp3"
+     }
+    ],
+    "eva.ty.instrumentDone": [
+     {
+      "d": 2.06,
+      "f": "en/eva.ty.instrumentDone.0.mp3"
+     }
+    ],
+    "eva.ty.surveyDone": [
+     {
+      "d": 3.21,
+      "f": "en/eva.ty.surveyDone.0.mp3"
      }
     ],
     "launch.count1": [
@@ -1253,6 +1445,78 @@
       "f": "pt/eva.firstStepsCapcom.0.mp3"
      }
     ],
+    "eva.fs.authorized": [
+     {
+      "d": 5.97,
+      "f": "pt/eva.fs.authorized.0.mp3"
+     }
+    ],
+    "eva.fs.boundary": [
+     {
+      "d": 3.49,
+      "f": "pt/eva.fs.boundary.0.mp3"
+     }
+    ],
+    "eva.fs.complete": [
+     {
+      "d": 4.5,
+      "f": "pt/eva.fs.complete.0.mp3"
+     }
+    ],
+    "eva.fs.dataDone": [
+     {
+      "d": 4.48,
+      "f": "pt/eva.fs.dataDone.0.mp3"
+     }
+    ],
+    "eva.fs.firstSteps": [
+     {
+      "d": 4.39,
+      "f": "pt/eva.fs.firstSteps.0.mp3"
+     }
+    ],
+    "eva.fs.goData": [
+     {
+      "d": 4.26,
+      "f": "pt/eva.fs.goData.0.mp3"
+     }
+    ],
+    "eva.fs.goInstrument": [
+     {
+      "d": 4.8,
+      "f": "pt/eva.fs.goInstrument.0.mp3"
+     }
+    ],
+    "eva.fs.goPhoto": [
+     {
+      "d": 4.06,
+      "f": "pt/eva.fs.goPhoto.0.mp3"
+     }
+    ],
+    "eva.fs.goSample": [
+     {
+      "d": 3.7,
+      "f": "pt/eva.fs.goSample.0.mp3"
+     }
+    ],
+    "eva.fs.instrumentDone": [
+     {
+      "d": 3.45,
+      "f": "pt/eva.fs.instrumentDone.0.mp3"
+     }
+    ],
+    "eva.fs.remind": [
+     {
+      "d": 2.41,
+      "f": "pt/eva.fs.remind.0.mp3"
+     }
+    ],
+    "eva.fs.returnLM": [
+     {
+      "d": 3.77,
+      "f": "pt/eva.fs.returnLM.0.mp3"
+     }
+    ],
     "eva.goPhoto": [
      {
       "d": 6.78,
@@ -1263,6 +1527,60 @@
      {
       "d": 4.43,
       "f": "pt/eva.goSample.0.mp3"
+     }
+    ],
+    "eva.goSecond": [
+     {
+      "d": 3.89,
+      "f": "pt/eva.goSecond.0.mp3"
+     }
+    ],
+    "eva.ha.authorized": [
+     {
+      "d": 6.37,
+      "f": "pt/eva.ha.authorized.0.mp3"
+     }
+    ],
+    "eva.ha.firstSteps": [
+     {
+      "d": 2.87,
+      "f": "pt/eva.ha.firstSteps.0.mp3"
+     }
+    ],
+    "eva.ha.goInstrument": [
+     {
+      "d": 4.34,
+      "f": "pt/eva.ha.goInstrument.0.mp3"
+     }
+    ],
+    "eva.ha.goPhoto": [
+     {
+      "d": 4.3,
+      "f": "pt/eva.ha.goPhoto.0.mp3"
+     }
+    ],
+    "eva.ha.goSamples": [
+     {
+      "d": 3.59,
+      "f": "pt/eva.ha.goSamples.0.mp3"
+     }
+    ],
+    "eva.ha.goSurvey": [
+     {
+      "d": 5.18,
+      "f": "pt/eva.ha.goSurvey.0.mp3"
+     }
+    ],
+    "eva.ha.instrumentDone": [
+     {
+      "d": 3.68,
+      "f": "pt/eva.ha.instrumentDone.0.mp3"
+     }
+    ],
+    "eva.ha.surveyDone": [
+     {
+      "d": 2.68,
+      "f": "pt/eva.ha.surveyDone.0.mp3"
      }
     ],
     "eva.hatch": [
@@ -1289,6 +1607,12 @@
       "f": "pt/eva.photoDone.0.mp3"
      }
     ],
+    "eva.photoTaken": [
+     {
+      "d": 1.76,
+      "f": "pt/eva.photoTaken.0.mp3"
+     }
+    ],
     "eva.remind": [
      {
       "d": 4.17,
@@ -1305,6 +1629,66 @@
      {
       "d": 2.04,
       "f": "pt/eva.sampleDone.0.mp3"
+     }
+    ],
+    "eva.sampleOne": [
+     {
+      "d": 2.49,
+      "f": "pt/eva.sampleOne.0.mp3"
+     }
+    ],
+    "eva.samplesDone": [
+     {
+      "d": 2.32,
+      "f": "pt/eva.samplesDone.0.mp3"
+     }
+    ],
+    "eva.ty.authorized": [
+     {
+      "d": 5.39,
+      "f": "pt/eva.ty.authorized.0.mp3"
+     }
+    ],
+    "eva.ty.firstSteps": [
+     {
+      "d": 3.75,
+      "f": "pt/eva.ty.firstSteps.0.mp3"
+     }
+    ],
+    "eva.ty.goInstrument": [
+     {
+      "d": 3.6,
+      "f": "pt/eva.ty.goInstrument.0.mp3"
+     }
+    ],
+    "eva.ty.goPhoto": [
+     {
+      "d": 3.45,
+      "f": "pt/eva.ty.goPhoto.0.mp3"
+     }
+    ],
+    "eva.ty.goSamples": [
+     {
+      "d": 4.49,
+      "f": "pt/eva.ty.goSamples.0.mp3"
+     }
+    ],
+    "eva.ty.goSurvey": [
+     {
+      "d": 4.22,
+      "f": "pt/eva.ty.goSurvey.0.mp3"
+     }
+    ],
+    "eva.ty.instrumentDone": [
+     {
+      "d": 2.77,
+      "f": "pt/eva.ty.instrumentDone.0.mp3"
+     }
+    ],
+    "eva.ty.surveyDone": [
+     {
+      "d": 3.66,
+      "f": "pt/eva.ty.surveyDone.0.mp3"
      }
     ],
     "launch.count1": [

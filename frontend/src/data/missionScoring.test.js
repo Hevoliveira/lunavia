@@ -350,9 +350,10 @@ describe("the flight's scoring follows the mission's events", () => {
 });
 
 describe("achievements", () => {
-  test("eighteen achievements (FIRST STEPS: the lunar EVA), each with an explicit test and English and Portuguese text", () => {
+  test("twenty-two achievements (the lunar EVA's under LANDING and SURFACE), each with an explicit test and English and Portuguese text", () => {
     expect(ACHIEVEMENT_IDS).toEqual([
       "FIRST_FOOTPRINT", "SOFT_TOUCHDOWN", "PRECISION_PILOT", "FUEL_MASTER", "FIRST_EVA",
+      "VALLEY_GEOLOGIST", "IMPACT_INVESTIGATOR", "FAR_SIDE_LISTENER", "FIELD_SCIENTIST",
       "FIRST_CONTACT", "PRECISION_DOCKING", "FIRST_ATTEMPT_DOCKING", "RENDEZVOUS_MASTER",
       "WELCOME_HOME", "REENTRY_SPECIALIST",
       "FOUR_DESTINATIONS", "MOUNTAIN_NAVIGATOR", "CRATER_SPECIALIST", "SILENT_HORIZON_VETERAN",
@@ -381,6 +382,23 @@ describe("achievements", () => {
     expect(newAchievements("eva", { eva: eva() }, { FIRST_EVA: { at: 1 } })).toEqual([]);
     expect(newAchievements("landing", { eva: eva() }, {})).toEqual([]);
     // the 1,000-point model is untouched by it
+    expect(TOTAL_MAX).toBe(1000);
+  });
+
+  test("each expedition its own achievement, only complete and only where it was flown; all four: LUNAR FIELD SCIENTIST", () => {
+    const ha = { progress: { firstSteps: true, survey: true, samples: true, photo: true, instrument: true }, completed: true };
+    const ty = { progress: { firstSteps: true, survey: true, samples: true, photo: true, instrument: true }, completed: true };
+    const fs = { progress: { firstSteps: true, sample: true, instrument: true, photo: true, data: true }, completed: true };
+    expect(newAchievements("eva", { eva: ha, siteId: "hadley" }, {})).toEqual(["VALLEY_GEOLOGIST"]);
+    expect(newAchievements("eva", { eva: ty, siteId: "tycho" }, {})).toEqual(["IMPACT_INVESTIGATOR"]);
+    expect(newAchievements("eva", { eva: fs, siteId: "far-side" }, {})).toEqual(["FAR_SIDE_LISTENER"]); // never FIRST STEPS, though it has a sample and a photo
+    expect(newAchievements("eva", { eva: { ...ha, progress: { ...ha.progress, instrument: false } }, siteId: "hadley" }, {})).toEqual([]);
+    expect(newAchievements("eva", { eva: { ...fs, completed: false }, siteId: "far-side" }, {})).toEqual([]);
+    expect(newAchievements("eva", { eva: ha, siteId: "tycho" }, {})).toEqual(["IMPACT_INVESTIGATOR"]); // the record is checked per destination before it gets here
+    const three = { FIRST_EVA: { at: 1 }, VALLEY_GEOLOGIST: { at: 2 }, IMPACT_INVESTIGATOR: { at: 3 } };
+    expect(newAchievements("eva", { eva: fs, siteId: "far-side", unlocked: three }, three)).toEqual(["FAR_SIDE_LISTENER", "FIELD_SCIENTIST"]);
+    expect(newAchievements("eva", { eva: fs, siteId: "far-side", unlocked: { FIRST_EVA: { at: 1 } } }, { FIRST_EVA: { at: 1 } })).toEqual(["FAR_SIDE_LISTENER"]);
+    expect(achievementProgress("FIELD_SCIENTIST", { categories: {}, achievements: three })).toEqual({ done: 3, of: 4 });
     expect(TOTAL_MAX).toBe(1000);
   });
 

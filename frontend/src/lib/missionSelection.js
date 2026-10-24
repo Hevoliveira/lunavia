@@ -156,16 +156,30 @@ export const logMissionScoring = (id, scoring) =>
  * Flight `id`'s lunar EVA (recorded apart from the mission's score): the objectives done, the
  * sample and photographs taken, the distance walked, whether the astronaut came back aboard.
  */
+/**
+ * Flight `id`'s lunar EVA: the destination's expedition, what was done and the science brought
+ * back (sample ids, photos, the instrument deployed, the far side's data). A category of its own:
+ * nothing here feeds the 1,000-point score.
+ */
 export const logMissionEva = (id, eva) =>
   update(id, (e) => {
     const p = (eva && eva.progress) || {};
+    const keys = Object.keys(p);
+    const list = (a) => (eva && Array.isArray(a) ? a : []);
     e.eva = {
+      site: e.siteId || null,
       completed: !!(eva && eva.completed),
+      objectives: keys.filter((k) => p[k] === true),
+      done: keys.filter((k) => p[k] === true).length,
+      total: keys.length,
       firstSteps: !!p.firstSteps,
-      sample: !!p.sample,
+      sample: !!(p.sample || p.samples),
       photo: !!p.photo,
-      samples: eva && Array.isArray(eva.samples) ? eva.samples.length : 0,
-      photos: eva && Array.isArray(eva.photos) ? eva.photos.length : 0,
+      samples: list(eva && eva.samples).length,
+      sampleIds: list(eva && eva.samples).map((x) => x.id).slice(0, 4),
+      photos: list(eva && eva.photos).length,
+      instruments: list(eva && eva.instruments).map((x) => x.id).slice(0, 2),
+      data: !!p.data,
       distance: eva && typeof eva.distance === "number" && Number.isFinite(eva.distance) ? +eva.distance.toFixed(1) : null,
       at: Date.now(),
     };

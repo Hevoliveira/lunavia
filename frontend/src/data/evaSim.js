@@ -2,7 +2,7 @@
  * LUNAVIA — the lunar EVA (extravehicular activity): the astronaut's world,
  * walking, collisions and the egress and ingress sequences (pure; unit-tested).
  *
- * Phase 1 flies one site: the Sea of Tranquility (EVA_SITES). Everything is
+ * Every official destination has an EVA (EVA_SITES; the expeditions in data/evaMissions). Everything is
  * built from what the mission already has — the site's own terrain function
  * (data/terrainMesh lookup, the surface as drawn), its rocks (data/landingSites)
  * and the lunar module exactly where and how it landed (the landing result's
@@ -20,7 +20,7 @@ const DEG = Math.PI / 180;
 export const MODEL_M = (LM.scale / WORLD_X) * 1; // metres per LanderModel model unit (4.8)
 export const G_MOON = 1.62;
 
-/** The sites with an EVA (phase 1: the Sea of Tranquility only; data/missionConfig). */
+/** The sites with an EVA (all four official destinations; data/missionConfig). */
 export { EVA_SITES, evaAvailableAt } from "./missionConfig";
 
 /* ---- the astronaut and the suit's limits ---------------------------------------------------- */
@@ -195,7 +195,7 @@ export function resolve(cols, x, z, rad = SUIT.radius) {
  * The EVA's world for one landing: the terrain function (metres), the LM, colliders, the
  * sample's place and the photo stand. `ground(x, z)` is the drawn surface (terrainMesh lookup).
  */
-export function evaWorld({ site, pose, ground }) {
+export function evaWorld({ site, pose, ground, area = AREA }) {
   const lm = lmFrame(pose);
   const cols = colliders(site, lm);
   const [ax, az] = lm.axis;
@@ -216,10 +216,11 @@ export function evaWorld({ site, pose, ground }) {
   const fan = [];
   for (const r of [15, 14, 16.5]) for (const a of [0, 0.35, -0.35, 0.6, -0.6]) fan.push([r * Math.cos(sunAz + a), -r * Math.sin(sunAz + a)]);
   const photo = pickSpot(site, ground, cols, ax, az, fan);
-  return { site, lm, cols, ground, sample: { ...sample, y: ground(sample.x, sample.z) }, photo: { ...photo, y: ground(photo.x, photo.z) }, sunH };
+  return { site, lm, cols, ground, area, sample: { ...sample, y: ground(sample.x, sample.z) }, photo: { ...photo, y: ground(photo.x, photo.z) }, sunH };
 }
 
-function slopeAt(ground, x, z) {
+/** The ground's steepest slope (deg) at (x, z). */
+export function slopeAt(ground, x, z) {
   const e = 0.6;
   const dx = (ground(x + e, z) - ground(x - e, z)) / (2 * e);
   const dz = (ground(x, z + e) - ground(x, z - e)) / (2 * e);
@@ -295,6 +296,12 @@ export function stepWalker(w, world, input, dt) {
   const ahead = world.ground(w.x + hx * 0.6 * sgn, w.z + hz * 0.6 * sgn);
   const rise = Math.atan2(ahead - w.y, 0.6) / DEG;
   if (rise > SUIT.slopeSlow) wantSpeed *= Math.max(0, 1 - (rise - SUIT.slopeSlow) / (SUIT.slopeStop - SUIT.slopeSlow));
+  // nor walked down: a fresh crater's inner wall or a rille's side would leave the astronaut in a
+  // pit too steep to climb out of; he stops at its edge instead (gentler ground is unchanged)
+  if (-rise > SUIT.slopeStop) {
+    wantSpeed = 0;
+    if (-rise > SUIT.slopeStop + 8) w.speed = 0;
+  }
   const dv = wantSpeed - w.speed;
   const lim = (Math.abs(wantSpeed) > Math.abs(w.speed) ? SUIT.accel : SUIT.decel) * dt;
   w.speed += Math.max(-lim, Math.min(lim, dv));
@@ -305,16 +312,17 @@ export function stepWalker(w, world, input, dt) {
   let nz = w.z + hz * w.speed * dt;
   // the exploration area: outward motion stops at the limit
   const [ax, az] = world.lm.axis;
+  const A = world.area || AREA;
   const r0 = Math.hypot(w.x - ax, w.z - az);
   const r1 = Math.hypot(nx - ax, nz - az);
   w.atLimit = false;
-  if (r1 > AREA.limit && r1 > r0) {
-    const k = AREA.limit / r1;
+  if (r1 > A.limit && r1 > r0) {
+    const k = A.limit / r1;
     nx = ax + (nx - ax) * Math.max(k, r0 / r1);
     nz = az + (nz - az) * Math.max(k, r0 / r1);
     w.atLimit = true;
   }
-  nz = Math.max(-AREA.zMax, Math.min(AREA.zMax, nz));
+  nz = Math.max(-A.zMax, Math.min(A.zMax, nz));
   const [rx, rz, hit] = resolve(world.cols, nx, nz);
   const moved = Math.hypot(rx - w.x, rz - w.z);
   if (hit && moved < Math.abs(w.speed * dt) * 0.35) w.speed *= 0.6; // walking into something: slow down
@@ -322,7 +330,7 @@ export function stepWalker(w, world, input, dt) {
   w.x = rx;
   w.z = rz;
   w.distance += moved;
-  w.warn = Math.hypot(w.x - ax, w.z - az) > AREA.warn;
+  w.warn = Math.hypot(w.x - ax, w.z - az) > A.warn;
   // feet on the ground; the gait's floating phase is drawn by the animation
   const g = world.ground(w.x, w.z);
   w.y = g;

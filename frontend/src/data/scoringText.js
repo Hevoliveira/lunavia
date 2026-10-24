@@ -77,6 +77,7 @@ export const UI = {
     firstAttemptDockings: "FIRST-ATTEMPT DOCKINGS",
     restartedDockings: "DOCKINGS AFTER RESTARTS",
     firstTry: "1ST ATTEMPT",
+    evaSamples: "SAMPLES",
     legacy: "COMPLETED BEFORE SCORING",
     earnedHere: "ACHIEVEMENTS EARNED HERE",
     locked: "LOCKED",
@@ -146,6 +147,7 @@ export const UI = {
     firstAttemptDockings: "ACOPLAMENTOS NA 1ª TENTATIVA",
     restartedDockings: "ACOPLAMENTOS APÓS REINÍCIOS",
     firstTry: "1ª TENTATIVA",
+    evaSamples: "AMOSTRAS",
     legacy: "CONCLUÍDAS ANTES DA PONTUAÇÃO",
     earnedHere: "CONQUISTAS OBTIDAS AQUI",
     locked: "BLOQUEADA",
@@ -285,6 +287,10 @@ export const ACHIEVEMENT_TEXT = {
     pt: ["MESTRE DO COMBUSTÍVEL", `Pouse usando no máximo ${(1 / AR.fuelEfficiency).toFixed(2).replace(".", ",")}× o combustível da queima ideal de frenagem.`],
   },
   FIRST_EVA: { en: ["FIRST STEPS", "Walk on the Moon at the Sea of Tranquility: collect the sample, photograph the landing site and return to the LM."], pt: ["PRIMEIROS PASSOS", "Caminhe na Lua no Mar da Tranquilidade: colete a amostra, fotografe o local de pouso e retorne ao LM."] },
+  VALLEY_GEOLOGIST: { en: ["VALLEY GEOLOGIST", "Complete the Hadley–Apennine geological expedition: the survey, both samples, Mons Hadley photographed and the seismometer deployed."], pt: ["GEÓLOGO DO VALE", "Conclua a expedição geológica de Hadley–Apeninos: o levantamento, as duas amostras, a foto do Mons Hadley e o sismômetro instalado."] },
+  IMPACT_INVESTIGATOR: { en: ["IMPACT INVESTIGATOR", "Complete the Tycho impact geology investigation: the impact material, both samples, the crater documented from its rim and the gnomon placed."], pt: ["INVESTIGADOR DE IMPACTOS", "Conclua a investigação de geologia de impacto em Tycho: o material de impacto, as duas amostras, a cratera documentada da borda e o gnômon posicionado."] },
+  FAR_SIDE_LISTENER: { en: ["FAR-SIDE LISTENER", "Complete the far-side expedition at Silent Horizon: the sample, the radio antenna, the basin ring photographed and the receiver's data confirmed."], pt: ["OUVINTE DO LADO OCULTO", "Conclua a expedição ao lado oculto no Horizonte Silencioso: a amostra, a antena de rádio, a foto do anel da bacia e os dados do receptor confirmados."] },
+  FIELD_SCIENTIST: { en: ["LUNAR FIELD SCIENTIST", "Complete every objective of the EVA at all four official destinations (any difficulty)."], pt: ["CIENTISTA DE CAMPO LUNAR", "Cumpra todos os objetivos da EVA nos quatro destinos oficiais (qualquer dificuldade)."] },
   FIRST_CONTACT: { en: ["FIRST CONTACT", "Complete your first manual docking with the CSM."], pt: ["PRIMEIRO CONTATO", "Conclua seu primeiro acoplamento manual com o CSM."] },
   PRECISION_DOCKING: {
     en: ["PRECISION DOCKING", `Capture with the probe within ${pctOf(AR.dockLateral)} of the alignment tolerance, the axes within ${pctOf(AR.dockAngle)} of the angle tolerance, contact speed at most ${pctOf(AR.dockClosing)} of the capture window and drift at most ${pctOf(AR.dockDrift)} of its limit.`],
@@ -307,7 +313,7 @@ export const ACHIEVEMENT_TEXT = {
 };
 export const achievementName = (id, lang) => (ACHIEVEMENT_TEXT[id][lang] || ACHIEVEMENT_TEXT[id].en)[0];
 export const achievementDesc = (id, lang) => (ACHIEVEMENT_TEXT[id][lang] || ACHIEVEMENT_TEXT[id].en)[1];
-const GROUP = { LANDING: { en: "LUNAR LANDING", pt: "POUSO LUNAR" }, DOCKING: { en: "ORBITAL DOCKING", pt: "ACOPLAMENTO ORBITAL" }, "EARTH RETURN": { en: "EARTH RETURN", pt: "RETORNO À TERRA" }, DESTINATIONS: { en: "DESTINATIONS", pt: "DESTINOS" }, ELITE: { en: "ELITE", pt: "ELITE" } };
+const GROUP = { LANDING: { en: "LUNAR LANDING", pt: "POUSO LUNAR" }, SURFACE: { en: "LUNAR SURFACE · EVA", pt: "SUPERFÍCIE LUNAR · EVA" }, DOCKING: { en: "ORBITAL DOCKING", pt: "ACOPLAMENTO ORBITAL" }, "EARTH RETURN": { en: "EARTH RETURN", pt: "RETORNO À TERRA" }, DESTINATIONS: { en: "DESTINATIONS", pt: "DESTINOS" }, ELITE: { en: "ELITE", pt: "ELITE" } };
 export const groupName = (g, lang) => GROUP[g][lang] || GROUP[g].en;
 
 /* ---- the recommendation --------------------------------------------------------------------- */

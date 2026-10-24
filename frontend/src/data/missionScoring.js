@@ -335,6 +335,10 @@ export const ACHIEVEMENT_RULES = Object.freeze({
   phaseMaster: 0.9, // RENDEZVOUS MASTER, REENTRY SPECIALIST, PERFECT EXPEDITION: 90 % of the phase
 });
 export const DESTINATIONS = ["tranquillitatis", "hadley", "tycho", "far-side"];
+/** Each destination's EVA achievement (data/evaMissions: the expedition there). */
+export const EXPEDITION_ACHIEVEMENT = { tranquillitatis: "FIRST_EVA", hadley: "VALLEY_GEOLOGIST", tycho: "IMPACT_INVESTIGATOR", "far-side": "FAR_SIDE_LISTENER" };
+/** A finished expedition: back in the LM with every one of its objectives done (its record is the destination's own). */
+const expeditionDone = (eva) => !!eva && eva.completed === true && !!eva.progress && Object.keys(eva.progress).length >= 3 && Object.values(eva.progress).every((v) => v === true);
 const A = ACHIEVEMENT_RULES;
 const pct = (p, max) => p >= Math.round(max * A.phaseMaster);
 
@@ -358,9 +362,18 @@ export const ACHIEVEMENTS = Object.freeze([
   },
   { id: "PRECISION_PILOT", group: "LANDING", on: "landing", test: ({ landing }) => !!landing && landing.safe && landing.snapshot.distance <= A.precisionDistance },
   { id: "FUEL_MASTER", group: "LANDING", on: "landing", test: ({ landing }) => !!landing && landing.safe && landing.efficiency >= A.fuelEfficiency },
-  // the optional lunar EVA (phase 1: the Sea of Tranquility): recorded apart from the 1,000-point
-  // score, which it does not change
-  { id: "FIRST_EVA", group: "LANDING", on: "eva", test: ({ eva }) => !!eva && eva.completed && !!eva.progress && eva.progress.firstSteps && eva.progress.sample && eva.progress.photo },
+  // the optional lunar EVA: recorded apart from the 1,000-point score, which it does not change.
+  // FIRST STEPS is the Sea of Tranquility's (phase 1); the other expeditions are under SURFACE
+  { id: "FIRST_EVA", group: "LANDING", on: "eva", test: ({ eva, siteId }) => (siteId || "tranquillitatis") === "tranquillitatis" && !!eva && eva.completed && !!eva.progress && eva.progress.firstSteps && eva.progress.sample && eva.progress.photo },
+  { id: "VALLEY_GEOLOGIST", group: "SURFACE", on: "eva", test: ({ eva, siteId }) => siteId === "hadley" && expeditionDone(eva) },
+  { id: "IMPACT_INVESTIGATOR", group: "SURFACE", on: "eva", test: ({ eva, siteId }) => siteId === "tycho" && expeditionDone(eva) },
+  { id: "FAR_SIDE_LISTENER", group: "SURFACE", on: "eva", test: ({ eva, siteId }) => siteId === "far-side" && expeditionDone(eva) },
+  {
+    id: "FIELD_SCIENTIST",
+    group: "SURFACE",
+    on: "eva",
+    test: ({ eva, siteId, unlocked = {} }) => DESTINATIONS.every((s) => !!unlocked[EXPEDITION_ACHIEVEMENT[s]] || (s === (siteId || "tranquillitatis") && (s === "tranquillitatis" ? !!eva && eva.completed && !!eva.progress && eva.progress.firstSteps && eva.progress.sample && eva.progress.photo : expeditionDone(eva)))),
+  },
   { id: "FIRST_CONTACT", group: "DOCKING", on: "docking", test: ({ docking }) => !!docking && docking.success },
   {
     id: "PRECISION_DOCKING",
@@ -391,7 +404,7 @@ export const ACHIEVEMENTS = Object.freeze([
   { id: "LUNAVIA_MASTER", group: "ELITE", on: "mission", test: ({ records }) => DESTINATIONS.every((id) => commanderPlatinum(records, id)) },
 ]);
 export const ACHIEVEMENT_IDS = ACHIEVEMENTS.map((a) => a.id);
-export const ACHIEVEMENT_GROUPS = ["LANDING", "DOCKING", "EARTH RETURN", "DESTINATIONS", "ELITE"];
+export const ACHIEVEMENT_GROUPS = ["LANDING", "SURFACE", "DOCKING", "EARTH RETURN", "DESTINATIONS", "ELITE"];
 
 export const categoryKey = (siteId, difficulty) => `${siteId}|${difficulty}`;
 const cat = (records, siteId, difficulty) => (records && records.categories && records.categories[categoryKey(siteId, difficulty)]) || null;
@@ -409,6 +422,8 @@ export function achievementProgress(id, records) {
   switch (id) {
     case "FOUR_DESTINATIONS":
       return { done: DESTINATIONS.filter((s) => completedAt(records, s)).length, of: 4 };
+    case "FIELD_SCIENTIST":
+      return { done: DESTINATIONS.filter((s) => records && records.achievements && records.achievements[EXPEDITION_ACHIEVEMENT[s]]).length, of: 4 };
     case "LUNAVIA_MASTER":
       return { done: DESTINATIONS.filter((s) => commanderPlatinum(records, s)).length, of: 4 };
     case "RENDEZVOUS_MASTER": {

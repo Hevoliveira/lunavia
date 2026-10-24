@@ -619,7 +619,7 @@ describe("J. every destination × difficulty: close and reopen at every checkpoi
   );
 });
 
-/* ---- the lunar EVA (schema 2): EVA_READY and EVA_COMPLETE ------------------------------------------- */
+/* ---- the lunar EVA (schema 2, the four expeditions schema 3): EVA_READY and EVA_COMPLETE -------------- */
 describe("the lunar EVA's checkpoints", () => {
   const evaRec = (o = {}) => ({ progress: { firstSteps: true, sample: false, photo: false }, samples: [], photos: [], completed: false, distance: 12.5, ...o });
   const done = () => evaRec({ progress: { firstSteps: true, sample: true, photo: true }, samples: [{ id: "TQ-01", x: 7.5, z: 8.5 }], photos: [{ subject: "LM", distance: 15.2 }], completed: true });
@@ -629,16 +629,22 @@ describe("the lunar EVA's checkpoints", () => {
     expect(CHECKPOINT_ORDER.indexOf(CP.EVA_READY)).toBe(CHECKPOINT_ORDER.indexOf(CP.LANDING_COMPLETE) + 1);
     expect(CHECKPOINT_ORDER.indexOf(CP.EVA_COMPLETE)).toBe(CHECKPOINT_ORDER.indexOf(CP.EVA_READY) + 1);
     expect(CHECKPOINT_ORDER.indexOf(CP.DOCKING_READY)).toBe(CHECKPOINT_ORDER.indexOf(CP.EVA_COMPLETE) + 1);
-    expect(SAVE_SCHEMA).toBe(2);
+    expect(SAVE_SCHEMA).toBe(3);
     [CP.EVA_READY, CP.EVA_COMPLETE].forEach((cp) => ["en", "pt"].forEach((l) => expect(checkpointText(cp, l).length).toBeGreaterThan(5)));
   });
 
-  test("an EVA only at the Sea of Tranquility, only after a safe landing, its record consistent", () => {
+  test("an EVA at every destination, each with its own record, only after a safe landing, consistent", () => {
     const sc = tq(CP.EVA_READY);
     expect(validateSave(docOf(CP.EVA_READY, sc, { eva: evaRec() })).ok).toBe(true);
-    // the other three destinations have no EVA
-    expect(validateSave(docOf(CP.EVA_READY, flightTo(CP.EVA_READY, "hadley"), { eva: evaRec() })).reason).toBe("eva");
-    expect(validateSave(docOf(CP.EVA_READY, flightTo(CP.EVA_READY, "far-side"), { eva: evaRec() })).reason).toBe("eva");
+    // the other three destinations: their own expedition's record, never the Sea of Tranquility's
+    const ha = { progress: { firstSteps: true, survey: true, samples: false, photo: false, instrument: false }, samples: [{ id: "HA-01", x: 28.2, z: 9.3 }], photos: [], instruments: [], completed: false, distance: 61 };
+    const okHa = validateSave(docOf(CP.EVA_READY, flightTo(CP.EVA_READY, "hadley"), { eva: ha }));
+    expect(okHa.ok).toBe(true);
+    expect(okHa.save.eva).toEqual(ha);
+    expect(validateSave(docOf(CP.EVA_READY, flightTo(CP.EVA_READY, "hadley"), { eva: done() })).reason).toBe("eva"); // TQ-01 is not Hadley's
+    const fs = { progress: { firstSteps: true, sample: true, instrument: true, photo: false, data: false }, samples: [{ id: "FS-01", x: 11.9, z: 2 }], photos: [], instruments: [{ id: "LFRA", x: -11.2, z: -4.4 }], completed: false, distance: 48 };
+    expect(validateSave(docOf(CP.EVA_READY, flightTo(CP.EVA_READY, "far-side"), { eva: fs })).ok).toBe(true);
+    expect(validateSave(docOf(CP.EVA_READY, flightTo(CP.EVA_READY, "far-side"), { eva: { ...fs, instruments: [], progress: { ...fs.progress, instrument: false, data: true } } })).reason).toBe("eva");
     // no landing, no EVA
     expect(validateSave(docOf(CP.EVA_READY, tq(CP.DESCENT_READY), { eva: evaRec() })).reason).toBe("no-safe-landing");
     // an EVA under way needs its record; one marked complete belongs to EVA_COMPLETE
@@ -694,7 +700,12 @@ describe("the lunar EVA's checkpoints", () => {
     expect(opened.save.eva).toBeNull();
     const tqv = tq(CP.EVA_READY);
     expect(validateSave({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 1 }).reason).toBe("kind");
-    expect(openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 3 }, 5)).reason).toBe("unsupported");
+    expect(openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 4 }, 5)).reason).toBe("unsupported");
+    // a schema 2 save (phase 1) is still read, its EVA the Sea of Tranquility's; it never held another destination's
+    const v2 = openEnvelope(sealEnvelope({ ...docOf(CP.EVA_READY, tqv, { eva: evaRec() }), schema: 2 }, 6));
+    expect(v2.ok).toBe(true);
+    expect(v2.save.eva).toEqual(evaRec());
+    expect(validateSave({ ...docOf(CP.EVA_READY, flightTo(CP.EVA_READY, "hadley"), { eva: { progress: { firstSteps: true }, samples: [], photos: [], instruments: [], completed: false, distance: 1 } }), schema: 2 }).reason).toBe("kind");
   });
 
   test("the store keeps the EVA's progress across a reopen, and a closed mission cannot bring it back", () => {

@@ -322,6 +322,76 @@ export function photoSpec(pitch = 0, t = 0) {
   return s;
 }
 
+/**
+ * The geological survey (u 0..1 over the inspection, data/evaMissions SURVEY_TIME): a lean towards
+ * the rock or the crater with the helmet tipped down to it, the right glove pointing at it for a
+ * moment, then upright again. look: the formation in the root frame (m).
+ */
+export function inspectSpec(u, look, t = 0) {
+  const s = standSpec(t);
+  const k = smooth(u / 0.18) * (1 - smooth((u - 0.84) / 0.16));
+  const dx = look[0];
+  const dz = Math.max(0.3, look[2]);
+  const dh = Math.hypot(dx, dz);
+  const yaw = clamp(Math.atan2(dx, dz), -0.5, 0.5);
+  const down = clamp(Math.atan2(1.6 - look[1], dh), 0, 0.9); // how far below the helmet it is
+  s.pelvis[1] -= 0.04 * k;
+  s.pelvisRot[0] += 0.06 * k;
+  s.torsoRot[0] += (0.1 + 0.22 * down) * k;
+  s.torsoRot[1] += yaw * 0.6 * k;
+  const point = smooth((u - 0.25) / 0.15) * (1 - smooth((u - 0.74) / 0.12));
+  s.hands[1] = lerp3(s.hands[1], [-0.2 + (dx / dh) * 0.4, 1.22 - 0.22 * down, 0.3 + (dz / dh) * 0.36], point);
+  s.grip[1] = lerp(s.grip[1], 0.85, point);
+  s.wrist[1] = lerp(s.wrist[1], -0.2, point);
+  s.hands[0] = lerp3(s.hands[0], [0.3, 0.98, 0.12], k);
+  return s;
+}
+
+/**
+ * Deploying an instrument (u 0..1 over data/evaMissions DEPLOY_TIME): the folded package, held in
+ * both gloves at the waist, is lowered in a deep crouch to the ground ahead and let go; the
+ * astronaut straightens and stands back while it unfolds. Returns the spec with `pack`: the
+ * package between the gloves (root frame, m) while it is held, or null once it is down.
+ */
+export const DEPLOY_PHASES = { down: 0.3, release: 0.36, unfold: [0.4, 0.9] };
+export function deploySpec(u, t = 0) {
+  const s = standSpec(t);
+  const P = DEPLOY_PHASES;
+  const crouch = smooth(u / P.down) * (1 - smooth((u - P.release) / 0.16));
+  s.pelvis[1] -= 0.3 * crouch;
+  s.pelvis[2] -= 0.1 * crouch;
+  s.pelvisRot[0] += 0.2 * crouch;
+  s.torsoRot[0] += 0.5 * crouch;
+  // the boots apart and one a little back: a steadier crouch in the suit
+  s.feet[0] = lerp3(s.feet[0], [BODY.footX + 0.04, BODY.ankle, 0.12], crouch);
+  s.feet[1] = lerp3(s.feet[1], [-BODY.footX - 0.04, BODY.ankle, -0.1], crouch);
+  const held = u < P.release;
+  const carry = [0, 0.9, 0.4];
+  const low = [0, 0.48, 0.56];
+  const pk = lerp3(carry, low, smooth(u / P.down));
+  const grip = held ? 1 : 1 - smooth((u - P.release) / 0.08);
+  s.hands[0] = lerp3(s.hands[0], [pk[0] + 0.15, pk[1] + 0.05, pk[2] - 0.02], grip);
+  s.hands[1] = lerp3(s.hands[1], [pk[0] - 0.15, pk[1] + 0.05, pk[2] - 0.02], grip);
+  s.grip = [lerp(0.35, 0.8, grip), lerp(0.35, 0.8, grip)];
+  s.wrist = [lerp(0.15, -0.3, grip), lerp(0.15, -0.3, grip)];
+  s.pack = held ? pk : null;
+  return s;
+}
+
+/** At an instrument's panel (the far side's receiver): looking down at it, both gloves on it. */
+export function consoleSpec(t = 0) {
+  const s = standSpec(t);
+  s.torsoRot[0] += 0.24;
+  s.pelvisRot[0] += 0.05;
+  s.hands = [
+    [0.13 + 0.01 * Math.sin(t * 1.3), 0.96, 0.44],
+    [-0.13, 0.95 + 0.012 * Math.sin(t * 1.7 + 1), 0.45],
+  ];
+  s.grip = [0.55, 0.7];
+  s.wrist = [-0.25, -0.25];
+  return s;
+}
+
 /* ---- the egress and ingress on the LM's hardware ------------------------------------------------ */
 // What the egress/ingress frames (data/evaSim egressAt/ingressAt) look like on the body. Every place
 // a boot or a glove touches is taken from the LM as it landed (lmFrame), in world metres, then

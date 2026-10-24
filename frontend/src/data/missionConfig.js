@@ -70,8 +70,8 @@ export const TRAINING_LANDING_SITE = TRAINING_LANDING_SITES[0];
 /** The selection a fresh device starts with. */
 export const DEFAULT_SELECTION = { siteId: "tranquillitatis", difficulty: "ASTRONAUT" };
 
-/** The destinations with a lunar EVA after the landing (phase 1: the Sea of Tranquility only). */
-export const EVA_SITES = ["tranquillitatis"];
+/** The destinations with a lunar EVA after the landing: all four, each its own expedition (data/evaMissions). */
+export const EVA_SITES = ["tranquillitatis", "hadley", "tycho", "far-side"];
 export const evaAvailableAt = (siteId) => EVA_SITES.includes(siteId);
 
 export const officialMission = (siteId) => OFFICIAL_MISSIONS.find((m) => m.siteId === siteId) || null;

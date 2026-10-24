@@ -206,6 +206,12 @@ function LogTab({ log, records, lang, onReview }) {
           if (e.landing && e.landing.attempts > 1) tags.push(t.landingAttempts(e.landing.attempts));
           if (s.newBest) tags.push(t.newBest);
         } else if (e.landing) tags.push(`${e.landing.success ? `LANDED ${e.landing.grade || ""}` : "LANDING FAILED"}`);
+        // the lunar EVA: its own category (objectives done, the science brought back), never points
+        if (e.eva && e.eva.completed) {
+          const total = e.eva.total || 3;
+          const done = e.eva.total ? e.eva.done : [e.eva.firstSteps, e.eva.sample, e.eva.photo].filter(Boolean).length;
+          tags.push(`EVA ${done}/${total}${e.eva.samples ? ` · ${e.eva.samples} ${t.evaSamples}` : ""}`);
+        }
         const canReview = !!(s && s.snaps && s.snaps.landing);
         return (
           <button

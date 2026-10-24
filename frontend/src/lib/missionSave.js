@@ -36,14 +36,17 @@
  * soon as it is reached.
  */
 import { OFFICIAL_MISSION_IDS, PILOT_DIFFICULTIES, evaAvailableAt } from "../data/missionConfig";
+import { validateEvaRecord } from "../data/evaMissions";
 
 /**
- * Schema 2 adds the lunar EVA (its checkpoints and the `eva` record). Schema 1 saves (written
- * before the EVA existed) are still read; a build that only knows schema 1 sees a schema 2
- * save as "written by a newer version" and leaves it alone, never as damaged.
+ * Schema 2 adds the lunar EVA (its checkpoints and the `eva` record, the Sea of Tranquility only);
+ * schema 3 the four expeditions (each destination's own objectives, samples, photo subject and
+ * instrument: data/evaMissions). Older saves are still read (a schema 2 EVA is Tranquility's); a
+ * build that only knows an older schema sees a newer save as "written by a newer version" and
+ * leaves it alone, never as damaged.
  */
-export const SAVE_SCHEMA = 2;
-const READABLE_SCHEMAS = [1, 2];
+export const SAVE_SCHEMA = 3;
+const READABLE_SCHEMAS = [1, 2, 3];
 export const SAVE_KIND = "lunavia.mission.checkpoint";
 const ENVELOPE = "lunavia-save";
 export const SLOT_KEYS = { a: "lunavia.mission.save.v1.a", b: "lunavia.mission.save.v1.b" };
@@ -161,29 +164,15 @@ export function sanitizePose(pose, siteId) {
 const strList = (a, max = 50) => Array.isArray(a) && a.length <= max && a.every((x) => typeof x === "string" && x.length <= 40);
 
 /**
- * The lunar EVA's record (components/eva/LunarEva's state): the objectives reached, the sample
- * (one: TQ-01) and the photographs of the landing site, and whether the astronaut is back in the
- * LM. A clean copy, or null when it is not consistent (an objective without its sample or
- * photograph, a sample or photo without the objective, more than one sample): a save cannot
- * claim an objective twice or one that was never done.
+ * The lunar EVA's record (components/eva/LunarEva's state) at its destination: the objectives
+ * reached, the samples, the photographs of the destination's subject, the instrument deployed,
+ * and whether the astronaut is back in the LM (data/evaMissions validateEvaRecord). A clean copy,
+ * or null when it is not consistent (an objective without its samples, photograph or instrument,
+ * any of them without the objective, another destination's sample, the far side's data before
+ * its antenna): a save cannot claim an objective twice or one that was never done.
  */
-export function cleanEva(e) {
-  if (!isObj(e) || !isObj(e.progress)) return null;
-  const p = { firstSteps: e.progress.firstSteps === true, sample: e.progress.sample === true, photo: e.progress.photo === true };
-  const samples = Array.isArray(e.samples) ? e.samples : [];
-  const photos = Array.isArray(e.photos) ? e.photos : [];
-  if (samples.length > 1 || photos.length > 8) return null;
-  if (!samples.every((x) => isObj(x) && typeof x.id === "string" && x.id.length <= 12 && fin(x.x) && fin(x.z))) return null;
-  if (!photos.every((x) => isObj(x) && x.subject === "LM" && fin(x.distance) && x.distance >= 0 && x.distance <= 200)) return null;
-  if (p.sample !== samples.length > 0 || p.photo !== photos.length > 0) return null;
-  if ((p.sample || p.photo || e.completed === true) && !p.firstSteps) return null;
-  return {
-    progress: p,
-    samples: samples.map((x) => ({ id: x.id, x: x.x, z: x.z })),
-    photos: photos.map((x) => ({ subject: "LM", distance: x.distance })),
-    completed: e.completed === true,
-    distance: fin(e.distance) && e.distance >= 0 && e.distance < 1e5 ? e.distance : 0,
-  };
+export function cleanEva(e, siteId = "tranquillitatis") {
+  return validateEvaRecord(siteId, e);
 }
 
 /** The flight's scoring state (data/flightScoring `flight`), checked against the save it is in. */
@@ -213,6 +202,8 @@ export function validateSave(s) {
   if (!CHECKPOINT_ORDER.includes(s.checkpoint)) return { ok: false, reason: "checkpoint" };
   // a schema 1 save was written before the EVA: it cannot hold one
   if (s.schema === 1 && (s.checkpoint === CP.EVA_READY || s.checkpoint === CP.EVA_COMPLETE || (s.eva !== null && s.eva !== undefined))) return { ok: false, reason: "kind" };
+  // a schema 2 save could only hold the Sea of Tranquility's EVA
+  if (s.schema === 2 && s.eva !== null && s.eva !== undefined && !(isObj(s.mission) && s.mission.siteId === "tranquillitatis")) return { ok: false, reason: "kind" };
   if (!fin(s.savedAt) || s.savedAt <= 0) return { ok: false, reason: "savedAt" };
   const base = { schema: SAVE_SCHEMA, kind: SAVE_KIND, attemptId: s.attemptId, status: s.status, checkpoint: s.checkpoint, savedAt: s.savedAt, build: typeof s.build === "string" ? s.build.slice(0, 40) : "" };
   const m = s.mission;
@@ -236,8 +227,8 @@ export function validateSave(s) {
   // ascent; EVA_READY is one under way, EVA_COMPLETE one with the hatch closed behind it
   let eva = null;
   if (s.eva !== null && s.eva !== undefined) {
-    eva = cleanEva(s.eva);
-    if (!eva || !evaAvailableAt(siteId) || rank < cpRank(CP.EVA_READY)) return { ok: false, reason: "eva" };
+    eva = evaAvailableAt(siteId) ? cleanEva(s.eva, siteId) : null;
+    if (!eva || rank < cpRank(CP.EVA_READY)) return { ok: false, reason: "eva" };
     if (rank > cpRank(CP.EVA_READY) && !eva.completed) return { ok: false, reason: "eva" };
   }
   if (s.checkpoint === CP.EVA_READY && (!eva || eva.completed)) return { ok: false, reason: "eva" };
@@ -298,7 +289,7 @@ export function makeCheckpoint({ checkpoint, flight, activity = null, pose = nul
     activity: activity ? { phase: activity.phase, engaged: !!activity.engaged, at: now } : null,
     landing: cpRank(checkpoint) >= cpRank(CP.LANDING_COMPLETE) ? { pose: pose || null } : null,
     docking: docking ? { attempts: docking.attempts, restarts: docking.restarts, contacts: docking.contacts } : null,
-    eva: eva ? cleanEva(eva) : null,
+    eva: eva ? cleanEva(eva, flight.siteId) : null,
     flight: JSON.parse(JSON.stringify(flight)),
     createdAt: createdAt || now,
     savedAt: now,

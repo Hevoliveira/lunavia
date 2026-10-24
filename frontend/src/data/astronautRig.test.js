@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BODY, chestCamera, photoSpec, sampleSpec, sequenceSpec, soleLow, solveRig, standSpec, toLocal, toWorld, walkSpec } from "./astronautRig";
+import { BODY, chestCamera, consoleSpec, deploySpec, inspectSpec, photoSpec, sampleSpec, sequenceSpec, soleLow, solveRig, standSpec, toLocal, toWorld, walkSpec } from "./astronautRig";
 import { EGRESS, SUIT, createWalker, egressAt, egressLength, evaWorld, ingressAt, ingressLength, padSurface, stepWalker } from "./evaSim";
 import { getSite } from "./landingSites";
 import { buildTerrain } from "./terrainMesh";
@@ -257,6 +257,52 @@ describe("the sample and the photograph", () => {
     expect(up.dir.y).toBeGreaterThan(level.dir.y + 0.1);
     expect(level.lens.y).toBeGreaterThan(1.2);
     expect(level.lens.y).toBeLessThan(1.5);
+  });
+});
+
+describe("the expeditions' poses: survey, instrument, receiver", () => {
+  test("inspecting a rock: a lean towards it and a pointing glove, the boots planted throughout", () => {
+    const look = [0.4, 0.5, 1.6];
+    let pointed = false;
+    for (let u = 0; u <= 1; u += 0.02) {
+      const rig = solveRig(inspectSpec(u, look));
+      bonesKept(rig);
+      expect(Math.abs(soleLow(rig.footL))).toBeLessThan(0.02);
+      expect(Math.abs(soleLow(rig.footR))).toBeLessThan(0.02);
+      if (rig.joints.wristR.z > 0.5) pointed = true;
+    }
+    expect(pointed).toBe(true);
+    // upright again at the end
+    expect(solveRig(inspectSpec(1, look)).torso.p.y).toBeCloseTo(solveRig(standSpec(0)).torso.p.y, 2);
+  });
+
+  test("deploying: the package goes down in both gloves, is let go near the ground, and he stands back up", () => {
+    let lowest = Infinity;
+    let released = null;
+    for (let u = 0; u <= 1; u += 0.01) {
+      const spec = deploySpec(u);
+      const rig = solveRig(spec);
+      bonesKept(rig);
+      expect(Math.abs(soleLow(rig.footL))).toBeLessThan(0.03);
+      expect(Math.abs(soleLow(rig.footR))).toBeLessThan(0.03);
+      if (spec.pack) {
+        lowest = Math.min(lowest, spec.pack[1]);
+        // both gloves on the package
+        const mid = rig.joints.wristL.clone().add(rig.joints.wristR).multiplyScalar(0.5);
+        expect(Math.abs(mid.x)).toBeLessThan(0.08);
+      } else if (released === null) released = u;
+    }
+    expect(lowest).toBeLessThan(0.55);
+    expect(released).toBeGreaterThan(0.3);
+    expect(released).toBeLessThan(0.42);
+    expect(solveRig(deploySpec(1)).torso.p.y).toBeCloseTo(solveRig(standSpec(0)).torso.p.y, 2);
+  });
+
+  test("at the receiver's panel: both gloves forward at waist height", () => {
+    const rig = solveRig(consoleSpec(0));
+    bonesKept(rig);
+    expect(rig.joints.wristL.z).toBeGreaterThan(0.3);
+    expect(rig.joints.wristR.z).toBeGreaterThan(0.3);
   });
 });
 

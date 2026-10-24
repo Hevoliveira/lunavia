@@ -5,6 +5,7 @@ import LanderModel from "@/components/LanderModel";
 import { SiteRocks, SiteSky, SiteSun, SiteTerrain } from "@/components/scenes/LunarSite";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
 import { getSite } from "@/data/landingSites";
+import { evaMission, evaMissionText } from "@/data/evaMissions";
 import { LM } from "@/data/touchdownFx";
 import { ASCENT, COUNTDOWN, ascentAt } from "@/data/lunarAscent";
 
@@ -292,7 +293,9 @@ export default function LunarAscent({ siteId, pose = null, audio = null, farSide
                 className="mt-2 short:mt-1.5 w-full min-h-[46px] short:min-h-[42px] flex flex-col items-center justify-center font-mono text-white bg-black/40 hover:bg-white/10 border border-white/35 hover:border-white/60 disabled:opacity-40 touch-manipulation"
               >
                 <span className="text-[11px] short:text-[10px] tracking-[0.35em] short:tracking-[0.2em]">{EVA_BUTTON[lang === "pt" ? "pt" : "en"].label}</span>
-                <span className="text-[7.5px] short:text-[7px] tracking-[0.2em] text-zinc-400 mt-0.5">{EVA_BUTTON[lang === "pt" ? "pt" : "en"].sub}</span>
+                <span className="text-[7.5px] short:text-[7px] tracking-[0.2em] text-zinc-400 mt-0.5" data-testid="ascent-eva-sub">
+                  {(evaMission(siteId) && evaMissionText(evaMission(siteId), lang).ascentSub) || EVA_BUTTON[lang === "pt" ? "pt" : "en"].sub}
+                </span>
               </button>
             )}
           </div>

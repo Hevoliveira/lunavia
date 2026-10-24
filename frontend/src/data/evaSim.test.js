@@ -16,10 +16,10 @@ const run = (w, input, secs, dt = 1 / 60) => {
 };
 const dist2 = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 
-describe("phase 1: one EVA site", () => {
-  test("only the Sea of Tranquility has an EVA; the other three missions keep their flow", () => {
-    expect(EVA_SITES).toEqual(["tranquillitatis"]);
-    OFFICIAL_MISSION_IDS.forEach((id) => expect(evaAvailableAt(id)).toBe(id === "tranquillitatis"));
+describe("the EVA sites", () => {
+  test("every official destination has its EVA (the expeditions: data/evaMissions)", () => {
+    expect(EVA_SITES).toEqual(["tranquillitatis", "hadley", "tycho", "far-side"]);
+    OFFICIAL_MISSION_IDS.forEach((id) => expect(evaAvailableAt(id)).toBe(true));
   });
 });
 

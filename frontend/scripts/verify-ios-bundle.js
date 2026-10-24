@@ -154,6 +154,18 @@ const FEATURES = [
   ["EVA close range: the LM's ribbed footpads (quality close)", "pads-close"],
   ["EVA close range: the plaque on the ladder strut", "HERE THE LUNAVIA CREW"],
   ["EVA close range: the equipment box stencil", "LUNAVIA  EQ-2"],
+  ["Four EVA expeditions: Hadley's geological expedition", "GEOLOGICAL EXPEDITION"],
+  ["Four EVA expeditions: Hadley's seismometer", "DEPLOY THE SEISMOMETER"],
+  ["Four EVA expeditions: Mons Hadley photo subject", "MONS-HADLEY"],
+  ["Four EVA expeditions: Tycho's impact geology investigation", "IMPACT GEOLOGY INVESTIGATION"],
+  ["Four EVA expeditions: Tycho's gnomon", "PLACE THE GNOMON"],
+  ["Four EVA expeditions: the far side's scientific expedition", "FAR-SIDE SCIENTIFIC EXPEDITION"],
+  ["Four EVA expeditions: the far side's radio receiver interface", "LF RADIO RECEIVER"],
+  ["Four EVA expeditions: CONFIRM DATA on the far side", "CONFIRM THE SCIENCE DATA"],
+  ["Four EVA expeditions: EARTH LINK UNAVAILABLE on the far-side EVA", "eva-earth-link"],
+  ["Four EVA expeditions: onboard-computer procedures (far side)", "eva.fs.authorized"],
+  ["Four EVA expeditions in Portuguese", "COLETAR DUAS AMOSTRAS"],
+  ["Four EVA expeditions: achievements", "VALLEY_GEOLOGIST"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
