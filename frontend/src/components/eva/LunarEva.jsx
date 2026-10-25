@@ -15,10 +15,11 @@ import { getSite } from "@/data/landingSites";
 import { buildTerrain } from "@/data/terrainMesh";
 import { LM } from "@/data/touchdownFx";
 import { SAMPLE_TIME, createWalker, egressAt, egressLength, evaWorld, ingressAt, ingressLength, ladderPoints, stepWalker } from "@/data/evaSim";
-import { DATA_TIME, DEPLOY_TIME, SURVEY_TIME, actionAt, cleanProgressFor, currentTarget, evaMission, evaMissionText, nextObjective, objectiveIds, photoCheckFor, planEva, routeBetween } from "@/data/evaMissions";
+import { DATA_TIME, DEPLOY_TIME, RETRIEVE_TIME, SURVEY_TIME, actionAt, cleanProgressFor, currentTarget, evaMission, evaMissionText, nextObjective, objectiveIds, photoCheckFor, planEva, routeBetween } from "@/data/evaMissions";
 import { chestCamera, consoleSpec, deploySpec, inspectSpec, photoSpec, sampleSpec, sequenceSpec, solveRig, toLocal, toWorld, walkSpec } from "@/data/astronautRig";
 import { Instrument, RING, SampleStones, ScienceMarkers, stoneLift } from "./EvaScience";
 import { DataPanel, InfoCard } from "./EvaPanels";
+import { CarriedPart, SiteObjects } from "@/components/legacy/SurveyorModel";
 
 /**
  * LUNAR EVA — the four expeditions (data/evaMissions): one EVA, one configuration per destination.
@@ -56,12 +57,13 @@ const smooth = (x) => {
 const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /* ---- the scene's mutable state (the director owns it; the HUD reads and writes input) ---------- */
-function makeSim({ site, pose, resume }) {
+function makeSim({ site, pose, resume, mission = null }) {
   const terrain = buildTerrain(site);
   const ground = (x, z) => terrain.lookup(x, z);
-  const cfg = evaMission(site.id);
+  // the destination's own expedition, or one handed in (APOLLO LEGACY: data/apolloLegacy)
+  const cfg = mission || evaMission(site.id);
   const world = evaWorld({ site, pose, ground, area: cfg.area });
-  const plan = planEva(world);
+  const plan = planEva(world, cfg);
   const lm = world.lm;
   const P = ladderPoints(lm);
   const progress = cleanProgressFor(cfg, resume && resume.progress);
@@ -87,6 +89,9 @@ function makeSim({ site, pose, resume }) {
     samples: (resume && Array.isArray(resume.samples) ? resume.samples : []).filter((x) => x && sampleIds.includes(x.id)).slice(0, 4),
     photos: (resume && Array.isArray(resume.photos) ? resume.photos : []).slice(0, 8),
     instruments: (resume && Array.isArray(resume.instruments) ? resume.instruments : []).slice(0, 1),
+    // a part retrieved from a historical object (Apollo 12: Surveyor 3's television camera)
+    retrieved: cfg.retrieve && progress.retrieve ? [{ id: cfg.retrieve.id }] : [],
+    retrieveAct: null,
     sampleObjective: sampleObj ? sampleObj.id : null,
     instrumentObjective: instObj ? instObj.id : null,
     sampleObjectiveDone: !!(sampleObj && progress[sampleObj.id]),
@@ -381,12 +386,15 @@ function Director({ sim, astroRef, camState, markerRefs, callbacks }) {
         dataReady: S.dataReadyAt != null && S.clock >= S.dataReadyAt,
         deployU: S.deploy ? S.deploy.t / DEPLOY_TIME : null,
         surveyU: S.survey ? S.survey.t / SURVEY_TIME : null,
+        retrieved: S.retrieved.map((x) => x.id),
+        retrieveU: S.retrieveAct ? S.retrieveAct.t / RETRIEVE_TIME : null,
+        mission: S.cfg.id,
       };
-      if (!window.__lvEvaRoute) window.__lvEvaRoute = (x, z) => routeBetween(S.world, [S.walker.x, S.walker.z], [x, z]); // validation tooling
+      if (!window.__lvEvaRoute) window.__lvEvaRoute = (x, z) => routeBetween(S.world, [S.walker.x, S.walker.z], [x, z], S.cfg); // validation tooling
       if (!window.__lvEvaPlan || window.__lvEvaPlan.site !== S.site.id) {
         const P = S.plan;
         const pt = (t) => t && { x: t.x, y: t.y, z: t.z, fallback: !!t.fallback, formation: t.formation || null, route: t.route ? t.route.points : null };
-        window.__lvEvaPlan = { site: S.site.id, lm: S.lm.axis, board: [S.lm.board[0], S.lm.board[2]], samples: P.samples.map((t) => ({ id: t.id, ...pt(t) })), survey: pt(P.survey), look: P.survey ? P.survey.look : null, photo: { ...pt(P.photo), subject: P.photo.subject }, instrument: P.instrument ? { ...pt(P.instrument), kind: P.instrument.kind } : null, fallbacks: P.fallbacks };
+        window.__lvEvaPlan = { site: S.site.id, lm: S.lm.axis, board: [S.lm.board[0], S.lm.board[2]], samples: P.samples.map((t) => ({ id: t.id, ...pt(t) })), survey: pt(P.survey), look: P.survey ? P.survey.look : null, photo: { ...pt(P.photo), subject: P.photo.subject }, instrument: P.instrument ? { ...pt(P.instrument), kind: P.instrument.kind } : null, retrieve: P.retrieve ? { ...pt(P.retrieve), id: P.retrieve.id, part: P.retrieve.part } : null, objects: (S.site.objects || []).map((o) => ({ id: o.id, x: o.x, z: o.z })), fallbacks: P.fallbacks };
       }
     }
   });
@@ -508,6 +516,7 @@ function advance(S, dt, now, cb) {
         else if (A.then === "survey") startSurvey(S);
         else if (A.then === "deploy") startDeploy(S);
         else if (A.then === "console") startConsole(S);
+        else if (A.then === "retrieve") startRetrieve(S);
         else if (A.then === "ingress") startIngress(S, cb);
         S.approach = null;
       }
@@ -521,7 +530,7 @@ function advance(S, dt, now, cb) {
     // the stick turns the body; the camera's on the chest
     w.heading = wrapPi(w.heading - stick.x * 0.9 * dt);
     input = { x: 0, y: 0, camYaw: S.camYaw, locked: true };
-  } else if (S.mode === "sample" || S.mode === "survey" || S.mode === "deploy" || S.mode === "console") {
+  } else if (S.mode === "sample" || S.mode === "survey" || S.mode === "deploy" || S.mode === "console" || S.mode === "retrieve") {
     input = { x: 0, y: 0, camYaw: S.camYaw, locked: true };
   }
   if (S.mode === "ingress") return;
@@ -587,6 +596,20 @@ function advance(S, dt, now, cb) {
       S.dataReadyAt = S.clock + DATA_TIME;
       S.events.push("instrument");
       completeObjective(S, S.instrumentObjective, cb, { delay: 6 });
+    }
+  } else if (S.mode === "retrieve") {
+    // the reach to the part, the grip, and the part freed and carried away in the glove
+    const R = S.retrieveAct;
+    R.t += dt;
+    const u = R.t / RETRIEVE_TIME;
+    spec = inspectSpec(Math.min(1, u), toLocal(root, w.heading, S.plan.retrieve.part), now);
+    if (u >= 0.52) R.grabbed = true;
+    if (u >= 1) {
+      S.retrieveAct = null;
+      S.mode = "explore";
+      S.retrieved = [{ id: S.plan.retrieve.id }];
+      S.events.push("retrieved");
+      completeObjective(S, "retrieve", cb, { delay: 6 });
     }
   } else if (S.mode === "console") {
     spec = consoleSpec(now);
@@ -672,6 +695,11 @@ function startDeploy(S) {
   w.speed = 0;
   S.deploy = { t: 0, heading, pack: null };
 }
+function startRetrieve(S) {
+  S.mode = "retrieve";
+  S.walker.speed = 0;
+  S.retrieveAct = { t: 0, grabbed: false };
+}
 function startConsole(S) {
   S.mode = "console";
   S.walker.speed = 0;
@@ -708,6 +736,7 @@ function keepOut(S, x, y, z, out) {
   // the legs: each strut runs from its outrigger (about 2.3 m out, 3.2 m up) down to its footpad;
   // keep the lens well clear of it so a strut never fills the frame
   for (const c of S.world.cols.capsules) {
+    if (c.kind !== "leg") continue; // a historical object's legs: inside its own volume below
     const vx = c.bx - c.ax;
     const vz = c.bz - c.az;
     const u = clamp(((x - c.ax) * vx + (z - c.az) * vz) / (vx * vx + vz * vz), 0, 1);
@@ -716,6 +745,11 @@ function keepOut(S, x, y, z, out) {
   }
   for (const c of S.world.cols.circles) {
     if (c.kind === "lm") continue;
+    if (c.kind === "object") {
+      // a historical object (Surveyor 3, about 3 m tall): a column round its frame and mast
+      out[n++] = y < g + 3.4 ? c.r + 0.9 - Math.hypot(x - c.x, z - c.z) : -1;
+      continue;
+    }
     out[n++] = y < g + (c.kind === "pad" ? 0.6 : c.r * 1.25 + 0.3) ? c.r + 0.3 - Math.hypot(x - c.x, z - c.z) : -1;
   }
   return n;
@@ -827,7 +861,7 @@ function updateCamera(S, camera, dt, camPos, camLook, camState, size) {
     }
     // ... the swing for the sample and the settle behind the walk only turn it towards clear sides ...
     let aim = null;
-    const busy = S.mode === "sample" || S.mode === "survey" || S.mode === "deploy" || S.mode === "console";
+    const busy = S.mode === "sample" || S.mode === "survey" || S.mode === "deploy" || S.mode === "console" || S.mode === "retrieve";
     if (busy) aim = wrapPi(w.heading + 1.25);
     else if (S.clock - S.lookAt > 2.2 && Math.abs(w.speed) > 0.35) aim = w.heading;
     if (aim !== null) {
@@ -872,7 +906,7 @@ function updateCamera(S, camera, dt, camPos, camLook, camState, size) {
   }
   _c.set(C[0] * S_PER_M, C[1] * S_PER_M, C[2] * S_PER_M);
   _t.set(L[0] * S_PER_M, L[1] * S_PER_M, L[2] * S_PER_M);
-  const follow = S.mode === "explore" || S.mode === "approach" || S.mode === "sample" || S.mode === "survey" || S.mode === "deploy" || S.mode === "console";
+  const follow = S.mode === "explore" || S.mode === "approach" || S.mode === "sample" || S.mode === "survey" || S.mode === "deploy" || S.mode === "console" || S.mode === "retrieve";
   if (!camPos.current || S.mode === "photo") {
     // the first frame, and the chest camera (it is where the body is)
     camPos.current = camPos.current || new THREE.Vector3();
@@ -1070,16 +1104,16 @@ function LookPad({ sim }) {
 }
 
 /* ---- the EVA ---------------------------------------------------------------------------------------- */
-const KIND_COLOR = { sample: RING.sample, photo: RING.photo, board: RING.board, survey: RING.survey, instrument: RING.instrument, data: RING.data };
+const KIND_COLOR = { sample: RING.sample, photo: RING.photo, board: RING.board, survey: RING.survey, instrument: RING.instrument, data: RING.data, retrieve: RING.retrieve };
 
-export default function LunarEva({ siteId = "tranquillitatis", pose = null, audio = null, lang = "en", resume = null, onCheckpoint = null, onComplete = null, onAbort = null }) {
+export default function LunarEva({ siteId = "tranquillitatis", mission = null, pose = null, audio = null, lang = "en", resume = null, onCheckpoint = null, onComplete = null, onAbort = null }) {
   const T = evaText(lang);
   const site = useMemo(() => getSite(siteId), [siteId]);
   const p = pose || { x: 0, padY: site.contactGround ? site.scale.y(site.contactGround(0)) : 0, tilt: 0, pitch: 0, comp: [0, 0, 0, 0], probe: [0, 0, 0, 0] };
   const base = useMemo(() => [p.x, p.padY + LM.foot, 0], [p.x, p.padY]);
   const fx = useMemo(() => ({ thrust: 0, comp: (p.comp || [0, 0, 0, 0]).slice(), probe: (p.probe || [0, 0, 0, 0]).slice() }), [p.comp, p.probe]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const sim = useMemo(() => makeSim({ site, pose: p, resume }), [site]);
+  const sim = useMemo(() => makeSim({ site, pose: p, resume, mission }), [site]);
   const cfg = sim.cfg;
   const MT = evaMissionText(cfg, lang);
   const legacy = cfg.id === "tranquillitatis"; // phase 1's own wording, unchanged
@@ -1111,6 +1145,7 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
   const evaState = () => {
     const e = { progress: { ...sim.progress }, samples: sim.samples.slice(), photos: sim.photos.slice(), completed: sim.mode === "done", distance: +sim.distance.toFixed(1) };
     if (cfg.instrument) e.instruments = sim.instruments.slice();
+    if (cfg.retrieve) e.retrieved = sim.retrieved.slice();
     return e;
   };
   cbs.current.say = (id, opts) => audio && audio.say(id, opts);
@@ -1152,6 +1187,8 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
         samples: sim.samples.map((x) => x.id),
         target: targetInfo(sim),
         pose: sim.pose,
+        retrieveU: sim.retrieveAct ? sim.retrieveAct.t / RETRIEVE_TIME : null,
+        carried: sim.retrieved.length > 0 || !!(sim.retrieveAct && sim.retrieveAct.grabbed),
       });
       while (sim.events.length) {
         const e = sim.events.shift();
@@ -1169,6 +1206,9 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
         } else if (e === "instrument") {
           const [title, body] = MT.instrument;
           setCard({ kind: "instrument", tag: `${title} · ${T.instrumentDone}`, title, body, color: RING.instrument, at: Date.now() });
+        } else if (e === "retrieved") {
+          const [title, body] = MT.retrieve || ["", ""];
+          setCard({ kind: "retrieve", tag: MT.objectives.retrieve, title, body, color: RING.retrieve, at: Date.now() });
         } else if (e === "console") setCard(null);
         else if (e === "hatchClosed") {
           setCard(null);
@@ -1259,6 +1299,10 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
       const I = P.instrument;
       sim.mode = "approach";
       sim.approach = { x: I.x, z: I.z, standoff: 0.75, face: null, then: "console", at: sim.clock };
+    } else if (what.kind === "retrieve") {
+      const R = P.retrieve;
+      sim.mode = "approach";
+      sim.approach = { x: R.x, z: R.z, standoff: 0.05, face: Math.atan2(R.part[0] - R.x, R.part[2] - R.z), then: "retrieve", at: sim.clock };
     } else if (what.kind === "board") {
       if (cfg.objectives.some((o) => !sim.progress[o.id])) setConfirmBoard(true);
       else board();
@@ -1348,9 +1392,10 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
     if (tKind === "survey") return T.surveyLabel;
     if (tKind === "instrument") return T.deployLabel;
     if (tKind === "data") return T.instrumentLabel;
+    if (tKind === "retrieve") return MT.retrieveLabel || MT.retrieveAct || T.ladderLabel;
     return T.ladderLabel;
   };
-  const actLabel = (k) => ({ sample: T.collect, survey: T.inspect, instrument: T.deploy, data: T.checkInstrument, board: T.board })[k] || T.board;
+  const actLabel = (k) => ({ sample: T.collect, survey: T.inspect, instrument: T.deploy, data: T.checkInstrument, retrieve: MT.retrieveAct, board: T.board })[k] || T.board;
   const nSamples = cfg.samples.length;
   const ready = hud.interact && hud.interact === tKind;
 
@@ -1370,6 +1415,7 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
             <SiteSun site={site} box={24} focus={() => (astroRef.current ? [astroRef.current.pos[0] * S_PER_M, astroRef.current.pos[1] * S_PER_M, astroRef.current.pos[2] * S_PER_M] : base)} />
             <SiteTerrain site={site} near={near} />
             <SiteRocks site={site} />
+            <SiteObjects site={site} retrieved={hud.carried ? [cfg.retrieve.id] : []} />
             <group position={base} rotation={[(p.pitch || 0) * DEG, 0, -(p.tilt || 0) * DEG]}>
               <LanderModel scale={LM.scale} fx={fx} quality="close" />
               <group scale={LM.scale}>
@@ -1383,6 +1429,7 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
               <SampleStones sim={sim} />
               <ScienceMarkers sim={sim} />
               <Instrument sim={sim} />
+              {cfg.retrieve && <CarriedPart sim={sim} />}
               <Footprints sim={sim} />
               <Dust sim={sim} />
             </group>
@@ -1528,11 +1575,11 @@ export default function LunarEva({ siteId = "tranquillitatis", pose = null, audi
       {flash > 0 && <div key={flash} className="absolute inset-0 z-[19] bg-white pointer-events-none eva-flash" />}
 
       {/* collecting, surveying, deploying */}
-      {(hud.mode === "sample" || hud.mode === "survey" || hud.mode === "deploy") && (
-        <div className="absolute bottom-[calc(var(--sab)+1.5rem)] left-1/2 -translate-x-1/2 z-30 pointer-events-none font-mono text-[10px] tracking-[0.3em] text-white bg-black/50 px-3 py-1.5 whitespace-nowrap" data-testid={hud.mode === "sample" ? "eva-collecting" : hud.mode === "survey" ? "eva-surveying" : "eva-deploying"}>
-          {hud.mode === "sample" ? T.collecting : hud.mode === "survey" ? T.surveying : T.deploying}{" "}
+      {(hud.mode === "sample" || hud.mode === "survey" || hud.mode === "deploy" || hud.mode === "retrieve") && (
+        <div className="absolute bottom-[calc(var(--sab)+1.5rem)] left-1/2 -translate-x-1/2 z-30 pointer-events-none font-mono text-[10px] tracking-[0.3em] text-white bg-black/50 px-3 py-1.5 whitespace-nowrap" data-testid={{ sample: "eva-collecting", survey: "eva-surveying", deploy: "eva-deploying", retrieve: "eva-retrieving" }[hud.mode]}>
+          {{ sample: T.collecting, survey: T.surveying, deploy: T.deploying, retrieve: MT.retrieving }[hud.mode]}{" "}
           <span className="inline-block w-16 h-1 bg-white/20 align-middle ml-2">
-            <span className="block h-1" style={{ width: `${Math.min(100, ((hud.mode === "sample" ? hud.sampleU : hud.mode === "survey" ? hud.surveyU : hud.deployU) || 0) * 100)}%`, background: hud.mode === "sample" ? RING.sample : hud.mode === "survey" ? RING.survey : RING.instrument }} />
+            <span className="block h-1" style={{ width: `${Math.min(100, (({ sample: hud.sampleU, survey: hud.surveyU, deploy: hud.deployU, retrieve: hud.retrieveU })[hud.mode] || 0) * 100)}%`, background: { sample: RING.sample, survey: RING.survey, deploy: RING.instrument, retrieve: RING.retrieve }[hud.mode] }} />
           </span>
         </div>
       )}

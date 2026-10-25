@@ -1,30 +1,30 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 5273da7**.
+This folder installs **BUILD cabe279**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 5273da7 · 2026-10-24 23:53 UTC**
+> **LUNAVIA iOS · BUILD cabe279 · 2026-10-25 02:18 UTC**
 
-It is the **interactive lunar module cabin**: after a safe landing, at all four destinations and
-every difficulty, you can step inside the LM you just landed (PT: ENTRAR NA CABINE). It is
-optional: CONTINUE MISSION, BEGIN EVA and the guided or manual ascent work exactly as before.
-- **ENTER CABIN** on the landing results and on the ascent preparation (after the EVA it reads
-  **RETURN TO CABIN**).
-- Inside: five places to look from — **WINDOW, PANELS, COMMS, HATCH, AFT · SUITS** — the view
-  glides between them; drag to look around (limited, no walking, no spinning).
-- Through the triangular windows you see the real landing site from where the LM came to rest:
-  Tranquility's plain, Hadley's mountain wall, Tycho's boulders, Silent Horizon's far-side hills.
-- Tap the round markers on the panels: LANDING STATUS (your touchdown speed and fuel), MISSION
-  CHECKLIST, ASCENT READINESS, COMMUNICATIONS (Houston, or EARTH LINK UNAVAILABLE on the far
-  side), FORWARD HATCH, EVA PREPARATION, and the WINDOW (the site, the Sun, the Earth).
-- **EVA PREPARATION:** SUIT CHECK → HATCH READY → EVA SYSTEMS GO, then BEGIN EVA (out through the
-  hatch, as before). **ASCENT PREPARATION:** ASCENT SYSTEMS CHECK → CABIN SECURE → READY FOR
-  ASCENT, then CONTINUE TO ASCENT (the usual ascent preparation, its checks already done).
-- Closing the app inside the cabin brings you back into the cabin (LUNAR SURFACE · LM CABIN).
-The score, medals and achievements are unchanged; the rest of the game is as in BUILD b6f976d.
+It is **APOLLO LEGACY**: a new entry in the game menu (between MISSIONS and TRAINING) with three
+historically inspired lunar missions, flown on LUNAVIA's own landing and EVA. No unlocking.
+- **APOLLO 11 · 1969 · Sea of Tranquility (Eagle):** the final descent from about 160 m, first
+  steps, the contingency sample, a photograph of Eagle, the laser ranging retroreflector.
+- **APOLLO 12 · 1969 · Ocean of Storms (Intrepid):** a new site built for it, with Surveyor 3 on
+  the slope of Surveyor crater about 150 m from the target. The landing's precision is graded
+  (PINPOINT … WIDE; a safe landing anywhere continues); walk to Surveyor 3, inspect and photograph
+  it, retrieve its television camera and carry it back.
+- **APOLLO 15 · 1971 · Hadley–Apennine (Falcon):** the longest walk in LUNAVIA, on foot (no rover
+  yet): a geology station on Hadley Rille's rim, two different samples, Hadley Delta on camera,
+  the seismometer.
+- Each has a historical briefing (crew, lunar module, history, NASA sources), a touchdown card and
+  a results screen. Radio calls are dramatized with synthetic voices (never archival audio).
+- Apollo Legacy keeps its own checkpoint (RESUME on the card) and its own results (COMPLETED
+  badge). The campaign's mission save, score, medals, achievements and records are untouched.
+The rest of the game is as in BUILD 5273da7.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **5273da7** is the previous release: the LM cabin, but no APOLLO LEGACY in the game menu;
 - **b6f976d** is the previous release: the manual lunar ascent, but no ENTER CABIN (no lunar
   module interior);
 - **6b2b32a** is the previous release: the four EVA expeditions, but only the guided ascent (no
@@ -151,6 +151,39 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Lunar EVA — first steps on the Moon (Sea of Tranquility): BEGIN EVA on the ascent preparation (optional), the astronaut out of the hatch and down the ladder, walking in lunar gravity, FIRST STEPS ON THE MOON, COLLECT LUNAR SAMPLE, DOCUMENT THE LANDING SITE with the chest camera, back up the ladder and the hatch closed, EVA checkpoints (LUNAR EVA, LUNAR EVA COMPLETE), the FIRST STEPS achievement, English and Portuguese | — | ed6e7ec, 672b8ef |
 | Lunar EVA close-range visuals: a detailed astronaut (LEVA helmet, a gold visor reflecting the surroundings, chest unit and camera, ribbed hoses, backpack, convolutes, gauntlets, overshoes with treads), a living idle, a grounded walk (heel strike, less float) and contact shadows; the LM built for close viewing in the EVA (crinkled foil blankets, painted panels with seams and rivets, channel ladder with flat treads, ribbed footpads, strut details, hatch handle and hinges, plaque, equipment boxes, antenna feeds); the ground round the astronaut and the LM (regolith detail, pebbles, the engine-swept ground, footpad occlusion, treaded footprints) | — | 592b8c1 |
 | Interactive lunar module cabin: ENTER CABIN after the landing and on the ascent preparation (RETURN TO CABIN after the EVA), five seated stations with a limited drag-to-look, the real landing site through the exterior's two windows at every destination, panel hotspots read from the mission, EVA and ascent preparation checklists, BEGIN EVA / CONTINUE TO ASCENT from inside, resume in the cabin, crew and CAPCOM calls (Houston silent on the far side) | — | 5273da7 |
+| APOLLO LEGACY (historical missions, separate from the campaign): Apollo 11 (the final descent at the Sea of Tranquility, first steps, the contingency sample, a photograph of Eagle, the laser retroreflector), Apollo 12 (its own Ocean of Storms site with Surveyor 3 about 150 m from the target; a precision landing; walk to Surveyor 3, inspect, photograph and retrieve its TV camera), Apollo 15 (Hadley–Apennine on foot: a geology station on Hadley Rille's rim, two different samples, Hadley Delta on camera, a seismometer); historical briefings with sources, dramatized synthetic radio calls, its own save and results | — | cabe279 |
+
+## Try APOLLO LEGACY on the iPhone
+
+Not yet tried on a physical iPhone; the checks below were run in a desktop browser.
+1. Open the game menu (START MISSIONS on the title screen): **APOLLO LEGACY** sits between
+   MISSIONS and TRAINING (PT: MISSÕES HISTÓRICAS · 11 · 12 · 15).
+2. Three cards: **APOLLO 11**, **APOLLO 12**, **APOLLO 15**, each with its year, destination,
+   lunar module, science and COMPLETED / NOT YET COMPLETED. No unlocking: START MISSION on any.
+3. The briefing shows the crew, the LM, the history, the sources and the note that the radio
+   calls are dramatized with synthetic voices. Pick CADET, ASTRONAUT or COMMANDER and press
+   **BEGIN DESCENT**.
+4. **Apollo 11:** you take over at about 160 m on the final approach, still moving over the
+   boulder field: land on the primary zone. TOUCHDOWN CONFIRMED, then **PREPARE EVA**: first
+   steps, the contingency sample by the LM, a photograph of Eagle, the laser retroreflector, back
+   up the ladder.
+5. **Apollo 12:** a new site, the Ocean of Storms. Land on the target: the touchdown panel shows
+   your precision (PINPOINT, PRECISE, ACCEPTABLE or WIDE) and the distance to Surveyor 3. A safe
+   landing anywhere continues. On the surface follow the marker about 150 m to Surveyor 3, inspect
+   it, photograph it, press **RETRIEVE CAMERA** (the astronaut frees the camera and carries it in
+   one glove) and walk back to the LM.
+6. **Apollo 15:** the full descent into Hadley–Apennine, then the longest walk in LUNAVIA: the
+   rim of Hadley Rille, a mare basalt at the rille edge, highland material at the foot of the
+   Apennine front, Hadley Delta on camera, the seismometer. LUNAVIA has no rover yet: on foot.
+7. The result screen lists what you did; the card then shows COMPLETED. Nothing changes in the
+   campaign's score, medals, achievements or records.
+8. Close LUNAVIA during an Apollo Legacy EVA and open it again: the game menu still offers your
+   campaign's RESUME MISSION (if you had one) untouched; in APOLLO LEGACY the card offers
+   **RESUME** at the foot of the ladder with the objectives already done kept. Starting another
+   historical mission while one is saved asks first.
+9. **What to look at:** Surveyor 3 up close (the frame, legs and footpads, solar panel and
+   antenna, the camera on its mount, the tan paint), the long walk's frame rate, and how the
+   Ocean of Storms reads during the descent (Surveyor crater and the probe on its slope).
 
 ## Try the LM cabin on the iPhone
 

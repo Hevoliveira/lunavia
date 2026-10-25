@@ -49,8 +49,11 @@ describe("startup screen, then the expedition, then the game menu", () => {
     const start = between(mission, "const handleStartMissions", "const handleTraining");
     expect(start).toMatch(/setState\(STATES\.MENU\)/);
     expect(start).not.toMatch(/BRIEFING|LAUNCH|MANUAL_DESCENT|resetMission/);
-    expect(mission).toMatch(/<ModeMenu onMissions=\{\(\) => setState\(STATES\.SELECT\)\} onTraining=\{handleTraining\} saved=\{resumable\} lang=\{lang\} onResume=\{handleResume\} \/>/);
+    expect(mission).toMatch(/<ModeMenu onMissions=\{\(\) => setState\(STATES\.SELECT\)\} onTraining=\{handleTraining\} onLegacy=\{handleLegacy\} saved=\{resumable\} lang=\{lang\} onResume=\{handleResume\} \/>/);
     expect(between(mission, "const handleTraining", "};")).toMatch(/navigate\("\/training"\)/);
+    // APOLLO LEGACY: its own page (its own save; the campaign's state is not touched on the way)
+    expect(between(mission, "const handleLegacy", "};")).toMatch(/navigate\("\/legacy"\)/);
+    expect(between(mission, "const handleLegacy", "};")).not.toMatch(/resetMission|persist|setState/);
     const menu = read("components/missions/ModeMenu.jsx");
     expect(menu).toMatch(/"mode-missions"[^\n]*"MISSIONS"/);
     expect(menu).toMatch(/"mode-training"[^\n]*"TRAINING"/);
@@ -209,8 +212,10 @@ describe("mission scoring: measured at the end of each phase, shown only after t
   });
   test("the approved menus stay as they were: MISSIONS / TRAINING, all four destinations open", () => {
     const menu = read("components/missions/ModeMenu.jsx");
-    // MISSIONS and TRAINING, and RESUME MISSION only while a mission is saved
-    expect((menu.match(/choice\("/g) || []).length).toBe(3);
+    // MISSIONS, APOLLO LEGACY and TRAINING, and RESUME MISSION only while a mission is saved
+    expect((menu.match(/choice\("/g) || []).length).toBe(4);
+    expect(menu).toMatch(/\{onLegacy && choice\("mode-legacy"/);
+    expect(read("App.js")).toMatch(/<Route path="\/legacy" element=\{<ApolloLegacy \/>\} \/>/);
     expect(menu).toMatch(/\{saved && choice\("mode-resume"/);
     const select = read("components/missions/MissionSelect.jsx");
     expect(select).toMatch(/to="\/records"/);

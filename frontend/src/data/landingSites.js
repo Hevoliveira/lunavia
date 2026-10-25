@@ -571,6 +571,8 @@ export function compileSite(def) {
     scale,
     primary: zones.find((z) => z.primary),
     features: feats,
+    // fixed historical objects (Apollo Legacy: Surveyor 3), standing on the ground
+    objects: (def.objects || []).map((o) => ({ ...o, y: height(o.x, o.z) })),
   };
 }
 
@@ -897,7 +899,78 @@ const FAR_SIDE = {
   ],
 };
 
+
+/*
+ * APOLLO LEGACY ONLY (never in MISSIONS or TRAINING): the Ocean of Storms round Surveyor 3, a
+ * focused, local-scale reconstruction for Apollo 12's precision landing. The landing target is
+ * about 150 m west of Surveyor 3, which stands on the inner west slope of Surveyor crater (as
+ * NASA's Apollo 12 accounts describe: the LM Intrepid landed some 160–180 m from the probe). Crater
+ * names (Surveyor, Head, Bench, Sharp) are from NASA's Apollo 12 traverse maps; their sizes and
+ * positions here are approximate, not surveyed. The fine terrain patch is enlarged (grid) so the
+ * whole walk to the probe is on 1 m ground.
+ */
+const OCEANUS = {
+  id: "oceanus",
+  legacy: true,
+  name: "OCEAN OF STORMS",
+  short: "OCEANUS",
+  kind: "MARE PLAIN · SURVEYOR CRATER",
+  ref: "OCEANUS PROCELLARUM · APOLLO 12",
+  coords: "3.01°S 23.42°W",
+  level: 2,
+  rating: "HISTORICAL",
+  blurb: "A dark mare plain west of Surveyor crater. Surveyor 3 has stood on the crater's inner slope since April 1967; the landing target is on the plain about 150 m west of it.",
+  challenge: "Pinpoint landing: touch down on the target, short of Surveyor crater",
+  briefing: "Precision landing. Fly to the target west of Surveyor crater; do not overshoot into the crater.",
+  terrainText: "Mare plain · Surveyor crater ahead · scattered craters",
+  approach: { dir: 1, offset: 0.26, text: "FROM THE WEST, TOWARDS SURVEYOR CRATER" },
+  sun: { el: 10, az: 8 },
+  earth: { el: 66, az: 100 },
+  palette: { base: "#827c72", dark: "#625e57", bright: "#a39d91", rock: "#77726a", ray: 0 },
+  seed: 53,
+  range: [-260, 260],
+  grid: { fineX: 190, fineZ: 46 },
+  zones: [
+    { x: 0, r: 6, primary: true, label: "TARGET" },
+    { x: -40, r: 4.5, label: "ALT LZ WEST" },
+    { x: 52, r: 4, label: "ALT LZ EAST" },
+  ],
+  levels: [{ x: 0, r: 12, edge: 16, h: 0 }],
+  objects: [{ id: "surveyor3", kind: "surveyor", x: 150, z: -18, heading: 150, label: "SURVEYOR 3" }],
+  terrain: [
+    // Surveyor crater: the probe on its inner west slope; overshoot and you are on its wall
+    { type: "crater", x: 172, z: -14, r: 44, d: 6, rim: 0.9, soft: 0.6, label: "SURVEYOR CRATER" },
+    // hazards near the track
+    { type: "crater", x: -26, z: 0.5, r: 5.5, d: 1.4, rim: 0.32, label: "CRATER" },
+    { type: "crater", x: 30, z: -1, r: 3.2, d: 0.7, rim: 0.18, label: "ROUGH TERRAIN" },
+    { type: "crater", x: 88, z: 1.5, r: 6, d: 1.4, rim: 0.3, label: "CRATER" },
+    // named craters off the track (NASA traverse-map names; positions approximate)
+    { type: "crater", x: -62, z: 44, r: 17, d: 3.2, rim: 0.7, label: "HEAD CRATER" },
+    { type: "crater", x: -128, z: 30, r: 14, d: 2.6, rim: 0.6, label: "BENCH CRATER" },
+    { type: "crater", x: -36, z: -52, r: 6, d: 1.5, rim: 0.35, label: "SHARP CRATER" },
+    {
+      type: "craterField", n: 60, x: [-420, 420], z: [-300, 300], r: [2.5, 22], depth: [0.03, 0.07], rim: 0.15, soft: 0.9,
+      zMin: 10, keepOut: [{ x: 172, z: -14, r: 50 }, { x: -62, z: 44, r: 18 }, { x: -128, z: 30, r: 15 }, { x: 100, z: -10, r: 30 }],
+    },
+    { type: "noise", amp: 0.45, scale: 55, oct: 2, seed: 8, corridor: 14 },
+  ],
+  rockFields: [
+    // under the approach, short of the target (the walk east to Surveyor 3 stays clear)
+    { x: -14, z: 0, r: 3.6, n: 7, h: [1.0, 1.8], label: "BOULDERS" },
+    { x: 62, z: 16, r: 5, n: 6, h: [1.0, 1.7], label: "BOULDERS" },
+    { x: -62, z: 44, r: 22, n: 14, h: [1.0, 2.0], label: "HEAD CRATER BLOCKS" },
+  ],
+  debris: { n: 1300, x: [-130, 200], z: [-46, 46], h: [0.06, 0.26] },
+  horizon: [
+    { az: 40, el: 2.4, w: 90, kind: "ridge" },
+    { az: -120, el: 2.8, w: 80, kind: "ridge" },
+  ],
+};
+
 export const SITE_DEFS = [TRANQUILLITATIS, HADLEY, TYCHO, FAR_SIDE];
+/** Apollo Legacy's own historical scenes (never offered by MISSIONS or TRAINING). */
+export const LEGACY_SITE_DEFS = [OCEANUS];
+export const LEGACY_SITE_IDS = LEGACY_SITE_DEFS.map((s) => s.id);
 export const SITE_IDS = SITE_DEFS.map((s) => s.id);
 /** The full mission always lands here (its orbit cinematic, captions and PDI are Tranquillity's). */
 export const MISSION_SITE_ID = "tranquillitatis";
@@ -905,7 +978,7 @@ export const MISSION_SITE_ID = "tranquillitatis";
 const cache = new Map();
 /** The compiled site for an id (cached; unknown ids fall back to the mission's site). */
 export function getSite(id = MISSION_SITE_ID) {
-  const key = SITE_IDS.includes(id) ? id : MISSION_SITE_ID;
-  if (!cache.has(key)) cache.set(key, compileSite(SITE_DEFS.find((s) => s.id === key)));
+  const key = SITE_IDS.includes(id) || LEGACY_SITE_IDS.includes(id) ? id : MISSION_SITE_ID;
+  if (!cache.has(key)) cache.set(key, compileSite([...SITE_DEFS, ...LEGACY_SITE_DEFS].find((s) => s.id === key)));
   return cache.get(key);
 }

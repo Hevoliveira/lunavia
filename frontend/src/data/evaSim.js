@@ -14,6 +14,7 @@
  * seconds. The scene draws 0.5 units per metre near the ground (touchdownFx).
  */
 import { WORLD_X, LM } from "./touchdownFx";
+import { surveyorColliders } from "./surveyor";
 import { GROUND, PAD_H, PAD_R, PORCH_RAILS, legFrames } from "./lmDesign";
 
 const DEG = Math.PI / 180;
@@ -145,6 +146,13 @@ export function colliders(site, lm, within = 45) {
     if (Math.hypot(r.x - ax, r.z - az) > within) continue;
     out.circles.push({ x: r.x, z: r.z, r: r.r * 0.92, kind: "rock" });
   }
+  // fixed historical objects on the site (Apollo Legacy: Surveyor 3)
+  for (const o of site.objects || []) {
+    if (o.kind !== "surveyor") continue;
+    const c = surveyorColliders(o);
+    out.circles.push(...c.circles);
+    out.capsules.push(...c.capsules);
+  }
   return out;
 }
 
@@ -197,7 +205,9 @@ export function resolve(cols, x, z, rad = SUIT.radius) {
  */
 export function evaWorld({ site, pose, ground, area = AREA }) {
   const lm = lmFrame(pose);
-  const cols = colliders(site, lm);
+  // boulders within reach of the exploration area are obstacles (45 m for the official EVAs)
+  const lim = (area && area.limit) || 0;
+  const cols = colliders(site, lm, lim > 45 ? lim + 12 : 45);
   const [ax, az] = lm.axis;
   // The Sun's direction on the ground: the photo is taken with the Sun behind the photographer.
   const sunAz = site.sun.az * DEG;

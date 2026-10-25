@@ -7,7 +7,8 @@ import { getSite } from "@/data/landingSites";
  * The game menu, after the opening: START MISSIONS on the title screen opens it,
  * over the same lunar-orbit shot and in the title's place (LUNAVIA / A LAJU
  * PRODUCTIONS GAME stay on screen). Two choices: the four official lunar
- * missions, or the Flight Training Center; with an unfinished official mission
+ * missions, APOLLO LEGACY (three historical challenges, pages/ApolloLegacy), or the Flight
+ * Training Center; with an unfinished official mission
  * saved on the device (lib/missionSave), RESUME MISSION first.
  */
 const siteName = (id) => {
@@ -18,7 +19,7 @@ const siteName = (id) => {
   }
 };
 
-export default function ModeMenu({ onMissions, onTraining, saved = null, lang = "en", onResume }) {
+export default function ModeMenu({ onMissions, onTraining, onLegacy = null, saved = null, lang = "en", onResume }) {
   const choice = (testId, onClick, title, sub, primary, wrap = false) => (
     <button
       type="button"
@@ -55,6 +56,7 @@ export default function ModeMenu({ onMissions, onTraining, saved = null, lang = 
         <div className="mt-7 short:mt-4 w-full max-w-[320px] flex flex-col gap-3 short:gap-2">
           {saved && choice("mode-resume", onResume, SAVE_TEXT[lang === "pt" ? "pt" : "en"].resume, `${siteName(saved.mission.siteId)} · ${saved.mission.difficulty} · ${checkpointText(saved.checkpoint, lang)}`, false, true)}
           {choice("mode-missions", onMissions, "MISSIONS", "FOUR OFFICIAL LUNAR MISSIONS", true)}
+          {onLegacy && choice("mode-legacy", onLegacy, "APOLLO LEGACY", lang === "pt" ? "MISSÕES HISTÓRICAS · 11 · 12 · 15" : "HISTORICAL MISSIONS · 11 · 12 · 15", false)}
           {choice("mode-training", onTraining, "TRAINING", "FLIGHT TRAINING CENTER", false)}
         </div>
       </div>

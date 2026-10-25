@@ -33,6 +33,8 @@ const STONES = {
   melt: { seed: 23, size: 0.062, detail: 1, s: [1.25, 0.6, 1], jag: 0.45, color: "#2e2b28", roughness: 0.42, metalness: 0.08, lift: 0.03 },
   ejecta: { seed: 29, size: 0.08, detail: 0, s: [1.15, 0.85, 0.95], jag: 0.8, color: "#a39d92", roughness: 0.95, metalness: 0, lift: 0.05, flat: true },
   basin: { seed: 31, size: 0.07, detail: 1, s: [1.15, 0.7, 1], jag: 0.55, color: "#65656a", roughness: 0.92, metalness: 0, lift: 0.04 },
+  // Apollo Legacy (Apollo 15): pale highland material from the Apennine talus
+  anorthosite: { seed: 37, size: 0.072, detail: 0, s: [1.1, 0.78, 1], jag: 0.65, color: "#c9c4b8", roughness: 0.9, metalness: 0, lift: 0.045, flat: true },
 };
 export function stoneGeometry(type = "mare") {
   const k = STONES[type] || STONES.mare;
@@ -85,7 +87,7 @@ export function SampleStones({ sim }) {
 }
 
 /* ---- the rings on the ground: the current target(s) ------------------------------------------------ */
-export const RING = { sample: "#FF3B00", photo: "#4fd1c5", board: "#f5c451", survey: "#b5e06b", instrument: "#6aa8ff", data: "#6aa8ff" };
+export const RING = { sample: "#FF3B00", photo: "#4fd1c5", board: "#f5c451", survey: "#b5e06b", instrument: "#6aa8ff", data: "#6aa8ff", retrieve: "#e7a6ff" };
 function Ring({ at, color, r, refOut }) {
   return (
     <mesh ref={refOut} position={[at.x, at.y + 0.03, at.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={3} visible={false}>
@@ -103,6 +105,7 @@ export function ScienceMarkers({ sim }) {
   const survey = useRef();
   const site = useRef();
   const data = useRef();
+  const retrieve = useRef();
   useFrame((state) => {
     const t = state.clock.elapsedTime;
     const pulse = 0.75 + 0.25 * Math.sin(t * 3);
@@ -120,6 +123,7 @@ export function ScienceMarkers({ sim }) {
     set(survey.current, kind === "survey", 0.75);
     set(site.current, kind === "instrument", 0.75);
     set(data.current, kind === "data", 0.7);
+    set(retrieve.current, kind === "retrieve", 0.8);
   });
   const lm = sim.lm;
   return (
@@ -132,6 +136,7 @@ export function ScienceMarkers({ sim }) {
       {plan.survey && <Ring at={plan.survey} color={RING.survey} r={0.75} refOut={survey} />}
       {plan.instrument && <Ring at={plan.instrument} color={RING.instrument} r={0.75} refOut={site} />}
       {plan.instrument && <Ring at={plan.instrument} color={RING.data} r={1.15} refOut={data} />}
+      {plan.retrieve && <Ring at={plan.retrieve} color={RING.retrieve} r={0.5} refOut={retrieve} />}
     </>
   );
 }
@@ -206,6 +211,72 @@ function Seismometer({ M, unfold }) {
       <mesh geometry={geo.feet} material={M.metal} />
       <mesh ref={skirt} geometry={geo.skirt} material={M.mylar} position={[0, 0.012, 0]} receiveShadow />
       <instancedMesh ref={panels} args={[geo.panel, M.cell, 2]} castShadow frustumCulled={false} />
+    </>
+  );
+}
+
+/** The corner-cube face of the laser retroreflector: a 10 × 10 grid of round apertures. */
+function cubesTexture() {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#b8bcc2";
+  g.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 10; i++)
+    for (let j = 0; j < 10; j++) {
+      g.fillStyle = "#151a24";
+      g.beginPath();
+      g.arc(7 + i * 12.6, 7 + j * 12.6, 5.2, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "rgba(170,200,255,0.35)";
+      g.beginPath();
+      g.arc(5.6 + i * 12.6, 5.6 + j * 12.6, 1.6, 0, Math.PI * 2);
+      g.fill();
+    }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/**
+ * Apollo 11's Laser Ranging Retroreflector (APOLLO LEGACY): a square panel of 100 corner cubes on
+ * its pallet, tilted up towards the Earth on a rear support once it is set down.
+ */
+function Lrrr({ M, unfold }) {
+  const face = useMemo(() => new THREE.MeshStandardMaterial({ map: cubesTexture(), metalness: 0.7, roughness: 0.25 }), []);
+  const geo = useMemo(
+    () => ({
+      pallet: mergeGeometries([new THREE.BoxGeometry(0.5, 0.05, 0.5).translate(0, 0.025, 0), new THREE.BoxGeometry(0.52, 0.012, 0.06).translate(0, 0.056, 0.22)]),
+      panel: new THREE.BoxGeometry(0.46, 0.035, 0.46).translate(0, 0.0175, -0.23),
+      face: new THREE.PlaneGeometry(0.44, 0.44).rotateX(-Math.PI / 2).translate(0, 0.036, -0.23),
+      strut: new THREE.CylinderGeometry(0.01, 0.01, 0.24, 6).translate(0, -0.12, 0),
+    }),
+    []
+  );
+  useEffect(() => () => Object.values(geo).forEach((g) => g.dispose()), [geo]);
+  useEffect(() => () => face.dispose(), [face]);
+  const hinge = useRef();
+  const strut = useRef();
+  useFrame(() => {
+    const u = smooth(unfold.current);
+    // the panel hinges up at its front edge (towards the Earth, about 20° from flat)
+    if (hinge.current) hinge.current.rotation.x = -0.36 * u;
+    if (strut.current) {
+      strut.current.visible = u > 0.05;
+      strut.current.rotation.x = 0.4 - 0.4 * u;
+    }
+  });
+  return (
+    <>
+      <mesh geometry={geo.pallet} material={M.metal} castShadow receiveShadow />
+      <group ref={hinge} position={[0, 0.06, 0.23]}>
+        <mesh geometry={geo.panel} material={M.metal} castShadow />
+        <mesh geometry={geo.face} material={face} />
+        <group ref={strut} position={[0, 0, -0.42]}>
+          <mesh geometry={geo.strut} material={M.metal} />
+        </group>
+      </group>
     </>
   );
 }
@@ -365,6 +436,7 @@ export function Instrument({ sim }) {
       {I.kind === "seismometer" && <Seismometer M={M} unfold={unfold} />}
       {I.kind === "gnomon" && <Gnomon M={M} unfold={unfold} />}
       {I.kind === "antenna" && <Antenna M={M} unfold={unfold} sim={sim} />}
+      {I.kind === "lrrr" && <Lrrr M={M} unfold={unfold} />}
     </group>
   );
 }

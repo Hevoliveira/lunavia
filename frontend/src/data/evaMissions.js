@@ -25,6 +25,8 @@
  * Units: metres, as data/evaSim.
  */
 import { AREA, SUIT, photoCheck as lmPhotoCheck, slopeAt } from "./evaSim";
+import { surveyorPlaces } from "./surveyor";
+import { buildTerrain, sunVisAt } from "./terrainMesh";
 
 const DEG = Math.PI / 180;
 const T = (en, pt) => ({ en, pt });
@@ -33,7 +35,8 @@ const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const fin = (v) => typeof v === "number" && Number.isFinite(v);
 
 /* ---- timings and reach (shared by every destination) ----------------------------------------- */
-export const REACH = { sample: 1.5, survey: 2.0, instrument: 1.7, data: 2.0, board: 1.6 }; // m
+export const REACH = { sample: 1.5, survey: 2.0, instrument: 1.7, data: 2.0, board: 1.6, retrieve: 1.3 }; // m
+export const RETRIEVE_TIME = 4.6; // s, freeing a part from the probe (Apollo Legacy: Surveyor 3)
 export const SURVEY_TIME = 3.6; // s, the close look at the formation
 export const DEPLOY_TIME = 6.2; // s, setting the instrument down and unfolding it
 export const DATA_TIME = 24; // s after the deployment before the receiver's first data block is stored
@@ -310,12 +313,16 @@ export const sampleIds = (cfg) => (cfg.samples || []).map((s) => s.id);
 
 /** A fresh EVA record for a destination (what the mission saves when the EVA begins). */
 export function freshEva(siteId) {
-  const cfg = evaMission(siteId);
+  return freshEvaFor(evaMission(siteId));
+}
+/** A fresh EVA record for a given expedition configuration (official or Apollo Legacy). */
+export function freshEvaFor(cfg) {
   if (!cfg) return null;
   const progress = {};
   cfg.objectives.forEach((o) => (progress[o.id] = false));
   const e = { progress, samples: [], photos: [], completed: false, distance: 0 };
   if (cfg.instrument) e.instruments = [];
+  if (cfg.retrieve) e.retrieved = [];
   return e;
 }
 
@@ -347,7 +354,10 @@ export function evaSummary(siteId, eva) {
  * copy or null. The Sea of Tranquility's record is exactly phase 1's.
  */
 export function validateEvaRecord(siteId, e) {
-  const cfg = evaMission(siteId);
+  return validateEvaRecordFor(evaMission(siteId), e);
+}
+/** The same check for a given expedition configuration (official or Apollo Legacy). */
+export function validateEvaRecordFor(cfg, e) {
   if (!cfg || !isObj(e) || !isObj(e.progress)) return null;
   const p = cleanProgressFor(cfg, e.progress);
   const samples = Array.isArray(e.samples) ? e.samples : [];
@@ -360,6 +370,8 @@ export function validateEvaRecord(siteId, e) {
   const subject = cfg.photo.subject.id;
   if (!photos.every((x) => isObj(x) && x.subject === subject && fin(x.distance) && x.distance >= 0 && x.distance <= 5000)) return null;
   if (cfg.instrument && !instruments.every((x) => isObj(x) && x.id === cfg.instrument.id && fin(x.x) && fin(x.z))) return null;
+  const retrieved = Array.isArray(e.retrieved) ? e.retrieved : [];
+  if (retrieved.length > (cfg.retrieve ? 1 : 0) || !retrieved.every((x) => isObj(x) && cfg.retrieve && x.id === cfg.retrieve.id)) return null;
   const so = objectiveOf(cfg, "sample");
   const po = objectiveOf(cfg, "photo");
   const io = objectiveOf(cfg, "instrument");
@@ -368,6 +380,8 @@ export function validateEvaRecord(siteId, e) {
   if (po && p[po.id] !== photos.length > 0) return null;
   if (io && p[io.id] !== instruments.length > 0) return null;
   if (dob && p[dob.id] && !p[io.id]) return null;
+  const ro = objectiveOf(cfg, "retrieve");
+  if (ro && p[ro.id] !== retrieved.length > 0) return null;
   const any = cfg.objectives.some((o) => o.kind !== "firstSteps" && p[o.id]) || samples.length > 0;
   if ((any || e.completed === true) && !p.firstSteps) return null;
   const out = {
@@ -378,6 +392,7 @@ export function validateEvaRecord(siteId, e) {
     distance: fin(e.distance) && e.distance >= 0 && e.distance < 1e5 ? e.distance : 0,
   };
   if (cfg.instrument) out.instruments = instruments.map((x) => ({ id: x.id, x: x.x, z: x.z }));
+  if (cfg.retrieve) out.retrieved = retrieved.map((x) => ({ id: x.id }));
   return out;
 }
 
@@ -397,7 +412,7 @@ function context(world, cfg) {
   const ol = Math.hypot(ox, oz) || 1;
   const out = [ox / ol, oz / ol];
   const start = [lm.board[0] + out[0] * 1.6, lm.board[2] + out[1] * 1.6];
-  const c = { world, site, lm, cols, ground, ax, az, area, place: area.warn - 2, out, start, taken: [], memo: new Map() };
+  const c = { world, site, lm, cols, ground, ax, az, area, place: area.warn - 2, out, start, taken: [], memo: new Map(), maxRoute: cfg.maxRoute || MAX_ROUTE };
   c.nodes = routeNodes(c);
   return c;
 }
@@ -448,9 +463,12 @@ function segmentOk(c, a, b) {
 /** Waypoints round the LM and out across the area, for routes that cannot go straight. */
 function routeNodes(c) {
   const out = [];
-  for (const r of [5.5, 8, 11.5, 15, 19, 23, 27, 31]) {
+  // the official rings, and for a larger exploration area (Apollo Legacy) rings every 6 m beyond
+  const radii = [5.5, 8, 11.5, 15, 19, 23, 27, 31];
+  for (let r = 37; r <= c.area.limit - 2; r += 6) radii.push(r);
+  for (const r of radii) {
     if (r > c.area.limit - 2) break;
-    const n = r < 10 ? 12 : 20;
+    const n = r < 10 ? 12 : r <= 31 ? 20 : 24;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2;
       const x = c.ax + Math.cos(a) * r;
@@ -459,6 +477,21 @@ function routeNodes(c) {
       if (clearance(c, x, z) < SUIT.radius + 0.6) continue;
       if (slopeAt(c.ground, x, z) > SLOPE.node) continue;
       out.push([x, z]);
+    }
+  }
+  // round each fixed object of the site (Apollo Legacy: Surveyor 3), so the last steps to a stand
+  // beside it never have to cross its legs
+  for (const o of c.site.objects || []) {
+    for (const r of [3.2, 5.5, 9]) {
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const x = o.x + Math.cos(a) * r;
+        const z = o.z + Math.sin(a) * r;
+        if (Math.hypot(x - c.ax, z - c.az) > c.area.limit - 2 || Math.abs(z) > c.area.zMax - 1.5) continue;
+        if (clearance(c, x, z) < SUIT.radius + 0.3) continue;
+        if (slopeAt(c.ground, x, z) > SLOPE.node) continue;
+        out.push([x, z]);
+      }
     }
   }
   return out;
@@ -514,8 +547,7 @@ export function routeTo(c, x, z) {
  * A walkable route between two points of this landing (validation tooling and guidance): straight,
  * or through the waypoints round the LM and the boulders. Returns { points, length } or null.
  */
-export function routeBetween(world, from, to) {
-  const cfg = evaMission(world.site.id);
+export function routeBetween(world, from, to, cfg = evaMission(world.site.id)) {
   if (!cfg) return null;
   const c = context(world, cfg);
   c.start = [from[0], from[1]];
@@ -541,7 +573,7 @@ function rejectSpot(c, x, z, o) {
   }
   for (const t of c.taken) if (Math.hypot(x - t.x, z - t.z) < separation(o, t)) return "near";
   const route = routeTo(c, x, z);
-  if (!route || route.length > MAX_ROUTE) return "route";
+  if (!route || route.length > c.maxRoute) return "route";
   o.route = route;
   return null;
 }
@@ -553,6 +585,8 @@ function rejectSpot(c, x, z, o) {
 function separation(a, b) {
   const pair = [a.group, b.group].sort().join("-");
   if (pair === "sample-sample") return 6;
+  // round one object (Surveyor 3): the inspection, the camera's stand and the photo stand
+  if (pair === "retrieve-survey" || pair === "photo-retrieve") return 1.0;
   if (pair === "sample-survey") return 2.5;
   if (pair === "instrument-survey" && (a.bySurvey || b.bySurvey)) return 2.0;
   if (pair === "instrument-sample" && (a.bySurvey || b.bySurvey)) return 1.8; // a gnomon stands by the sample it scales
@@ -588,9 +622,12 @@ function craters(c, minR = 2) {
 function candidates(c, a, plan) {
   const out = [];
   if (a.near === "boulder") {
+    // sunlit: on the boulder's sunward side and out of the terrain's shadow (a stone the player
+    // can see being scooped, not one in a black shadow at the foot of a slope)
+    const sh = a.sunlit && c.world.sunH;
     for (const { rock, col } of boulders(c, a.label || null)) {
-      const a0 = lmBearingFrom(c, rock.x, rock.z);
-      for (const da of ANG) {
+      const a0 = sh ? Math.atan2(sh[1], sh[0]) : lmBearingFrom(c, rock.x, rock.z);
+      for (const da of sh ? ANG.filter((x) => Math.abs(x) <= 1.2) : ANG) {
         const ang = a0 + da;
         const d = rock.r + a.gap;
         out.push({ x: rock.x + Math.cos(ang) * d, z: rock.z + Math.sin(ang) * d, anchor: col, anchorGap: Math.min(a.gap, 0.6), look: [rock.x, null, rock.z], lookH: rock.h || rock.r, formation: "boulder", feature: rock });
@@ -629,12 +666,51 @@ function candidates(c, a, plan) {
       const a0 = Math.atan2(t.z - cz, t.x - cx);
       for (const r of a.r) for (const da of [0.9, -0.9, 1.4, -1.4, 0.5, -0.5, 2, -2]) out.push({ x: cx + Math.cos(a0 + da) * r, z: cz + Math.sin(a0 + da) * r });
     }
+  } else if (a.point) {
+    // round a fixed point of the site (Apollo Legacy: Surveyor 3, or its camera), starting on the
+    // side facing the LM
+    const P = pointOf(c, a.point);
+    if (P) {
+      // facing the LM, or (outward) away from the object's centre through the point,
+      // or (sunSide) on its sunlit side, the Sun behind the photographer
+      const sh = c.world.sunH;
+      const base = a.outward && P.obj ? Math.atan2(P.z - P.obj.z, P.x - P.obj.x) : a.sunSide && sh ? Math.atan2(sh[1], sh[0]) : Math.atan2(c.az - P.z, c.ax - P.x);
+      for (const r of a.r) {
+        for (const da of a.outward ? [0, 0.22, -0.22, 0.45, -0.45] : ANG) {
+          const ang = base + da;
+          out.push({ x: P.x + Math.cos(ang) * r, z: P.z + Math.sin(ang) * r, anchor: P.col || null, anchorGap: P.col ? 0.3 : 0, look: a.look ? [a.look[0], null, a.look[1]] : [P.lx ?? P.x, null, P.lz ?? P.z], lookH: a.lookH || 0, lookScale: 1, formation: a.formation || null, feature: P.obj || null });
+        }
+      }
+    }
   } else if (a.ring) {
     let b0 = c.outAng + Math.PI / 4;
     if (a.bearing === "behind") b0 = c.outAng + Math.PI * 0.62; // round to the side of the LM, off the ladder's line
     for (const r of a.ring) for (let i = 0; i < 16; i++) out.push({ x: c.ax + Math.cos(b0 + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 8)) * r, z: c.az + Math.sin(b0 + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 8)) * r });
   }
+  // sunlit: only spots in direct sunlight (the terrain's baked shadows), never a stone in the black
+  // shadow of a slope
+  if (a.sunlit) {
+    const terrain = buildTerrain(c.site);
+    return out.filter((k) => sunVisAt(terrain, k.x, k.z) >= 0.6);
+  }
   return out;
+}
+
+/**
+ * A fixed point of the site: [x, z]; an object's id ("surveyor3"); or "<id>:camera", the stand by
+ * Surveyor 3's television camera. Returns { x, z, col?, obj?, lx?, lz? } or null.
+ */
+function pointOf(c, p) {
+  if (Array.isArray(p)) return { x: p[0], z: p[1] };
+  const [id, part] = String(p).split(":");
+  const obj = (c.site.objects || []).find((o) => o.id === id);
+  if (!obj) return null;
+  const col = c.cols.circles.find((k) => k.kind === "object" && Math.abs(k.x - obj.x) < 1e-6 && Math.abs(k.z - obj.z) < 1e-6) || null;
+  if (part === "camera") {
+    const pl = surveyorPlaces(obj);
+    return { x: pl.camera[0], z: pl.camera[2], obj, col, lx: pl.camera[0], lz: pl.camera[2] };
+  }
+  return { x: obj.x, z: obj.z, obj, col };
 }
 
 /** Place one target from its anchors (then open ground, flagged); never null. */
@@ -647,7 +723,7 @@ function place(c, name, anchors, o, plan) {
       if (rejectSpot(c, k.x, k.z, opts)) continue;
       const t = { name, group: o.group, bySurvey: o.bySurvey, sepMin: o.sepMin, x: k.x, z: k.z, y: c.ground(k.x, k.z), fallback: !!a.fallback, anchorIndex: i, route: opts.route };
       if (k.formation) t.formation = k.formation;
-      if (k.look) t.look = [k.look[0], c.ground(k.look[0], k.look[2]) + (k.lookH ? k.lookH * 0.5 : 0), k.look[2]];
+      if (k.look) t.look = [k.look[0], c.ground(k.look[0], k.look[2]) + (k.lookH ? k.lookH * (k.lookScale ?? 0.5) : 0), k.look[2]];
       if (k.feature) t.feature = k.feature;
       c.taken.push(t);
       return t;
@@ -667,8 +743,7 @@ function place(c, name, anchors, o, plan) {
  * world: data/evaSim evaWorld. Returns { siteId, cfg, area, start, samples: [{ id, type, x, y, z,
  * formation?, fallback }], survey?, photo: { x, y, z, subject }, instrument?, fallbacks: [names] }.
  */
-export function planEva(world) {
-  const cfg = evaMission(world.site.id);
+export function planEva(world, cfg = evaMission(world.site.id)) {
   if (!cfg) return null;
   const c = context(world, cfg);
   c.outAng = Math.atan2(c.out[1], c.out[0]);
@@ -696,7 +771,15 @@ export function planEva(world) {
   }
   // the photo: its subject, then a stand from which to take it
   let subject = { ...cfg.photo.subject };
-  if (subject.kind === "landmark") {
+  if (subject.kind === "landmark" && subject.object) {
+    // a fixed object (Surveyor 3): its foot on the ground, its top `h` above
+    const obj = (world.site.objects || []).find((o) => o.id === subject.object);
+    if (obj) {
+      subject.x = obj.x;
+      subject.z = obj.z;
+      subject.y = world.ground(obj.x, obj.z) + (subject.h || 3);
+    }
+  } else if (subject.kind === "landmark") {
     subject.y = world.ground(subject.x, subject.z);
   }
   plan.subject = subject;
@@ -724,7 +807,16 @@ export function planEva(world) {
     plan.instrument = { ...t, id: I.id, kind: I.kind };
     plan.targets.instrument = plan.instrument;
   }
-  plan.fallbacks = [plan.survey, ...plan.samples, plan.photo, plan.instrument].filter((t) => t && t.fallback).map((t) => t.name || t.id || "photo");
+  if (cfg.retrieve) {
+    // the part to bring home (Apollo Legacy: Surveyor 3's television camera), and where to stand for it
+    const R = cfg.retrieve;
+    const t = place(c, "retrieve", R.anchors, { group: "retrieve", slope: SLOPE.stand + 4, clear: 0.55, sepMin: 0 }, plan);
+    const obj = (world.site.objects || []).find((o) => o.id === R.object);
+    const part = obj ? surveyorPlaces({ ...obj, y: world.ground(obj.x, obj.z) }).camera : [t.x, t.y + 1.2, t.z];
+    plan.retrieve = { ...t, id: R.id, part, look: part };
+    plan.targets.retrieve = plan.retrieve;
+  }
+  plan.fallbacks = [plan.survey, ...plan.samples, plan.photo, plan.instrument, plan.retrieve].filter((t) => t && t.fallback).map((t) => t.name || t.id || "photo");
   return plan;
 }
 
@@ -749,6 +841,7 @@ export function currentTarget(plan, st, w = null) {
   if (o.kind === "survey") return { objective: obj, kind: "survey", x: plan.survey.x, y: plan.survey.y, z: plan.survey.z };
   if (o.kind === "photo") return { objective: obj, kind: "photo", x: plan.photo.x, y: plan.photo.y, z: plan.photo.z };
   if (o.kind === "instrument" || o.kind === "data") return { objective: obj, kind: o.kind, x: plan.instrument.x, y: plan.instrument.y, z: plan.instrument.z };
+  if (o.kind === "retrieve") return { objective: obj, kind: "retrieve", x: plan.retrieve.x, y: plan.retrieve.y, z: plan.retrieve.z };
   return { objective: obj, kind: "board" };
 }
 
@@ -769,6 +862,8 @@ export function actionAt(plan, world, w, st) {
   if (io && !p[io.id] && d(plan.instrument.x, plan.instrument.z) <= REACH.instrument) opts.push({ kind: "instrument", d: d(plan.instrument.x, plan.instrument.z) });
   const dob = objectiveOf(cfg, "data");
   if (dob && p[io.id] && !p[dob.id] && d(plan.instrument.x, plan.instrument.z) <= REACH.data) opts.push({ kind: "data", d: d(plan.instrument.x, plan.instrument.z) });
+  const ro = objectiveOf(cfg, "retrieve");
+  if (ro && !p[ro.id] && d(plan.retrieve.x, plan.retrieve.z) <= REACH.retrieve) opts.push({ kind: "retrieve", d: d(plan.retrieve.x, plan.retrieve.z) });
   const lm = world.lm;
   if (d(lm.board[0], lm.board[2]) <= REACH.board) opts.push({ kind: "board", d: d(lm.board[0], lm.board[2]) + 0.01 });
   if (!opts.length) return null;

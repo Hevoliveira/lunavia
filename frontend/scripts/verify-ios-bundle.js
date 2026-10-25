@@ -190,6 +190,21 @@ const FEATURES = [
   ["LM cabin: the panels in Portuguese", "ENTRAR NA CABINE"],
   ["LM cabin: the crew and CAPCOM calls", "cabin.evaGo"],
   ["LM cabin: resumed in the cabin", "CABINE DO LM"],
+  ["Apollo Legacy: APOLLO LEGACY in the game menu", "mode-legacy"],
+  ["Apollo Legacy: the three mission cards with START MISSION", "legacy-start-"],
+  ["Apollo Legacy: the historical briefing (crew, sources, dramatized radio note)", "RADIO CALLS ARE DRAMATIZED"],
+  ["Apollo Legacy: Apollo 11 at Tranquility Base, the laser retroreflector", "DEPLOY THE LASER RETROREFLECTOR"],
+  ["Apollo Legacy: Apollo 12's own Ocean of Storms site", "OCEANUS PROCELLARUM"],
+  ["Apollo Legacy: Surveyor 3 on the site", "surveyor3"],
+  ["Apollo Legacy: Apollo 12's landing precision", "legacy-precision"],
+  ["Apollo Legacy: RETRIEVE THE TV CAMERA", "RETRIEVE THE TV CAMERA"],
+  ["Apollo Legacy: Apollo 15's geology station on Hadley Rille", "GEOLOGY STATION"],
+  ["Apollo Legacy: touchdown, PREPARE EVA", "legacy-prepare-eva"],
+  ["Apollo Legacy: HISTORICAL MISSION COMPLETE", "HISTORICAL MISSION COMPLETE"],
+  ["Apollo Legacy: its own checkpoint (separate from the campaign's)", "lunavia.legacy.save.v1.a"],
+  ["Apollo Legacy: its own results (separate from the campaign's)", "lunavia.legacy.records.v1"],
+  ["Apollo Legacy: dramatized calls (synthetic voices)", "legacy.a12.goRetrieve"],
+  ["Apollo Legacy in Portuguese", "INICIAR DESCIDA"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar

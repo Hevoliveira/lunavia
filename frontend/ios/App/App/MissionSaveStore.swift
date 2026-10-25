@@ -10,6 +10,8 @@ import Capacitor
 ///
 ///     Library/Application Support/MissionSave/slot-a.json
 ///     Library/Application Support/MissionSave/slot-b.json
+///     Library/Application Support/MissionSave/slot-la.json   (APOLLO LEGACY)
+///     Library/Application Support/MissionSave/slot-lb.json   (APOLLO LEGACY)
 ///
 /// Every write is atomic (written to a temporary file, then renamed over the
 /// slot), so a write cut short by the app being terminated leaves the slot as it
@@ -28,7 +30,9 @@ public class LunaviaSavePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "writeSlot", returnType: CAPPluginReturnPromise)
     ]
 
-    private static let slotNames = ["a", "b"]
+    /// "a"/"b": the official mission (src/lib/missionSave.js); "la"/"lb": APOLLO LEGACY's own
+    /// historical scenario (src/lib/legacySave.js), kept apart so neither can overwrite the other.
+    private static let slotNames = ["a", "b", "la", "lb"]
     private static let maxBytes = 256 * 1024
 
     private func folder() throws -> URL {
