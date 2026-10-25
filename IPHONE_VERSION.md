@@ -1,28 +1,32 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD b6f976d**.
+This folder installs **BUILD 5273da7**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD b6f976d · 2026-10-24 19:31 UTC**
+> **LUNAVIA iOS · BUILD 5273da7 · 2026-10-24 23:53 UTC**
 
-It is the **manual lunar ascent**: after a safe landing (and the optional EVA) the ascent
-preparation shows **LUNAR ASCENT — READY** (PT: ASCENSÃO LUNAR — PRONTA) with two choices, at all
-four destinations and every difficulty:
-- **GUIDED ASCENT** — the automatic liftoff exactly as before;
-- **MANUAL ASCENT** — you fly the ascent stage off the descent stage (which stays on the Moon) into
-  lunar orbit: ENGINE IGNITION (bottom left), PITCH ▲ / PITCH ▼ on the RCS (bottom right; the engine
-  has fixed thrust and does not throttle), ENGINE CUTOFF when the apoapsis reaches about 96 km with
-  a periapsis above 15 km. CADET has PITCH ASSIST and AUTO CUTOFF; ASTRONAUT the pitch cue, the time
-  to cutoff and an optional AUTO CUTOFF; COMMANDER flies with no cue and no attitude hold.
-  EXTERNAL, COCKPIT and NAV views; RETRY ASCENT after a failed attempt; the rendezvous then starts
-  from the orbit you flew and the docking is yours as before.
-Silent Horizon keeps EARTH LINK UNAVAILABLE (the onboard computer talks, Houston does not). The
-orbit you reach is saved (ORBITAL INSERTION COMPLETE), the logbook records the manual ascent apart
-from the 1,000-point score, and two new achievements (LUNAR ASCENT) mark it. The rest of the game is
-as in BUILD 6b2b32a.
+It is the **interactive lunar module cabin**: after a safe landing, at all four destinations and
+every difficulty, you can step inside the LM you just landed (PT: ENTRAR NA CABINE). It is
+optional: CONTINUE MISSION, BEGIN EVA and the guided or manual ascent work exactly as before.
+- **ENTER CABIN** on the landing results and on the ascent preparation (after the EVA it reads
+  **RETURN TO CABIN**).
+- Inside: five places to look from — **WINDOW, PANELS, COMMS, HATCH, AFT · SUITS** — the view
+  glides between them; drag to look around (limited, no walking, no spinning).
+- Through the triangular windows you see the real landing site from where the LM came to rest:
+  Tranquility's plain, Hadley's mountain wall, Tycho's boulders, Silent Horizon's far-side hills.
+- Tap the round markers on the panels: LANDING STATUS (your touchdown speed and fuel), MISSION
+  CHECKLIST, ASCENT READINESS, COMMUNICATIONS (Houston, or EARTH LINK UNAVAILABLE on the far
+  side), FORWARD HATCH, EVA PREPARATION, and the WINDOW (the site, the Sun, the Earth).
+- **EVA PREPARATION:** SUIT CHECK → HATCH READY → EVA SYSTEMS GO, then BEGIN EVA (out through the
+  hatch, as before). **ASCENT PREPARATION:** ASCENT SYSTEMS CHECK → CABIN SECURE → READY FOR
+  ASCENT, then CONTINUE TO ASCENT (the usual ascent preparation, its checks already done).
+- Closing the app inside the cabin brings you back into the cabin (LUNAR SURFACE · LM CABIN).
+The score, medals and achievements are unchanged; the rest of the game is as in BUILD b6f976d.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **b6f976d** is the previous release: the manual lunar ascent, but no ENTER CABIN (no lunar
+  module interior);
 - **6b2b32a** is the previous release: the four EVA expeditions, but only the guided ascent (no
   LUNAR ASCENT — READY, no MANUAL ASCENT);
 - **592b8c1** is the previous release: the EVA with the close-range visuals, but only at the Sea
@@ -146,6 +150,28 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Mission save and resume: automatic checkpoints (LUNAR DESCENT READY, LUNAR LANDING COMPLETE, DOCKING READY, DOCKING COMPLETE, EARTH REENTRY READY), kept in the app's own files and in the web view; RESUME MISSION on the startup screen and in the game menu; START A NEW MISSION? before a save is replaced; an interrupted maneuver flown again from the last safe checkpoint | — | 2a8b97d, c88a530, 3326bab |
 | Lunar EVA — first steps on the Moon (Sea of Tranquility): BEGIN EVA on the ascent preparation (optional), the astronaut out of the hatch and down the ladder, walking in lunar gravity, FIRST STEPS ON THE MOON, COLLECT LUNAR SAMPLE, DOCUMENT THE LANDING SITE with the chest camera, back up the ladder and the hatch closed, EVA checkpoints (LUNAR EVA, LUNAR EVA COMPLETE), the FIRST STEPS achievement, English and Portuguese | — | ed6e7ec, 672b8ef |
 | Lunar EVA close-range visuals: a detailed astronaut (LEVA helmet, a gold visor reflecting the surroundings, chest unit and camera, ribbed hoses, backpack, convolutes, gauntlets, overshoes with treads), a living idle, a grounded walk (heel strike, less float) and contact shadows; the LM built for close viewing in the EVA (crinkled foil blankets, painted panels with seams and rivets, channel ladder with flat treads, ribbed footpads, strut details, hatch handle and hinges, plaque, equipment boxes, antenna feeds); the ground round the astronaut and the LM (regolith detail, pebbles, the engine-swept ground, footpad occlusion, treaded footprints) | — | 592b8c1 |
+| Interactive lunar module cabin: ENTER CABIN after the landing and on the ascent preparation (RETURN TO CABIN after the EVA), five seated stations with a limited drag-to-look, the real landing site through the exterior's two windows at every destination, panel hotspots read from the mission, EVA and ascent preparation checklists, BEGIN EVA / CONTINUE TO ASCENT from inside, resume in the cabin, crew and CAPCOM calls (Houston silent on the far side) | — | 5273da7 |
+
+## Try the LM cabin on the iPhone
+
+Not yet tried on a physical iPhone; the checks below were run in a desktop browser.
+1. Land safely at any destination. On the results press **ENTER CABIN** (beside CONTINUE MISSION).
+2. You are at the commander's window, looking at the landing site. Drag a finger: the view turns
+   (it stops at the window frame's limits). Tap **PANELS**, **COMMS**, **HATCH**, **AFT · SUITS**
+   at the bottom: the view glides there.
+3. Tap a round marker: its panel opens on the right (‹ BACK closes it). Check that the WINDOW
+   panel names your destination, and that COMMUNICATIONS says EARTH LINK UNAVAILABLE at Silent
+   Horizon.
+4. **CABIN TASKS → EVA PREPARATION:** tap the three steps in order, then **BEGIN EVA**: the EVA
+   starts at the hatch as before. After the EVA, on the ascent preparation, **RETURN TO CABIN**.
+5. **ASCENT PREPARATION:** the three steps, then **CONTINUE TO ASCENT**: the ascent preparation
+   with its checks done; GUIDED or MANUAL ASCENT as before. **EXIT CABIN ✕** (top right) leaves
+   at any time.
+6. Close LUNAVIA inside the cabin and reopen: RESUME MISSION brings you back into the cabin.
+7. Ignoring the cabin (CONTINUE MISSION, BEGIN EVA, the ascent) flies the mission exactly as before.
+8. **What to look at:** the frame rate at the WINDOW (the heaviest view) and while dragging; the
+   panel labels' legibility; the window frame at the notch side; the sunlight through the
+   windows (Tycho: the Sun ahead; Silent Horizon: behind).
 
 ## Try the lunar EVA on the iPhone
 
@@ -195,7 +221,9 @@ project) the moment it is reached; it does not depend on the app being closed cl
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 592b8c1** with `yarn ios:sync` (`ios:verify`: 160 checks, now including the EVA's close-range visuals: the suit's dust shader, the near regolith, the close footpads, the plaque and the equipment box stencil). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
+- **Built from the clean tree at 5273da7** with `yarn ios:sync` (`ios:verify`: 196 checks, now including the LM cabin: ENTER CABIN on the results and the ascent preparation, the cabin scene, its stations and hotspots, both checklists, BEGIN EVA and CONTINUE TO ASCENT from inside, Portuguese, the four new voice calls, the resume in the cabin; all 392 voice clips bundled). The build is reproducible: the label carries the commit's own time.
+- **This release is the interactive lunar module cabin** over BUILD b6f976d. Web game only: the Xcode project, Capacitor and the Swift package are unchanged. The save format moves to schema 5 (the "cabin" activity); saves from earlier builds are still read, and an older build leaves a schema 5 save alone. Browser checks (Chromium with software rendering, an iPhone-14-sized window; not an iPhone): the cabin flow at all four destinations (land → ENTER CABIN → look around → stations → panels → EVA preparation → SIGKILL and resume in the cabin → BEGIN EVA → the EVA → RETURN TO CABIN → ascent preparation → CONTINUE TO ASCENT → guided ascent → rendezvous; 32–35 checks each, all passing), the same on the packaged files (Hadley, 35/35), a full Sea of Tranquility mission through the cabin to splashdown (34/34, 956 points, PLATINUM), regressions without the cabin (Hadley straight through 12/12, the Tycho EVA with resumes 28/28, a Silent Horizon manual ascent 10/10), the cabin layout at three iPhone sizes in English and Portuguese (12/12), and the unit tests (724/724). Frame time in software rendering (only the ratio means anything): the window view 1.12× the ascent preparation's, the panels 0.71×, the aft view 0.53× (the landing site is drawn only where a window is on screen; the cabin's shadows are made once).
+- **592b8c1** was built from the clean tree at 592b8c1 with `yarn ios:sync` (`ios:verify`: 160 checks, now including the EVA's close-range visuals: the suit's dust shader, the near regolith, the close footpads, the plaque and the equipment box stencil). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
 - **This release is the lunar EVA's close-range visual upgrade** over BUILD 672b8ef (HANDOFF §60). Web game only: the Xcode project, Capacitor and the Swift package are unchanged, so the ZIP opens and builds in Xcode as before; the save format is unchanged (schema 2). Browser checks of this release: the full Sea of Tranquility mission with the EVA on the packaged files (24/24: two SIGKILLs and a clean close in the middle of it, no duplicate sample, no landing replayed, the score unchanged, FIRST STEPS once, no subtitle or notice over a control or the astronaut, no page errors), the EVA's controls and safety (18/18, the HUD at three iPhone sizes in English and Portuguese), Hadley flown straight through (12/12: the LM in its standard look, no BEGIN EVA), the unit tests (624/624), and before/after close-ups of the astronaut, the LM and the ground. Measured in software rendering (only the ratio means anything): the EVA's frame 1.87–1.95× the ascent preparation's (1.13–1.30× before), with fewer draw calls than before (59 against 107–111). Not run on a physical iPhone.
 - **672b8ef** was built from the clean tree at 672b8ef with `yarn ios:sync` (`ios:verify`: 155 checks, now including the lunar EVA in English and Portuguese, its checkpoints and achievement, and every one of the 300 voice clips in the app). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
 - **This release adds the lunar EVA** over BUILD 3326bab (HANDOFF §59). Web game only: the Xcode project, Capacitor and the Swift package are unchanged, so the ZIP opens and builds in Xcode as before. The save format moves to schema 2 (it still reads saves written by 3326bab; a mission saved by this build and then opened by 3326bab is reported as written by a newer version, never as damaged). Browser checks of this release: the full Sea of Tranquility mission with the EVA on the packaged files (24/24: two SIGKILLs and a clean close in the middle of it, no duplicate sample, no landing replayed, the score unchanged, FIRST STEPS unlocked once, no subtitle or notice over a control or the astronaut), the EVA's controls and safety (18/18: the touch joystick and camera, the 24 m warning and the 31 m limit, walking into the LM from four sides, the camera never inside the LM, under the ground or on the backpack, PAUSE, the HUD at 667 × 375, 844 × 390 and 932 × 430 in English and Portuguese), the Sea of Tranquility without the EVA and the other three destinations flown straight through (12/12 each, no BEGIN EVA away from Tranquility), and the bundle offline resuming a save written by 3326bab. Not run on a physical iPhone.
