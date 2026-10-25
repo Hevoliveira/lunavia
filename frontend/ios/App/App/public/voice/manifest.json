@@ -852,6 +852,192 @@
       "f": "en/launch.usIgnition.0.mp3"
      }
     ],
+    "legacy.a11.descent": [
+     {
+      "d": 4.67,
+      "f": "en/legacy.a11.descent.0.mp3"
+     }
+    ],
+    "legacy.a11.firstSteps": [
+     {
+      "d": 4.37,
+      "f": "en/legacy.a11.firstSteps.0.mp3"
+     }
+    ],
+    "legacy.a11.goEva": [
+     {
+      "d": 3.62,
+      "f": "en/legacy.a11.goEva.0.mp3"
+     }
+    ],
+    "legacy.a11.goInstrument": [
+     {
+      "d": 5.46,
+      "f": "en/legacy.a11.goInstrument.0.mp3"
+     }
+    ],
+    "legacy.a11.goPhoto": [
+     {
+      "d": 3.21,
+      "f": "en/legacy.a11.goPhoto.0.mp3"
+     }
+    ],
+    "legacy.a11.goSample": [
+     {
+      "d": 5.52,
+      "f": "en/legacy.a11.goSample.0.mp3"
+     }
+    ],
+    "legacy.a11.instrumentDone": [
+     {
+      "d": 3.66,
+      "f": "en/legacy.a11.instrumentDone.0.mp3"
+     }
+    ],
+    "legacy.a11.landed": [
+     {
+      "d": 4.33,
+      "f": "en/legacy.a11.landed.0.mp3"
+     }
+    ],
+    "legacy.a12.descent": [
+     {
+      "d": 6.81,
+      "f": "en/legacy.a12.descent.0.mp3"
+     }
+    ],
+    "legacy.a12.firstSteps": [
+     {
+      "d": 5.01,
+      "f": "en/legacy.a12.firstSteps.0.mp3"
+     }
+    ],
+    "legacy.a12.goEva": [
+     {
+      "d": 2.33,
+      "f": "en/legacy.a12.goEva.0.mp3"
+     }
+    ],
+    "legacy.a12.goPhoto": [
+     {
+      "d": 3.63,
+      "f": "en/legacy.a12.goPhoto.0.mp3"
+     }
+    ],
+    "legacy.a12.goRetrieve": [
+     {
+      "d": 4.01,
+      "f": "en/legacy.a12.goRetrieve.0.mp3"
+     }
+    ],
+    "legacy.a12.goSurvey": [
+     {
+      "d": 3.67,
+      "f": "en/legacy.a12.goSurvey.0.mp3"
+     }
+    ],
+    "legacy.a12.landed": [
+     {
+      "d": 2.96,
+      "f": "en/legacy.a12.landed.0.mp3"
+     }
+    ],
+    "legacy.a12.retrieved": [
+     {
+      "d": 1.54,
+      "f": "en/legacy.a12.retrieved.0.mp3"
+     }
+    ],
+    "legacy.a12.surveyDone": [
+     {
+      "d": 3.98,
+      "f": "en/legacy.a12.surveyDone.0.mp3"
+     }
+    ],
+    "legacy.a15.descent": [
+     {
+      "d": 6.03,
+      "f": "en/legacy.a15.descent.0.mp3"
+     }
+    ],
+    "legacy.a15.firstSteps": [
+     {
+      "d": 4.33,
+      "f": "en/legacy.a15.firstSteps.0.mp3"
+     }
+    ],
+    "legacy.a15.goEva": [
+     {
+      "d": 3.32,
+      "f": "en/legacy.a15.goEva.0.mp3"
+     }
+    ],
+    "legacy.a15.goInstrument": [
+     {
+      "d": 3.26,
+      "f": "en/legacy.a15.goInstrument.0.mp3"
+     }
+    ],
+    "legacy.a15.goPhoto": [
+     {
+      "d": 4.31,
+      "f": "en/legacy.a15.goPhoto.0.mp3"
+     }
+    ],
+    "legacy.a15.goSamples": [
+     {
+      "d": 5.99,
+      "f": "en/legacy.a15.goSamples.0.mp3"
+     }
+    ],
+    "legacy.a15.goSecond": [
+     {
+      "d": 3.06,
+      "f": "en/legacy.a15.goSecond.0.mp3"
+     }
+    ],
+    "legacy.a15.goSurvey": [
+     {
+      "d": 5.66,
+      "f": "en/legacy.a15.goSurvey.0.mp3"
+     }
+    ],
+    "legacy.a15.instrumentDone": [
+     {
+      "d": 1.81,
+      "f": "en/legacy.a15.instrumentDone.0.mp3"
+     }
+    ],
+    "legacy.a15.landed": [
+     {
+      "d": 2.34,
+      "f": "en/legacy.a15.landed.0.mp3"
+     }
+    ],
+    "legacy.a15.surveyDone": [
+     {
+      "d": 4.27,
+      "f": "en/legacy.a15.surveyDone.0.mp3"
+     }
+    ],
+    "legacy.boundary": [
+     {
+      "d": 3.72,
+      "f": "en/legacy.boundary.0.mp3"
+     }
+    ],
+    "legacy.complete": [
+     {
+      "d": 3.07,
+      "f": "en/legacy.complete.0.mp3"
+     }
+    ],
+    "legacy.remind": [
+     {
+      "d": 2.55,
+      "f": "en/legacy.remind.0.mp3"
+     }
+    ],
     "orbit.arrival": [
      {
       "d": 4.79,
@@ -1977,6 +2163,192 @@
      {
       "d": 2.64,
       "f": "pt/launch.usIgnition.0.mp3"
+     }
+    ],
+    "legacy.a11.descent": [
+     {
+      "d": 5.82,
+      "f": "pt/legacy.a11.descent.0.mp3"
+     }
+    ],
+    "legacy.a11.firstSteps": [
+     {
+      "d": 4.58,
+      "f": "pt/legacy.a11.firstSteps.0.mp3"
+     }
+    ],
+    "legacy.a11.goEva": [
+     {
+      "d": 3.73,
+      "f": "pt/legacy.a11.goEva.0.mp3"
+     }
+    ],
+    "legacy.a11.goInstrument": [
+     {
+      "d": 4.98,
+      "f": "pt/legacy.a11.goInstrument.0.mp3"
+     }
+    ],
+    "legacy.a11.goPhoto": [
+     {
+      "d": 3.77,
+      "f": "pt/legacy.a11.goPhoto.0.mp3"
+     }
+    ],
+    "legacy.a11.goSample": [
+     {
+      "d": 5.01,
+      "f": "pt/legacy.a11.goSample.0.mp3"
+     }
+    ],
+    "legacy.a11.instrumentDone": [
+     {
+      "d": 3.64,
+      "f": "pt/legacy.a11.instrumentDone.0.mp3"
+     }
+    ],
+    "legacy.a11.landed": [
+     {
+      "d": 3.9,
+      "f": "pt/legacy.a11.landed.0.mp3"
+     }
+    ],
+    "legacy.a12.descent": [
+     {
+      "d": 6.31,
+      "f": "pt/legacy.a12.descent.0.mp3"
+     }
+    ],
+    "legacy.a12.firstSteps": [
+     {
+      "d": 5.08,
+      "f": "pt/legacy.a12.firstSteps.0.mp3"
+     }
+    ],
+    "legacy.a12.goEva": [
+     {
+      "d": 2.36,
+      "f": "pt/legacy.a12.goEva.0.mp3"
+     }
+    ],
+    "legacy.a12.goPhoto": [
+     {
+      "d": 4.07,
+      "f": "pt/legacy.a12.goPhoto.0.mp3"
+     }
+    ],
+    "legacy.a12.goRetrieve": [
+     {
+      "d": 4.64,
+      "f": "pt/legacy.a12.goRetrieve.0.mp3"
+     }
+    ],
+    "legacy.a12.goSurvey": [
+     {
+      "d": 4.0,
+      "f": "pt/legacy.a12.goSurvey.0.mp3"
+     }
+    ],
+    "legacy.a12.landed": [
+     {
+      "d": 3.17,
+      "f": "pt/legacy.a12.landed.0.mp3"
+     }
+    ],
+    "legacy.a12.retrieved": [
+     {
+      "d": 2.15,
+      "f": "pt/legacy.a12.retrieved.0.mp3"
+     }
+    ],
+    "legacy.a12.surveyDone": [
+     {
+      "d": 4.39,
+      "f": "pt/legacy.a12.surveyDone.0.mp3"
+     }
+    ],
+    "legacy.a15.descent": [
+     {
+      "d": 5.15,
+      "f": "pt/legacy.a15.descent.0.mp3"
+     }
+    ],
+    "legacy.a15.firstSteps": [
+     {
+      "d": 4.07,
+      "f": "pt/legacy.a15.firstSteps.0.mp3"
+     }
+    ],
+    "legacy.a15.goEva": [
+     {
+      "d": 3.47,
+      "f": "pt/legacy.a15.goEva.0.mp3"
+     }
+    ],
+    "legacy.a15.goInstrument": [
+     {
+      "d": 3.42,
+      "f": "pt/legacy.a15.goInstrument.0.mp3"
+     }
+    ],
+    "legacy.a15.goPhoto": [
+     {
+      "d": 4.71,
+      "f": "pt/legacy.a15.goPhoto.0.mp3"
+     }
+    ],
+    "legacy.a15.goSamples": [
+     {
+      "d": 6.63,
+      "f": "pt/legacy.a15.goSamples.0.mp3"
+     }
+    ],
+    "legacy.a15.goSecond": [
+     {
+      "d": 3.02,
+      "f": "pt/legacy.a15.goSecond.0.mp3"
+     }
+    ],
+    "legacy.a15.goSurvey": [
+     {
+      "d": 6.48,
+      "f": "pt/legacy.a15.goSurvey.0.mp3"
+     }
+    ],
+    "legacy.a15.instrumentDone": [
+     {
+      "d": 2.11,
+      "f": "pt/legacy.a15.instrumentDone.0.mp3"
+     }
+    ],
+    "legacy.a15.landed": [
+     {
+      "d": 2.23,
+      "f": "pt/legacy.a15.landed.0.mp3"
+     }
+    ],
+    "legacy.a15.surveyDone": [
+     {
+      "d": 4.54,
+      "f": "pt/legacy.a15.surveyDone.0.mp3"
+     }
+    ],
+    "legacy.boundary": [
+     {
+      "d": 4.51,
+      "f": "pt/legacy.boundary.0.mp3"
+     }
+    ],
+    "legacy.complete": [
+     {
+      "d": 3.26,
+      "f": "pt/legacy.complete.0.mp3"
+     }
+    ],
+    "legacy.remind": [
+     {
+      "d": 3.51,
+      "f": "pt/legacy.remind.0.mp3"
      }
     ],
     "orbit.arrival": [
