@@ -20,6 +20,11 @@ const DEG = Math.PI / 180;
 // field round it (8 m cells growing outwards to the horizon) with a hole
 // where the fine patch is; a skirt along the patch's edge hides any crack.
 // About 18k vertices, one draw call.
+/**
+ * The fine (1 m) patch's half-extents for a site: the shared GRID, unless the site asks for a
+ * larger one (Apollo Legacy's Ocean of Storms: the walk to Surveyor 3 stays on fine ground).
+ */
+export const fineGrid = (site) => ({ fineX: (site && site.grid && site.grid.fineX) || GRID.fineX, fineZ: (site && site.grid && site.grid.fineZ) || GRID.fineZ });
 export const GRID = { fineX: 104, fineZ: 34, step: 1, coarse: 8, growth: 1.18, far: 2000, skirt: 1.5 };
 
 /** The fine patch's axis: uniform 1 m steps over ±fineHalf. */
@@ -194,8 +199,7 @@ function cellIndex(grid, skip) {
  */
 export function buildTerrain(site) {
   if (cache.has(site.id)) return cache.get(site.id);
-  const FX = GRID.fineX;
-  const FZ = GRID.fineZ;
+  const { fineX: FX, fineZ: FZ } = fineGrid(site);
   const near = heightGrid(site, fineAxis(FX), fineAxis(FZ));
   const far = heightGrid(site, farAxis(FX), farAxis(FZ));
   const inNear = (x, z) => x >= -FX && x <= FX && z >= -FZ && z <= FZ;
@@ -324,8 +328,8 @@ export function buildTerrain(site) {
 /** Direct sunlight reaching (x, z) m on the terrain (0..1), from the baked shadows (fine patch; 1 elsewhere). */
 export function sunVisAt(terrain, x, z) {
   const { near, sunVis } = terrain;
-  const FX = GRID.fineX;
-  const FZ = GRID.fineZ;
+  const FX = (near.xs.length - 1) / 2;
+  const FZ = (near.zs.length - 1) / 2;
   if (x < -FX || x > FX || z < -FZ || z > FZ) return 1;
   const i = Math.min(near.nx - 2, Math.floor(x + FX));
   const j = Math.min(near.nz - 2, Math.floor(z + FZ));

@@ -540,6 +540,11 @@ export default function Mission({ entry = "opening" }) {
     audio.padStop(0.5);
     navigate("/training");
   };
+  // APOLLO LEGACY: its own page, its own save (the campaign's checkpoint is never touched)
+  const handleLegacy = () => {
+    audio.padStop(0.5);
+    navigate("/legacy");
+  };
 
   // The descent itself, after the fade (or, on the far side, after loss of signal).
   const enterDescent = () => {
@@ -1113,7 +1118,7 @@ export default function Mission({ entry = "opening" }) {
       )}
 
       {/* START MISSIONS: the game menu, in the title's place over the same shot */}
-      {state === STATES.MENU && <ModeMenu onMissions={() => setState(STATES.SELECT)} onTraining={handleTraining} saved={resumable} lang={lang} onResume={handleResume} />}
+      {state === STATES.MENU && <ModeMenu onMissions={() => setState(STATES.SELECT)} onTraining={handleTraining} onLegacy={handleLegacy} saved={resumable} lang={lang} onResume={handleResume} />}
 
       {/* MISSIONS: the four official destinations, then the pilot difficulty */}
       {state === STATES.SELECT && (

@@ -4,6 +4,7 @@ import { useRef, useState, useEffect, useMemo, useCallback, Suspense } from "rea
 import * as THREE from "three";
 import { LanderRig, RegolithSheet, GroundMarks, createTouchdownFx } from "@/components/scenes/TouchdownFx";
 import { SiteTerrain, SiteRocks, SiteSky, SiteSun, SiteMarkers, LandingPoint } from "@/components/scenes/LunarSite";
+import { SiteObjects } from "@/components/legacy/SurveyorModel";
 import HoldButton from "@/components/HoldButton";
 import { useCompact } from "@/hooks/useMediaQuery";
 import { solveDistance } from "@/lib/cameraFraming";
@@ -1074,6 +1075,7 @@ export default function DescentGame({ difficulty = "ASTRONAUT", audio, onSuccess
             <SiteSun site={site} focus={() => [fxRef.current.x, fxRef.current.groundY, 0]} />
             <SiteTerrain site={site} />
             <SiteRocks site={site} />
+            <SiteObjects site={site} />
             <SiteMarkers site={site} physRef={phys} />
             <LandingPoint site={site} physRef={phys} predict={predict} />
             <TouchdownPath physRef={phys} view={view} cfg={cfg} site={site} predict={predict} />
