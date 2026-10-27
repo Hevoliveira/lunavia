@@ -172,7 +172,7 @@ function Details({ m, lang, unlocked = [], onClose }) {
   );
 }
 
-export default function MissionDebrief({ data, lang = "en", live = true, onMissions, onRecords, onMenu, onClose }) {
+export default function MissionDebrief({ data, lang = "en", live = true, onMissions, onRecords, onMenu, onClose, onRecovery = null }) {
   const t = ui(lang);
   const m = data.mission;
   const animate = live && !reduced();
@@ -350,6 +350,12 @@ export default function MissionDebrief({ data, lang = "en", live = true, onMissi
               <button type="button" onClick={onMenu} className="btn-hud min-h-[44px]" data-testid="debrief-menu">
                 {t.menu}
               </button>
+              {/* optional: the ocean recovery after the splashdown (the results stay as they are) */}
+              {onRecovery && (
+                <button type="button" onClick={onRecovery} className="btn-hud min-h-[44px]" data-testid="debrief-watch-recovery">
+                  {lang === "pt" ? "ASSISTIR AO RESGATE" : "WATCH RECOVERY"}
+                </button>
+              )}
             </>
           )}
           <span className="ml-auto font-mono text-[9px] tracking-[0.16em] text-zinc-500 hidden md:inline short:inline" data-testid="debrief-status">

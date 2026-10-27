@@ -43,6 +43,7 @@ export default function useMissionAudio() {
   const crackleRef = useRef(null);
   const ambRef = useRef(null);
   const padRef = useRef(null);
+  const recRef = useRef(null); // OCEAN RECOVERY: { g, sea, rotor, nodes }
   const busRef = useRef(null); // { sfx, duck, voice }
   const relockRef = useRef(null);
 
@@ -522,6 +523,167 @@ export default function useMissionAudio() {
     ambRef.current = { g, nodes: [wind, hum, lfo] };
   }, [ambienceStop]);
 
+  /*
+   * OCEAN RECOVERY's sound (procedural, no recordings): the sea washing round the capsule, and the
+   * helicopter's rotor: a low thud of the five blades (about 17 slaps a second) over a filtered
+   * turbine whine. recoverySet({ rotor 0..1, sea 0..1 }) follows the helicopter's distance.
+   */
+  const recoveryStop = useCallback((fade = 1.2) => {
+    const r = recRef.current;
+    if (!r || !ctxRef.current) return;
+    const now = ctxRef.current.currentTime;
+    r.g.gain.cancelScheduledValues(now);
+    r.g.gain.setValueAtTime(r.g.gain.value, now);
+    r.g.gain.linearRampToValueAtTime(0, now + fade);
+    try {
+      r.nodes.forEach((n) => n.stop(now + fade + 0.1));
+    } catch (e) {}
+    recRef.current = null;
+  }, []);
+  const recoveryStart = useCallback(() => {
+    if (!enabledRef.current) return;
+    const ctx = ensureCtx();
+    if (!ctx) return;
+    recoveryStop(0.05);
+    const now = ctx.currentTime;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(1, now + 2);
+    g.connect(sfxOut(ctx));
+    // the sea: broadband noise, low-passed, slowly swelling
+    const seaSrc = ctx.createBufferSource();
+    seaSrc.buffer = makeNoiseBuffer(ctx);
+    seaSrc.loop = true;
+    const seaLp = ctx.createBiquadFilter();
+    seaLp.type = "lowpass";
+    seaLp.frequency.value = 520;
+    const sea = ctx.createGain();
+    sea.gain.value = 0.05;
+    const swell = ctx.createOscillator();
+    swell.frequency.value = 0.11;
+    const swellG = ctx.createGain();
+    swellG.gain.value = 0.025;
+    swell.connect(swellG).connect(sea.gain);
+    seaSrc.connect(seaLp).connect(sea).connect(g);
+    // the rotor: band-passed noise chopped at the blade rate, and the turbines' whine
+    const rSrc = ctx.createBufferSource();
+    rSrc.buffer = makeNoiseBuffer(ctx);
+    rSrc.loop = true;
+    const rBp = ctx.createBiquadFilter();
+    rBp.type = "lowpass";
+    rBp.frequency.value = 260;
+    const chop = ctx.createGain();
+    chop.gain.value = 0.5;
+    const blade = ctx.createOscillator();
+    blade.type = "square";
+    blade.frequency.value = 17;
+    const bladeG = ctx.createGain();
+    bladeG.gain.value = 0.5;
+    blade.connect(bladeG).connect(chop.gain);
+    const whine = ctx.createOscillator();
+    whine.type = "sawtooth";
+    whine.frequency.value = 1180;
+    const whineLp = ctx.createBiquadFilter();
+    whineLp.type = "bandpass";
+    whineLp.frequency.value = 1180;
+    whineLp.Q.value = 6;
+    const whineG = ctx.createGain();
+    whineG.gain.value = 0.012;
+    const rotor = ctx.createGain();
+    rotor.gain.value = 0;
+    rSrc.connect(rBp).connect(chop).connect(rotor);
+    whine.connect(whineLp).connect(whineG).connect(rotor);
+    rotor.connect(g);
+    [seaSrc, swell, rSrc, blade, whine].forEach((n) => n.start());
+    recRef.current = { g, sea, rotor, nodes: [seaSrc, swell, rSrc, blade, whine] };
+  }, [recoveryStop]);
+  const recoverySet = useCallback(({ rotor = null, sea = null } = {}) => {
+    const r = recRef.current;
+    if (!r || !ctxRef.current) return;
+    const now = ctxRef.current.currentTime;
+    if (rotor != null) r.rotor.gain.setTargetAtTime(Math.max(0, Math.min(1, rotor)) * 0.5, now, 0.25);
+    if (sea != null) r.sea.gain.setTargetAtTime(Math.max(0, Math.min(1, sea)) * 0.06, now, 0.5);
+  }, []);
+
+  /*
+   * OCEAN RECOVERY's equipment, one-shots on the recovery's own bus (they go with it): "splash" a
+   * swimmer entering the water, "inflate" the collar's hiss, "hatch" the latch's clank and thump,
+   * "winch" the hoist's motor (dur s). Procedural, no recordings.
+   */
+  const recoveryCue = useCallback((kind, dur = 3) => {
+    const r = recRef.current;
+    const ctx = ctxRef.current;
+    if (!r || !ctx) return;
+    const now = ctx.currentTime;
+    const noise = (len, type, freq, q, peak, attack, out = r.g) => {
+      const src = ctx.createBufferSource();
+      src.buffer = makeNoiseBuffer(ctx);
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(peak, now + attack);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + len);
+      src.connect(f).connect(g).connect(out);
+      src.start(now);
+      src.stop(now + len + 0.05);
+      return { f, g };
+    };
+    if (kind === "splash") {
+      noise(0.9, "lowpass", 900, 0.7, 0.16, 0.02);
+    } else if (kind === "inflate") {
+      const { f } = noise(dur, "highpass", 2400, 0.8, 0.05, 0.4);
+      f.frequency.linearRampToValueAtTime(3600, now + dur);
+    } else if (kind === "hatch") {
+      // two latch clicks, then the door's low thump as it swings free
+      [0, 0.18].forEach((d) => {
+        const src = ctx.createBufferSource();
+        src.buffer = makeNoiseBuffer(ctx);
+        const f = ctx.createBiquadFilter();
+        f.type = "bandpass";
+        f.frequency.value = 2300;
+        f.Q.value = 4;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0005, now + d);
+        g.gain.linearRampToValueAtTime(0.18, now + d + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0005, now + d + 0.09);
+        src.connect(f).connect(g).connect(r.g);
+        src.start(now + d);
+        src.stop(now + d + 0.12);
+      });
+      const o = ctx.createOscillator();
+      o.frequency.setValueAtTime(95, now + 0.45);
+      o.frequency.exponentialRampToValueAtTime(55, now + 0.9);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0005, now + 0.45);
+      og.gain.linearRampToValueAtTime(0.2, now + 0.47);
+      og.gain.exponentialRampToValueAtTime(0.0005, now + 1.0);
+      o.connect(og).connect(r.g);
+      o.start(now + 0.45);
+      o.stop(now + 1.05);
+    } else if (kind === "winch") {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(210, now);
+      o.frequency.linearRampToValueAtTime(260, now + Math.min(0.6, dur / 2));
+      o.frequency.setValueAtTime(260, now + Math.max(0.6, dur - 0.5));
+      o.frequency.linearRampToValueAtTime(190, now + dur);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 700;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(0.03, now + 0.3);
+      g.gain.setValueAtTime(0.03, now + Math.max(0.3, dur - 0.4));
+      g.gain.linearRampToValueAtTime(0, now + dur);
+      o.connect(lp).connect(g).connect(r.g);
+      o.start(now);
+      o.stop(now + dur + 0.05);
+    }
+  }, []);
+
   const padStop = useCallback((fade = 3) => {
     const p = padRef.current;
     if (!p || !ctxRef.current) return;
@@ -631,6 +793,7 @@ export default function useMissionAudio() {
         roarStop(0.05);
         ambienceStop(0.05);
         padStop(0.05);
+        recoveryStop(0.05);
         if (window.speechSynthesis) window.speechSynthesis.cancel();
         if (ctxRef.current) {
           ctxRef.current.onstatechange = null;
@@ -643,7 +806,7 @@ export default function useMissionAudio() {
       crackleRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stopRumble, roarStop, ambienceStop, padStop]);
+  }, [stopRumble, roarStop, ambienceStop, padStop, recoveryStop]);
 
   return {
     init,
@@ -674,5 +837,9 @@ export default function useMissionAudio() {
     ambienceStop,
     padStart,
     padStop,
+    recoveryStart,
+    recoverySet,
+    recoveryCue,
+    recoveryStop,
   };
 }

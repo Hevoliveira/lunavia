@@ -16,6 +16,7 @@ import { SKY_GLSL } from "@/components/scenes/descent/atmosphere";
 import Splash from "@/components/scenes/descent/Splash";
 import Chutes from "@/components/scenes/descent/Chutes";
 import AdaptiveResolution from "@/components/scenes/AdaptiveResolution";
+import OceanRecovery, { recoveryCameraScene } from "@/components/scenes/recovery/OceanRecovery";
 
 /*
  * ReentryScene — rendered entirely from the live reentry simulation state
@@ -612,7 +613,7 @@ function Vehicle({ simRef, viewRef, poseRef, atmo }) {
 
 /* ------------------------------ camera ------------------------------ */
 
-function CameraRig({ simRef, viewRef, atmo }) {
+function CameraRig({ simRef, viewRef, atmo, recovery = null }) {
   const { camera } = useThree();
   const first = useRef(true);
   const fovSet = useRef(false);
@@ -628,7 +629,14 @@ function CameraRig({ simRef, viewRef, atmo }) {
     const L = plasmaLevel(s);
     // each shot's lens (the descent and recovery shots choose theirs; the rest keep 45°)
     let fovTarget = FOV_DEFAULT;
-    if (v.phase === "APPROACH") {
+    // OCEAN RECOVERY (optional, after MISSION COMPLETE): its own shots (data/oceanRecovery)
+    const rec = recovery && recovery.current && recovery.current.active ? recovery.current : null;
+    if (rec) {
+      const c = recoveryCameraScene(rec.t, atmo.seaY);
+      _p.set(...c.pos);
+      _l.set(...c.look);
+      fovTarget = c.fov;
+    } else if (v.phase === "APPROACH") {
       // Ahead and to the sunlit side, as the return's approach shot: the CSM flies screen-left.
       _p.set(-1.2, 1.3, 5.6);
       _l.set(0.5, -0.4, 0);
@@ -668,8 +676,10 @@ function CameraRig({ simRef, viewRef, atmo }) {
       pos.current.copy(_p);
       look.current.copy(_l);
     }
-    pos.current.lerp(_p, Math.min(1, dt * 1.2));
-    look.current.lerp(_l, Math.min(1, dt * 1.6));
+    // the recovery's shots are already smooth: followed closely, after an eased first move
+    const follow = rec ? 1.2 + 28 * smooth(rec.t / 2.5) : 1.2;
+    pos.current.lerp(_p, Math.min(1, dt * follow));
+    look.current.lerp(_l, Math.min(1, dt * (rec ? follow : 1.6)));
     // never below the waves: clear of the very swell under the camera
     if (atmo.low > 0.5) {
       const w = seaSurface((pos.current.x + atmo.drift) * M_PER_UNIT, pos.current.z * M_PER_UNIT, t);
@@ -696,12 +706,13 @@ function CameraRig({ simRef, viewRef, atmo }) {
       w.splash = v.splash ? { x: v.splash.x, y: v.splash.y, z: v.splash.z, t: v.splash.t } : null;
       w.calls = state.gl.info.render.calls;
       w.tris = state.gl.info.render.triangles;
+      w.mem = { geometries: state.gl.info.memory.geometries, textures: state.gl.info.memory.textures };
     }
   });
   return null;
 }
 
-function Scene({ simRef, viewRef, final = false }) {
+function Scene({ simRef, viewRef, final = false, recovery = null }) {
   const starRef = useRef();
   // One atmosphere for the sky, the sea and the clouds (written by SkyDome and AtmoState).
   const atmo = useMemo(
@@ -734,7 +745,8 @@ function Scene({ simRef, viewRef, final = false }) {
       <Vehicle simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
       <Chutes simRef={simRef} viewRef={viewRef} poseRef={poseRef} atmo={atmo} />
       <Splash viewRef={viewRef} noise={noise} sun={atmo.sun} />
-      <CameraRig simRef={simRef} viewRef={viewRef} atmo={atmo} />
+      {recovery && <OceanRecovery recRef={recovery} atmo={atmo} poseRef={poseRef} />}
+      <CameraRig simRef={simRef} viewRef={viewRef} atmo={atmo} recovery={recovery} />
       {/* after the camera rig: the clouds' buffer drawn from this frame's camera, before the main pass */}
       <CloudPass passRef={cloudPass} />
     </>
@@ -749,7 +761,7 @@ function splashedState() {
   };
 }
 
-export default function ReentryScene({ simRef, viewRef, final = false }) {
+export default function ReentryScene({ simRef, viewRef, final = false, recovery = null }) {
   const localSim = useRef(splashedState());
   const localView = useRef({ phase: "SPLASHED", phaseT: CONFIRM.done });
   const sRef = final || !simRef ? localSim : simRef;
@@ -762,7 +774,7 @@ export default function ReentryScene({ simRef, viewRef, final = false }) {
         gl={{ antialias: true, alpha: false, toneMapping: THREE.ACESFilmicToneMapping, outputColorSpace: THREE.SRGBColorSpace }}
         onCreated={({ gl }) => gl.setClearColor("#020203")}
       >
-        <Scene simRef={sRef} viewRef={vRef} final={final || !simRef} />
+        <Scene simRef={sRef} viewRef={vRef} final={final || !simRef} recovery={recovery} />
         <AdaptiveResolution />
       </Canvas>
     </div>
