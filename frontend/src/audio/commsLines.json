@@ -5,7 +5,7 @@
     "FLIGHT": {"label": {"en": "FLIGHT", "pt": "DIRETOR DE VOO"}, "radio": "ground"},
     "GUIDANCE": {"label": {"en": "GUIDANCE", "pt": "GUIAGEM"}, "radio": "ground"},
     "COMPUTER": {"label": {"en": "COMPUTER", "pt": "COMPUTADOR"}, "radio": "onboard"},
-    "CREW": {"label": {"en": "LUNAVIA", "pt": "LUNAVIA"}, "radio": "space"}
+    "CREW": {"label": {"en": "LUNAVIA", "pt": "LUNAVIA"}, "radio": "space"}, "RECOVERY": {"label": {"en": "RECOVERY 1", "pt": "RESGATE 1"}, "radio": "space"}
   },
   "lines": [
     {"id": "settings.radioCheck", "role": "CAPCOM", "priority": "NORMAL", "gap": 0, "mood": "calm", "variants": [{"en": "LUNAVIA, Houston. Radio check. How do you read?", "pt": "LUNAVIA, Houston. Teste de rádio. Como nos ouvem?"}]},
@@ -204,6 +204,15 @@
     {"id": "legacy.a15.instrumentDone", "role": "CREW", "throughBlackout": true, "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "The seismometer is down and level.", "pt": "Sismômetro no chão e nivelado."}]},
     {"id": "legacy.complete", "role": "CAPCOM", "priority": "NORMAL", "mood": "lift", "dramatized": true, "variants": [{"en": "Good work on the surface. Historical mission complete.", "pt": "Bom trabalho na superfície. Missão histórica concluída."}]},
     {"id": "legacy.boundary", "role": "CAPCOM", "priority": "HIGH", "cooldown": 20, "mood": "focused", "dramatized": true, "variants": [{"en": "You are at the edge of the planned traverse. Head back towards the LM.", "pt": "Vocês estão no limite da travessia planejada. Voltem em direção ao LM."}]},
-    {"id": "legacy.remind", "role": "CAPCOM", "priority": "AMBIENT", "cooldown": 90, "mood": "calm", "dramatized": true, "variants": [{"en": "The next task is on your display when you are ready.", "pt": "A próxima tarefa está no visor quando estiverem prontos."}]}
+    {"id": "legacy.remind", "role": "CAPCOM", "priority": "AMBIENT", "cooldown": 90, "mood": "calm", "dramatized": true, "variants": [{"en": "The next task is on your display when you are ready.", "pt": "A próxima tarefa está no visor quando estiverem prontos."}]},
+    {"id": "recovery.ready", "role": "RECOVERY", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Recovery One airborne, heading for the capsule.", "pt": "Resgate Um no ar, a caminho da cápsula."}]},
+    {"id": "recovery.visual", "role": "RECOVERY", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "Recovery One has visual contact with the capsule.", "pt": "Resgate Um tem contato visual com a cápsula."}]},
+    {"id": "recovery.located", "role": "RECOVERY", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Capsule located. Upright and stable.", "pt": "Cápsula localizada. Em pé e estável."}]},
+    {"id": "recovery.deploying", "role": "RECOVERY", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "Swimmers away. Recovery team deploying.", "pt": "Mergulhadores na água. Equipe de resgate em ação."}]},
+    {"id": "recovery.collar", "role": "RECOVERY", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Flotation collar installed and inflated.", "pt": "Colar de flutuação instalado e inflado."}]},
+    {"id": "recovery.hatch", "role": "RECOVERY", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Hatch is open. Crew egress in progress.", "pt": "Escotilha aberta. Saída da tripulação em andamento."}]},
+    {"id": "recovery.hoist", "role": "RECOVERY", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Crew recovery in progress. Basket going down.", "pt": "Resgate da tripulação em andamento. Cesto descendo."}]},
+    {"id": "recovery.allAboard", "role": "RECOVERY", "priority": "NORMAL", "mood": "relief", "dramatized": true, "variants": [{"en": "All crew accounted for. Returning to the ship.", "pt": "Toda a tripulação a bordo. Retornando ao navio."}]},
+    {"id": "recovery.welcome", "role": "CAPCOM", "priority": "NORMAL", "mood": "relief", "dramatized": true, "variants": [{"en": "Welcome home, LUNAVIA.", "pt": "Bem-vindos de volta, LUNAVIA."}]}
   ]
 }

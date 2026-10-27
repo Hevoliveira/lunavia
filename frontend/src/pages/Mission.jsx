@@ -21,6 +21,7 @@ import AbortModal from "@/components/AbortModal";
 import useMissionAudio from "@/hooks/useMissionAudio";
 import MissionTitle from "@/components/MissionTitle";
 import MissionDebrief from "@/components/scoring/MissionDebrief";
+import RecoveryOverlay, { recoveryText } from "@/components/recovery/RecoveryOverlay";
 import { useAudioSettings } from "@/audio/audioSettings";
 import { setSubtitlePlacement } from "@/components/CommsSubtitles";
 import { createFlightScoring, restoreFlightScoring } from "@/data/flightScoring";
@@ -218,6 +219,10 @@ export default function Mission({ entry = "opening" }) {
   const scoringRef = useRef(null);
   const [debrief, setDebrief] = useState(null);
   const [debriefOpen, setDebriefOpen] = useState(false);
+  // OCEAN RECOVERY (optional, after MISSION COMPLETE): the cinematic's clock lives in the scene
+  // (recoveryRef.current.t); the results were already recorded at splashdown and are untouched
+  const [recovering, setRecovering] = useState(false);
+  const recoveryRef = useRef({ active: false, t: 0, done: false, paused: false, onEnd: null });
   const lang = useAudioSettings().subLang === "pt" ? "pt" : "en";
   // Lunar orbit presentation (ORBIT, TITLE, BRIEFING): the orbit
   // clock, read every frame by the scene through the ref. It is real seconds
@@ -628,6 +633,33 @@ export default function Mission({ entry = "opening" }) {
     setDebrief(d);
     setDebriefOpen(false);
     setState(STATES.COMPLETE);
+  };
+
+  // OCEAN RECOVERY: WATCH RECOVERY plays the cinematic over the same sea; SKIP RECOVERY or its end
+  // returns to the mission's results (MISSION DEBRIEF). Nothing is scored, saved or logged here.
+  const endRecovery = () => {
+    const r = recoveryRef.current;
+    if (!r.active) return;
+    r.active = false;
+    r.onEnd = null;
+    audio.commsFlush();
+    setRecovering(false);
+    setDebriefOpen(!!debrief);
+  };
+  // leaving MISSION COMPLETE ends any recovery under way (its layer goes with the scene)
+  useEffect(() => {
+    if (state === STATES.COMPLETE || !recoveryRef.current.active) return;
+    recoveryRef.current.active = false;
+    setRecovering(false);
+  }, [state]);
+  const endRecoveryRef = useRef(endRecovery);
+  endRecoveryRef.current = endRecovery;
+  const startRecovery = () => {
+    if (state !== STATES.COMPLETE || recoveryRef.current.active) return;
+    Object.assign(recoveryRef.current, { active: true, t: 0, done: false, paused: false, onEnd: () => setTimeout(() => endRecoveryRef.current(), 0) });
+    audio.commsFlush();
+    setDebriefOpen(false);
+    setRecovering(true);
   };
 
   // A capsule lost on entry (the failure panel follows; RETRY ENTRY may finish the flight).
@@ -1061,16 +1093,16 @@ export default function Mission({ entry = "opening" }) {
 
   // MISSION COMPLETE holds for 5 s over the splashdown, then the debrief takes over (MISSION DEBRIEF opens it at once).
   useEffect(() => {
-    if (state !== STATES.COMPLETE || !debrief || debriefOpen) return undefined;
+    if (state !== STATES.COMPLETE || !debrief || debriefOpen || recovering) return undefined;
     const id = setTimeout(() => setDebriefOpen(true), 5000);
     return () => clearTimeout(id);
-  }, [state, debrief, debriefOpen]);
+  }, [state, debrief, debriefOpen, recovering]);
 
   // Active flight (not menus, results or the control room): lets phones hide
   // the website navbar so the flight view and HUD get the full screen.
   useEffect(() => {
-    document.documentElement.dataset.flight = FLIGHT_STATES.has(state) ? "1" : "";
-  }, [state]);
+    document.documentElement.dataset.flight = FLIGHT_STATES.has(state) || recovering ? "1" : "";
+  }, [state, recovering]);
   useEffect(() => () => {
     delete document.documentElement.dataset.flight;
   }, []);
@@ -1269,10 +1301,12 @@ export default function Mission({ entry = "opening" }) {
         />
       )}
 
-      {state === STATES.COMPLETE && <ReentryScene final />}
+      {/* the recovery's layer exists only while it plays (built on WATCH RECOVERY, released after) */}
+      {state === STATES.COMPLETE && <ReentryScene final recovery={recovering ? recoveryRef : null} />}
+      {state === STATES.COMPLETE && recovering && <RecoveryOverlay recRef={recoveryRef} lang={lang} audio={audio} onSkip={endRecovery} />}
 
       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
-      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && state !== STATES.ASCENT && state !== STATES.CABIN && state !== STATES.EVA && state !== STATES.MANUAL_ASCENT && state !== STATES.DOCKING && state !== STATES.DEBRIEF && (
+      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && state !== STATES.ASCENT && state !== STATES.CABIN && state !== STATES.EVA && state !== STATES.MANUAL_ASCENT && state !== STATES.DOCKING && state !== STATES.DEBRIEF && !recovering && (
         <div
           data-testid="mission-hud-min"
           className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
@@ -1328,7 +1362,7 @@ export default function Mission({ entry = "opening" }) {
         </button>
       )}
 
-      {state === STATES.COMPLETE && !debriefOpen && (
+      {state === STATES.COMPLETE && !debriefOpen && !recovering && (
         <div
           data-testid="complete-overlay"
           className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-black/10 via-black/35 to-black/55 z-50"
@@ -1350,6 +1384,9 @@ export default function Mission({ entry = "opening" }) {
                   {lang === "pt" ? "RELATÓRIO DA MISSÃO" : "MISSION DEBRIEF"} <ArrowUpRight size={14} />
                 </button>
               )}
+              <button onClick={startRecovery} data-testid="btn-watch-recovery" className="btn-hud">
+                {recoveryText(lang).watch} <ArrowUpRight size={14} />
+              </button>
               <button
                 onClick={resetMission}
                 data-testid="btn-restart"
@@ -1370,6 +1407,7 @@ export default function Mission({ entry = "opening" }) {
         <MissionDebrief
           data={debrief}
           lang={lang}
+          onRecovery={state === STATES.COMPLETE ? startRecovery : null}
           onMissions={() => {
             resetMission();
             setState(STATES.SELECT);

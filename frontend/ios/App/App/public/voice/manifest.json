@@ -7,7 +7,8 @@
     "COMPUTER": "bf_emma",
     "CREW": "am_puck",
     "FLIGHT": "am_michael",
-    "GUIDANCE": "am_fenrir"
+    "GUIDANCE": "am_fenrir",
+    "RECOVERY": "am_eric"
    },
    "clips": {
     "ascent.armed": [
@@ -1092,6 +1093,60 @@
       "f": "en/rdv.tpi.0.mp3"
      }
     ],
+    "recovery.allAboard": [
+     {
+      "d": 2.43,
+      "f": "en/recovery.allAboard.0.mp3"
+     }
+    ],
+    "recovery.collar": [
+     {
+      "d": 2.66,
+      "f": "en/recovery.collar.0.mp3"
+     }
+    ],
+    "recovery.deploying": [
+     {
+      "d": 2.31,
+      "f": "en/recovery.deploying.0.mp3"
+     }
+    ],
+    "recovery.hatch": [
+     {
+      "d": 2.38,
+      "f": "en/recovery.hatch.0.mp3"
+     }
+    ],
+    "recovery.hoist": [
+     {
+      "d": 2.83,
+      "f": "en/recovery.hoist.0.mp3"
+     }
+    ],
+    "recovery.located": [
+     {
+      "d": 2.23,
+      "f": "en/recovery.located.0.mp3"
+     }
+    ],
+    "recovery.ready": [
+     {
+      "d": 2.52,
+      "f": "en/recovery.ready.0.mp3"
+     }
+    ],
+    "recovery.visual": [
+     {
+      "d": 2.81,
+      "f": "en/recovery.visual.0.mp3"
+     }
+    ],
+    "recovery.welcome": [
+     {
+      "d": 1.72,
+      "f": "en/recovery.welcome.0.mp3"
+     }
+    ],
     "reentry.aos": [
      {
       "d": 4.55,
@@ -1320,7 +1375,8 @@
     "COMPUTER": "pf_dora",
     "CREW": "pm_alex",
     "FLIGHT": "pm_alex",
-    "GUIDANCE": "pm_santa"
+    "GUIDANCE": "pm_santa",
+    "RECOVERY": "pm_santa"
    },
    "clips": {
     "ascent.armed": [
@@ -2403,6 +2459,60 @@
      {
       "d": 2.68,
       "f": "pt/rdv.tpi.0.mp3"
+     }
+    ],
+    "recovery.allAboard": [
+     {
+      "d": 3.11,
+      "f": "pt/recovery.allAboard.0.mp3"
+     }
+    ],
+    "recovery.collar": [
+     {
+      "d": 2.79,
+      "f": "pt/recovery.collar.0.mp3"
+     }
+    ],
+    "recovery.deploying": [
+     {
+      "d": 3.29,
+      "f": "pt/recovery.deploying.0.mp3"
+     }
+    ],
+    "recovery.hatch": [
+     {
+      "d": 3.65,
+      "f": "pt/recovery.hatch.0.mp3"
+     }
+    ],
+    "recovery.hoist": [
+     {
+      "d": 3.48,
+      "f": "pt/recovery.hoist.0.mp3"
+     }
+    ],
+    "recovery.located": [
+     {
+      "d": 2.62,
+      "f": "pt/recovery.located.0.mp3"
+     }
+    ],
+    "recovery.ready": [
+     {
+      "d": 2.48,
+      "f": "pt/recovery.ready.0.mp3"
+     }
+    ],
+    "recovery.visual": [
+     {
+      "d": 2.91,
+      "f": "pt/recovery.visual.0.mp3"
+     }
+    ],
+    "recovery.welcome": [
+     {
+      "d": 2.06,
+      "f": "pt/recovery.welcome.0.mp3"
      }
     ],
     "reentry.aos": [

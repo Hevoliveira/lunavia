@@ -205,6 +205,16 @@ const FEATURES = [
   ["Apollo Legacy: its own results (separate from the campaign's)", "lunavia.legacy.records.v1"],
   ["Apollo Legacy: dramatized calls (synthetic voices)", "legacy.a12.goRetrieve"],
   ["Apollo Legacy in Portuguese", "INICIAR DESCIDA"],
+  ["Ocean Recovery: WATCH RECOVERY on MISSION COMPLETE", "btn-watch-recovery"],
+  ["Ocean Recovery: WATCH RECOVERY in the mission debrief", "debrief-watch-recovery"],
+  ["Ocean Recovery: SKIP RECOVERY", "SKIP RECOVERY"],
+  ["Ocean Recovery: the flotation collar stage", "FLOTATION COLLAR"],
+  ["Ocean Recovery: the recovery helicopter's markings", "LUNAVIA  RECOVERY  1"],
+  ["Ocean Recovery: the dramatized radio note", "DRAMATIZED RADIO"],
+  ["Ocean Recovery: dramatized recovery calls (synthetic voices)", "recovery.allAboard"],
+  ["Ocean Recovery: the finale", "WELCOME HOME"],
+  ["Ocean Recovery: MISSION ACCOMPLISHED", "MISSION ACCOMPLISHED"],
+  ["Ocean Recovery in Portuguese", "ASSISTIR AO RESGATE"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar

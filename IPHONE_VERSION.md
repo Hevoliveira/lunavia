@@ -1,29 +1,30 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD cabe279**.
+This folder installs **BUILD 9bffe22**.
 
 When it is installed, the first screen of LUNAVIA shows, at the top left:
 
-> **LUNAVIA iOS · BUILD cabe279 · 2026-10-25 02:18 UTC**
+> **LUNAVIA iOS · BUILD 9bffe22 · 2026-10-27 21:21 UTC**
 
-It is **APOLLO LEGACY**: a new entry in the game menu (between MISSIONS and TRAINING) with three
-historically inspired lunar missions, flown on LUNAVIA's own landing and EVA. No unlocking.
-- **APOLLO 11 · 1969 · Sea of Tranquility (Eagle):** the final descent from about 160 m, first
-  steps, the contingency sample, a photograph of Eagle, the laser ranging retroreflector.
-- **APOLLO 12 · 1969 · Ocean of Storms (Intrepid):** a new site built for it, with Surveyor 3 on
-  the slope of Surveyor crater about 150 m from the target. The landing's precision is graded
-  (PINPOINT … WIDE; a safe landing anywhere continues); walk to Surveyor 3, inspect and photograph
-  it, retrieve its television camera and carry it back.
-- **APOLLO 15 · 1971 · Hadley–Apennine (Falcon):** the longest walk in LUNAVIA, on foot (no rover
-  yet): a geology station on Hadley Rille's rim, two different samples, Hadley Delta on camera,
-  the seismometer.
-- Each has a historical briefing (crew, lunar module, history, NASA sources), a touchdown card and
-  a results screen. Radio calls are dramatized with synthetic voices (never archival audio).
-- Apollo Legacy keeps its own checkpoint (RESUME on the card) and its own results (COMPLETED
-  badge). The campaign's mission save, score, medals, achievements and records are untouched.
-The rest of the game is as in BUILD 5273da7.
+It is **OCEAN RECOVERY**: an optional cinematic epilogue after a successful splashdown (about 75 s,
+English and Portuguese), inspired by the Apollo recovery operations. Nothing before it changed.
+- On **MISSION COMPLETE** (and in the MISSION DEBRIEF) a new button: **WATCH RECOVERY**
+  (PT: ASSISTIR AO RESGATE). The results were already recorded at splashdown: watching, skipping or
+  closing the app in the middle never changes the score, medals, achievements, mission log or save.
+- The sequence: the capsule afloat → a Sea King-style recovery helicopter (RECOVERY 1) comes in
+  from the horizon and hovers → two swimmers drop into the sea and swim to the capsule → the
+  flotation collar wraps round the hull and inflates → a life raft beside the hatch → the hatch
+  opens and the three astronauts (flight coveralls, life vests) climb out into the raft → the
+  rescue basket comes down, an astronaut rides it up to the door, then a short montage for the
+  other two (CREW ABOARD 3/3) → the helicopter leaves for the carrier on the horizon →
+  CREW RECOVERED · WELCOME HOME · MISSION ACCOMPLISHED → back to the mission's results.
+- **SKIP RECOVERY** at any moment goes straight to the results. A caption names every stage, so it
+  reads with the sound off; the radio calls are dramatized with synthetic voices (never archival
+  audio), and the sea, rotor, hatch, collar and winch sounds are generated in the game (no music).
+The rest of the game is as in BUILD cabe279.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **cabe279** is the previous release: APOLLO LEGACY, but no WATCH RECOVERY after the splashdown;
 - **5273da7** is the previous release: the LM cabin, but no APOLLO LEGACY in the game menu;
 - **b6f976d** is the previous release: the manual lunar ascent, but no ENTER CABIN (no lunar
   module interior);
@@ -152,6 +153,28 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Lunar EVA close-range visuals: a detailed astronaut (LEVA helmet, a gold visor reflecting the surroundings, chest unit and camera, ribbed hoses, backpack, convolutes, gauntlets, overshoes with treads), a living idle, a grounded walk (heel strike, less float) and contact shadows; the LM built for close viewing in the EVA (crinkled foil blankets, painted panels with seams and rivets, channel ladder with flat treads, ribbed footpads, strut details, hatch handle and hinges, plaque, equipment boxes, antenna feeds); the ground round the astronaut and the LM (regolith detail, pebbles, the engine-swept ground, footpad occlusion, treaded footprints) | — | 592b8c1 |
 | Interactive lunar module cabin: ENTER CABIN after the landing and on the ascent preparation (RETURN TO CABIN after the EVA), five seated stations with a limited drag-to-look, the real landing site through the exterior's two windows at every destination, panel hotspots read from the mission, EVA and ascent preparation checklists, BEGIN EVA / CONTINUE TO ASCENT from inside, resume in the cabin, crew and CAPCOM calls (Houston silent on the far side) | — | 5273da7 |
 | APOLLO LEGACY (historical missions, separate from the campaign): Apollo 11 (the final descent at the Sea of Tranquility, first steps, the contingency sample, a photograph of Eagle, the laser retroreflector), Apollo 12 (its own Ocean of Storms site with Surveyor 3 about 150 m from the target; a precision landing; walk to Surveyor 3, inspect, photograph and retrieve its TV camera), Apollo 15 (Hadley–Apennine on foot: a geology station on Hadley Rille's rim, two different samples, Hadley Delta on camera, a seismometer); historical briefings with sources, dramatized synthetic radio calls, its own save and results | — | cabe279 |
+| OCEAN RECOVERY (optional epilogue after a successful splashdown): WATCH RECOVERY on MISSION COMPLETE and in the debrief; the recovery helicopter, two swimmers, the flotation collar wrapped round and inflated, the life raft, the hatch opening and the three astronauts climbing out, the rescue-basket hoist, the carrier on the horizon, WELCOME HOME; SKIP RECOVERY; the results recorded at splashdown untouched | — | 9bffe22 |
+
+## Try OCEAN RECOVERY on the iPhone
+
+Not yet tried on a physical iPhone; the checks below were run in a desktop browser.
+1. Fly any mission to a successful splashdown (or RESUME a mission saved at EARTH REENTRY READY).
+2. On **MISSION COMPLETE**, next to MISSION DEBRIEF: **WATCH RECOVERY** (PT: ASSISTIR AO RESGATE).
+   It is also at the bottom of the MISSION DEBRIEF. Nothing else on the results changed.
+3. Watch about 75 s, in landscape: the capsule afloat; the helicopter coming in from far off,
+   slowing and hovering (rotors turning); two swimmers jumping from the door and swimming to the
+   capsule; the olive collar wrapping round from the back and inflating; the raft; the hatch
+   swinging open and the three astronauts climbing out one by one into the raft; the basket
+   lowered, one astronaut riding it up to the door; a short dip to black (2/3 · 3/3); the
+   helicopter climbing away toward the carrier on the horizon; WELCOME HOME.
+4. It returns to the mission's results by itself. Open FLIGHT RECORDS: the mission is in the log
+   once, the medal and records as before.
+5. **SKIP RECOVERY** (bottom right) at any point: straight back to the results.
+6. Close the app (swipe it away) in the middle of the recovery and reopen it: no RESUME MISSION
+   (the mission was already complete), the log and records as they were.
+7. Sound on: the sea, the rotor growing louder as the helicopter nears, dramatized RECOVERY 1 and
+   CAPCOM calls, the swimmers' splashes, the collar's hiss, the hatch, the winch. Sound off: every
+   stage has its caption, and the finale its words.
 
 ## Try APOLLO LEGACY on the iPhone
 
@@ -254,7 +277,9 @@ project) the moment it is reached; it does not depend on the app being closed cl
 
 ## How this bundle was made and checked
 
-- **Built from the clean tree at 5273da7** with `yarn ios:sync` (`ios:verify`: 196 checks, now including the LM cabin: ENTER CABIN on the results and the ascent preparation, the cabin scene, its stations and hotspots, both checklists, BEGIN EVA and CONTINUE TO ASCENT from inside, Portuguese, the four new voice calls, the resume in the cabin; all 392 voice clips bundled). The build is reproducible: the label carries the commit's own time.
+- **Built from the clean tree at 9bffe22** with `yarn ios:sync` (`ios:verify`: 221 checks, now including OCEAN RECOVERY: WATCH RECOVERY on MISSION COMPLETE and in the debrief, SKIP RECOVERY, the collar stage, the helicopter's markings, the dramatized radio note and calls, WELCOME HOME, MISSION ACCOMPLISHED, Portuguese; all 472 voice clips bundled, 18 of them new). The build is reproducible: the label carries the commit's own time.
+- **This release is OCEAN RECOVERY** over BUILD cabe279. Web game only: the Xcode project, Capacitor and the Swift package are unchanged; the save format is unchanged. The reentry, parachutes, clouds, sea, splashdown and its cameras are untouched (the recovery is a separate layer mounted only while it plays). Browser checks (Chromium with software rendering, an iPhone-sized landscape window; not an iPhone): the whole recovery in English and Portuguese and from the debrief (13/13: every stage, all three crew aboard, back to the results, records, log, achievements and save byte-identical, the recovery's geometries and textures released and no growth on a second playback, MAIN MENU, a new mission begins), SKIP RECOVERY (10/10), the browser killed in the middle of it and reopened (6/6: no result lost or counted twice, no stale RESUME), the same recovery on the packaged files offline (13/13), regressions (a full Sea of Tranquility mission to splashdown 12/12, 949 points GOLD; the Hadley EVA 28/28; the Tycho cabin 35/35), and the unit tests (769/769). Software rendering (only the ratio means anything): 7–10 fps through the recovery against 7.2 fps for the splashdown scene alone; at most 123 draw calls and 64k triangles (the hoist shot). Not run on a physical iPhone.
+- **5273da7** was built from the clean tree at 5273da7 with `yarn ios:sync` (`ios:verify`: 196 checks, now including the LM cabin: ENTER CABIN on the results and the ascent preparation, the cabin scene, its stations and hotspots, both checklists, BEGIN EVA and CONTINUE TO ASCENT from inside, Portuguese, the four new voice calls, the resume in the cabin; all 392 voice clips bundled). The build is reproducible: the label carries the commit's own time.
 - **This release is the interactive lunar module cabin** over BUILD b6f976d. Web game only: the Xcode project, Capacitor and the Swift package are unchanged. The save format moves to schema 5 (the "cabin" activity); saves from earlier builds are still read, and an older build leaves a schema 5 save alone. Browser checks (Chromium with software rendering, an iPhone-14-sized window; not an iPhone): the cabin flow at all four destinations (land → ENTER CABIN → look around → stations → panels → EVA preparation → SIGKILL and resume in the cabin → BEGIN EVA → the EVA → RETURN TO CABIN → ascent preparation → CONTINUE TO ASCENT → guided ascent → rendezvous; 32–35 checks each, all passing), the same on the packaged files (Hadley, 35/35), a full Sea of Tranquility mission through the cabin to splashdown (34/34, 956 points, PLATINUM), regressions without the cabin (Hadley straight through 12/12, the Tycho EVA with resumes 28/28, a Silent Horizon manual ascent 10/10), the cabin layout at three iPhone sizes in English and Portuguese (12/12), and the unit tests (724/724). Frame time in software rendering (only the ratio means anything): the window view 1.12× the ascent preparation's, the panels 0.71×, the aft view 0.53× (the landing site is drawn only where a window is on screen; the cabin's shadows are made once).
 - **592b8c1** was built from the clean tree at 592b8c1 with `yarn ios:sync` (`ios:verify`: 160 checks, now including the EVA's close-range visuals: the suit's dust shader, the near regolith, the close footpads, the plaque and the equipment box stencil). The build is reproducible: the label carries the commit's own time, so rebuilding this commit gives identical files.
 - **This release is the lunar EVA's close-range visual upgrade** over BUILD 672b8ef (HANDOFF §60). Web game only: the Xcode project, Capacitor and the Swift package are unchanged, so the ZIP opens and builds in Xcode as before; the save format is unchanged (schema 2). Browser checks of this release: the full Sea of Tranquility mission with the EVA on the packaged files (24/24: two SIGKILLs and a clean close in the middle of it, no duplicate sample, no landing replayed, the score unchanged, FIRST STEPS once, no subtitle or notice over a control or the astronaut, no page errors), the EVA's controls and safety (18/18, the HUD at three iPhone sizes in English and Portuguese), Hadley flown straight through (12/12: the LM in its standard look, no BEGIN EVA), the unit tests (624/624), and before/after close-ups of the astronaut, the LM and the ground. Measured in software rendering (only the ratio means anything): the EVA's frame 1.87–1.95× the ascent preparation's (1.13–1.30× before), with fewer draw calls than before (59 against 107–111). Not run on a physical iPhone.
