@@ -834,29 +834,6 @@ function emitParticles(t, dt, pools, S, rigRef, rocketGroupRef) {
 
 /* ------------------------------------------------------------------ */
 
-function GroundSkirt() {
-  // Scrub and wetland around the complex, blending into the planet-scale ground
-  const tex = useMemo(() => {
-    const c = document.createElement("canvas");
-    c.width = c.height = 128;
-    const ctx = c.getContext("2d");
-    const g = ctx.createRadialGradient(64, 64, 20, 64, 64, 64);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.7, "rgba(255,255,255,0.8)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 128, 128);
-    return new THREE.CanvasTexture(c);
-  }, []);
-  useEffect(() => () => tex.dispose(), [tex]);
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} renderOrder={-1}>
-      <ringGeometry args={[20, 160, 48, 1]} />
-      <meshStandardMaterial color="#56604a" roughness={1} transparent alphaMap={tex} depthWrite={false} />
-    </mesh>
-  );
-}
-
 function PadShadowSetup({ lightRef }) {
   useEffect(() => {
     const l = lightRef.current;
@@ -930,9 +907,6 @@ function Scene({ hooks }) {
       <hemisphereLight ref={fillRefs.hemi} args={["#bcd3f0", "#5a5040", 0.25]} />
       <pointLight ref={padLightRef} color="#ffae66" intensity={0} distance={16} decay={1.6} />
       <LaunchComplex progRef={padProg} anisotropy={anisotropy} />
-      <PadVisible padProg={padProg}>
-        <GroundSkirt />
-      </PadVisible>
       <group ref={rocketGroupRef}>
         <RocketModel scale={ROCKET_SCALE} rigRef={rigRef} ctrlRef={ctrlRef} />
       </group>
@@ -956,14 +930,6 @@ function Scene({ hooks }) {
       />
     </>
   );
-}
-
-function PadVisible({ padProg, children }) {
-  const ref = useRef();
-  useFrame(() => {
-    if (ref.current) ref.current.visible = padProg.current < 0.5;
-  });
-  return <group ref={ref}>{children}</group>;
 }
 
 /* ------------------------------------------------------------------ */
