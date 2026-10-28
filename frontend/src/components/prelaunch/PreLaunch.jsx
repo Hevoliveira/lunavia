@@ -416,11 +416,11 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
                 data-state={done ? "done" : isNext ? "next" : "locked"}
                 className={`pointer-events-auto w-full flex justify-between items-center font-mono text-[9.5px] short:text-[9px] tracking-[0.12em] py-1.5 short:py-1 touch:min-h-[34px] border-b border-white/10 text-left ${done ? "text-[#4fd1c5]" : isNext ? "text-white" : "text-zinc-500"}`}
               >
-                <span>
+                <span className="min-w-0">
                   {done ? "✓ " : isNext ? "› " : "  "}
                   {name}
                 </span>
-                <span className={done ? "text-[#4fd1c5]" : isNext ? "text-[#FF3B00]" : ""}>{done ? val : isNext ? (pt ? "TOCAR" : "TAP") : "—"}</span>
+                <span className={`shrink-0 pl-3 ${done ? "text-[#4fd1c5]" : isNext ? "text-[#FF3B00]" : ""}`}>{done ? val : isNext ? (pt ? "TOCAR" : "TAP") : "—"}</span>
               </button>
             );
           })}
