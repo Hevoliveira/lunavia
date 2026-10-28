@@ -59,33 +59,82 @@ function makePanelTextures(seed, { rows, cols, label, soot = 0 }) {
   c.height = H;
   const ctx = c.getContext("2d");
   const r = rng(seed);
-  ctx.fillStyle = "#f2f1ec";
+  ctx.fillStyle = "#efede6";
   ctx.fillRect(0, 0, W, H);
-  // Panel tone variation
+  // Panel tone variation: painted panels never match exactly
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
-      const v = 236 + Math.floor(r() * 14);
-      ctx.fillStyle = `rgb(${v},${v},${v - 3})`;
+      const v = 230 + Math.floor(r() * 14);
+      ctx.fillStyle = `rgb(${v},${v - 1},${v - 5})`;
       ctx.fillRect((x * W) / cols + 1, (y * H) / rows + 1, W / cols - 2, H / rows - 2);
     }
   }
-  // Seams
-  ctx.strokeStyle = "rgba(120,120,118,0.55)";
-  ctx.lineWidth = 1.5;
+  // Soft large-scale tone (touch-up paint, handling marks), so the skin never reads as flat white
+  for (let i = 0; i < 26; i++) {
+    const x = r() * W;
+    const y = r() * H;
+    const rad = 30 + r() * 120;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    const dark = r() < 0.6;
+    g.addColorStop(0, dark ? "rgba(150,146,136,0.08)" : "rgba(255,255,252,0.1)");
+    g.addColorStop(1, "rgba(150,146,136,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // Longitudinal seams: thin and faint, a hairline of shadow beside a hairline of light
   for (let x = 0; x <= cols; x++) {
+    const px = Math.round((x * W) / cols) + 0.5;
+    ctx.strokeStyle = `rgba(110,108,102,${0.18 + r() * 0.12})`;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo((x * W) / cols, 0);
-    ctx.lineTo((x * W) / cols, H);
+    ctx.moveTo(px, 0);
+    ctx.lineTo(px, H);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.beginPath();
+    ctx.moveTo(px + 1, 0);
+    ctx.lineTo(px + 1, H);
     ctx.stroke();
   }
-  ctx.strokeStyle = "rgba(110,110,108,0.7)";
-  ctx.lineWidth = 2.5;
+  // Circumferential welds: every other one a heavier weld land with its rivet rows
   for (let y = 0; y <= rows; y++) {
+    const py = Math.round((y * H) / rows) + 0.5;
+    const heavy = y % 2 === 0;
+    ctx.strokeStyle = heavy ? "rgba(96,94,88,0.62)" : "rgba(118,116,110,0.32)";
+    ctx.lineWidth = heavy ? 2.5 : 1.2;
     ctx.beginPath();
-    ctx.moveTo(0, (y * H) / rows);
-    ctx.lineTo(W, (y * H) / rows);
+    ctx.moveTo(0, py);
+    ctx.lineTo(W, py);
     ctx.stroke();
+    if (heavy) {
+      ctx.fillStyle = "rgba(120,118,112,0.35)";
+      for (let x = 2; x < W; x += 6) {
+        ctx.fillRect(x, py - 5, 1.5, 1.5);
+        ctx.fillRect(x + 3, py + 4, 1.5, 1.5);
+      }
+    }
   }
+  // Access panels, vent louvers and small stencils (placed off the label's column)
+  for (let i = 0; i < 9; i++) {
+    const x = W * (0.45 + r() * 0.5);
+    const y = r() * H * 0.92;
+    const pw = 10 + r() * 22;
+    const ph = 8 + r() * 26;
+    ctx.strokeStyle = "rgba(90,88,84,0.45)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, pw, ph);
+    ctx.fillStyle = "rgba(90,88,84,0.4)";
+    [[1.5, 1.5], [pw - 3, 1.5], [1.5, ph - 3], [pw - 3, ph - 3]].forEach(([dx, dy]) => ctx.fillRect(x + dx, y + dy, 1.5, 1.5));
+  }
+  for (let i = 0; i < 4; i++) {
+    const x = W * (0.5 + r() * 0.4);
+    const y = r() * H * 0.9;
+    ctx.fillStyle = "rgba(60,60,58,0.5)";
+    for (let k = 0; k < 5; k++) ctx.fillRect(x, y + k * 4, 16, 2);
+  }
+  ctx.fillStyle = "rgba(40,40,40,0.55)";
+  ctx.font = "9px Arial, Helvetica, sans-serif";
+  for (let i = 0; i < 6; i++) ctx.fillText(["GN2 PURGE", "NO STEP", "LOX FILL", "VENT", "GSE 4A", "RP-1"][i], W * (0.5 + r() * 0.42), r() * H);
   // Faint vertical weathering streaks and, on the booster, engine soot that
   // creeps up from the aft end.
   for (let i = 0; i < 70; i++) {
@@ -150,6 +199,21 @@ function makePanelTextures(seed, { rows, cols, label, soot = 0 }) {
   const bctx = bc.getContext("2d");
   bctx.fillStyle = "#b0b0b0";
   bctx.fillRect(0, 0, 512, 1024);
+  // Oil-canning: each skin panel bows very slightly between its stiffeners, so neighbouring
+  // panels catch a raking Sun a little differently
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const cx = ((x + 0.5) * 512) / cols;
+      const cy = ((y + 0.5) * 1024) / rows;
+      const rr = Math.max(512 / cols, 1024 / rows) * 0.7;
+      const g = bctx.createRadialGradient(cx + (r() - 0.5) * 10, cy + (r() - 0.5) * 20, 0, cx, cy, rr);
+      const k = 176 + Math.floor(r() * 18);
+      g.addColorStop(0, `rgb(${k},${k},${k})`);
+      g.addColorStop(1, "rgb(168,168,168)");
+      bctx.fillStyle = g;
+      bctx.fillRect((x * 512) / cols, (y * 1024) / rows, 512 / cols, 1024 / rows);
+    }
+  }
   bctx.strokeStyle = "#404040";
   bctx.lineWidth = 2;
   for (let x = 0; x <= cols; x++) {
