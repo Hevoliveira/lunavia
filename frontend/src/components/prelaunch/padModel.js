@@ -401,7 +401,8 @@ export function armGeometry() {
   for (let x = x0; x <= x1 - BAY * 0.5; x += BAY, k++) {
     const bx = x + 0.22 + (BAY - 0.22) / 2;
     const bw = BAY - 0.22;
-    const solid = k % 4 === 2 && x > x0 + BAY && x < x1 - 2 * BAY;
+    // bays 1, 5, 9 … from the white room (never the two beside the walk's first stop, the view)
+    const solid = k % 4 === 1 && x > x0 + BAY && x < x1 - 2 * BAY;
     const portal = k % 4 === 0;
     for (const s of [1, -1]) {
       const z = s * (W / 2 + T / 2);
