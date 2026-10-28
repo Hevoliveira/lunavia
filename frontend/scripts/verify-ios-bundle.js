@@ -224,6 +224,9 @@ const FEATURES = [
   ["Countdown to Launch: the final count", "begin-count"],
   ["Countdown to Launch: dramatized calls (synthetic voices)", "prelaunch.guidanceInternal"],
   ["Countdown to Launch in Portuguese", "INICIAR CONTAGEM FINAL"],
+  ["Countdown to Launch: all six cabin panels inspectable (entry monitor, electrical power)", "ENTRY MONITOR"],
+  ["Countdown to Launch: the WHITE ROOM over the arm's doorway", "COMMAND MODULE ACCESS"],
+  ["Countdown to Launch: the arm's safety placards", "CLOSEOUT TEAM ONLY"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
