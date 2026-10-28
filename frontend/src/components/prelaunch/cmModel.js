@@ -357,7 +357,7 @@ const merge = (list) => mergeGeometries(list.map(clean), false);
 
 /**
  * The cabin's shell and furniture by material: shell (quilted wall, inside a truncated cone round
- * the crew), frame (the console's body and the ribs), couch, strut, cable, window (the windows'
+ * the crew), frame (the console's body), rib (the wall ribs), couch, strut, cable, window (the windows'
  * glow), hatch (the hatch's inner face, about its hinge).
  */
 export function cabinGeometry() {
@@ -394,10 +394,11 @@ export function cabinGeometry() {
   const lip = new THREE.TorusGeometry(PANEL_DIST + 0.02, 0.025, 6, 40, 2.45).rotateX(Math.PI / 2);
   lip.rotateY(-(phi0 + 2.45)).translate(EYE[0], EYE[1] + (PANEL_DIST + 0.02) * Math.sin(0.05), EYE[2]);
   frame.push(lip);
-  // ribs up the walls and round the console
+  // ribs up the walls (painted like the wall's frame, not the console's dark grey)
+  const rib = [];
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2 + 0.52;
-    frame.push(rod([Math.cos(a) * 1.86, -0.25, -0.15 + Math.sin(a) * 1.71], [Math.cos(a) * 1.08, 2.25, -0.15 + Math.sin(a) * 0.99], 0.018));
+    rib.push(rod([Math.cos(a) * 1.86, -0.25, -0.15 + Math.sin(a) * 1.71], [Math.cos(a) * 1.08, 2.25, -0.15 + Math.sin(a) * 0.99], 0.018));
   }
   // stowage lockers low behind the couches
   frame.push(box(2.6, 0.5, 0.45, 0, -0.05, 1.05));
@@ -437,6 +438,7 @@ export function cabinGeometry() {
   return {
     shell: merge([shellIn, floor, roof]),
     frame: merge(frame),
+    rib: merge(rib),
     couch: merge(couch),
     strut: merge(strut),
     cable: merge(cable),
@@ -450,7 +452,7 @@ export function cabinGeometry() {
 export function quiltTexture() {
   const c = canvas(256, 256);
   const g = c.getContext("2d");
-  g.fillStyle = "#c9c6bb";
+  g.fillStyle = "#b3b0a6";
   g.fillRect(0, 0, 256, 256);
   const r = rng(77);
   for (let i = 0; i < 1800; i++) {

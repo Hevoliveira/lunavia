@@ -305,12 +305,12 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
       <div className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-300" style={{ opacity: dip }} />
 
       {/* the title and the stage, top left */}
-      <div className="absolute top-[calc(var(--hud-top)+0.25rem)] left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] bg-black/45 backdrop-blur-sm border-l-2 border-[#FF3B00] px-3 py-1.5 pointer-events-none" data-testid="prelaunch-title">
-        <div className="font-mono text-[9px] tracking-[0.4em] text-[#FF3B00]">● {L.title}</div>
+      <div className="absolute top-[calc(var(--hud-top)+0.25rem)] left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] bg-black/55 border-l-2 border-[#FF3B00] px-3 py-1.5 pointer-events-none" data-testid="prelaunch-title">
+        <div className="font-mono text-[10px] tracking-[0.35em] text-[#FF3B00]">● {L.title}</div>
         <div className="font-mono text-[10px] tracking-[0.3em] text-white mt-0.5" data-testid="prelaunch-stage">
           {L.stages[stage]}
         </div>
-        <div className="font-mono text-[7.5px] tracking-[0.2em] text-zinc-400 mt-0.5">{L.dramatized}</div>
+        <div className="font-mono text-[8px] tracking-[0.2em] text-zinc-400 mt-0.5">{L.dramatized}</div>
       </div>
 
       {/* SKIP PRE-LAUNCH: straight to the launch, at any moment */}
@@ -354,7 +354,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
         </div>
       )}
       {stage === "suit" && sc.briefing && (
-        <div className="absolute inset-y-0 right-6 md:right-10 safe-mr flex items-center z-20 pointer-events-none">
+        <div className="absolute top-[calc(var(--hud-top)+0.25rem)] right-6 md:right-10 safe-mr z-20 pointer-events-none">
           <div className="bg-black/60 backdrop-blur-sm border border-white/15 px-5 py-4 short:px-4 short:py-3 w-[300px] short:w-[260px]" data-testid="prelaunch-briefing">
             <div className="font-mono text-[9px] tracking-[0.4em] text-[#FF3B00] mb-2">● {L.suit.briefing}</div>
             {L.suit.briefingItems.map((it, i) =>

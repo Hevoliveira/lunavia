@@ -83,11 +83,12 @@ export default function CmCabin({ ctl }) {
       panels,
       shell: std({ map: T.quilt, roughness: 0.9, metalness: 0, side: THREE.FrontSide }),
       frame: std({ color: "#3b3f43", roughness: 0.5, metalness: 0.55 }),
+      rib: std({ color: "#9a9b96", roughness: 0.6, metalness: 0.3 }),
       couch: std({ color: "#7d8183", roughness: 0.8, metalness: 0.1 }),
       strut: std({ color: "#b9bcbf", roughness: 0.3, metalness: 0.85 }),
       cable: std({ color: "#575a52", roughness: 0.75, metalness: 0.1 }),
       windows: new THREE.MeshBasicMaterial({ map: T.win, toneMapped: true }),
-      hatch: std({ color: "#c8c9c4", roughness: 0.45, metalness: 0.3 }),
+      hatch: std({ color: "#9fa29f", roughness: 0.45, metalness: 0.45 }),
       glow: new THREE.MeshBasicMaterial({ color: "#fff8ec" }),
     };
   }, [T]);
@@ -113,6 +114,8 @@ export default function CmCabin({ ctl }) {
 
   useEffect(() => {
     scene.environment = env.texture;
+    // the room map only for sheen on metal and visors: the cabin's own lamps do the lighting
+    scene.environmentIntensity = 0.45;
     camera.near = 0.02;
     camera.far = 30;
     camera.fov = 70;
@@ -127,6 +130,7 @@ export default function CmCabin({ ctl }) {
     };
     return () => {
       scene.environment = null;
+      scene.environmentIntensity = 1;
       ctl.current.pick = null;
     };
   }, [scene, env, camera, ctl, size]);
@@ -200,14 +204,15 @@ export default function CmCabin({ ctl }) {
   return (
     <>
       <ambientLight intensity={0.18} />
-      <hemisphereLight args={["#f3efe6", "#4a4842", 0.35]} />
+      <hemisphereLight args={["#f3efe6", "#4a4842", 0.25]} />
       {/* the cabin's floodlights, and the morning through the hatch window */}
-      <pointLight position={[-0.6, 1.95, -0.25]} intensity={1.6} distance={4} decay={2} color="#fff1dc" />
-      <pointLight position={[0.7, 1.95, -0.25]} intensity={1.4} distance={4} decay={2} color="#fff1dc" />
+      <pointLight position={[-0.6, 1.75, -0.25]} intensity={1.05} distance={4} decay={2} color="#fff1dc" />
+      <pointLight position={[0.7, 1.75, -0.25]} intensity={0.95} distance={4} decay={2} color="#fff1dc" />
       <pointLight position={[0, 0.9, 0.9]} intensity={0.6} distance={3} decay={2} color="#ffe8c8" />
-      <directionalLight position={[0.2, 3, -1]} intensity={0.9} color="#eef4ff" />
+      <directionalLight position={[0.2, 3, -1]} intensity={0.6} color="#eef4ff" />
       <mesh geometry={G.shell} material={M.shell} />
       <mesh geometry={G.frame} material={M.frame} />
+      <mesh geometry={G.rib} material={M.rib} />
       <mesh geometry={G.couch} material={M.couch} />
       <mesh geometry={G.strut} material={M.strut} />
       <mesh geometry={G.cable} material={M.cable} />

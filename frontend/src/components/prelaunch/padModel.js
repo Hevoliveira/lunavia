@@ -154,17 +154,40 @@ export function cabinGlimpseTexture() {
     grd.addColorStop(1, "#111214");
     g.fillStyle = grd;
     g.fillRect(0, 0, w, h);
-    // the main display console, overhead, its lit dials
-    g.fillStyle = "#3f4347";
-    g.fillRect(w * 0.06, h * 0.06, w * 0.88, h * 0.32);
+    // the main display console, overhead: panels with ringed dials, toggle rows and a few lamps
     const r = rng(19);
-    for (let i = 0; i < 70; i++) {
-      const x = w * (0.08 + r() * 0.84);
-      const y = h * (0.08 + r() * 0.28);
-      g.fillStyle = r() < 0.25 ? "#dfe7d8" : r() < 0.5 ? "#9fd8a8" : "#cfcfc6";
-      g.beginPath();
-      g.arc(x, y, 2 + r() * 4, 0, Math.PI * 2);
-      g.fill();
+    const panels = [[0.06, 0.07, 0.27], [0.355, 0.05, 0.29], [0.67, 0.07, 0.27]];
+    for (const [x0, y0, pw] of panels) {
+      g.fillStyle = "#4a4e52";
+      g.fillRect(w * x0, h * y0, w * pw, h * 0.33);
+      g.strokeStyle = "#25282b";
+      g.lineWidth = 3;
+      g.strokeRect(w * x0, h * y0, w * pw, h * 0.33);
+      // two or three dials
+      for (let i = 0; i < 3; i++) {
+        const cx = w * (x0 + pw * (0.2 + i * 0.3));
+        const cy = h * (y0 + 0.1);
+        g.fillStyle = "#1c1e20";
+        g.beginPath();
+        g.arc(cx, cy, 15, 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = "#b9bdb8";
+        g.lineWidth = 2;
+        g.stroke();
+        g.beginPath();
+        g.moveTo(cx, cy);
+        const a = -2.2 + r() * 2.6;
+        g.lineTo(cx + Math.cos(a) * 11, cy + Math.sin(a) * 11);
+        g.stroke();
+      }
+      // a row of toggles and a row of lamps
+      for (let i = 0; i < 6; i++) {
+        const sx = w * (x0 + pw * (0.1 + i * 0.15));
+        g.fillStyle = "#c9ccc8";
+        g.fillRect(sx, h * (y0 + 0.2), 4, 12);
+        g.fillStyle = r() < 0.3 ? "#8fd39c" : r() < 0.5 ? "#e8c46a" : "#2d3033";
+        g.fillRect(sx - 3, h * (y0 + 0.27), 10, 6);
+      }
     }
     // the couches: their frames and pads
     g.fillStyle = "#8a8f8f";
