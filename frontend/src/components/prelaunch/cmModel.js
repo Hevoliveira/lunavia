@@ -31,7 +31,7 @@ export const CONSOLE = [
   { id: "guidance", look: { yaw: 0.0, pitch: 0.5 }, size: [0.4, 0.32] },
   { id: "caution", look: { yaw: -0.42, pitch: 0.46 }, size: [0.42, 0.29] },
   { id: "power", look: { yaw: -0.8, pitch: 0.42 }, size: [0.4, 0.3] },
-  { id: "comms", look: { yaw: -1.1, pitch: 0.2 }, size: [0.36, 0.26] },
+  { id: "comms", look: { yaw: -1.14, pitch: 0.62 }, size: [0.36, 0.26] },
 ];
 /** A panel's centre and its orientation (it faces the eye). */
 export function panelPlace(p, dist = PANEL_DIST) {
@@ -379,21 +379,51 @@ export function cabinGeometry() {
   const roof = new THREE.CircleGeometry(1.05, 32).rotateX(Math.PI / 2).translate(0, 2.3, -0.15);
 
   const frame = [];
-  // the console: one dark band round the commander's eye, just behind the panels (yaw −1.35..1.1,
-  // pitch 0.05..0.75), and a lip along its lower edge
-  const phi0 = -1.35 - Math.PI / 2;
-  const band = new THREE.SphereGeometry(PANEL_DIST + 0.03, 40, 10, phi0, 2.45, Math.PI / 2 - 0.75, 0.7).translate(EYE[0], EYE[1], EYE[2]);
-  const bi = band.index;
-  for (let i = 0; i < bi.count; i += 3) {
-    const a = bi.getX(i + 1);
-    bi.setX(i + 1, bi.getX(i + 2));
-    bi.setX(i + 2, a);
-  }
-  band.computeVertexNormals();
-  frame.push(band);
-  const lip = new THREE.TorusGeometry(PANEL_DIST + 0.02, 0.025, 6, 40, 2.45).rotateX(Math.PI / 2);
-  lip.rotateY(-(phi0 + 2.45)).translate(EYE[0], EYE[1] + (PANEL_DIST + 0.02) * Math.sin(0.05), EYE[2]);
+  // the console: a dark band round the commander's eye just behind the panels (yaw −0.95..1.1,
+  // pitch 0.05..0.75) with a lip along its lower edge, and a raised wing to the right (yaw
+  // −1.34..−0.95, pitch 0.42..0.82) carrying the audio panel over the other couches' helmets
+  const bandPart = (yaw0, yaw1, p0, p1) => {
+    const g = new THREE.SphereGeometry(PANEL_DIST + 0.03, 40, 10, yaw0 - Math.PI / 2, yaw1 - yaw0, Math.PI / 2 - p1, p1 - p0).translate(EYE[0], EYE[1], EYE[2]);
+    const bi = g.index;
+    for (let i = 0; i < bi.count; i += 3) {
+      const a = bi.getX(i + 1);
+      bi.setX(i + 1, bi.getX(i + 2));
+      bi.setX(i + 2, a);
+    }
+    g.computeVertexNormals();
+    return g;
+  };
+  frame.push(bandPart(-0.95, 1.1, 0.05, 0.75), bandPart(-1.34, -0.95, 0.42, 0.82));
+  const lip = new THREE.TorusGeometry(PANEL_DIST + 0.02, 0.025, 6, 40, 2.05).rotateX(Math.PI / 2);
+  // the arc's points sit at yaw −π/2 − a (a 0..len); turned by yaw0 + len + π/2 they run yaw0..yaw0 + len
+  lip.rotateY(-0.95 + 2.05 + Math.PI / 2).translate(EYE[0], EYE[1] + (PANEL_DIST + 0.02) * Math.sin(0.05), EYE[2]);
   frame.push(lip);
+  // what holds the console up: braces from the band's ends and middle out to the cabin's wall, and a
+  // beam from its top to the roof ring (the shell: a cone round y, radius 1.95 at y −0.3 to 1.05 at 2.3)
+  const shellR = (y) => 1.95 - (0.9 * (y + 0.3)) / 2.6;
+  const toWall = (p, dir) => {
+    const q = [...p];
+    for (let i = 0; i < 400; i++) {
+      q[0] += dir[0] * 0.01;
+      q[1] += dir[1] * 0.01;
+      q[2] += dir[2] * 0.01;
+      if (Math.hypot(q[0], (q[2] + 0.15) / 0.92) > shellR(q[1]) - 0.04) break;
+    }
+    return q;
+  };
+  const onBand = (yaw, pitch, r = PANEL_DIST + 0.05) => {
+    const d = lookVector(yaw, pitch);
+    return [EYE[0] + d[0] * r, EYE[1] + d[1] * r, EYE[2] + d[2] * r];
+  };
+  for (const [yaw, pitch] of [[1.08, 0.35], [-0.93, 0.3], [-1.32, 0.6]]) {
+    const p = onBand(yaw, pitch);
+    const d = lookVector(yaw, 0.15);
+    frame.push(rod(p, toWall(p, d), 0.028, 8));
+  }
+  {
+    const p = onBand(0.05, 0.74);
+    frame.push(rod(p, [p[0] * 0.6, 2.28, p[2] * 0.6 - 0.06], 0.03, 8));
+  }
   // ribs up the walls (painted like the wall's frame, not the console's dark grey)
   const rib = [];
   for (let i = 0; i < 6; i++) {
@@ -435,6 +465,8 @@ export function cabinGeometry() {
     windows.push(new THREE.PlaneGeometry(0.28, 0.24).rotateX(rx).rotateY(ry).translate(x, y, z));
   // the hatch overhead (its window in the middle), drawn about its hinge (the hinge on its −z edge)
   const hatch = merge([box(0.8, 0.06, 0.72, 0, 0, 0.36), box(0.16, 0.03, 0.16, 0, -0.045, 0.36), box(0.06, 0.03, 0.3, 0.28, -0.045, 0.36)]);
+  // its inner face (what the crew see from the couches): the window, bolts, the latch handle
+  const hatchFace = new THREE.PlaneGeometry(0.76, 0.68).rotateX(Math.PI / 2).translate(0, -0.032, 0.36);
   return {
     shell: merge([shellIn, floor, roof]),
     frame: merge(frame),
@@ -444,6 +476,7 @@ export function cabinGeometry() {
     cable: merge(cable),
     windows: merge(windows),
     hatch,
+    hatchFace,
     hatchHinge: [0.02, 2.12, -0.42],
   };
 }
@@ -479,6 +512,62 @@ export function quiltTexture() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(6, 2);
   return t;
+}
+/** The hatch's inner face: brushed metal, its rim, the round window, a ring of bolts, the latch. */
+export function hatchFaceTexture() {
+  const c = canvas(512, 460);
+  const g = c.getContext("2d");
+  const w = 512;
+  const h = 460;
+  g.fillStyle = "#a9aca8";
+  g.fillRect(0, 0, w, h);
+  for (let y = 0; y < h; y += 2) {
+    g.fillStyle = `rgba(255,255,255,${0.03 + 0.03 * Math.sin(y * 0.7)})`;
+    g.fillRect(0, y, w, 1);
+  }
+  g.strokeStyle = "#5d605e";
+  g.lineWidth = 14;
+  g.strokeRect(7, 7, w - 14, h - 14);
+  g.strokeStyle = "#838683";
+  g.lineWidth = 3;
+  g.strokeRect(26, 26, w - 52, h - 52);
+  // the window: a deep bezel, the glass (the white room's light), a ring of bolts
+  const cx = w / 2;
+  const cy = h / 2 - 10;
+  g.fillStyle = "#3b3e3f";
+  g.beginPath();
+  g.arc(cx, cy, 92, 0, Math.PI * 2);
+  g.fill();
+  const grd = g.createRadialGradient(cx - 20, cy - 25, 8, cx, cy, 72);
+  grd.addColorStop(0, "#f4f6f3");
+  grd.addColorStop(0.6, "#b9c3c8");
+  grd.addColorStop(1, "#6d7a80");
+  g.fillStyle = grd;
+  g.beginPath();
+  g.arc(cx, cy, 70, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#2a2c2d";
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    g.beginPath();
+    g.arc(cx + Math.cos(a) * 82, cy + Math.sin(a) * 82, 4, 0, Math.PI * 2);
+    g.fill();
+  }
+  // the latch handle on its gearbox, the latch bars to the edges, the stencils
+  g.fillStyle = "#4b4e4f";
+  g.fillRect(cx - 170, cy + 120, 120, 46);
+  g.fillStyle = "#1e2021";
+  g.fillRect(cx - 160, cy + 106, 22, 74);
+  g.fillStyle = "#6c6f6e";
+  for (const x of [60, w - 80]) g.fillRect(x, cy - 6, 20, 12);
+  g.fillStyle = "#b02a1c";
+  g.font = "bold 22px Helvetica, Arial, sans-serif";
+  g.textAlign = "center";
+  g.fillText("UNLATCH ◀  ▶ LATCH", cx + 70, cy + 150);
+  g.fillStyle = "#222";
+  g.font = "bold 18px Helvetica, Arial, sans-serif";
+  g.fillText("CREW HATCH", cx, 60);
+  return texOf(c);
 }
 /** What the windows show: the boost cover's white inner face lit by the morning (a bright glow). */
 export function windowTexture() {

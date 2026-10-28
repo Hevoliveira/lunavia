@@ -5,7 +5,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import Astronaut from "@/components/eva/Astronaut";
 import { baseSpec, solveRig } from "@/data/astronautRig";
 import { CABIN_LOOK, clampLook, hatchClosedAt, panelById } from "@/data/preLaunch";
-import { CONSOLE, COUCHES, EYE, LAMPS, cabinGeometry, lampLocal, lookVector, panelPlace, panelTextures, quiltTexture, windowTexture } from "./cmModel";
+import { CONSOLE, COUCHES, EYE, LAMPS, cabinGeometry, hatchFaceTexture, lampLocal, lookVector, panelPlace, panelTextures, quiltTexture, windowTexture } from "./cmModel";
 
 /*
  * COUNTDOWN TO LAUNCH — aboard the command module (stages "cabin" and "count"), first person from
@@ -18,6 +18,7 @@ import { CONSOLE, COUCHES, EYE, LAMPS, cabinGeometry, lampLocal, lookVector, pan
  */
 const _e = new THREE.Euler(0, 0, 0, "YXZ");
 const _ray = new THREE.Raycaster();
+const _sp = new THREE.Vector3();
 const _ndc = new THREE.Vector2();
 const LAMP_OFF = new THREE.Color("#262624");
 const LAMP_ON = { green: new THREE.Color("#5cff8a"), amber: new THREE.Color("#ffb21c"), white: new THREE.Color("#f4f1e6") };
@@ -74,7 +75,7 @@ export default function CmCabin({ ctl }) {
     return rt;
   }, [gl]);
   const G = useMemo(() => cabinGeometry(), []);
-  const T = useMemo(() => ({ panels: panelTextures(), quilt: quiltTexture(), win: windowTexture() }), []);
+  const T = useMemo(() => ({ panels: panelTextures(), quilt: quiltTexture(), win: windowTexture(), hatchFace: hatchFaceTexture() }), []);
   const M = useMemo(() => {
     const std = (o) => new THREE.MeshStandardMaterial(o);
     const panels = {};
@@ -90,6 +91,7 @@ export default function CmCabin({ ctl }) {
       windows: new THREE.MeshBasicMaterial({ map: T.win, toneMapped: true }),
       hatch: std({ color: "#9fa29f", roughness: 0.45, metalness: 0.45 }),
       glow: new THREE.MeshBasicMaterial({ color: "#fff8ec" }),
+      hatchFace: std({ map: T.hatchFace, roughness: 0.4, metalness: 0.45, envMapIntensity: 0.8 }),
     };
   }, [T]);
   // a material per lamp: the checklist switches them on
@@ -141,6 +143,7 @@ export default function CmCabin({ ctl }) {
       Object.values(T.panels).forEach((t) => t.dispose());
       T.quilt.dispose();
       T.win.dispose();
+      T.hatchFace.dispose();
       Object.values(M.panels).forEach((m) => m.dispose());
       Object.entries(M).forEach(([k, m]) => k !== "panels" && m.dispose());
       lamps.forEach((l) => {
@@ -177,6 +180,12 @@ export default function CmCabin({ ctl }) {
     camera.position.set(EYE[0] + d[0] * L.fwd, EYE[1] + d[1] * L.fwd, EYE[2] + d[2] * L.fwd);
     _e.set(L.pitch, L.yaw, 0, "YXZ");
     camera.quaternion.setFromEuler(_e);
+    // validation tooling may hold the camera (window.__lvPrelaunchCam = { pos, look } in cabin metres)
+    const hold = typeof window !== "undefined" ? window.__lvPrelaunchCam : null;
+    if (hold && hold.pos && hold.look) {
+      camera.position.set(...hold.pos);
+      camera.lookAt(...hold.look);
+    }
 
     // the hatch: open while boarding, swung shut by HATCH — CLOSED
     const shut = ck ? hatchClosedAt(ck, c.now) : 0;
@@ -197,7 +206,14 @@ export default function CmCabin({ ctl }) {
     for (const m of Object.values(M.panels)) m.emissiveIntensity = c.counting ? 0.14 : 0.08;
     if (typeof window !== "undefined") {
       const w = window.__lvPrelaunch || (window.__lvPrelaunch = {});
-      w.cabin = { look: { yaw: L.yaw, pitch: L.pitch }, focus: c.focus || null, hatch: shut, done: ck ? [...ck.done] : [], calls: gl.info.render.calls, tris: gl.info.render.triangles };
+      // where each panel sits on screen (px; null when behind the view), for the validation tooling
+      const at = {};
+      for (const [id, m] of Object.entries(panelRefs.current)) {
+        if (!m) continue;
+        _sp.setFromMatrixPosition(m.matrixWorld).project(camera);
+        at[id] = _sp.z < 1 && Math.abs(_sp.x) < 1 && Math.abs(_sp.y) < 1 ? [((_sp.x + 1) / 2) * size.width, ((1 - _sp.y) / 2) * size.height] : null;
+      }
+      w.cabin = { look: { yaw: L.yaw, pitch: L.pitch }, focus: c.focus || null, hatch: shut, done: ck ? [...ck.done] : [], panelsAt: at, calls: gl.info.render.calls, tris: gl.info.render.triangles };
     }
   });
 
@@ -222,7 +238,9 @@ export default function CmCabin({ ctl }) {
         <planeGeometry args={[0.78, 0.7]} />
       </mesh>
       <group position={G.hatchHinge}>
-        <mesh ref={hatchRef} geometry={G.hatch} material={M.hatch} />
+        <mesh ref={hatchRef} geometry={G.hatch} material={M.hatch}>
+          <mesh geometry={G.hatchFace} material={M.hatchFace} />
+        </mesh>
       </group>
       {CONSOLE.map((pnl) => {
         const pl = panelPlace(pnl);

@@ -99,13 +99,19 @@ export default function ControlRoomView({ onLaunch, onPreLaunch = null, saved = 
               <button
                 onClick={pressPreLaunch}
                 data-testid="control-prelaunch-btn"
-                className="mt-3 short:mt-1.5 relative z-10 inline-flex items-center gap-2 px-4 py-2 short:py-1.5 touch:min-h-[44px] border border-white/25 text-zinc-300 hover:text-white hover:border-white/60 bg-black/30 short:bg-black/80 transition-colors duration-200 font-mono tracking-[0.3em] text-[10px]"
+                className={
+                  // 44 px to the touch (the invisible margin round it), 36 px to the eye on a phone; on the
+                  // shortest phones (iPhone SE-class, 375 px and less) it sits to the right, under the
+                  // RANGE · GO line, so the centred column keeps clear of the telemetry strip
+                  "mt-3 short:mt-1 relative z-10 inline-flex items-center gap-2 px-4 py-2 short:py-1.5 min-h-[36px] touch:min-h-[44px] short:touch:min-h-[36px] after:content-[''] after:absolute after:inset-x-0 after:-inset-y-1 border border-white/25 text-zinc-300 hover:text-white hover:border-white/60 bg-black/30 short:bg-black/80 transition-colors duration-200 font-mono tracking-[0.3em] text-[10px] " +
+                  "[@media(max-height:380px)]:absolute [@media(max-height:380px)]:mt-0 [@media(max-height:380px)]:top-[6.6rem] [@media(max-height:380px)]:right-[calc(var(--sar)+2rem)] [@media(max-height:380px)]:max-w-[8.5rem] [@media(max-height:380px)]:text-left [@media(max-height:380px)]:leading-relaxed [@media(max-height:380px)]:tracking-[0.22em]"
+                }
               >
                 {lang === "pt" ? "EXPERIÊNCIA PRÉ-LANÇAMENTO" : "PRE-LAUNCH EXPERIENCE"} ›
               </button>
             )}
             {/* on a short (phone landscape) screen the hint gives its place to PRE-LAUNCH EXPERIENCE */}
-            <div className={`mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500 ${panel || onPreLaunch ? "short:hidden" : ""}`}>
+            <div className={`mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500 ${panel || onPreLaunch ? "short:hidden" : ""} ${onPreLaunch && !panel ? "lv-hint-keep-space" : ""}`}>
               PRESS TO BEGIN · TERMINAL COUNT, LAUNCH AND EARTH DEPARTURE ARE AUTOMATIC
             </div>
           </>

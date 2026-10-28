@@ -145,10 +145,10 @@ export default function Astronaut({ stateRef, variant = "eva", env = null }) {
     } else sc.scale.setScalar(HIDE);
     A.M.dust.value = Math.min(1, s.dust || 0);
     if (launch) {
-      // the bubble: held up and a little forward, then lowered onto the neck ring and locked
+      // the bubble: held over the head by the technician behind, then lowered onto the neck ring
       const up = Math.max(0, Math.min(1, s.helmetUp || 0));
-      B.helmet.position.set(0, 0.34 * up, 0.12 * up);
-      B.helmet.rotation.set(-0.35 * up, 0, 0);
+      B.helmet.position.set(0, 0.3 * up, -0.05 * up);
+      B.helmet.rotation.set(-0.12 * up, 0, 0);
       return; // a clear bubble: no visor reflection to capture
     }
 

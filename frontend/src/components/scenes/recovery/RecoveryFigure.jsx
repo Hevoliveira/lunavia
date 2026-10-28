@@ -7,8 +7,7 @@ import * as THREE from "three";
  * 1.78 m), posed by the director each frame. Two kinds, never an EVA suit:
  *  - "swimmer": a recovery swimmer in a black wetsuit with hood, mask, snorkel and fins;
  *  - "crew": an astronaut in light-blue flight coveralls (no helmet, no backpack), as the crews
- *    came out of the command module, with an orange life vest;
- *  - "tech": a pad suit technician in white coveralls and cap (the white room, the suit room).
+ *    came out of the command module, with an orange life vest.
  * Metres; the root is the pelvis. pose: angles (rad) for the trunk, head, shoulders, elbows, hips
  * and knees, set from the director (see POSES and posed()).
  */
@@ -68,8 +67,6 @@ export function posed(from, to = from, k = 0, stroke = null, mode = null) {
 const LOOKS = {
   swimmer: { suit: "#15181b", skin: "#c99b7a", trim: "#2b3036", accent: "#f0c419", vest: null },
   crew: { suit: "#93a9bf", skin: "#d1a585", trim: "#55606b", accent: "#e8622c", vest: "#e06a2a" },
-  // a pad's suit technician (COUNTDOWN TO LAUNCH): white coveralls, white cap and shoes
-  tech: { suit: "#e8e7e1", skin: "#c99b7a", trim: "#f3f2ed", accent: "#2f3c55", vest: null },
 };
 
 function useParts(kind) {

@@ -512,8 +512,16 @@ function torso(variant = "eva") {
     // inside the launch helmet: the face, the neck, and the communications carrier ("Snoopy cap")
     add("skin", new THREE.CylinderGeometry(0.052, 0.058, 0.12, 14).translate(H[0], H[1] - 0.11, H[2] - 0.005));
     add("skin", new THREE.SphereGeometry(0.094, 22, 16).scale(0.9, 1.1, 1.0).translate(H[0], H[1] - 0.005, H[2] + 0.008));
-    add("skin", new THREE.SphereGeometry(0.02, 8, 6).scale(0.8, 1, 1.1).translate(H[0], H[1] - 0.012, H[2] + 0.098)); // nose
-    for (const sx of [1, -1]) add("dark", new THREE.SphereGeometry(0.011, 8, 6).translate(H[0] + sx * 0.032, H[1] + 0.018, H[2] + 0.088), { c: "#2a2420" });
+    // the face: chin and jaw, a modest nose, brow ridge, eyes under brows, the mouth
+    add("skin", new THREE.SphereGeometry(0.058, 16, 10).scale(1, 0.72, 0.9).translate(H[0], H[1] - 0.068, H[2] + 0.03));
+    add("skin", new THREE.SphereGeometry(0.013, 10, 8).scale(0.75, 1.5, 1.0).translate(H[0], H[1] - 0.008, H[2] + 0.097)); // nose
+    add("skin", new THREE.SphereGeometry(0.06, 14, 6, 0, TAU, 0, 1.1).scale(1.05, 0.35, 0.6).rotateX(-0.2).translate(H[0], H[1] + 0.022, H[2] + 0.06)); // brow ridge
+    for (const sx of [1, -1]) {
+      add("color", new THREE.SphereGeometry(0.0105, 10, 8).scale(1.1, 0.75, 0.6).translate(H[0] + sx * 0.031, H[1] + 0.012, H[2] + 0.087), { c: "#ece6dc" });
+      add("dark", new THREE.SphereGeometry(0.0062, 8, 6).translate(H[0] + sx * 0.031, H[1] + 0.012, H[2] + 0.092), { c: "#2a2420" });
+      add("dark", new THREE.BoxGeometry(0.028, 0.0045, 0.006).rotateZ(sx * -0.12).translate(H[0] + sx * 0.032, H[1] + 0.031, H[2] + 0.089), { c: "#3b2c22" });
+    }
+    add("dark", new THREE.BoxGeometry(0.028, 0.0035, 0.004).translate(H[0], H[1] - 0.046, H[2] + 0.084), { c: "#7a4a3c" }); // mouth
     // the cap: a white crown and back, brown sides, the earcups, the two microphone booms
     add("color", new THREE.SphereGeometry(0.1, 22, 12, Math.PI * 0.62, Math.PI * 1.76, 0, Math.PI * 0.62).scale(0.93, 1.12, 1.03).translate(H[0], H[1] - 0.004, H[2] + 0.004), { c: "#f1efe9" });
     add("color", new THREE.SphereGeometry(0.101, 18, 8, Math.PI * 0.62, Math.PI * 1.76, Math.PI * 0.62, Math.PI * 0.2).scale(0.93, 1.12, 1.03).translate(H[0], H[1] - 0.004, H[2] + 0.004), { c: "#5a4433" });
@@ -746,6 +754,7 @@ function launchHelmet() {
   add("bubble", new THREE.SphereGeometry(R + 0.002, 40, 24, 0, TAU, 0, 2.32).translate(H[0], H[1], H[2]));
   // the bubble's own ring, the feed port at the back, and the vent pad inside the crown
   add("metal", ring(0.138, 0.016, H[1] - 0.128, 32, 8).translate(0, 0, H[2]));
+  add("color", ring(0.146, 0.011, H[1] - 0.146, 32, 8).translate(0, 0, H[2]), { c: "#2d5aa6" });
   add("metal", cylAlong(0.02, 0.03, [H[0], H[1] - 0.06, H[2] - R + 0.005], [0, 0, 1], 12));
   add("shell", new THREE.SphereGeometry(R - 0.012, 18, 6, 0, TAU, 0, 0.42).translate(H[0], H[1], H[2]), { c: "#dcd9d2" });
   return items;
@@ -898,6 +907,22 @@ export function astronautGeometry(variant = "eva") {
  * its own (the helmet's surroundings, components/eva/Astronaut). `dust` is the shared uniform the
  * walk raises (0 clean .. 1 well dusted): it greys each vertex by its dirt weight.
  */
+/**
+ * The launch helmet's clear polycarbonate bubble: nearly clear face-on (the face behind it), more
+ * reflective toward its edges (Fresnel), so it reads as a glass dome over the head.
+ */
+function bubbleMaterial(env) {
+  const m = new THREE.MeshPhysicalMaterial({ color: "#f2f7fb", metalness: 0, roughness: 0.03, transparent: true, envMap: env, envMapIntensity: 2.4, clearcoat: 1, clearcoatRoughness: 0.02, specularIntensity: 1, depthWrite: false });
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace(
+      "#include <opaque_fragment>",
+      "float lvFr = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.0);\ndiffuseColor.a = clamp(0.1 + 0.8 * lvFr, 0.0, 0.88);\n#include <opaque_fragment>"
+    );
+  };
+  m.customProgramCacheKey = () => "lv-launch-bubble";
+  return m;
+}
+
 export function astronautMaterials(env, visorEnv = env) {
   const T = suitTextures();
   const dust = { value: 0 };
@@ -925,7 +950,7 @@ export function astronautMaterials(env, visorEnv = env) {
     dark: std({ color: "#ffffff", vertexColors: true, roughness: 0.62, metalness: 0.15, envMapIntensity: 0.45 }),
     color: dirty(std({ color: "#ffffff", vertexColors: true, roughness: 0.5, metalness: 0.05, envMapIntensity: 0.45 })),
     // the launch suit's: the clear pressure bubble (a thin reflection, the face seen through it), skin
-    bubble: new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0, roughness: 0.04, transparent: true, opacity: 0.16, envMap: env, envMapIntensity: 1.6, clearcoat: 1, clearcoatRoughness: 0.03, depthWrite: false }),
+    bubble: bubbleMaterial(env),
     skin: std({ color: "#c99a7c", roughness: 0.62, metalness: 0, envMapIntensity: 0.25 }),
     decal: std({ map: suitDecalTexture(), alphaTest: 0.5, roughness: 0.72, metalness: 0, envMapIntensity: 0.35, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
   };

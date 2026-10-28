@@ -5,11 +5,11 @@ import RocketModel, { setRocketTextureAnisotropy } from "@/components/RocketMode
 import LaunchComplex from "@/components/scenes/LaunchComplex";
 import { createEnvironment, R as ENV_R, KM_PER_UNIT } from "@/components/scenes/launch/environment";
 import Astronaut from "@/components/eva/Astronaut";
-import RecoveryFigure, { posed } from "@/components/scenes/recovery/RecoveryFigure";
+import PadTech, { techPose } from "./PadTech";
 import { UNIT_M } from "@/data/launchTimeline";
 import { solveRig, standSpec } from "@/data/astronautRig";
 import { ARM, BOARD, CM_ON_PAD, ROCKET_SCALE, TOWER_RIDE, WALK, WALK_LEN, WHITE_ROOM, boardEye, footfallsBetween, smooth, stepBob, towerCameraAt, walkEye } from "@/data/preLaunch";
-import { armGeometry, disposeAll, hatchGeometry, padMaterials } from "./padModel";
+import { armGeometry, disposeAll, grimeTex, hatchGeometry, padMaterials, withGrime } from "./padModel";
 
 /*
  * COUNTDOWN TO LAUNCH — the pad: arrival, the elevator ride up the tower, the walk along the crew
@@ -77,11 +77,11 @@ function clipBox() {
 
 function WhiteRoomPeople({ env }) {
   // the suit technician by the hatch, and the two crewmates waiting their turn either side
-  const tech = useRef({ visible: true, pos: [CM_ON_PAD.hatch.r + 0.95, ARM.floor + 0.96, -0.95], yaw: Math.PI / 2 - 0.5, pitch: 0, roll: 0, pose: posed("stand"), scale: 1 });
+  const tech = useRef({ visible: true, pos: [CM_ON_PAD.hatch.r + 0.95, ARM.floor + 0.935, -0.95], yaw: Math.PI / 2 - 0.5, pose: techPose("stand") });
   const crew = [useRef(null), useRef(null)];
   useFrame((state) => {
     const k = state.clock.elapsedTime;
-    tech.current.pose = posed("stand", "work", 0.15 + 0.1 * Math.sin(k * 0.7));
+    tech.current.pose = techPose("stand", "check", 0.55 + 0.25 * Math.sin(k * 0.7));
     [0, 1].forEach((i) => {
       const side = i ? -1 : 1;
       crew[i].current = {
@@ -94,7 +94,7 @@ function WhiteRoomPeople({ env }) {
   });
   return (
     <>
-      <RecoveryFigure kind="tech" stateRef={tech} />
+      <PadTech stateRef={tech} variant={1} />
       <Astronaut stateRef={crew[0]} variant="launch" env={env} />
       <Astronaut stateRef={crew[1]} variant="launch" env={env} />
     </>
@@ -106,6 +106,7 @@ export default function PadScene({ ctl }) {
   const sunRef = useRef();
   const ptRef = useRef();
   const rocketRef = useRef();
+  const complexRef = useRef();
   const doorRef = useRef();
   const padProg = useRef(0);
   const ctrlRef = useRef({ engines: [0, 0, 0, 0, 0], glow: 0, sep: 0, upper: 0, showStage1: true, expand: 0 });
@@ -143,6 +144,31 @@ export default function PadScene({ ctl }) {
       gl.localClippingEnabled = false;
     };
   }, [gl, scene, sky, planes]);
+  // the launch complex up close: its steel, decks, tanks and buildings with worn paint and grime
+  // (clones for this scene only; the launch film keeps the complex's own materials)
+  useEffect(() => {
+    const root = complexRef.current;
+    if (!root) return undefined;
+    const tex = grimeTex();
+    const made = new Map();
+    const swapped = [];
+    const STRENGTH = { "9aa0a6": 1, "4d5257": 0.9, cfd2d4: 0.55, e6e5e0: 0.5 };
+    root.traverse((o) => {
+      if (!o.isMesh || !o.material || Array.isArray(o.material) || !o.material.isMeshStandardMaterial) return;
+      const m = o.material;
+      const hex = m.color.getHexString();
+      const k = STRENGTH[hex] != null ? STRENGTH[hex] : m.map && m.metalness > 0.4 ? 0.7 : null;
+      if (k == null) return;
+      if (!made.has(m)) made.set(m, withGrime(m, tex, { strength: k, metres: hex === "e6e5e0" ? 3.5 : 2.2 }));
+      o.material = made.get(m);
+      swapped.push([o, m]);
+    });
+    return () => {
+      swapped.forEach(([o, m]) => (o.material = m));
+      made.forEach((c) => c.dispose());
+      tex.dispose();
+    };
+  }, []);
   useEffect(
     () => () => {
       env.dispose();
@@ -283,7 +309,9 @@ export default function PadScene({ ctl }) {
       <hemisphereLight args={["#bcd3f0", "#5a5040", 0.32]} />
       <directionalLight ref={sunRef} position={[10, 8, 8]} intensity={2.4} color="#fff2e2" />
       <pointLight ref={ptRef} color="#fff1dc" intensity={0} distance={7 * S} decay={2} />
-      <LaunchComplex progRef={padProg} anisotropy={anisotropy} hideCrewArm />
+      <group ref={complexRef}>
+        <LaunchComplex progRef={padProg} anisotropy={anisotropy} hideCrewArm />
+      </group>
       <group ref={rocketRef}>
         <RocketModel scale={ROCKET_SCALE} ctrlRef={ctrlRef} />
       </group>
@@ -296,6 +324,12 @@ export default function PadScene({ ctl }) {
         <mesh geometry={A.rail} material={M.mat.rail} />
         <mesh geometry={A.lamp} material={M.mat.lamp} />
         <mesh geometry={A.white} material={M.mat.white} castShadow receiveShadow />
+        <mesh geometry={A.red} material={M.mat.red} />
+        <mesh geometry={A.hazard} material={M.mat.hazard} receiveShadow />
+        <mesh geometry={A.conduit} material={M.mat.conduit} />
+        {Object.entries(A.signs).map(([id, g]) => (
+          <mesh key={id} geometry={g} material={M.mat.signs[id]} />
+        ))}
         <mesh geometry={A.glass} material={M.mat.glass} renderOrder={5} />
         <mesh geometry={H.cover} material={M.mat.cover} receiveShadow />
         <mesh geometry={H.frame} material={M.mat.hatchFrame} />
@@ -306,6 +340,8 @@ export default function PadScene({ ctl }) {
         </group>
         {/* the white room's lamps (a light's intensity and range are in the scene's 30 m units) */}
         <pointLight position={[CM_ON_PAD.hatch.r + 1.2, ARM.floor + 2.3, 0]} intensity={0.006} distance={0.25} decay={2} color="#fff4e6" />
+        {/* the white room's brighter clean-room light, spilling out through the doorway (the destination) */}
+        <pointLight position={[WHITE_ROOM.x1 - 0.6, ARM.floor + 2.2, 0]} intensity={0.005} distance={0.3} decay={2} color="#f4f8ff" />
         <WhiteRoomPeople env={sky.texture} />
       </group>
     </>

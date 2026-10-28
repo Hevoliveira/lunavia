@@ -128,18 +128,20 @@ export const prelaunchText = (lang) => PRELAUNCH_TEXT[lang === "pt" ? "pt" : "en
 /* ---- the suit room ------------------------------------------------------------------------------- */
 /** The three preparations, in order; each plays its calls and its moment, then the next is offered. */
 export const SUIT_STEPS = [
-  { id: "suitCheck", dur: 6.5, calls: [{ at: 0.6, id: "prelaunch.suitCheck" }] },
+  // "Helmets are locked" only once the last helmet is down and locked (helmetAt(2) = 1 at 6.0 s)
+  { id: "suitCheck", dur: 9.8, calls: [{ at: 6.6, id: "prelaunch.suitCheck" }] },
   { id: "commCheck", dur: 7.5, calls: [{ at: 0.3, id: "prelaunch.commHouston" }, { at: 3.6, id: "prelaunch.commCrew" }] },
   { id: "crewReady", dur: 4.0, calls: [{ at: 0.3, id: "prelaunch.crewReady" }] },
 ];
 /** The final briefing from Mission Control, after CREW READY (s), its items appearing one by one. */
 export const BRIEFING = { dur: 13, call: { at: 0.4, id: "prelaunch.briefing" }, itemEvery: 1.6, itemFrom: 1.2 };
 /** The helmet lowered onto each astronaut during SUIT CHECK (0 raised .. 1 locked), crew i in turn. */
+export const HELMET = { from: 0.8, every: 1.8, dur: 1.6 };
 export function helmetAt(i, t) {
   // t: seconds since SUIT CHECK began (null before it)
   if (t == null) return 0;
-  const from = 0.6 + i * 1.6;
-  return smooth((t - from) / 1.5);
+  const from = HELMET.from + i * HELMET.every;
+  return smooth((t - from) / HELMET.dur);
 }
 
 /* ---- the tower: arrival and the elevator (launch-scene units) --------------------------------- */
@@ -209,28 +211,40 @@ export const clampLook = ({ yaw, pitch }, lim) => ({ yaw: clamp(yaw, lim.yaw[0],
  */
 export const CABIN_PANELS = [
   {
+    id: "entry",
+    look: { yaw: 0.84, pitch: 0.42 },
+    en: { tag: "ENTRY", name: "ENTRY MONITOR", body: "The entry monitor's scroll and the g-meter, with the stabilization and control switches below: little to do at launch, everything on the way home." },
+    pt: { tag: "REENTRADA", name: "MONITOR DE REENTRADA", body: "O registro do monitor de reentrada e o acelerômetro (g), com as chaves de estabilização e controle abaixo: pouco a fazer no lançamento, tudo na volta para casa." },
+  },
+  {
     id: "flight",
     look: { yaw: 0.42, pitch: 0.46 },
-    en: { name: "FLIGHT CONTROLS", body: "Attitude ball (FDAI), rate and error needles, the event timer and the abort handle's lamp: what the commander flies by in the boost." },
-    pt: { name: "CONTROLES DE VOO", body: "A esfera de atitude (FDAI), os ponteiros de razão e de erro, o cronômetro de eventos e a luz de aborto: o que o comandante acompanha na subida." },
+    en: { tag: "FLIGHT", name: "FLIGHT CONTROLS", body: "Attitude ball (FDAI), rate and error needles, the event timer and the abort handle's lamp: what the commander flies by in the boost." },
+    pt: { tag: "VOO", name: "CONTROLES DE VOO", body: "A esfera de atitude (FDAI), os ponteiros de razão e de erro, o cronômetro de eventos e a luz de aborto: o que o comandante acompanha na subida." },
   },
   {
     id: "guidance",
     look: { yaw: 0.0, pitch: 0.5 },
-    en: { name: "GUIDANCE COMPUTER", body: "The display and keyboard of the guidance computer: program, verb and noun, three registers. It takes over the count's last seconds when guidance goes internal." },
-    pt: { name: "COMPUTADOR DE GUIAGEM", body: "O display e o teclado do computador de guiagem: programa, verbo e nome, três registradores. Ele assume os últimos segundos quando a guiagem passa a interna." },
+    en: { tag: "GUIDANCE", name: "GUIDANCE COMPUTER", body: "The display and keyboard of the guidance computer: program, verb and noun, three registers. It takes over the count's last seconds when guidance goes internal." },
+    pt: { tag: "GUIAGEM", name: "COMPUTADOR DE GUIAGEM", body: "O display e o teclado do computador de guiagem: programa, verbo e nome, três registradores. Ele assume os últimos segundos quando a guiagem passa a interna." },
   },
   {
     id: "caution",
     look: { yaw: -0.42, pitch: 0.46 },
-    en: { name: "CAUTION AND WARNING", body: "Forty annunciators for the spacecraft's systems. Before launch every one must be dark, then the master alarm is tested." },
-    pt: { name: "ALERTA E AVISO", body: "Quarenta anunciadores dos sistemas da nave. Antes do lançamento todos precisam estar apagados; depois o alarme geral é testado." },
+    en: { tag: "C&W", name: "CAUTION AND WARNING", body: "Forty annunciators for the spacecraft's systems. Before launch every one must be dark, then the master alarm is tested." },
+    pt: { tag: "ALERTAS", name: "ALERTA E AVISO", body: "Quarenta anunciadores dos sistemas da nave. Antes do lançamento todos precisam estar apagados; depois o alarme geral é testado." },
+  },
+  {
+    id: "power",
+    look: { yaw: -0.8, pitch: 0.42 },
+    en: { tag: "POWER", name: "ELECTRICAL POWER", body: "Voltage and current of the main buses, the fuel cells, the entry batteries and the inverters: on internal power before the umbilicals let go." },
+    pt: { tag: "ENERGIA", name: "ENERGIA ELÉTRICA", body: "Tensão e corrente dos barramentos principais, as células de combustível, as baterias e os inversores: energia interna antes de os umbilicais se soltarem." },
   },
   {
     id: "comms",
-    look: { yaw: -1.1, pitch: 0.2 },
-    en: { name: "COMMUNICATIONS", body: "The audio panel: each crew member's loops to Launch Control and Houston, the volume knobs and the push-to-talk modes." },
-    pt: { name: "COMUNICAÇÕES", body: "O painel de áudio: os canais de cada tripulante com o Controle de Lançamento e Houston, os volumes e os modos de transmissão." },
+    look: { yaw: -1.14, pitch: 0.62 },
+    en: { tag: "COMMS", name: "COMMUNICATIONS", body: "The audio panel: each crew member's loops to Launch Control and Houston, the volume knobs and the push-to-talk modes." },
+    pt: { tag: "ÁUDIO", name: "COMUNICAÇÕES", body: "O painel de áudio: os canais de cada tripulante com o Controle de Lançamento e Houston, os volumes e os modos de transmissão." },
   },
 ];
 export const panelById = (id) => CABIN_PANELS.find((p) => p.id === id) || null;

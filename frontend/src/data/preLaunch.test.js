@@ -72,6 +72,10 @@ describe("the suit room", () => {
     expect(helmetAt(0, 3)).toBe(1);
     expect(helmetAt(2, 3)).toBeLessThan(0.5);
     expect(helmetAt(2, SUIT_STEPS[0].dur)).toBe(1);
+    // the call that says the helmets are locked comes after the last one is down and locked
+    const lockedCall = SUIT_STEPS[0].calls.find((c) => c.id === "prelaunch.suitCheck");
+    expect(helmetAt(2, lockedCall.at)).toBe(1);
+    expect(helmetAt(2, lockedCall.at - 0.5)).toBe(1);
   });
 });
 
@@ -164,6 +168,10 @@ describe("the cabin and its checklist", () => {
     ck = confirmItem(ck, "hatch", 10);
     expect(hatchClosedAt(ck, 10)).toBe(0);
     expect(hatchClosedAt(ck, 20)).toBe(1);
+  });
+  test("all six console panels drawn in the cabin can be inspected, in EN and PT", () => {
+    expect(CABIN_PANELS.map((p) => p.id)).toEqual(["entry", "flight", "guidance", "caution", "power", "comms"]);
+    for (const p of CABIN_PANELS) for (const l of ["en", "pt"]) expect(p[l].name.length * p[l].body.length).toBeGreaterThan(0);
   });
   test("panels to inspect lie within the couch's view; the checklist names real panels", () => {
     for (const p of CABIN_PANELS) {
