@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { WORLD_X } from "@/data/touchdownFx";
 import { FOOT_RADIUS } from "@/data/landingSites";
 import { buildTerrain, hazardStrip, rockInstances, skyDirection } from "@/data/terrainMesh";
+import { moonDetailNormalTexture, moonDetailTexture } from "@/components/planets/planetMaterials";
 
 /*
  * A landing site, drawn from the same data the physics flies
@@ -173,19 +174,49 @@ const NEAR_NORMAL = /* glsl */ `
     normal = lvPerturb( - vViewPosition, normal, dH, faceDirection );
   }
 `;
+// Craters below the terrain mesh's resolution, from the Moon globe's own crater field
+// (components/planets): a ~490 m tile and a ~1.7 km one (scene units are 2 m), as albedo and as a
+// relief normal the low Sun picks out. Shading only: the mesh, its collision and the sites' rocks
+// are unchanged, and the relief fades out at the astronaut's feet (the ground there is the mesh).
+const CRATER_FRAG = /* glsl */ `
+uniform sampler2D uCrater;
+uniform sampler2D uCraterN;
+`;
+const CRATER_COLOR = /* glsl */ `
+  {
+    float kA = texture2D( uCrater, vXZ * 0.0041 + 0.13 ).r;
+    float kB = texture2D( uCrater, vXZ.yx * 0.00117 + 0.71 ).r;
+    diffuseColor.rgb *= ( 0.6 + 0.8 * kA ) * ( 0.74 + 0.52 * kB );
+    // regolith is close to neutral grey: keep each site's tone, lose most of the sepia cast
+    float lum = dot( diffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
+    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( lum ), 0.32 );
+  }
+`;
+const CRATER_NORMAL = /* glsl */ `
+  {
+    vec2 pA = texture2D( uCraterN, vXZ * 0.0041 + 0.13 ).xy * 2.0 - 1.0;
+    vec2 pB = texture2D( uCraterN, vXZ.yx * 0.00117 + 0.71 ).yx * 2.0 - 1.0;
+    float far = smoothstep( 6.0, 28.0, length( vViewPosition ) );
+    vec2 pc = ( pA * 0.55 + pB * 0.5 ) * 0.62 * far;
+    normal = normalize( normal + ( viewMatrix * vec4( pc.x, 0.0, pc.y, 0.0 ) ).xyz );
+  }
+`;
 function terrainMaterial(tex, near = null) {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uDetail = { value: tex };
+    sh.uniforms.uCrater = { value: moonDetailTexture() };
+    sh.uniforms.uCraterN = { value: moonDetailNormalTexture() };
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float sunVis;\nvarying float vSunVis;\nvarying vec2 vXZ;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvSunVis = sunVis;\n\tvXZ = position.xz;");
     sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform sampler2D uDetail;\nvarying float vSunVis;\nvarying vec2 vXZ;" + (near ? NEAR_FRAG : ""))
+      .replace("#include <common>", "#include <common>\nuniform sampler2D uDetail;\nvarying float vSunVis;\nvarying vec2 vXZ;" + CRATER_FRAG + (near ? NEAR_FRAG : ""))
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\n\tfloat dA = texture2D( uDetail, vXZ * 0.21 ).r;\n\tfloat dB = texture2D( uDetail, vXZ * 0.037 + 0.37 ).r;\n\tdiffuseColor.rgb *= ( 0.5 + 0.68 * dA ) * ( 0.66 + 0.5 * dB );" + (near ? NEAR_COLOR : "")
+        "#include <color_fragment>\n\tfloat dA = texture2D( uDetail, vXZ * 0.21 ).r;\n\tfloat dB = texture2D( uDetail, vXZ * 0.037 + 0.37 ).r;\n\tdiffuseColor.rgb *= ( 0.5 + 0.68 * dA ) * ( 0.66 + 0.5 * dB );" + CRATER_COLOR + (near ? NEAR_COLOR : "")
       )
+      .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + CRATER_NORMAL)
       .replace("#include <lights_fragment_begin>", SUNLIT);
     if (near) {
       sh.uniforms.uNear = { value: near.tex };
@@ -195,21 +226,43 @@ function terrainMaterial(tex, near = null) {
       sh.fragmentShader = sh.fragmentShader.replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + NEAR_NORMAL);
     }
   };
-  m.customProgramCacheKey = () => (near ? "lv-terrain-near" : "lv-terrain");
+  m.customProgramCacheKey = () => (near ? "lv-terrain-near-2" : "lv-terrain-2");
   return m;
 }
 
+// Rock: breccia and basalt are never one flat tone. A mottle and speckle in the rock's own
+// frame (it stays put on the stone), a little darker low down where dust and shadow collect.
+const ROCK_COLOR = /* glsl */ `
+  {
+    vec3 q = vRockP * 4.0 + vRockSeed;
+    vec3 iq = floor( q ); vec3 fq = fract( q ); fq = fq * fq * ( 3.0 - 2.0 * fq );
+    float n000 = fract( sin( dot( iq, vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n100 = fract( sin( dot( iq + vec3( 1, 0, 0 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n010 = fract( sin( dot( iq + vec3( 0, 1, 0 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n110 = fract( sin( dot( iq + vec3( 1, 1, 0 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n001 = fract( sin( dot( iq + vec3( 0, 0, 1 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n101 = fract( sin( dot( iq + vec3( 1, 0, 1 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n011 = fract( sin( dot( iq + vec3( 0, 1, 1 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n111 = fract( sin( dot( iq + vec3( 1, 1, 1 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float nz0 = mix( mix( n000, n100, fq.x ), mix( n010, n110, fq.x ), fq.y );
+    float nz1 = mix( mix( n001, n101, fq.x ), mix( n011, n111, fq.x ), fq.y );
+    float mott = mix( nz0, nz1, fq.z );
+    float speck = fract( sin( dot( floor( vRockP * 23.0 + vRockSeed ), vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+    diffuseColor.rgb *= ( 0.78 + 0.34 * mott ) * ( 0.94 + 0.12 * step( 0.86, speck ) ) * ( 0.8 + 0.2 * smoothstep( 0.0, 0.45, vRockP.y ) );
+  }
+`;
 function rockMaterial() {
   const m = new THREE.MeshLambertMaterial({ color: "#ffffff", flatShading: true });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float aSunVis;\nvarying float vSunVis;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvSunVis = aSunVis;");
+      .replace("#include <common>", "#include <common>\nattribute float aSunVis;\nvarying float vSunVis;\nvarying vec3 vRockP;\nvarying float vRockSeed;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvSunVis = aSunVis;\n\tvRockP = position;\n#ifdef USE_INSTANCING\n\tvRockSeed = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.11;\n#else\n\tvRockSeed = 0.0;\n#endif");
     sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vSunVis;")
+      .replace("#include <common>", "#include <common>\nvarying float vSunVis;\nvarying vec3 vRockP;\nvarying float vRockSeed;")
+      .replace("#include <color_fragment>", "#include <color_fragment>\n" + ROCK_COLOR)
       .replace("#include <lights_fragment_begin>", SUNLIT);
   };
-  m.customProgramCacheKey = () => "lv-rock";
+  m.customProgramCacheKey = () => "lv-rock-2";
   return m;
 }
 
