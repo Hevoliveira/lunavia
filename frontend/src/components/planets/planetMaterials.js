@@ -81,6 +81,13 @@ const WORLD_VERT = `
 `;
 
 /* ---- Earth -------------------------------------------------------------------------------- */
+// The NASA cloud map (earth_aux B) stores most cloud systems faintly (median 0.04, 90th
+// percentile 0.53): mapped linearly they vanish and the planet reads almost clear. This curve
+// shows the real fronts, storm belts and tropical clusters as opaque, and the thin cloud between
+// them as a faint veil. Shared by the globe and the launch film's Earth (launch/environment).
+export const CLOUD_COVER_GLSL = `
+  float cloudCover(float d) { return max(smoothstep(0.05, 0.36, d), 0.25 * smoothstep(0.015, 0.08, d)); }
+`;
 const EARTH_FRAG = `
   uniform sampler2D uDay;
   uniform sampler2D uAux;
@@ -91,6 +98,7 @@ const EARTH_FRAG = `
   varying vec3 vWP;
   varying vec3 vWN;
   varying vec2 vUv;
+  ${CLOUD_COVER_GLSL}
   void main() {
     vec3 n = normalize(vWN);
     vec3 v = normalize(cameraPosition - vWP);
@@ -100,7 +108,7 @@ const EARTH_FRAG = `
     vec3 aux = texture2D(uAux, vUv).rgb;
     float water = aux.r;
     // cloud shadow: the cloud shell above this point (it turns with the shell)
-    float shadow = texture2D(uAux, vUv + vec2(uCloudU, 0.0)).b * smoothstep(-0.05, 0.2, mu0);
+    float shadow = cloudCover(texture2D(uAux, vUv + vec2(uCloudU, 0.0)).b) * smoothstep(-0.05, 0.2, mu0);
     float lit = max(mu0, 0.0);
     // sunlight through more air near the terminator: warmer, dimmer
     vec3 sunCol = mix(vec3(1.0, 0.62, 0.38), vec3(1.0), smoothstep(0.0, 0.3, mu0));
@@ -132,17 +140,18 @@ const CLOUD_FRAG = `
   varying vec3 vWP;
   varying vec3 vWN;
   varying vec2 vUv;
+  ${CLOUD_COVER_GLSL}
   void main() {
     vec3 n = normalize(vWN);
     vec3 v = normalize(cameraPosition - vWP);
     float d = texture2D(uAux, vUv + vec2(uCloudU, 0.0)).b;
     // thin veils stay faint, thick decks go opaque
-    float a = smoothstep(0.04, 0.85, d);
+    float a = cloudCover(d);
     float mu0 = dot(n, uSun);
     float lit = smoothstep(-0.06, 0.25, mu0) * (0.35 + 0.65 * max(mu0, 0.0));
     vec3 sunCol = mix(vec3(1.0, 0.6, 0.38), vec3(1.0), smoothstep(0.0, 0.3, mu0));
     // thick cloud is a little brighter; thin cloud takes a grey cast
-    vec3 c = mix(vec3(0.74, 0.77, 0.82), vec3(0.97), smoothstep(0.3, 0.95, d)) * sunCol * lit;
+    vec3 c = mix(vec3(0.74, 0.77, 0.82), vec3(0.97), smoothstep(0.08, 0.6, d)) * sunCol * lit;
     float mu = max(dot(n, v), 0.0);
     a *= mix(0.55, 1.0, smoothstep(0.0, 0.25, mu)); // seen edge-on near the limb they thin out
     gl_FragColor = vec4(c * uExposure * 1.05, a * uOpacity);
@@ -245,8 +254,10 @@ const MOON_FRAG = `
   uniform sampler2D uColor;
   uniform sampler2D uNormal;
   uniform sampler2D uDetailMap;
+  uniform sampler2D uDetailNormal;
   uniform vec3 uSun;
   uniform float uDetail;
+  uniform float uContrast;
   uniform float uRelief;
   uniform float uAlbedo;
   uniform float uEarthshine;
@@ -260,13 +271,33 @@ const MOON_FRAG = `
     vec3 ng = normalize(vWN);
     vec3 nl = texture2D(uNormal, vUv).rgb * 2.0 - 1.0;
     nl.xy *= uRelief;
-    vec3 n = normalize(normalize(vEast) * nl.x + normalize(vNorth) * nl.y + ng * nl.z);
+    vec3 E = normalize(vEast);
+    vec3 N = normalize(vNorth);
+    vec3 n = normalize(E * nl.x + N * nl.y + ng * nl.z);
     vec3 v = normalize(cameraPosition - vWP);
     vec3 alb = texture2D(uColor, vUv).rgb;
+    // Crisper LRO colour: a light unsharp mask at the map's own texel scale (it vanishes under
+    // minification, so a small disc does not sparkle)
+    vec2 tx = vec2(1.0 / 4096.0, 1.0 / 2048.0);
+    vec3 blur = 0.25 * (texture2D(uColor, vUv + vec2(tx.x, 0.0)).rgb + texture2D(uColor, vUv - vec2(tx.x, 0.0)).rgb
+      + texture2D(uColor, vUv + vec2(0.0, tx.y)).rgb + texture2D(uColor, vUv - vec2(0.0, tx.y)).rgb);
+    alb = max(alb + (alb - blur) * 0.6, 0.0);
+    // Maria against highlands: the Hapke-normalised mosaic is flatter than the Moon's real albedo
+    // contrast; lift it around the map's median (linear 0.34) so the seas read dark, not grey
+    float lum = dot(alb, vec3(0.2126, 0.7152, 0.0722));
+    alb *= pow(max(lum, 0.004) / 0.34, uContrast - 1.0);
     if (uDetail > 0.0) {
-      float dA = texture2D(uDetailMap, vUv * vec2(360.0, 180.0)).r;
-      float dB = texture2D(uDetailMap, vUv * vec2(1500.0, 750.0)).r;
-      alb *= mix(1.0, 0.55 + 0.9 * (dA * 0.6 + dB * 0.4), uDetail);
+      // Below the maps' resolution (2.7 km per texel), close to the surface: small craters in the
+      // albedo and in the relief, at two scales with an irrational ratio so the tiles never line up
+      vec2 uA = vUv * vec2(360.0, 180.0);
+      vec2 uB = vUv.yx * vec2(1310.0, 2620.0) + 0.37;
+      float dA = texture2D(uDetailMap, uA).r;
+      float dB = texture2D(uDetailMap, uB).r;
+      alb *= mix(1.0, 0.5 + 1.0 * (dA * 0.55 + dB * 0.45), uDetail);
+      vec2 pA = texture2D(uDetailNormal, uA).xy * 2.0 - 1.0;
+      vec2 pB = (texture2D(uDetailNormal, uB).yx * 2.0 - 1.0);
+      vec2 pert = (pA * 0.65 + pB * 0.45) * uDetail;
+      n = normalize(n + E * pert.x + N * pert.y);
     }
     // Slopes facing away from the Sun fall into shade softly: the relief map is a few km per
     // texel, so a hard cut would draw its texel steps as black dashes along crater walls.
@@ -288,46 +319,82 @@ const MOON_FRAG = `
   }
 `;
 
-let DETAIL_TEX = null;
-/** Fine regolith detail (small craters and grain), tiling; for the views close to the surface. */
-export function moonDetailTexture() {
-  if (DETAIL_TEX) return DETAIL_TEX;
-  const N = 256;
-  const c = document.createElement("canvas");
-  c.width = c.height = N;
-  const g = c.getContext("2d");
-  if (!g) return null; // no 2D canvas (tests): the detail stays off
-  g.fillStyle = "rgb(128,128,128)";
-  g.fillRect(0, 0, N, N);
+let DETAIL = null;
+/**
+ * A tiling field of small craters (power-law sizes, bowl floors, raised rims, a few bright young
+ * ones), as a height field: its albedo (grey around 0.5) and its surface normals. Generated once.
+ */
+function moonCraterField() {
+  if (DETAIL) return DETAIL;
+  const N = 512;
+  const h = new Float32Array(N * N);
+  const a = new Float32Array(N * N).fill(0.5);
   let s = 19;
   const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 260; i++) {
-    const x = r() * N;
-    const y = r() * N;
-    const rad = 1.5 + Math.pow(r(), 3) * 14;
-    for (const [ox, oy] of [[0, 0], [N, 0], [-N, 0], [0, N], [0, -N]]) {
-      const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
-      gr.addColorStop(0, "rgba(70,70,70,0.55)");
-      gr.addColorStop(0.75, "rgba(110,110,110,0.25)");
-      gr.addColorStop(0.92, "rgba(190,190,190,0.45)");
-      gr.addColorStop(1, "rgba(128,128,128,0)");
-      g.fillStyle = gr;
-      g.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2);
+  const crater = (cx, cy, rad, depth, fresh) => {
+    const R2 = rad * 1.6;
+    for (let y = Math.floor(cy - R2); y <= Math.ceil(cy + R2); y++) {
+      for (let x = Math.floor(cx - R2); x <= Math.ceil(cx + R2); x++) {
+        const d = Math.hypot(x - cx, y - cy) / rad;
+        if (d > 1.6) continue;
+        const i = ((y + N) % N) * N + ((x + N) % N);
+        // bowl inside, rim at d = 1, ejecta falling off outside
+        const z = d < 1 ? depth * (d * d - 1) + depth * 0.25 * Math.pow(d, 6) : depth * 0.25 * Math.exp(-(d - 1) * 4.5);
+        h[i] += z;
+        if (fresh) a[i] += d < 1 ? -0.06 + 0.22 * Math.pow(d, 4) : 0.14 * Math.exp(-(d - 1) * 3);
+        else a[i] += d < 0.8 ? -0.03 : d < 1.1 ? 0.04 : 0;
+      }
+    }
+  };
+  for (let i = 0; i < 900; i++) {
+    const rad = 1.2 + Math.pow(r(), 3.2) * 34;
+    crater(r() * N, r() * N, rad, rad * (0.22 + r() * 0.12), r() < 0.08);
+  }
+  // fine grain
+  for (let i = 0; i < N * N; i++) {
+    h[i] += (r() - 0.5) * 0.35;
+    a[i] += (r() - 0.5) * 0.05;
+  }
+  const nrm = new Uint8Array(N * N * 4);
+  const alb = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const i = y * N + x;
+      const dx = h[y * N + ((x + 1) % N)] - h[y * N + ((x - 1 + N) % N)];
+      const dy = h[((y + 1) % N) * N + x] - h[((y - 1 + N) % N) * N + x];
+      // a DataTexture is not flipped: row y grows with v, i.e. northwards on the sphere's map
+      const nx = -dx * 0.5;
+      const ny = -dy * 0.5;
+      const l = Math.hypot(nx, ny, 1);
+      nrm.set([((nx / l) * 0.5 + 0.5) * 255, ((ny / l) * 0.5 + 0.5) * 255, ((1 / l) * 0.5 + 0.5) * 255, 255], i * 4);
+      const g = Math.max(0, Math.min(255, a[i] * 255));
+      alb.set([g, g, g, 255], i * 4);
     }
   }
-  for (let i = 0; i < 9000; i++) {
-    const v = 100 + Math.floor(r() * 60);
-    g.fillStyle = `rgba(${v},${v},${v},0.35)`;
-    g.fillRect(r() * N, r() * N, 1, 1);
-  }
-  DETAIL_TEX = new THREE.CanvasTexture(c);
-  DETAIL_TEX.wrapS = DETAIL_TEX.wrapT = THREE.RepeatWrapping;
-  DETAIL_TEX.anisotropy = 2;
-  return DETAIL_TEX;
+  const tex = (data) => {
+    const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.generateMipmaps = true;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    t.anisotropy = 2;
+    t.needsUpdate = true;
+    return t;
+  };
+  DETAIL = { albedo: tex(alb), normal: tex(nrm) };
+  return DETAIL;
+}
+/** Fine regolith detail (small craters and grain), tiling; for the views close to the surface. */
+export function moonDetailTexture() {
+  return moonCraterField().albedo;
+}
+/** The same crater field's surface normals (local east, north, up), tiling. */
+export function moonDetailNormalTexture() {
+  return moonCraterField().normal;
 }
 
 /** The Moon's material; `sun` a THREE.Vector3 (world direction towards the Sun), shared by reference. */
-export function createMoonMaterial({ sun, exposure = 1, albedo = 1.25, relief = 0.8, earthshine = 0.004 }) {
+export function createMoonMaterial({ sun, exposure = 1, albedo = 1.12, relief = 0.8, earthshine = 0.004 }) {
   return new THREE.ShaderMaterial({
     vertexShader: MOON_VERT,
     fragmentShader: MOON_FRAG,
@@ -335,6 +402,8 @@ export function createMoonMaterial({ sun, exposure = 1, albedo = 1.25, relief = 
       uColor: { value: planetTexture("moonColor") },
       uNormal: { value: planetTexture("moonNormal") },
       uDetailMap: { value: typeof document !== "undefined" ? moonDetailTexture() : null },
+      uDetailNormal: { value: typeof document !== "undefined" ? moonDetailNormalTexture() : null },
+      uContrast: { value: 1.42 },
       uSun: { value: sun },
       uDetail: { value: 0 },
       uRelief: { value: relief },

@@ -80,7 +80,7 @@ export function PlanetEarth({ radius, sun, spin = 0, cloudDrift = 0.0004, segmen
  * The Moon. `detail` (optional function (camera, worldCentre) → 0..1) fades in the fine
  * regolith detail for close views. `quaternion` orients the lunar globe.
  */
-export function PlanetMoon({ radius, sun, segments = 160, exposure = 1, albedo = 1.25, relief = 0.8, earthshine = 0.004, detail = null, ...mesh }) {
+export function PlanetMoon({ radius, sun, segments = 160, exposure = 1, albedo = 1.12, relief = 0.8, earthshine = 0.004, detail = null, ...mesh }) {
   const sunV = useMemo(() => new THREE.Vector3(), []);
   toVec(sun, sunV);
   const mat = useMemo(() => createMoonMaterial({ sun: sunV, exposure, albedo, relief, earthshine }), [sunV, exposure, albedo, relief, earthshine]);

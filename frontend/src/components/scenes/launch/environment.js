@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { planetTexture } from "@/components/planets/planetMaterials";
+import { planetTexture, CLOUD_COVER_GLSL } from "@/components/planets/planetMaterials";
 
 /*
  * Environment layer of the launch cinematic, at true scale.
@@ -113,6 +113,7 @@ const SKY_FRAG = `
     return vec3(0.85, 0.9, 1.0) * s;
   }
 
+  ${CLOUD_COVER_GLSL}
   void main() {
     vec4 v = uInvProj * vec4(vNdc, 1.0, 1.0);
     v /= v.w;
@@ -181,8 +182,9 @@ const SKY_FRAG = `
       vec3 day = textureGrad(uDay, uv, dx, dy).rgb;
       vec3 aux = textureGrad(uAux, uv, dx, dy).rgb;
       float ocean = aux.r;
-      // NASA cloud density, kept soft (the map is ~10 km a texel: hard edges would read as cut-outs)
-      float cloud = smoothstep(0.02, 0.92, textureGrad(uAux, uv, dx * 2.0, dy * 2.0).b);
+      // NASA cloud density, kept soft (the map is ~10 km a texel: hard edges would read as cut-outs),
+      // through the same cover curve as the globe (components/planets CLOUD_COVER_GLSL)
+      float cloud = cloudCover(textureGrad(uAux, uv, dx * 2.0, dy * 2.0).b);
       // Detail below the textures' resolution, seen from orbit: break the
       // blurred cloud map into crisp formations (~15 km and ~4 km features)
       // and add relief to the land. px: size of a pixel on the sphere.
