@@ -16,7 +16,8 @@ import { useAudioSettings } from "@/audio/audioSettings";
  * capsule under its parachutes, the splashdown and the recovery). The lunar EVA
  * asks for the "lane" placement while the astronaut walks: the top of the screen
  * between its objectives panel (upper left) and PAUSE (upper right), above the
- * astronaut's helmet.
+ * astronaut's helmet. COUNTDOWN TO LAUNCH's cabin asks for "side": left of its checklist (upper
+ * right, 260 px), under its title.
  */
 const ROLE_TONE = {
   CAPCOM: "text-[#FF3B00]",
@@ -30,7 +31,7 @@ let placement = "default";
 const listeners = new Set();
 /** "default" (upper middle), "corner" (upper left, restrained) or "lane" (the top, between a panel and PAUSE). */
 export function setSubtitlePlacement(p) {
-  const next = p === "corner" || p === "lane" ? p : "default";
+  const next = p === "corner" || p === "lane" || p === "side" ? p : "default";
   if (next === placement) return;
   placement = next;
   listeners.forEach((f) => f());
@@ -53,6 +54,7 @@ const PLACE = {
   lane: `${SUBTITLE_LANE} flex justify-center top-[calc(var(--hud-top)+0.25rem)]`,
   default:
     "left-1/2 -translate-x-1/2 w-max max-w-[min(560px,64vw)] short:max-w-[32vw] top-[calc(var(--hud-top)+6.2rem)] short:top-[calc(var(--hud-top)+5.9rem)]",
+  side: "left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] w-max max-w-[calc(100vw-var(--sal)-var(--sar)-21.5rem)] top-[calc(var(--hud-top)+5.6rem)] short:top-[calc(var(--hud-top)+5.6rem)]",
   corner:
     "left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] w-max max-w-[min(420px,40vw)] short:max-w-[36vw] top-[calc(var(--hud-top)+4.4rem)] short:top-[calc(var(--hud-top)+2.75rem)]",
 };

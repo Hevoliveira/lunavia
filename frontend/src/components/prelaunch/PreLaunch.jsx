@@ -25,6 +25,7 @@ import {
   prelaunchText,
   requestLaunch,
 } from "@/data/preLaunch";
+import { setSubtitlePlacement } from "@/components/CommsSubtitles";
 import SuitRoom from "./SuitRoom";
 import PadScene from "./PadScene";
 import CmCabin from "./CmCabin";
@@ -279,6 +280,12 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
   const next = nextSuitStep(st);
   const nextCk = nextItem(cc.ck);
   const ckDone = checklistComplete(cc.ck);
+  // in the cabin the subtitles keep to the left of the checklist; everywhere else, as always
+  const subSide = stage === "cabin" || stage === "count";
+  useEffect(() => {
+    setSubtitlePlacement(subSide ? "side" : "default");
+  }, [subSide]);
+  useEffect(() => () => setSubtitlePlacement("default"), []);
   const briefDone = sc.briefing && sc.briefingT >= BRIEFING.dur;
   const panel = cc.focus ? CABIN_PANELS.find((p) => p.id === cc.focus) : null;
   const count = stage === "count" && countT.current != null ? countAt(countT.current) : null;
@@ -316,7 +323,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
       <div className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-300" style={{ opacity: dip }} />
 
       {/* the title and the stage, top left */}
-      <div className="absolute top-[calc(var(--hud-top)+0.25rem)] left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] bg-black/55 border-l-2 border-[#FF3B00] px-3 py-1.5 pointer-events-none" data-testid="prelaunch-title">
+      <div className="absolute top-[calc(var(--hud-top)+0.25rem)] left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] bg-black/55 border-l-2 border-[#FF3B00] px-3 py-1.5 pointer-events-none max-w-[calc(100vw-var(--sal)-var(--sar)-19rem)]" data-testid="prelaunch-title">
         <div className="font-mono text-[10px] tracking-[0.35em] text-[#FF3B00]">● {L.title}</div>
         <div className="font-mono text-[10px] tracking-[0.3em] text-white mt-0.5" data-testid="prelaunch-stage">
           {L.stages[stage]}
@@ -411,8 +418,8 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
 
       {/* the cabin: the checklist (right), the panels to inspect (left), the count */}
       {(stage === "cabin" || stage === "count") && (
-        <div className="absolute top-[calc(var(--hud-top)+0.25rem)] right-6 md:right-10 safe-mr bg-black/80 border border-white/20 px-4 py-3 short:py-2 w-[250px] short:w-[230px] z-20" data-testid="cabin-checklist">
-          <div className="font-mono text-[10px] tracking-[0.35em] text-[#FF3B00] mb-1.5">● {L.cabin.checklist}</div>
+        <div className="absolute top-[calc(var(--hud-top)+0.25rem)] right-6 md:right-10 safe-mr bg-black/80 border border-white/20 px-4 short:px-3 py-3 short:py-2 w-[260px] short:w-[250px] z-20" data-testid="cabin-checklist">
+          <div className="font-mono text-[10px] tracking-[0.3em] short:tracking-[0.18em] whitespace-nowrap text-[#FF3B00] mb-1.5">● {L.cabin.checklist}</div>
           {CHECKLIST.map((c) => {
             const done = cc.ck.done.includes(c.id);
             const isNext = nextCk && nextCk.id === c.id && stage === "cabin";
@@ -425,7 +432,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
                 onClick={() => check(c.id)}
                 data-testid={`check-${c.id}`}
                 data-state={done ? "done" : isNext ? "next" : "locked"}
-                className={`pointer-events-auto w-full flex justify-between items-center font-mono text-[10.5px] short:text-[10px] tracking-[0.12em] py-1.5 short:py-1 touch:min-h-[38px] border-b border-white/10 text-left ${done ? "text-[#4fd1c5]" : isNext ? "text-white" : "text-zinc-500"}`}
+                className={`pointer-events-auto w-full flex justify-between items-center font-mono text-[10.5px] short:text-[10px] tracking-[0.12em] short:tracking-[0.06em] py-1.5 short:py-1 touch:min-h-[38px] short:touch:min-h-[34px] border-b border-white/10 text-left ${done ? "text-[#4fd1c5]" : isNext ? "text-white" : "text-zinc-500"}`}
               >
                 <span className="min-w-0">
                   {done ? "✓ " : isNext ? "› " : "  "}
@@ -435,11 +442,11 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
               </button>
             );
           })}
-          <div className="font-mono text-[8.5px] tracking-[0.15em] text-zinc-400 mt-1.5">{L.cabin.note}</div>
+          <div className="font-mono text-[8.5px] short:text-[8px] tracking-[0.15em] short:tracking-[0.06em] leading-snug text-zinc-400 mt-1.5">{L.cabin.note}</div>
         </div>
       )}
       {stage === "cabin" && !panel && !ckDone && (
-        <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb flex flex-col gap-1.5 z-20 max-w-[calc(100vw-var(--sal)-var(--sar)-20rem)]" data-testid="cabin-panels">
+        <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb flex flex-col gap-1.5 z-20 max-w-[calc(100vw-var(--sal)-var(--sar)-21.5rem)]" data-testid="cabin-panels">
           <div className="font-mono text-[10px] tracking-[0.25em] text-zinc-100 bg-black/70 px-2 py-1 pointer-events-none">
             {L.cabin.seat} · {L.cabin.look}
           </div>
@@ -453,7 +460,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
         </div>
       )}
       {panel && (
-        <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb bg-black/80 border-l-2 border-[#4fd1c5] px-4 py-3 short:py-2 max-w-[min(26rem,calc(100vw-var(--sal)-var(--sar)-20rem))] z-20" data-testid="panel-info" data-panel={panel.id}>
+        <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb bg-black/80 border-l-2 border-[#4fd1c5] px-4 py-3 short:py-2 max-w-[min(26rem,calc(100vw-var(--sal)-var(--sar)-21.5rem))] z-20" data-testid="panel-info" data-panel={panel.id}>
           <div className="font-mono text-[10px] tracking-[0.3em] text-[#4fd1c5]">{(pt ? panel.pt : panel.en).name}</div>
           <div className="font-sans text-[12px] short:text-[11px] leading-snug text-zinc-200 mt-1">{(pt ? panel.pt : panel.en).body}</div>
           <button type="button" onClick={() => inspect(null)} data-testid="panel-back" className={`${btn} mt-2 py-1.5 border-white/45 text-white bg-black/75`}>
@@ -462,7 +469,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
         </div>
       )}
       {stage === "cabin" && ckDone && (
-        <div className="absolute left-[calc(var(--sal)+1rem)] right-[calc(var(--sar)+18rem)] top-[48%] short:top-[46%] flex flex-col items-center text-center z-20 pointer-events-none" data-testid="crew-ready-launch">
+        <div className="absolute left-[calc(var(--sal)+1rem)] right-[calc(var(--sar)+19.5rem)] top-[48%] short:top-[46%] flex flex-col items-center text-center z-20 pointer-events-none" data-testid="crew-ready-launch">
           <div className="font-display font-black text-white text-3xl md:text-4xl short:text-2xl tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.7)] scan-in">{L.cabin.ready}</div>
           {cc.now - (cc.ck.at.launchControl || 0) > 2.5 && (
             <button type="button" onClick={beginCount} data-testid="begin-count" className={`${btn} mt-4 border-2 border-[#FF3B00] text-white bg-[#FF3B00]/20 hover:bg-[#FF3B00]`}>
