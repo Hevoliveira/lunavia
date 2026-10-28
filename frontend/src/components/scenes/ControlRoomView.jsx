@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NewMissionConfirm, SaveProblemNote, SavedMissionCard } from "@/components/missions/MissionSaveUI";
+import useMediaQuery from "@/hooks/useMediaQuery";
 
 /**
  * ControlRoomView — 2D immersive mission control screen.
@@ -33,6 +34,9 @@ export default function ControlRoomView({ onLaunch, onPreLaunch = null, saved = 
   // PRE-LAUNCH EXPERIENCE asks the same question before an unfinished mission would be replaced
   const [preConfirm, setPreConfirm] = useState(false);
   const pressPreLaunch = () => (saved ? setPreConfirm(true) : onPreLaunch && onPreLaunch());
+  // the shortest phones (375 px tall and less): beside a saved mission, PRE-LAUNCH EXPERIENCE goes
+  // under that card (the column beside it has no room left)
+  const tiny = useMediaQuery("(max-height: 380px)");
   // the right-hand panel: the saved mission, or why a saved mission cannot be restored
   const problemShown = !saved && !!saveProblem && !problemSeen;
   const panel = !launching && (!!saved || problemShown);
@@ -95,7 +99,7 @@ export default function ControlRoomView({ onLaunch, onPreLaunch = null, saved = 
               LAUNCH SEQUENCE — INITIATE
               <span className="inline-block w-3 h-3 rounded-full bg-[#FF3B00] blink" />
             </button>
-            {onPreLaunch && (
+            {onPreLaunch && !(tiny && panel) && (
               <button
                 onClick={pressPreLaunch}
                 data-testid="control-prelaunch-btn"
@@ -139,12 +143,34 @@ export default function ControlRoomView({ onLaunch, onPreLaunch = null, saved = 
       {/* The saved mission, beside the launch (landscape phones, tablets, desktop) */}
       {!launching && saved && (
         <div className="hidden sm:flex absolute inset-y-0 right-8 short:right-4 narrow:right-3 safe-mr items-center pointer-events-none z-20">
-          <SavedMissionCard save={saved} lang={lang} onResume={onResume} className="w-[260px] short:w-[196px] narrow:w-[176px]" />
+          <div className="relative">
+            <SavedMissionCard save={saved} lang={lang} onResume={onResume} className="w-[260px] short:w-[196px] narrow:w-[176px]" />
+            {onPreLaunch && tiny && (
+            <button
+              onClick={pressPreLaunch}
+              data-testid="control-prelaunch-btn"
+              className="pointer-events-auto absolute top-full right-0 mt-1 w-full min-h-[26px] px-2 py-1 after:content-[''] after:absolute after:inset-x-0 after:-inset-y-2 border border-white/25 text-zinc-300 hover:text-white bg-black/80 font-mono text-[9px] tracking-[0.08em] text-center"
+            >
+              {lang === "pt" ? "EXPERIÊNCIA PRÉ-LANÇAMENTO" : "PRE-LAUNCH EXPERIENCE"} ›
+            </button>
+          )}
+          </div>
         </div>
       )}
       {!launching && problemShown && (
         <div className="absolute inset-y-0 right-8 short:right-4 narrow:right-3 safe-mr flex items-center pointer-events-none z-20">
-          <SaveProblemNote status={saveProblem} lang={lang} onDismiss={() => setProblemSeen(true)} className="w-[260px] short:w-[196px] narrow:w-[176px]" />
+          <div className="relative">
+            <SaveProblemNote status={saveProblem} lang={lang} onDismiss={() => setProblemSeen(true)} className="w-[260px] short:w-[196px] narrow:w-[176px]" />
+            {onPreLaunch && tiny && (
+            <button
+              onClick={pressPreLaunch}
+              data-testid="control-prelaunch-btn"
+              className="pointer-events-auto absolute top-full right-0 mt-1 w-full min-h-[26px] px-2 py-1 after:content-[''] after:absolute after:inset-x-0 after:-inset-y-2 border border-white/25 text-zinc-300 hover:text-white bg-black/80 font-mono text-[9px] tracking-[0.08em] text-center"
+            >
+              {lang === "pt" ? "EXPERIÊNCIA PRÉ-LANÇAMENTO" : "PRE-LAUNCH EXPERIENCE"} ›
+            </button>
+          )}
+          </div>
         </div>
       )}
       <NewMissionConfirm

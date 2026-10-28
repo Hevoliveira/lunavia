@@ -331,7 +331,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
 
       {/* the suit room: the three preparations, then the briefing */}
       {stage === "suit" && !sc.briefing && (
-        <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb flex flex-col gap-2 short:gap-1.5 z-20 bg-black/70 border border-white/15 p-2.5 short:p-2 max-w-[calc(100vw-var(--sal)-var(--sar)-14rem)]" data-testid="suit-steps">
+        <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb flex flex-col gap-2 short:gap-1.5 z-20 bg-black/70 border border-white/15 p-2.5 short:p-2 max-w-[calc(100vw-var(--sal)-var(--sar)-18.5rem)]" data-testid="suit-steps">
           <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-200">{L.suit.hint}</div>
           <div className="flex flex-wrap gap-2">
             {SUIT_STEPS.map((s) => {
@@ -386,12 +386,12 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
 
       {/* the tower and the walk: captions, CONTINUE at the view, BOARD at the hatch */}
       {towerCap && (
-        <div className="absolute bottom-6 short:bottom-3 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb bg-black/70 border-l-2 border-[#4fd1c5] px-3 py-1.5 font-mono text-[10px] tracking-[0.25em] text-white pointer-events-none" data-testid="prelaunch-caption">
+        <div className="absolute bottom-6 short:bottom-3 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb max-w-[calc(100vw-var(--sal)-var(--sar)-18.5rem)] bg-black/70 border-l-2 border-[#4fd1c5] px-3 py-1.5 font-mono text-[10px] tracking-[0.25em] text-white pointer-events-none" data-testid="prelaunch-caption">
           {towerCap}
         </div>
       )}
       {stage === "walkway" && (
-        <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb flex flex-col gap-2 z-20">
+        <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb flex flex-col items-start gap-2 z-20 max-w-[calc(100vw-var(--sal)-var(--sar)-18.5rem)]">
           <div className="bg-black/70 border-l-2 border-[#4fd1c5] px-3 py-1.5 font-mono text-[10px] tracking-[0.25em] text-white pointer-events-none" data-testid="prelaunch-caption">
             {atStop === 1 ? L.walk.whiteRoom : L.walk.walking}
             <div className="text-[9px] tracking-[0.25em] text-zinc-300 mt-0.5">{L.walk.look}</div>

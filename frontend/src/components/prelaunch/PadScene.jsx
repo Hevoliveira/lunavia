@@ -254,6 +254,13 @@ export default function PadScene({ ctl }) {
       camera.far = 300;
       camera.updateProjectionMatrix();
     }
+    // validation tooling may hold the camera (window.__lvPrelaunchCam = { pos, look } in metres)
+    const hold = typeof window !== "undefined" ? window.__lvPrelaunchCam : null;
+    if (hold && hold.pos && hold.look) {
+      camera.position.set(hold.pos[0] * S, hold.pos[1] * S, hold.pos[2] * S);
+      camera.lookAt(hold.look[0] * S, hold.look[1] * S, hold.look[2] * S);
+      dip = 0;
+    }
     camera.updateMatrixWorld();
     c.dip = dip;
 

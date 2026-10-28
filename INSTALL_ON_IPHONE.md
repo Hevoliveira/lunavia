@@ -86,7 +86,7 @@ If the iPhone shows **"Untrusted Developer"** instead of opening the game:
 
 ## Check which version is on your iPhone
 
-Open LUNAVIA. On the first screen, at the **top left**, under *LAT 28.5°N · LON −80.6°W*, there is a line like:
+Open LUNAVIA. The first screen (THE ROAD TO THE MOON) does **not** show the build. Tap **TRAINING** in the top bar: on the FLIGHT TRAINING CENTER screen, at the **top right**, under *ATTEMPTS · SUCCESSFUL · COMPLETED*, there is a line like:
 
 > **LUNAVIA iOS · BUILD 1a2b3c4 · 2026-10-09 03:10 UTC**
 
