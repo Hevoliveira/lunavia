@@ -177,3 +177,23 @@ Same rules as above. In addition:
   **NASA/Jim Grossmann**; the Blue Marble 2007 render credits **NASA/GSFC/Reto Stöckli**.
   Keep those credits with any derivative.
 - Vehicle markings (USA, US flag) and any NASA insignia are not to be reproduced on LV-001.
+
+---
+
+# Where these references went (NASA-inspired visual upgrade)
+
+The references above informed procedural geometry and shaders; no reference photograph is shown
+in the game, and none of these files is in the iOS bundle.
+
+| Reference | Used for | Code |
+|---|---|---|
+| 64C-5545, 6900846, S69-27741, KSC-69P-446 | Raised hardstand 15 m above the land, flame trench through it, crawlerway ramp, pad layout | `frontend/src/components/scenes/launchSite.js` |
+| KSC-2009-3313, 6760617 | Trench walls (refractory panels, soot), deflector under the engines, launcher deck over the hole | `launchSite.js`, `LaunchComplex.jsx` |
+| S69-38660, KSC-69PC-443 (Task 1) | Tower piping, cable tray, stairs, equipment rooms; hold-down arms | `LaunchComplex.jsx` |
+| S69-39961, S69-39959, 9903403 | LV-001 skin: irregular panel seams, weld lands, oil-canning, access panels (LV-001's own white, orange and black kept) | `frontend/src/components/RocketModel.jsx` |
+| as17-148-22727, ast-19-1555, iss061e123823 | Earth: the NASA cloud map's real systems shown through one cover curve (globe and launch film) | `components/planets/planetMaterials.js`, `scenes/launch/environment.js` |
+| as17-152-23311, e000868, e001939 | Moon: albedo contrast of maria and highlands, crisper LRO colour | `planetMaterials.js` |
+| as10-29-4321, PIA12909, S71-44671, as16-120-19228 | Crater relief below the mesh in descent, neutral regolith, mottled rocks | `components/scenes/LunarSite.jsx` |
+
+LV-001, the complex's layout and the assembly building remain LUNAVIA's own: no NASA insignia,
+no Saturn V markings, no copied photograph.
