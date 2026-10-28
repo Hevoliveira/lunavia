@@ -186,7 +186,7 @@ const CRATER_COLOR = /* glsl */ `
   {
     float kA = texture2D( uCrater, vXZ * 0.0041 + 0.13 ).r;
     float kB = texture2D( uCrater, vXZ.yx * 0.00117 + 0.71 ).r;
-    diffuseColor.rgb *= ( 0.6 + 0.8 * kA ) * ( 0.74 + 0.52 * kB );
+    diffuseColor.rgb *= ( 0.8 + 0.4 * kA ) * ( 0.78 + 0.44 * kB );
     // regolith is close to neutral grey: keep each site's tone, lose most of the sepia cast
     float lum = dot( diffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
     diffuseColor.rgb = mix( diffuseColor.rgb, vec3( lum ), 0.32 );
@@ -197,7 +197,7 @@ const CRATER_NORMAL = /* glsl */ `
     vec2 pA = texture2D( uCraterN, vXZ * 0.0041 + 0.13 ).xy * 2.0 - 1.0;
     vec2 pB = texture2D( uCraterN, vXZ.yx * 0.00117 + 0.71 ).yx * 2.0 - 1.0;
     float far = smoothstep( 6.0, 28.0, length( vViewPosition ) );
-    vec2 pc = ( pA * 0.55 + pB * 0.5 ) * 0.62 * far;
+    vec2 pc = ( pA * 0.22 + pB * 0.38 ) * 0.5 * far;
     normal = normalize( normal + ( viewMatrix * vec4( pc.x, 0.0, pc.y, 0.0 ) ).xyz );
   }
 `;
