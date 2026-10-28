@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 /*
  * The ground of LV-001's launch complex (scene units, 1 unit = 30 m; the vehicle stands at the
@@ -798,15 +798,15 @@ export function buildSite() {
 
   /* scrub and trees: one instanced mesh */
   const r = rng(4242);
-  const clumpGeo = new THREE.IcosahedronGeometry(1, 1);
+  // 20 triangles a clump, smooth-shaded (shared vertices) so it reads as foliage, not a stone
+  const clumpGeo = mergeVertices(new THREE.IcosahedronGeometry(1, 0).deleteAttribute("normal").deleteAttribute("uv"));
   {
-    // lumpy, flat-bottomed foliage rather than a faceted stone
+    // lumpy, flat-bottomed
     const rj = rng(99);
     const p = clumpGeo.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const v = new THREE.Vector3(p.getX(i), p.getY(i), p.getZ(i));
-      const k2 = 0.82 + 0.3 * Math.abs(Math.sin(v.x * 3.1 + v.z * 2.3)) + 0.08 * rj();
-      v.multiplyScalar(k2);
+      v.multiplyScalar(0.85 + 0.3 * rj());
       if (v.y < -0.35) v.y = -0.35;
       p.setXYZ(i, v.x, v.y, v.z);
     }
