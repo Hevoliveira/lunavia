@@ -378,7 +378,7 @@ export default function Training() {
                     <Stat label="SUCCESSFUL" value={sum.successes} />
                     <Stat label="COMPLETED" value={`${sum.completed}/${TOTAL_SLOTS}`} />
                   </div>
-                  {!discipline && <BuildBadge className="!py-0 !min-h-0 !text-[8px] !text-zinc-600 mt-1" />}
+                  {!discipline && <BuildBadge className="!py-0 !min-h-0 !text-[9.5px] !text-zinc-400 mt-1" />}
                 </div>
               </div>
 

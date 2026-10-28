@@ -350,3 +350,13 @@ input[type=range].lv-slider::-moz-range-thumb {
 }
 .cabin-pulse { animation: cabin-pulse 2.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .cabin-pulse { animation: none; } }
+
+/* The startup screen on the shortest phones (iPhone SE-class landscape): PRE-LAUNCH EXPERIENCE moves
+   to the right, and the hint keeps its (invisible) place so the title and LAUNCH SEQUENCE — INITIATE
+   stay exactly where they always were. */
+@media (max-height: 380px) {
+  html .lv-hint-keep-space {
+    display: block !important;
+    visibility: hidden !important;
+  }
+}

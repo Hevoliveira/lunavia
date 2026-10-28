@@ -44,6 +44,7 @@ export default function useMissionAudio() {
   const ambRef = useRef(null);
   const padRef = useRef(null);
   const recRef = useRef(null); // OCEAN RECOVERY: { g, sea, rotor, nodes }
+  const preRef = useRef(null); // COUNTDOWN TO LAUNCH: the current place's bed { kind, g, nodes }
   const busRef = useRef(null); // { sfx, duck, voice }
   const relockRef = useRef(null);
 
@@ -684,6 +685,163 @@ export default function useMissionAudio() {
     }
   }, []);
 
+  /*
+   * COUNTDOWN TO LAUNCH's sound (procedural, no recordings). prelaunchBed(kind) crossfades to the
+   * place's bed: "room" (the suit room's air handling), "pad" (wind and the vehicle's venting),
+   * "arm" (the wind 90 m up, the arm's creaks), "cabin" (the cabin's fans and the suit loops).
+   * prelaunchCue(kind, dur) plays a one-shot on it: "step" (a boot on the arm's steel floor),
+   * "elevator" (the car's motor for dur s), "helmet" (the neck ring's lock and the oxygen's hiss),
+   * "switch", "hatch" (the latch's clank and the door's thump). prelaunchStop() fades all out.
+   */
+  const prelaunchStop = useCallback((fade = 1.0) => {
+    const r = preRef.current;
+    if (!r || !ctxRef.current) return;
+    const now = ctxRef.current.currentTime;
+    r.g.gain.cancelScheduledValues(now);
+    r.g.gain.setValueAtTime(r.g.gain.value, now);
+    r.g.gain.linearRampToValueAtTime(0, now + fade);
+    try {
+      r.nodes.forEach((n) => n.stop(now + fade + 0.1));
+    } catch (e) {}
+    preRef.current = null;
+  }, []);
+  const prelaunchBed = useCallback(
+    (kind) => {
+      if (!enabledRef.current) return;
+      const ctx = ensureCtx();
+      if (!ctx) return;
+      if (preRef.current && preRef.current.kind === kind) return;
+      prelaunchStop(1.2);
+      const now = ctx.currentTime;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(1, now + 1.5);
+      g.connect(sfxOut(ctx));
+      const nodes = [];
+      const noise = (type, freq, q, level) => {
+        const src = ctx.createBufferSource();
+        src.buffer = makeNoiseBuffer(ctx);
+        src.loop = true;
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        const lv = ctx.createGain();
+        lv.gain.value = level;
+        src.connect(f).connect(lv).connect(g);
+        src.start();
+        nodes.push(src);
+        return lv;
+      };
+      const tone = (freq, level, type = "sine") => {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.value = freq;
+        const lv = ctx.createGain();
+        lv.gain.value = level;
+        o.connect(lv).connect(g);
+        o.start();
+        nodes.push(o);
+        return lv;
+      };
+      const lfo = (target, rate, depth) => {
+        const o = ctx.createOscillator();
+        o.frequency.value = rate;
+        const d = ctx.createGain();
+        d.gain.value = depth;
+        o.connect(d).connect(target.gain);
+        o.start();
+        nodes.push(o);
+      };
+      if (kind === "room") {
+        noise("lowpass", 260, 0.7, 0.05);
+        tone(60, 0.008);
+        tone(120, 0.004);
+      } else if (kind === "pad") {
+        lfo(noise("lowpass", 380, 0.6, 0.05), 0.13, 0.03);
+        lfo(noise("bandpass", 2600, 1.4, 0.012), 0.31, 0.008); // the venting
+        tone(48, 0.006, "triangle");
+      } else if (kind === "arm") {
+        lfo(noise("lowpass", 520, 0.6, 0.075), 0.17, 0.05);
+        lfo(noise("bandpass", 1500, 3, 0.01), 0.07, 0.008);
+      } else if (kind === "cabin") {
+        noise("bandpass", 900, 0.8, 0.025);
+        noise("lowpass", 180, 0.7, 0.03);
+        tone(400, 0.0025);
+      }
+      preRef.current = { kind, g, nodes };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [prelaunchStop]
+  );
+  const prelaunchCue = useCallback((kind, dur = 3) => {
+    const r = preRef.current;
+    const ctx = ctxRef.current;
+    if (!r || !ctx) return;
+    const now = ctx.currentTime;
+    const burst = (at, len, type, freq, q, peak) => {
+      const src = ctx.createBufferSource();
+      src.buffer = makeNoiseBuffer(ctx);
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0005, now + at);
+      g.gain.linearRampToValueAtTime(peak, now + at + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + at + len);
+      src.connect(f).connect(g).connect(r.g);
+      src.start(now + at);
+      src.stop(now + at + len + 0.05);
+    };
+    const thump = (at, f0, f1, len, peak) => {
+      const o = ctx.createOscillator();
+      o.frequency.setValueAtTime(f0, now + at);
+      o.frequency.exponentialRampToValueAtTime(f1, now + at + len);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0005, now + at);
+      g.gain.linearRampToValueAtTime(peak, now + at + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + at + len);
+      o.connect(g).connect(r.g);
+      o.start(now + at);
+      o.stop(now + at + len + 0.05);
+    };
+    if (kind === "step") {
+      thump(0, 90, 55, 0.16, 0.09);
+      burst(0.005, 0.07, "bandpass", 1900, 2.5, 0.05);
+    } else if (kind === "switch") {
+      burst(0, 0.03, "bandpass", 3200, 4, 0.12);
+    } else if (kind === "helmet") {
+      burst(0, 0.05, "bandpass", 2400, 4, 0.14);
+      burst(0.12, 0.05, "bandpass", 2100, 4, 0.12);
+      burst(0.25, 1.4, "highpass", 3000, 0.7, 0.03);
+    } else if (kind === "hatch") {
+      thump(0, 110, 50, 0.5, 0.2);
+      burst(0.4, 0.06, "bandpass", 2200, 4, 0.16);
+      burst(0.62, 0.06, "bandpass", 2000, 4, 0.16);
+      thump(0.9, 70, 45, 0.35, 0.12);
+    } else if (kind === "elevator") {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(70, now);
+      o.frequency.linearRampToValueAtTime(95, now + 1.2);
+      o.frequency.setValueAtTime(95, now + Math.max(1.2, dur - 1.2));
+      o.frequency.linearRampToValueAtTime(65, now + dur);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 320;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(0.05, now + 0.8);
+      g.gain.setValueAtTime(0.05, now + Math.max(0.8, dur - 0.8));
+      g.gain.linearRampToValueAtTime(0, now + dur);
+      o.connect(lp).connect(g).connect(r.g);
+      o.start(now);
+      o.stop(now + dur + 0.05);
+      thump(dur - 0.3, 80, 50, 0.4, 0.08); // the car settling at the landing
+    }
+  }, []);
+
   const padStop = useCallback((fade = 3) => {
     const p = padRef.current;
     if (!p || !ctxRef.current) return;
@@ -794,6 +952,7 @@ export default function useMissionAudio() {
         ambienceStop(0.05);
         padStop(0.05);
         recoveryStop(0.05);
+        prelaunchStop(0.05);
         if (window.speechSynthesis) window.speechSynthesis.cancel();
         if (ctxRef.current) {
           ctxRef.current.onstatechange = null;
@@ -806,7 +965,7 @@ export default function useMissionAudio() {
       crackleRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stopRumble, roarStop, ambienceStop, padStop, recoveryStop]);
+  }, [stopRumble, roarStop, ambienceStop, padStop, recoveryStop, prelaunchStop]);
 
   return {
     init,
@@ -840,6 +999,9 @@ export default function useMissionAudio() {
     recoveryStart,
     recoverySet,
     recoveryCue,
+    prelaunchBed,
+    prelaunchCue,
+    prelaunchStop,
     recoveryStop,
   };
 }

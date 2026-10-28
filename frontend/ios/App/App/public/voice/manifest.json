@@ -8,7 +8,9 @@
     "CREW": "am_puck",
     "FLIGHT": "am_michael",
     "GUIDANCE": "am_fenrir",
-    "RECOVERY": "am_eric"
+    "LAUNCH": "am_liam",
+    "RECOVERY": "am_eric",
+    "SUITTECH": "am_echo"
    },
    "clips": {
     "ascent.armed": [
@@ -1051,6 +1053,120 @@
       "f": "en/orbit.goPdi.0.mp3"
      }
     ],
+    "prelaunch.armView": [
+     {
+      "d": 1.9,
+      "f": "en/prelaunch.armView.0.mp3"
+     }
+    ],
+    "prelaunch.briefing": [
+     {
+      "d": 8.21,
+      "f": "en/prelaunch.briefing.0.mp3"
+     }
+    ],
+    "prelaunch.ckComms": [
+     {
+      "d": 2.68,
+      "f": "en/prelaunch.ckComms.0.mp3"
+     }
+    ],
+    "prelaunch.ckGuidance": [
+     {
+      "d": 1.07,
+      "f": "en/prelaunch.ckGuidance.0.mp3"
+     }
+    ],
+    "prelaunch.ckHatch": [
+     {
+      "d": 2.93,
+      "f": "en/prelaunch.ckHatch.0.mp3"
+     }
+    ],
+    "prelaunch.ckLaunchControl": [
+     {
+      "d": 2.59,
+      "f": "en/prelaunch.ckLaunchControl.0.mp3"
+     }
+    ],
+    "prelaunch.ckPressure": [
+     {
+      "d": 1.36,
+      "f": "en/prelaunch.ckPressure.0.mp3"
+     }
+    ],
+    "prelaunch.ckRestraints": [
+     {
+      "d": 1.07,
+      "f": "en/prelaunch.ckRestraints.0.mp3"
+     }
+    ],
+    "prelaunch.commCrew": [
+     {
+      "d": 2.06,
+      "f": "en/prelaunch.commCrew.0.mp3"
+     }
+    ],
+    "prelaunch.commHouston": [
+     {
+      "d": 2.96,
+      "f": "en/prelaunch.commHouston.0.mp3"
+     }
+    ],
+    "prelaunch.crewReady": [
+     {
+      "d": 1.5,
+      "f": "en/prelaunch.crewReady.0.mp3"
+     }
+    ],
+    "prelaunch.crewReadyLaunch": [
+     {
+      "d": 3.37,
+      "f": "en/prelaunch.crewReadyLaunch.0.mp3"
+     }
+    ],
+    "prelaunch.elevator": [
+     {
+      "d": 3.03,
+      "f": "en/prelaunch.elevator.0.mp3"
+     }
+    ],
+    "prelaunch.guidanceInternal": [
+     {
+      "d": 1.2,
+      "f": "en/prelaunch.guidanceInternal.0.mp3"
+     }
+    ],
+    "prelaunch.suitCheck": [
+     {
+      "d": 4.09,
+      "f": "en/prelaunch.suitCheck.0.mp3"
+     }
+    ],
+    "prelaunch.t20": [
+     {
+      "d": 1.16,
+      "f": "en/prelaunch.t20.0.mp3"
+     }
+    ],
+    "prelaunch.t30": [
+     {
+      "d": 1.72,
+      "f": "en/prelaunch.t30.0.mp3"
+     }
+    ],
+    "prelaunch.t45": [
+     {
+      "d": 2.51,
+      "f": "en/prelaunch.t45.0.mp3"
+     }
+    ],
+    "prelaunch.whiteRoom": [
+     {
+      "d": 3.25,
+      "f": "en/prelaunch.whiteRoom.0.mp3"
+     }
+    ],
     "rdv.aos": [
      {
       "d": 3.66,
@@ -1376,7 +1492,9 @@
     "CREW": "pm_alex",
     "FLIGHT": "pm_alex",
     "GUIDANCE": "pm_santa",
-    "RECOVERY": "pm_santa"
+    "LAUNCH": "pm_santa",
+    "RECOVERY": "pm_santa",
+    "SUITTECH": "pm_alex"
    },
    "clips": {
     "ascent.armed": [
@@ -2417,6 +2535,120 @@
      {
       "d": 3.29,
       "f": "pt/orbit.goPdi.0.mp3"
+     }
+    ],
+    "prelaunch.armView": [
+     {
+      "d": 2.26,
+      "f": "pt/prelaunch.armView.0.mp3"
+     }
+    ],
+    "prelaunch.briefing": [
+     {
+      "d": 7.5,
+      "f": "pt/prelaunch.briefing.0.mp3"
+     }
+    ],
+    "prelaunch.ckComms": [
+     {
+      "d": 2.7,
+      "f": "pt/prelaunch.ckComms.0.mp3"
+     }
+    ],
+    "prelaunch.ckGuidance": [
+     {
+      "d": 1.26,
+      "f": "pt/prelaunch.ckGuidance.0.mp3"
+     }
+    ],
+    "prelaunch.ckHatch": [
+     {
+      "d": 2.51,
+      "f": "pt/prelaunch.ckHatch.0.mp3"
+     }
+    ],
+    "prelaunch.ckLaunchControl": [
+     {
+      "d": 4.33,
+      "f": "pt/prelaunch.ckLaunchControl.0.mp3"
+     }
+    ],
+    "prelaunch.ckPressure": [
+     {
+      "d": 1.89,
+      "f": "pt/prelaunch.ckPressure.0.mp3"
+     }
+    ],
+    "prelaunch.ckRestraints": [
+     {
+      "d": 1.19,
+      "f": "pt/prelaunch.ckRestraints.0.mp3"
+     }
+    ],
+    "prelaunch.commCrew": [
+     {
+      "d": 2.08,
+      "f": "pt/prelaunch.commCrew.0.mp3"
+     }
+    ],
+    "prelaunch.commHouston": [
+     {
+      "d": 3.45,
+      "f": "pt/prelaunch.commHouston.0.mp3"
+     }
+    ],
+    "prelaunch.crewReady": [
+     {
+      "d": 1.9,
+      "f": "pt/prelaunch.crewReady.0.mp3"
+     }
+    ],
+    "prelaunch.crewReadyLaunch": [
+     {
+      "d": 4.73,
+      "f": "pt/prelaunch.crewReadyLaunch.0.mp3"
+     }
+    ],
+    "prelaunch.elevator": [
+     {
+      "d": 3.48,
+      "f": "pt/prelaunch.elevator.0.mp3"
+     }
+    ],
+    "prelaunch.guidanceInternal": [
+     {
+      "d": 1.34,
+      "f": "pt/prelaunch.guidanceInternal.0.mp3"
+     }
+    ],
+    "prelaunch.suitCheck": [
+     {
+      "d": 4.12,
+      "f": "pt/prelaunch.suitCheck.0.mp3"
+     }
+    ],
+    "prelaunch.t20": [
+     {
+      "d": 1.23,
+      "f": "pt/prelaunch.t20.0.mp3"
+     }
+    ],
+    "prelaunch.t30": [
+     {
+      "d": 1.72,
+      "f": "pt/prelaunch.t30.0.mp3"
+     }
+    ],
+    "prelaunch.t45": [
+     {
+      "d": 2.69,
+      "f": "pt/prelaunch.t45.0.mp3"
+     }
+    ],
+    "prelaunch.whiteRoom": [
+     {
+      "d": 3.53,
+      "f": "pt/prelaunch.whiteRoom.0.mp3"
      }
     ],
     "rdv.aos": [

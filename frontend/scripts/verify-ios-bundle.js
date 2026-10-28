@@ -215,6 +215,18 @@ const FEATURES = [
   ["Ocean Recovery: the finale", "WELCOME HOME"],
   ["Ocean Recovery: MISSION ACCOMPLISHED", "MISSION ACCOMPLISHED"],
   ["Ocean Recovery in Portuguese", "ASSISTIR AO RESGATE"],
+  ["Countdown to Launch: PRE-LAUNCH EXPERIENCE on the startup screen", "control-prelaunch-btn"],
+  ["Countdown to Launch: the button's label", "PRE-LAUNCH EXPERIENCE"],
+  ["Countdown to Launch: SKIP PRE-LAUNCH", "SKIP PRE-LAUNCH"],
+  ["Countdown to Launch: the suit room's SUIT CHECK", "suit-step-"],
+  ["Countdown to Launch: the launch checklist", "LAUNCH CHECKLIST"],
+  ["Countdown to Launch: CREW READY FOR LAUNCH", "CREW READY FOR LAUNCH"],
+  ["Countdown to Launch: the final count", "begin-count"],
+  ["Countdown to Launch: dramatized calls (synthetic voices)", "prelaunch.guidanceInternal"],
+  ["Countdown to Launch in Portuguese", "INICIAR CONTAGEM FINAL"],
+  ["Countdown to Launch: all six cabin panels inspectable (entry monitor, electrical power)", "ENTRY MONITOR"],
+  ["Countdown to Launch: the WHITE ROOM over the arm's doorway", "COMMAND MODULE ACCESS"],
+  ["Countdown to Launch: the arm's safety placards", "CLOSEOUT TEAM ONLY"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar
