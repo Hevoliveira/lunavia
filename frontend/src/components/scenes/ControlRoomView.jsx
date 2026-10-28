@@ -99,12 +99,13 @@ export default function ControlRoomView({ onLaunch, onPreLaunch = null, saved = 
               <button
                 onClick={pressPreLaunch}
                 data-testid="control-prelaunch-btn"
-                className="mt-3 short:mt-2 relative z-10 inline-flex items-center gap-2 px-4 py-2 touch:min-h-[44px] border border-white/25 text-zinc-300 hover:text-white hover:border-white/60 bg-black/30 transition-colors duration-200 font-mono tracking-[0.3em] text-[10px]"
+                className="mt-3 short:mt-1.5 relative z-10 inline-flex items-center gap-2 px-4 py-2 short:py-1.5 touch:min-h-[44px] border border-white/25 text-zinc-300 hover:text-white hover:border-white/60 bg-black/30 short:bg-black/80 transition-colors duration-200 font-mono tracking-[0.3em] text-[10px]"
               >
                 {lang === "pt" ? "EXPERIÊNCIA PRÉ-LANÇAMENTO" : "PRE-LAUNCH EXPERIENCE"} ›
               </button>
             )}
-            <div className={`mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500 ${panel ? "short:hidden" : ""}`}>
+            {/* on a short (phone landscape) screen the hint gives its place to PRE-LAUNCH EXPERIENCE */}
+            <div className={`mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500 ${panel || onPreLaunch ? "short:hidden" : ""}`}>
               PRESS TO BEGIN · TERMINAL COUNT, LAUNCH AND EARTH DEPARTURE ARE AUTOMATIC
             </div>
           </>
