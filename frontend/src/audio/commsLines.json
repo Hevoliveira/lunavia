@@ -5,7 +5,9 @@
     "FLIGHT": {"label": {"en": "FLIGHT", "pt": "DIRETOR DE VOO"}, "radio": "ground"},
     "GUIDANCE": {"label": {"en": "GUIDANCE", "pt": "GUIAGEM"}, "radio": "ground"},
     "COMPUTER": {"label": {"en": "COMPUTER", "pt": "COMPUTADOR"}, "radio": "onboard"},
-    "CREW": {"label": {"en": "LUNAVIA", "pt": "LUNAVIA"}, "radio": "space"}, "RECOVERY": {"label": {"en": "RECOVERY 1", "pt": "RESGATE 1"}, "radio": "space"}
+    "CREW": {"label": {"en": "LUNAVIA", "pt": "LUNAVIA"}, "radio": "space"}, "RECOVERY": {"label": {"en": "RECOVERY 1", "pt": "RESGATE 1"}, "radio": "space"},
+    "LAUNCH": {"label": {"en": "LAUNCH CONTROL", "pt": "CONTROLE DE LANÇAMENTO"}, "radio": "ground"},
+    "SUITTECH": {"label": {"en": "SUIT TECH", "pt": "TÉCNICO DE TRAJES"}, "radio": "onboard"}
   },
   "lines": [
     {"id": "settings.radioCheck", "role": "CAPCOM", "priority": "NORMAL", "gap": 0, "mood": "calm", "variants": [{"en": "LUNAVIA, Houston. Radio check. How do you read?", "pt": "LUNAVIA, Houston. Teste de rádio. Como nos ouvem?"}]},
@@ -213,6 +215,25 @@
     {"id": "recovery.hatch", "role": "RECOVERY", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Hatch is open. Crew egress in progress.", "pt": "Escotilha aberta. Saída da tripulação em andamento."}]},
     {"id": "recovery.hoist", "role": "RECOVERY", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Crew recovery in progress. Basket going down.", "pt": "Resgate da tripulação em andamento. Cesto descendo."}]},
     {"id": "recovery.allAboard", "role": "RECOVERY", "priority": "NORMAL", "mood": "relief", "dramatized": true, "variants": [{"en": "All crew accounted for. Returning to the ship.", "pt": "Toda a tripulação a bordo. Retornando ao navio."}]},
-    {"id": "recovery.welcome", "role": "CAPCOM", "priority": "NORMAL", "mood": "relief", "dramatized": true, "variants": [{"en": "Welcome home, LUNAVIA.", "pt": "Bem-vindos de volta, LUNAVIA."}]}
+    {"id": "recovery.welcome", "role": "CAPCOM", "priority": "NORMAL", "mood": "relief", "dramatized": true, "variants": [{"en": "Welcome home, LUNAVIA.", "pt": "Bem-vindos de volta, LUNAVIA."}]},
+    {"id": "prelaunch.suitCheck", "role": "SUITTECH", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Suit pressure check complete. Helmets are locked. You're good to go.", "pt": "Verificação de pressão concluída. Capacetes travados. Tudo pronto."}]},
+    {"id": "prelaunch.commHouston", "role": "CAPCOM", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "LUNAVIA, Houston. Comm check. How do you read?", "pt": "LUNAVIA, Houston. Teste de comunicação. Como recebem?"}]},
+    {"id": "prelaunch.commCrew", "role": "CREW", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Houston, LUNAVIA. Loud and clear.", "pt": "Houston, LUNAVIA. Alto e claro."}]},
+    {"id": "prelaunch.crewReady", "role": "CREW", "priority": "NORMAL", "mood": "lift", "dramatized": true, "variants": [{"en": "Crew is ready. Let's go fly.", "pt": "Tripulação pronta. Vamos voar."}]},
+    {"id": "prelaunch.briefing", "role": "CAPCOM", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "LUNAVIA, final briefing. Weather is go, the range is go, and LV-001 is fuelled and stable. Your window opens on time. Good luck.", "pt": "LUNAVIA, briefing final. Tempo liberado, campo liberado, e o LV-001 está abastecido e estável. A janela abre no horário. Boa sorte."}]},
+    {"id": "prelaunch.elevator", "role": "LAUNCH", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "Crew is at the pad. Elevator to the crew access level.", "pt": "Tripulação na plataforma. Elevador para o nível de acesso."}]},
+    {"id": "prelaunch.armView", "role": "LAUNCH", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Crew is on the access arm.", "pt": "Tripulação no braço de acesso."}]},
+    {"id": "prelaunch.whiteRoom", "role": "SUITTECH", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Welcome to the white room. Commander, you're first in.", "pt": "Bem-vindos à sala branca. Comandante, você entra primeiro."}]},
+    {"id": "prelaunch.ckPressure", "role": "CREW", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "Cabin pressure verified.", "pt": "Pressão da cabine verificada."}]},
+    {"id": "prelaunch.ckGuidance", "role": "GUIDANCE", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "Guidance is ready.", "pt": "Guiagem pronta."}]},
+    {"id": "prelaunch.ckComms", "role": "CAPCOM", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "LUNAVIA, Houston. Communications are go.", "pt": "LUNAVIA, Houston. Comunicações liberadas."}]},
+    {"id": "prelaunch.ckRestraints", "role": "CREW", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "Restraints secure.", "pt": "Cintos travados."}]},
+    {"id": "prelaunch.ckHatch", "role": "SUITTECH", "priority": "NORMAL", "mood": "calm", "dramatized": true, "variants": [{"en": "Hatch is closed and locked. Have a good flight.", "pt": "Escotilha fechada e travada. Bom voo."}]},
+    {"id": "prelaunch.ckLaunchControl", "role": "LAUNCH", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "LUNAVIA, Launch Control. You are go for launch.", "pt": "LUNAVIA, Controle de Lançamento. Vocês estão liberados para o lançamento."}]},
+    {"id": "prelaunch.crewReadyLaunch", "role": "FLIGHT", "priority": "NORMAL", "mood": "lift", "dramatized": true, "variants": [{"en": "All stations are go. The crew is ready for launch.", "pt": "Todas as estações liberadas. A tripulação está pronta para o lançamento."}]},
+    {"id": "prelaunch.t45", "role": "LAUNCH", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "T-minus forty-five seconds and counting.", "pt": "T menos quarenta e cinco segundos e contando."}]},
+    {"id": "prelaunch.t30", "role": "LAUNCH", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "T-minus thirty seconds.", "pt": "T menos trinta segundos."}]},
+    {"id": "prelaunch.t20", "role": "LAUNCH", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "Twenty seconds.", "pt": "Vinte segundos."}]},
+    {"id": "prelaunch.guidanceInternal", "role": "GUIDANCE", "priority": "NORMAL", "mood": "focused", "dramatized": true, "variants": [{"en": "Guidance is internal.", "pt": "Guiagem interna."}]}
   ]
 }

@@ -10,8 +10,11 @@ import { NewMissionConfirm, SaveProblemNote, SavedMissionCard } from "@/componen
  * summary and RESUME MISSION sit beside the launch (`saved`); nothing resumes,
  * launches or is discarded by itself. LAUNCH SEQUENCE — INITIATE then first asks
  * START A NEW MISSION? (the checkpoint would be replaced: onReplaceSave).
+ *
+ * Under it, smaller, PRE-LAUNCH EXPERIENCE (onPreLaunch): COUNTDOWN TO LAUNCH, optional, which
+ * ends in the same launch; it asks START A NEW MISSION? first in the same way.
  */
-export default function ControlRoomView({ onLaunch, saved = null, saveProblem = null, lang = "en", onResume, onReplaceSave }) {
+export default function ControlRoomView({ onLaunch, onPreLaunch = null, saved = null, saveProblem = null, lang = "en", onResume, onReplaceSave }) {
   // Starting the mission is the only input before the Moon: the terminal
   // count, ignition, ascent, staging, orbit and TLI then run automatically
   // in the launch cinematic.
@@ -27,6 +30,9 @@ export default function ControlRoomView({ onLaunch, saved = null, saveProblem = 
   const [confirming, setConfirming] = useState(false);
   const [problemSeen, setProblemSeen] = useState(false);
   const pressLaunch = () => (saved ? setConfirming(true) : startCountdown());
+  // PRE-LAUNCH EXPERIENCE asks the same question before an unfinished mission would be replaced
+  const [preConfirm, setPreConfirm] = useState(false);
+  const pressPreLaunch = () => (saved ? setPreConfirm(true) : onPreLaunch && onPreLaunch());
   // the right-hand panel: the saved mission, or why a saved mission cannot be restored
   const problemShown = !saved && !!saveProblem && !problemSeen;
   const panel = !launching && (!!saved || problemShown);
@@ -89,6 +95,15 @@ export default function ControlRoomView({ onLaunch, saved = null, saveProblem = 
               LAUNCH SEQUENCE — INITIATE
               <span className="inline-block w-3 h-3 rounded-full bg-[#FF3B00] blink" />
             </button>
+            {onPreLaunch && (
+              <button
+                onClick={pressPreLaunch}
+                data-testid="control-prelaunch-btn"
+                className="mt-3 short:mt-2 relative z-10 inline-flex items-center gap-2 px-4 py-2 touch:min-h-[44px] border border-white/25 text-zinc-300 hover:text-white hover:border-white/60 bg-black/30 transition-colors duration-200 font-mono tracking-[0.3em] text-[10px]"
+              >
+                {lang === "pt" ? "EXPERIÊNCIA PRÉ-LANÇAMENTO" : "PRE-LAUNCH EXPERIENCE"} ›
+              </button>
+            )}
             <div className={`mt-6 short:mt-3 font-mono text-[10px] tracking-[0.3em] text-zinc-500 ${panel ? "short:hidden" : ""}`}>
               PRESS TO BEGIN · TERMINAL COUNT, LAUNCH AND EARTH DEPARTURE ARE AUTOMATIC
             </div>
@@ -133,6 +148,16 @@ export default function ControlRoomView({ onLaunch, saved = null, saveProblem = 
           setConfirming(false);
           if (onReplaceSave) onReplaceSave();
           startCountdown();
+        }}
+      />
+      <NewMissionConfirm
+        open={preConfirm}
+        lang={lang}
+        onCancel={() => setPreConfirm(false)}
+        onConfirm={() => {
+          setPreConfirm(false);
+          if (onReplaceSave) onReplaceSave();
+          if (onPreLaunch) onPreLaunch();
         }}
       />
 

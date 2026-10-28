@@ -31,7 +31,9 @@ import { drawEmblem, suitTextures } from "./evaTextures";
 
 const TAU = Math.PI * 2;
 /** The skeleton's bones: the rig's segments, the two finger sets (children of the hands) and the scoop. */
-export const BONES = [...SEGMENTS, "fingersL", "fingersR", "scoop"];
+// "helmet" (a child of the torso) carries the launch suit's pressure bubble so it can be lowered on;
+// the lunar suit binds nothing to it (its helmet is fixed to the suit)
+export const BONES = [...SEGMENTS, "fingersL", "fingersR", "scoop", "helmet"];
 export const FINGER_ROOT = [0, -0.158, 0]; // the knuckle line, in the hand's frame
 
 /* ---- primitives (metres, in a segment's frame) --------------------------------------------------- */
@@ -328,7 +330,8 @@ function pelvis() {
   return items;
 }
 
-function torso() {
+function torso(variant = "eva") {
+  const eva = variant !== "launch";
   const { items, add } = collector();
   const SZ = 0.68;
   add(
@@ -359,83 +362,100 @@ function torso() {
     [0.205, 0.05],
   ].forEach(([r, y]) => add("suit", ring(r - 0.002, 0.0105, y, 28, 5, 0.72), { c: "#e4e1d9" }));
 
-  /* the backpack (life support), its edge bumpers, access panel and tie-down bands */
-  add("suit", rbox(0.48, 0.6, 0.2, 0.04, 0, 0.3, -0.285, 2), { c: PACK, uv: "box", tile: 0.42 });
-  for (const sx of [1, -1]) add("suit", rbox(0.032, 0.58, 0.214, 0.012, sx * 0.238, 0.3, -0.285), { c: "#d3cfc5", uv: "box", tile: 0.3 });
-  add("suit", rbox(0.34, 0.36, 0.022, 0.01, 0, 0.33, -0.39), { c: "#ebe8e1", uv: "box", tile: 0.42 });
-  for (const y of [0.11, 0.53]) add("suit", bx(0.49, 0.026, 0.208, 0, y, -0.285), { c: "#c4c0b6", uv: "box", tile: 0.3 });
-  // the panel's fasteners
-  for (const [x, y] of [
-    [-0.15, 0.49],
-    [0.15, 0.49],
-    [-0.15, 0.17],
-    [0.15, 0.17],
-  ])
-    add("metal", cyl(0.009, 0.008, 8).rotateX(Math.PI / 2).translate(x, y, -0.403));
-  // the oxygen purge unit on top, the gap under it, its handle, the purge valve, the antenna
-  add("suit", rbox(0.44, 0.15, 0.19, 0.035, 0, 0.695, -0.275, 2), { c: "#e8e5de", uv: "box", tile: 0.42 });
-  add("dark", bx(0.43, 0.024, 0.18, 0, 0.612, -0.278), { c: "#3a3c41" });
-  add("metal", new THREE.TorusGeometry(0.04, 0.007, 5, 12, Math.PI).translate(-0.1, 0.77, -0.275));
-  add("metal", cylAlong(0.03, 0.05, [0.245, 0.7, -0.24], [1, 0, 0], 14));
-  add("color", new THREE.TorusGeometry(0.02, 0.005, 5, 12).rotateY(Math.PI / 2).translate(0.275, 0.7, -0.24), { c: RED });
-  add("metal", cyl(0.013, 0.03, 10).translate(0.18, 0.785, -0.32));
-  add("metal", cyl(0.0045, 0.26, 6).translate(0.18, 0.92, -0.32));
-  add("dark", bx(0.016, 0.03, 0.016, 0.18, 1.05, -0.32), { c: "#3a3c41" });
-  // the water and oxygen fittings under the pack
-  for (const x of [-0.12, 0.05, 0.12]) add("metal", cyl(0.016, 0.03, 10).translate(x, -0.01, -0.3));
-
-  /* the chest control unit: its body, the labelled face, the knobs on top */
-  add("shell", rbox(0.215, 0.125, 0.085, 0.014, 0, 0.43, 0.19, 2), { c: "#cfcdc6" });
-  add("decal", decal(0.19, 0.095, RECT.rcu).translate(0, 0.43, 0.2335));
-  for (const [x, r] of [
-    [-0.07, 0.015],
-    [-0.025, 0.012],
-    [0.025, 0.012],
-    [0.07, 0.009],
-  ])
-    add("metal", cyl(r, 0.024, 12).translate(x, 0.502, 0.19));
-  // the camera on its bracket: body, film magazine, lens barrel and ring
-  add("metal", cylAlong(0.012, 0.05, [0, 0.36, 0.2], [0, 0, 1], 8));
-  add("metal", rbox(0.095, 0.088, 0.072, 0.01, 0, 0.31, 0.226, 2));
-  add("dark", bx(0.09, 0.03, 0.064, 0, 0.365, 0.222), { c: "#232428" });
-  add("dark", cylAlong(0.031, 0.036, [0, 0.31, 0.276], [0, 0, 1], 20), { c: "#1d1e22" });
-  add("metal", new THREE.TorusGeometry(0.029, 0.0045, 5, 20).translate(0, 0.31, 0.294));
-  // the straps: the control unit hangs from them, over the shoulders to the pack
-  for (const s of [1, -1]) {
-    add(
-      "dark",
-      ribbon(
-        [
-          [s * 0.088, 0.49, 0.172],
-          [s * 0.135, 0.515, 0.104],
-          [s * 0.163, 0.537, 0.048],
-          [s * 0.173, 0.545, -0.03],
-          [s * 0.176, 0.541, -0.11],
-          [s * 0.176, 0.53, -0.19],
-        ],
-        0.034,
-        0.007,
-        [0, 0.3, 0]
-      ),
-      { c: STRAP }
-    );
-    add("metal", bx(0.04, 0.012, 0.03, s * 0.088, 0.494, 0.18));
+  /* the launch suit: no backpack, no chest unit or camera; the oxygen inlets and outlets on the
+     chest, capped until the hoses are plugged in aboard, and the zip's cover flap */
+  if (!eva) {
+    for (const [col, at] of [
+      [HOSE_BLUE, [0.09, 0.14, 0.17]],
+      [HOSE_BLUE, [-0.14, 0.2, 0.16]],
+      [HOSE_RED, [-0.09, 0.14, 0.17]],
+      [HOSE_RED, [0.14, 0.2, 0.16]],
+    ]) {
+      add("metal", cylAlong(0.023, 0.042, [at[0], at[1], at[2] - 0.02], [0, 0, 1], 14));
+      add("color", new THREE.TorusGeometry(0.0235, 0.0055, 5, 14).translate(at[0], at[1], at[2] - 0.005), { c: col });
+      add("dark", cylAlong(0.019, 0.012, [at[0], at[1], at[2] + 0.004], [0, 0, 1], 12), { c: "#2b2c30" });
+    }
+    add("suit", rbox(0.05, 0.42, 0.02, 0.008, 0, 0.27, 0.205), { c: "#e1ddd4", uv: "box", tile: 0.3 });
   }
-  // the hose connectors (anodised collars) and the ribbed hoses round to the pack
-  const hoses = [
-    [HOSE_BLUE, [0.09, 0.14, 0.17], [[0.2, 0.12, 0.13], [0.265, 0.1, -0.02], [0.235, 0.08, -0.17], [0.17, 0.06, -0.21]]],
-    [HOSE_BLUE, [-0.14, 0.2, 0.16], [[-0.24, 0.17, 0.11], [-0.275, 0.13, -0.03], [-0.24, 0.1, -0.18], [-0.17, 0.07, -0.21]]],
-    [HOSE_RED, [-0.09, 0.14, 0.17], [[-0.2, 0.12, 0.13], [-0.265, 0.1, -0.02], [-0.235, 0.08, -0.17], [-0.17, 0.06, -0.21]]],
-    [HOSE_RED, [0.14, 0.2, 0.16], [[0.24, 0.17, 0.11], [0.275, 0.13, -0.03], [0.24, 0.1, -0.18], [0.17, 0.07, -0.21]]],
-  ];
-  for (const [col, at, path] of hoses) {
-    const { g, c } = ribbedTube([at, ...path], 0.0178, 0.13, 48, 7);
-    add("color", g, { c: col });
-    add("metal", cylAlong(0.023, 0.042, [at[0], at[1], at[2] - 0.02], [0, 0, 1], 14));
-    add("color", new THREE.TorusGeometry(0.0235, 0.0055, 5, 14).translate(at[0], at[1], at[2] - 0.005), { c: col });
-    const end = c.getPointAt(1);
-    const tan = c.getTangentAt(1);
-    add("metal", cylAlong(0.024, 0.03, [end.x, end.y, end.z], [tan.x, tan.y, tan.z], 12));
+  if (eva) {
+    /* the backpack (life support), its edge bumpers, access panel and tie-down bands */
+    add("suit", rbox(0.48, 0.6, 0.2, 0.04, 0, 0.3, -0.285, 2), { c: PACK, uv: "box", tile: 0.42 });
+    for (const sx of [1, -1]) add("suit", rbox(0.032, 0.58, 0.214, 0.012, sx * 0.238, 0.3, -0.285), { c: "#d3cfc5", uv: "box", tile: 0.3 });
+    add("suit", rbox(0.34, 0.36, 0.022, 0.01, 0, 0.33, -0.39), { c: "#ebe8e1", uv: "box", tile: 0.42 });
+    for (const y of [0.11, 0.53]) add("suit", bx(0.49, 0.026, 0.208, 0, y, -0.285), { c: "#c4c0b6", uv: "box", tile: 0.3 });
+    // the panel's fasteners
+    for (const [x, y] of [
+      [-0.15, 0.49],
+      [0.15, 0.49],
+      [-0.15, 0.17],
+      [0.15, 0.17],
+    ])
+      add("metal", cyl(0.009, 0.008, 8).rotateX(Math.PI / 2).translate(x, y, -0.403));
+    // the oxygen purge unit on top, the gap under it, its handle, the purge valve, the antenna
+    add("suit", rbox(0.44, 0.15, 0.19, 0.035, 0, 0.695, -0.275, 2), { c: "#e8e5de", uv: "box", tile: 0.42 });
+    add("dark", bx(0.43, 0.024, 0.18, 0, 0.612, -0.278), { c: "#3a3c41" });
+    add("metal", new THREE.TorusGeometry(0.04, 0.007, 5, 12, Math.PI).translate(-0.1, 0.77, -0.275));
+    add("metal", cylAlong(0.03, 0.05, [0.245, 0.7, -0.24], [1, 0, 0], 14));
+    add("color", new THREE.TorusGeometry(0.02, 0.005, 5, 12).rotateY(Math.PI / 2).translate(0.275, 0.7, -0.24), { c: RED });
+    add("metal", cyl(0.013, 0.03, 10).translate(0.18, 0.785, -0.32));
+    add("metal", cyl(0.0045, 0.26, 6).translate(0.18, 0.92, -0.32));
+    add("dark", bx(0.016, 0.03, 0.016, 0.18, 1.05, -0.32), { c: "#3a3c41" });
+    // the water and oxygen fittings under the pack
+    for (const x of [-0.12, 0.05, 0.12]) add("metal", cyl(0.016, 0.03, 10).translate(x, -0.01, -0.3));
+  
+    /* the chest control unit: its body, the labelled face, the knobs on top */
+    add("shell", rbox(0.215, 0.125, 0.085, 0.014, 0, 0.43, 0.19, 2), { c: "#cfcdc6" });
+    add("decal", decal(0.19, 0.095, RECT.rcu).translate(0, 0.43, 0.2335));
+    for (const [x, r] of [
+      [-0.07, 0.015],
+      [-0.025, 0.012],
+      [0.025, 0.012],
+      [0.07, 0.009],
+    ])
+      add("metal", cyl(r, 0.024, 12).translate(x, 0.502, 0.19));
+    // the camera on its bracket: body, film magazine, lens barrel and ring
+    add("metal", cylAlong(0.012, 0.05, [0, 0.36, 0.2], [0, 0, 1], 8));
+    add("metal", rbox(0.095, 0.088, 0.072, 0.01, 0, 0.31, 0.226, 2));
+    add("dark", bx(0.09, 0.03, 0.064, 0, 0.365, 0.222), { c: "#232428" });
+    add("dark", cylAlong(0.031, 0.036, [0, 0.31, 0.276], [0, 0, 1], 20), { c: "#1d1e22" });
+    add("metal", new THREE.TorusGeometry(0.029, 0.0045, 5, 20).translate(0, 0.31, 0.294));
+    // the straps: the control unit hangs from them, over the shoulders to the pack
+    for (const s of [1, -1]) {
+      add(
+        "dark",
+        ribbon(
+          [
+            [s * 0.088, 0.49, 0.172],
+            [s * 0.135, 0.515, 0.104],
+            [s * 0.163, 0.537, 0.048],
+            [s * 0.173, 0.545, -0.03],
+            [s * 0.176, 0.541, -0.11],
+            [s * 0.176, 0.53, -0.19],
+          ],
+          0.034,
+          0.007,
+          [0, 0.3, 0]
+        ),
+        { c: STRAP }
+      );
+      add("metal", bx(0.04, 0.012, 0.03, s * 0.088, 0.494, 0.18));
+    }
+    // the hose connectors (anodised collars) and the ribbed hoses round to the pack
+    const hoses = [
+      [HOSE_BLUE, [0.09, 0.14, 0.17], [[0.2, 0.12, 0.13], [0.265, 0.1, -0.02], [0.235, 0.08, -0.17], [0.17, 0.06, -0.21]]],
+      [HOSE_BLUE, [-0.14, 0.2, 0.16], [[-0.24, 0.17, 0.11], [-0.275, 0.13, -0.03], [-0.24, 0.1, -0.18], [-0.17, 0.07, -0.21]]],
+      [HOSE_RED, [-0.09, 0.14, 0.17], [[-0.2, 0.12, 0.13], [-0.265, 0.1, -0.02], [-0.235, 0.08, -0.17], [-0.17, 0.06, -0.21]]],
+      [HOSE_RED, [0.14, 0.2, 0.16], [[0.24, 0.17, 0.11], [0.275, 0.13, -0.03], [0.24, 0.1, -0.18], [0.17, 0.07, -0.21]]],
+    ];
+    for (const [col, at, path] of hoses) {
+      const { g, c } = ribbedTube([at, ...path], 0.0178, 0.13, 48, 7);
+      add("color", g, { c: col });
+      add("metal", cylAlong(0.023, 0.042, [at[0], at[1], at[2] - 0.02], [0, 0, 1], 14));
+      add("color", new THREE.TorusGeometry(0.0235, 0.0055, 5, 14).translate(at[0], at[1], at[2] - 0.005), { c: col });
+      const end = c.getPointAt(1);
+      const tan = c.getTangentAt(1);
+      add("metal", cylAlong(0.024, 0.03, [end.x, end.y, end.z], [tan.x, tan.y, tan.z], 12));
+    }
   }
   // the emblem (right chest) and the name tag (left chest), lying on the chest's curve
   const onChest = (x, y, w, h, rect) => {
@@ -450,41 +470,59 @@ function torso() {
   };
   add("decal", onChest(-0.162, 0.325, 0.078, 0.078, RECT.emblem));
   add("decal", onChest(0.163, 0.36, 0.092, 0.017, RECT.name));
-  // the helmet: the LEVA shell over the bubble, the gold visor down, the eyeshade drawn up
   const H = BODY.helmet;
   const R = BODY.helmetR;
-  const front = Math.PI / 2; // three.js sphere: phi = π/2 faces +z
-  const half = 1.22;
-  const th0 = 0.62;
-  const th1 = 1.86;
-  const sp = (th, ph, r) => new THREE.Vector3(-r * Math.cos(ph) * Math.sin(th), r * Math.cos(th), r * Math.sin(ph) * Math.sin(th)).add(new THREE.Vector3(...H));
-  [
-    new THREE.SphereGeometry(R, 40, 22, front + half, TAU - 2 * half, 0, 2.3),
-    new THREE.SphereGeometry(R, 20, 6, front - half, 2 * half, 0, th0),
-    new THREE.SphereGeometry(R, 20, 4, front - half, 2 * half, th1, 2.3 - th1),
-  ].forEach((g) => add("shell", g.translate(H[0], H[1], H[2]), { c: "#f4f2ed" }));
-  add("visor", new THREE.SphereGeometry(R + 0.004, 30, 16, front - half - 0.02, 2 * half + 0.04, th0 - 0.02, th1 - th0 + 0.04).translate(H[0], H[1], H[2]));
-  add("dark", new THREE.SphereGeometry(R + 0.0058, 22, 2, front - half + 0.01, 2 * half - 0.02, th0 - 0.005, 0.1).translate(H[0], H[1], H[2]), { c: "#39424f" });
-  // the visor's rim round the opening, and its pivot bosses
-  const rim = [];
-  const N = 14;
-  for (let k = 0; k < N; k++) rim.push(sp(th0, front - half + (2 * half * k) / N, R + 0.006));
-  for (let k = 0; k < N / 2; k++) rim.push(sp(th0 + ((th1 - th0) * k) / (N / 2), front + half, R + 0.006));
-  for (let k = 0; k < N; k++) rim.push(sp(th1, front + half - (2 * half * k) / N, R + 0.006));
-  for (let k = 0; k < N / 2; k++) rim.push(sp(th1 - ((th1 - th0) * k) / (N / 2), front - half, R + 0.006));
-  add("shell", new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rim, true, "catmullrom", 0.2), 96, 0.0075, 6, true), { c: "#dedcd6" });
-  for (const s of [1, -1]) {
-    const n = sp(1.22, front + s * (half + 0.07), 1).sub(new THREE.Vector3(...H)).normalize();
-    const at = new THREE.Vector3(...H).addScaledVector(n, R + 0.004);
-    add("metal", cylAlong(0.024, 0.014, [at.x, at.y, at.z], [n.x, n.y, n.z], 16));
-    add("shell", cylAlong(0.032, 0.008, [at.x - n.x * 0.004, at.y - n.y * 0.004, at.z - n.z * 0.004], [n.x, n.y, n.z], 16), { c: "#e6e4de" });
+  if (eva) {
+    // the helmet: the LEVA shell over the bubble, the gold visor down, the eyeshade drawn up
+    const front = Math.PI / 2; // three.js sphere: phi = π/2 faces +z
+    const half = 1.22;
+    const th0 = 0.62;
+    const th1 = 1.86;
+    const sp = (th, ph, r) => new THREE.Vector3(-r * Math.cos(ph) * Math.sin(th), r * Math.cos(th), r * Math.sin(ph) * Math.sin(th)).add(new THREE.Vector3(...H));
+    [
+      new THREE.SphereGeometry(R, 40, 22, front + half, TAU - 2 * half, 0, 2.3),
+      new THREE.SphereGeometry(R, 20, 6, front - half, 2 * half, 0, th0),
+      new THREE.SphereGeometry(R, 20, 4, front - half, 2 * half, th1, 2.3 - th1),
+    ].forEach((g) => add("shell", g.translate(H[0], H[1], H[2]), { c: "#f4f2ed" }));
+    add("visor", new THREE.SphereGeometry(R + 0.004, 30, 16, front - half - 0.02, 2 * half + 0.04, th0 - 0.02, th1 - th0 + 0.04).translate(H[0], H[1], H[2]));
+    add("dark", new THREE.SphereGeometry(R + 0.0058, 22, 2, front - half + 0.01, 2 * half - 0.02, th0 - 0.005, 0.1).translate(H[0], H[1], H[2]), { c: "#39424f" });
+    // the visor's rim round the opening, and its pivot bosses
+    const rim = [];
+    const N = 14;
+    for (let k = 0; k < N; k++) rim.push(sp(th0, front - half + (2 * half * k) / N, R + 0.006));
+    for (let k = 0; k < N / 2; k++) rim.push(sp(th0 + ((th1 - th0) * k) / (N / 2), front + half, R + 0.006));
+    for (let k = 0; k < N; k++) rim.push(sp(th1, front + half - (2 * half * k) / N, R + 0.006));
+    for (let k = 0; k < N / 2; k++) rim.push(sp(th1 - ((th1 - th0) * k) / (N / 2), front - half, R + 0.006));
+    add("shell", new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rim, true, "catmullrom", 0.2), 96, 0.0075, 6, true), { c: "#dedcd6" });
+    for (const s of [1, -1]) {
+      const n = sp(1.22, front + s * (half + 0.07), 1).sub(new THREE.Vector3(...H)).normalize();
+      const at = new THREE.Vector3(...H).addScaledVector(n, R + 0.004);
+      add("metal", cylAlong(0.024, 0.014, [at.x, at.y, at.z], [n.x, n.y, n.z], 16));
+      add("shell", cylAlong(0.032, 0.008, [at.x - n.x * 0.004, at.y - n.y * 0.004, at.z - n.z * 0.004], [n.x, n.y, n.z], 16), { c: "#e6e4de" });
+    }
   }
   // the neck ring, its lock ring and latches
   add("metal", ring(0.135, 0.022, H[1] - 0.125, 32, 8).translate(0, 0, H[2]));
   add("color", ring(0.14, 0.0085, H[1] - 0.106, 32, 6).translate(0, 0, H[2]), { c: "#2c3f6a" });
   for (const s of [1, -1]) add("metal", bx(0.018, 0.03, 0.03, s * 0.158, H[1] - 0.122, H[2]));
-  // the commander's stripe, over the top from the back to the visor's rim
-  add("color", new THREE.TorusGeometry(R + 0.003, 0.012, 6, 30, Math.PI / 2 + 0.56).rotateY(Math.PI / 2).translate(H[0], H[1], H[2]), { c: ORANGE });
+  if (eva) {
+    // the commander's stripe, over the top from the back to the visor's rim
+    add("color", new THREE.TorusGeometry(R + 0.003, 0.012, 6, 30, Math.PI / 2 + 0.56).rotateY(Math.PI / 2).translate(H[0], H[1], H[2]), { c: ORANGE });
+  } else {
+    // inside the launch helmet: the face, the neck, and the communications carrier ("Snoopy cap")
+    add("skin", new THREE.CylinderGeometry(0.052, 0.058, 0.12, 14).translate(H[0], H[1] - 0.11, H[2] - 0.005));
+    add("skin", new THREE.SphereGeometry(0.094, 22, 16).scale(0.9, 1.1, 1.0).translate(H[0], H[1] - 0.005, H[2] + 0.008));
+    add("skin", new THREE.SphereGeometry(0.02, 8, 6).scale(0.8, 1, 1.1).translate(H[0], H[1] - 0.012, H[2] + 0.098)); // nose
+    for (const sx of [1, -1]) add("dark", new THREE.SphereGeometry(0.011, 8, 6).translate(H[0] + sx * 0.032, H[1] + 0.018, H[2] + 0.088), { c: "#2a2420" });
+    // the cap: a white crown and back, brown sides, the earcups, the two microphone booms
+    add("color", new THREE.SphereGeometry(0.1, 22, 12, Math.PI * 0.62, Math.PI * 1.76, 0, Math.PI * 0.62).scale(0.93, 1.12, 1.03).translate(H[0], H[1] - 0.004, H[2] + 0.004), { c: "#f1efe9" });
+    add("color", new THREE.SphereGeometry(0.101, 18, 8, Math.PI * 0.62, Math.PI * 1.76, Math.PI * 0.62, Math.PI * 0.2).scale(0.93, 1.12, 1.03).translate(H[0], H[1] - 0.004, H[2] + 0.004), { c: "#5a4433" });
+    for (const sx of [1, -1]) {
+      add("color", cylAlong(0.034, 0.022, [H[0] + sx * 0.092, H[1] - 0.012, H[2] - 0.002], [1, 0, 0], 16), { c: "#3d2e24" });
+      add("dark", cylAlong(0.005, 0.07, [H[0] + sx * 0.07, H[1] - 0.05, H[2] + 0.062], [-sx * 0.55, -0.15, 0.82], 6), { c: "#1f1f22" });
+      add("dark", new THREE.SphereGeometry(0.009, 8, 6).translate(H[0] + sx * 0.035, H[1] - 0.058, H[2] + 0.1), { c: "#1f1f22" });
+    }
+  }
   return items;
 }
 
@@ -700,6 +738,19 @@ function fingers(side) {
   return items;
 }
 
+/** The launch suit's pressure helmet: a clear bubble on its neck ring (the "helmet" bone; torso frame). */
+function launchHelmet() {
+  const { items, add } = collector();
+  const H = BODY.helmet;
+  const R = BODY.helmetR;
+  add("bubble", new THREE.SphereGeometry(R + 0.002, 40, 24, 0, TAU, 0, 2.32).translate(H[0], H[1], H[2]));
+  // the bubble's own ring, the feed port at the back, and the vent pad inside the crown
+  add("metal", ring(0.138, 0.016, H[1] - 0.128, 32, 8).translate(0, 0, H[2]));
+  add("metal", cylAlong(0.02, 0.03, [H[0], H[1] - 0.06, H[2] - R + 0.005], [0, 0, 1], 12));
+  add("shell", new THREE.SphereGeometry(R - 0.012, 18, 6, 0, TAU, 0, 0.42).translate(H[0], H[1], H[2]), { c: "#dcd9d2" });
+  return items;
+}
+
 function scoop() {
   // the long-handled sample scoop: handle along +z from the grip (origin) to the pan
   const { items, add } = collector();
@@ -798,13 +849,18 @@ function prepare(item, bone, dirtFn) {
   return g;
 }
 
-let GEO = null;
-/** { material: BufferGeometry } for the whole suit, each vertex bound to one bone of BONES. */
-export function astronautGeometry() {
-  if (GEO) return GEO;
+const GEO = {};
+/**
+ * { material: BufferGeometry } for the whole suit, each vertex bound to one bone of BONES.
+ * variant "eva" (the lunar surface suit, the default) or "launch" (the pressure suit worn for
+ * launch: no backpack, no scoop, a clear bubble over the communications cap).
+ */
+export function astronautGeometry(variant = "eva") {
+  if (GEO[variant]) return GEO[variant];
+  const launch = variant === "launch";
   const parts = {
     pelvis: pelvis(),
-    torso: torso(),
+    torso: torso(variant),
     thighL: thigh(1),
     thighR: thigh(-1),
     shinL: shin(1),
@@ -819,20 +875,21 @@ export function astronautGeometry() {
     handR: hand(-1),
     fingersL: fingers(1),
     fingersR: fingers(-1),
-    scoop: scoop(),
+    ...(launch ? { helmet: launchHelmet() } : { scoop: scoop() }),
   };
   const byMat = {};
   for (const [name, items] of Object.entries(parts)) {
     const bone = BONES.indexOf(name);
     for (const it of items) (byMat[it.m] = byMat[it.m] || []).push(prepare(it, bone, DIRT[name]));
   }
-  GEO = {};
+  const out = {};
   for (const [m, list] of Object.entries(byMat)) {
     const g = mergeGeometries(list, false);
     g.computeBoundingSphere();
-    GEO[m] = g;
+    out[m] = g;
   }
-  return GEO;
+  GEO[variant] = out;
+  return out;
 }
 
 /* ---- materials --------------------------------------------------------------------------------- */
@@ -867,6 +924,9 @@ export function astronautMaterials(env, visorEnv = env) {
     metal: std({ color: "#cfd2d8", roughness: 0.28, metalness: 0.92, envMapIntensity: 1.1 }),
     dark: std({ color: "#ffffff", vertexColors: true, roughness: 0.62, metalness: 0.15, envMapIntensity: 0.45 }),
     color: dirty(std({ color: "#ffffff", vertexColors: true, roughness: 0.5, metalness: 0.05, envMapIntensity: 0.45 })),
+    // the launch suit's: the clear pressure bubble (a thin reflection, the face seen through it), skin
+    bubble: new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0, roughness: 0.04, transparent: true, opacity: 0.16, envMap: env, envMapIntensity: 1.6, clearcoat: 1, clearcoatRoughness: 0.03, depthWrite: false }),
+    skin: std({ color: "#c99a7c", roughness: 0.62, metalness: 0, envMapIntensity: 0.25 }),
     decal: std({ map: suitDecalTexture(), alphaTest: 0.5, roughness: 0.72, metalness: 0, envMapIntensity: 0.35, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
   };
 }

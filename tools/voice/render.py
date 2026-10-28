@@ -41,6 +41,8 @@ CAST = {
         "COMPUTER": {"voice": "bf_emma", "pitch": 0.0},
         "CREW": {"voice": "am_puck", "pitch": 0.0},
         "RECOVERY": {"voice": "am_eric", "pitch": 0.0},
+        "LAUNCH": {"voice": "am_liam", "pitch": 0.0, "speed": 0.97},
+        "SUITTECH": {"voice": "am_echo", "pitch": 0.0},
     },
     "pt": {
         "lang": "pt-br",
@@ -50,6 +52,8 @@ CAST = {
         "COMPUTER": {"voice": "pf_dora", "pitch": 2.0},
         "CREW": {"voice": "pm_alex", "pitch": 0.0},
         "RECOVERY": {"voice": "pm_santa", "pitch": -2.0},
+        "LAUNCH": {"voice": "pm_santa", "pitch": 1.5, "speed": 0.97},
+        "SUITTECH": {"voice": "pm_alex", "pitch": 2.0},
     },
 }
 

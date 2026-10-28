@@ -25,8 +25,8 @@ const _z = new THREE.Vector3(0, 0, 1);
 const _d = new THREE.Vector3();
 const HIDE = 1e-5;
 
-function build(env) {
-  const G = astronautGeometry();
+function build(env, variant) {
+  const G = astronautGeometry(variant);
   const cube = new THREE.WebGLCubeRenderTarget(VISOR_RES, { generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
   cube.texture.colorSpace = THREE.SRGBColorSpace;
   const M = astronautMaterials(env, cube.texture);
@@ -41,6 +41,7 @@ function build(env) {
   for (const n of BONES) {
     if (n === "fingersL") bones.handL.add(bones[n]);
     else if (n === "fingersR") bones.handR.add(bones[n]);
+    else if (n === "helmet") bones.torso.add(bones[n]); // the launch suit's bubble rides on the torso
     else root.add(bones[n]);
   }
   bones.fingersL.position.set(...FINGER_ROOT);
@@ -65,10 +66,16 @@ function build(env) {
   return { root, bones, skeleton, meshes, M, cube, cam, face: 0, first: true, at: new THREE.Vector3(1e9, 0, 0), last: -1e9 };
 }
 
-export default function Astronaut({ stateRef }) {
+/**
+ * variant "eva" (the lunar surface suit, as approved) or "launch" (the pressure suit for launch,
+ * COUNTDOWN TO LAUNCH: no backpack, a clear bubble; `env` the scene's own environment map, and
+ * stateRef.current.helmetUp 0 locked .. 1 held up above the head).
+ */
+export default function Astronaut({ stateRef, variant = "eva", env = null }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
-  const A = useMemo(() => build(lunarEnv(gl)), [gl]);
+  const launch = variant === "launch";
+  const A = useMemo(() => build(env || lunarEnv(gl), variant), [gl, env, variant]);
 
   useEffect(
     () => () => {
@@ -137,6 +144,13 @@ export default function Astronaut({ stateRef }) {
       sc.scale.setScalar(1);
     } else sc.scale.setScalar(HIDE);
     A.M.dust.value = Math.min(1, s.dust || 0);
+    if (launch) {
+      // the bubble: held up and a little forward, then lowered onto the neck ring and locked
+      const up = Math.max(0, Math.min(1, s.helmetUp || 0));
+      B.helmet.position.set(0, 0.34 * up, 0.12 * up);
+      B.helmet.rotation.set(-0.35 * up, 0, 0);
+      return; // a clear bubble: no visor reflection to capture
+    }
 
     // the visor's reflection, from the helmet's centre (world)
     const clock = state.clock.elapsedTime;

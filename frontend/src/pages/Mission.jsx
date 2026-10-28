@@ -22,6 +22,7 @@ import useMissionAudio from "@/hooks/useMissionAudio";
 import MissionTitle from "@/components/MissionTitle";
 import MissionDebrief from "@/components/scoring/MissionDebrief";
 import RecoveryOverlay, { recoveryText } from "@/components/recovery/RecoveryOverlay";
+import PreLaunch from "@/components/prelaunch/PreLaunch";
 import { useAudioSettings } from "@/audio/audioSettings";
 import { setSubtitlePlacement } from "@/components/CommsSubtitles";
 import { createFlightScoring, restoreFlightScoring } from "@/data/flightScoring";
@@ -100,6 +101,7 @@ import { MissionSaveNotice, NewMissionConfirm } from "@/components/missions/Miss
  */
 const STATES = {
   CONTROL: "control",          // startup: THE ROAD TO THE MOON, waiting for LAUNCH SEQUENCE — INITIATE
+  PRELAUNCH: "prelaunch",      // COUNTDOWN TO LAUNCH (optional, PRE-LAUNCH EXPERIENCE): suit room, tower, arm, cabin, count to T-15
   LAUNCH: "launch",            // LV-001 from the pad to TLI
   MENU: "menu",                // after START MISSIONS: MISSIONS or TRAINING
   SELECT: "select",            // MISSIONS: destination, then pilot difficulty
@@ -122,6 +124,7 @@ const STATES = {
 
 const STATE_LABELS = {
   control: { code: "T-00:00:10", name: "MISSION CONTROL" },
+  prelaunch: { code: "T-00:02:41", name: "PRE-LAUNCH" },
   menu: { code: "T+81:30:00", name: "LUNAVIA" },
   select: { code: "T+81:30:00", name: "MISSIONS" },
   launch: { code: "T-00:00:15", name: "LAUNCH" },
@@ -182,6 +185,7 @@ const ORBIT_CUES = [
 const ORBIT_STATES = new Set([STATES.ORBIT, STATES.TITLE, STATES.MENU, STATES.SELECT, STATES.BRIEFING]);
 
 const FLIGHT_STATES = new Set([
+  STATES.PRELAUNCH,
   STATES.LAUNCH,
   STATES.ORBIT,
   STATES.TITLE,
@@ -454,6 +458,22 @@ export default function Mission({ entry = "opening" }) {
     audio.init();
     preloadMissionScene(); // lunar orbit follows the launch directly
     setState(STATES.LAUNCH);
+  };
+
+  // PRE-LAUNCH EXPERIENCE (COUNTDOWN TO LAUNCH): from the startup screen only, never by itself.
+  const handlePreLaunch = () => {
+    if (stateRef.current !== STATES.CONTROL) return;
+    stateRef.current = STATES.PRELAUNCH;
+    audio.init();
+    setState(STATES.PRELAUNCH);
+  };
+  // ...and its one way out (the count at T-15, or SKIP PRE-LAUNCH): handed back to the startup's own
+  // launch (handleLaunch, the one place the launch starts), once. The launch film starts at T-15 and
+  // calls the count from T-10 itself.
+  const handlePreLaunchDone = () => {
+    if (stateRef.current !== STATES.PRELAUNCH) return;
+    stateRef.current = STATES.CONTROL;
+    handleLaunch();
   };
 
   // "Cutoff.": mount lunar orbit under the launch, its clock held on the arrival.
@@ -1128,6 +1148,7 @@ export default function Mission({ entry = "opening" }) {
         <MissionScene missionTime={ARRIVAL_TIME} cinematic={true} orbitClock={orbitClockRef} orbitReal={orbitRealRef} />
       )}
 
+      {state === STATES.PRELAUNCH && <PreLaunch audio={audio} lang={lang} onLaunch={handlePreLaunchDone} />}
       {state === STATES.LAUNCH && (
         <LaunchCinematic audio={audio} onComplete={handleLaunchComplete} onSkip={handleSkipLaunch} onCutAhead={handleCutAhead} />
       )}
@@ -1141,6 +1162,7 @@ export default function Mission({ entry = "opening" }) {
       {state === STATES.CONTROL && (
         <ControlRoomView
           onLaunch={handleLaunch}
+          onPreLaunch={handlePreLaunch}
           saved={resumable}
           saveProblem={saveState.ready && (saveState.status === "damaged" || saveState.status === "unsupported") ? saveState.status : null}
           lang={lang}
@@ -1306,7 +1328,7 @@ export default function Mission({ entry = "opening" }) {
       {state === STATES.COMPLETE && recovering && <RecoveryOverlay recRef={recoveryRef} lang={lang} audio={audio} onSkip={endRecovery} />}
 
       {/* --- Minimal HUD overlay (hidden in control room & during manual descent which has its own HUD) --- */}
-      {state !== STATES.CONTROL && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && state !== STATES.ASCENT && state !== STATES.CABIN && state !== STATES.EVA && state !== STATES.MANUAL_ASCENT && state !== STATES.DOCKING && state !== STATES.DEBRIEF && !recovering && (
+      {state !== STATES.CONTROL && state !== STATES.PRELAUNCH && state !== STATES.SELECT && state !== STATES.MENU && state !== STATES.LAUNCH && state !== STATES.TITLE && state !== STATES.MANUAL_DESCENT && state !== STATES.RESULT && state !== STATES.FAR_SIDE && state !== STATES.BRIEFING && state !== STATES.REENTRY && state !== STATES.ASCENT && state !== STATES.CABIN && state !== STATES.EVA && state !== STATES.MANUAL_ASCENT && state !== STATES.DOCKING && state !== STATES.DEBRIEF && !recovering && (
         <div
           data-testid="mission-hud-min"
           className="absolute top-20 short:top-[var(--hud-top)] left-1/2 -translate-x-1/2 hud-panel px-5 py-2 flex items-center gap-4 z-30"
@@ -1426,6 +1448,7 @@ export default function Mission({ entry = "opening" }) {
       {/* Global abort button — not shown during control, complete, or manual descent (which has its own);
           the lunar EVA has its own too (PAUSE → ABORT MISSION) */}
       {state !== STATES.CONTROL &&
+        state !== STATES.PRELAUNCH &&
         state !== STATES.EVA &&
         state !== STATES.CABIN &&
         state !== STATES.MANUAL_ASCENT &&
