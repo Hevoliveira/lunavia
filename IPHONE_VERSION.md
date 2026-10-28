@@ -1,29 +1,32 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 9bffe22**.
+This folder installs **BUILD 8eff6a5**.
 
-When it is installed, the first screen of LUNAVIA shows, at the top left:
+When it is installed, the HOME screen of LUNAVIA (HOME in the top bar) shows, at the top left:
 
-> **LUNAVIA iOS · BUILD 9bffe22 · 2026-10-27 21:21 UTC**
+> **LUNAVIA iOS · BUILD 8eff6a5 · 2026-10-28 01:39 UTC**
 
-It is **OCEAN RECOVERY**: an optional cinematic epilogue after a successful splashdown (about 75 s,
-English and Portuguese), inspired by the Apollo recovery operations. Nothing before it changed.
-- On **MISSION COMPLETE** (and in the MISSION DEBRIEF) a new button: **WATCH RECOVERY**
-  (PT: ASSISTIR AO RESGATE). The results were already recorded at splashdown: watching, skipping or
-  closing the app in the middle never changes the score, medals, achievements, mission log or save.
-- The sequence: the capsule afloat → a Sea King-style recovery helicopter (RECOVERY 1) comes in
-  from the horizon and hovers → two swimmers drop into the sea and swim to the capsule → the
-  flotation collar wraps round the hull and inflates → a life raft beside the hatch → the hatch
-  opens and the three astronauts (flight coveralls, life vests) climb out into the raft → the
-  rescue basket comes down, an astronaut rides it up to the door, then a short montage for the
-  other two (CREW ABOARD 3/3) → the helicopter leaves for the carrier on the horizon →
-  CREW RECOVERED · WELCOME HOME · MISSION ACCOMPLISHED → back to the mission's results.
-- **SKIP RECOVERY** at any moment goes straight to the results. A caption names every stage, so it
-  reads with the sound off; the radio calls are dramatized with synthetic voices (never archival
-  audio), and the sea, rotor, hatch, collar and winch sounds are generated in the game (no music).
-The rest of the game is as in BUILD cabe279.
+It is **COUNTDOWN TO LAUNCH**: an optional, dramatized pre-launch experience before the existing
+LV-001 launch (English and Portuguese). Nothing after the launch changed.
+- On the startup screen, under **LAUNCH SEQUENCE — INITIATE** (unchanged, still the main button),
+  a smaller **PRE-LAUNCH EXPERIENCE** (PT: EXPERIÊNCIA PRÉ-LANÇAMENTO). Nothing starts by itself.
+  With an unfinished mission saved, it asks START A NEW MISSION? first, like the main button.
+- The sequence: the suit room (three crew in launch pressure suits, SUIT CHECK → COMMUNICATIONS
+  CHECK → CREW READY, then the final crew briefing) → the pad at Launch Complex 39 with LV-001 and
+  its tower → the elevator up the tower → a first-person walk along the crew access arm (stop and
+  look around) → the white room at the command module's hatch → boarding → the commander's couch in
+  the command module (drag to look, tap a panel to inspect it) → the six-item LAUNCH CHECKLIST →
+  the hatch closing → CREW READY FOR LAUNCH → BEGIN FINAL COUNT (T-45 to T-15) → the original
+  launch film takes over at T-15 with its own count, ignition and liftoff, exactly once.
+- **SKIP PRE-LAUNCH** (bottom right) at any moment goes straight to the launch.
+- The calls are dramatized with synthetic voices (Launch Control, a suit technician, CAPCOM,
+  Guidance, the crew), with subtitles; the room, pad, arm and cabin sounds are generated in the
+  game. No music, no archival audio. The checklist is simplified, not a historical procedure.
+The rest of the game is as in BUILD 9bffe22.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **9bffe22** is the previous release: OCEAN RECOVERY, but no PRE-LAUNCH EXPERIENCE on the startup
+  screen;
 - **cabe279** is the previous release: APOLLO LEGACY, but no WATCH RECOVERY after the splashdown;
 - **5273da7** is the previous release: the LM cabin, but no APOLLO LEGACY in the game menu;
 - **b6f976d** is the previous release: the manual lunar ascent, but no ENTER CABIN (no lunar
@@ -154,6 +157,35 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Interactive lunar module cabin: ENTER CABIN after the landing and on the ascent preparation (RETURN TO CABIN after the EVA), five seated stations with a limited drag-to-look, the real landing site through the exterior's two windows at every destination, panel hotspots read from the mission, EVA and ascent preparation checklists, BEGIN EVA / CONTINUE TO ASCENT from inside, resume in the cabin, crew and CAPCOM calls (Houston silent on the far side) | — | 5273da7 |
 | APOLLO LEGACY (historical missions, separate from the campaign): Apollo 11 (the final descent at the Sea of Tranquility, first steps, the contingency sample, a photograph of Eagle, the laser retroreflector), Apollo 12 (its own Ocean of Storms site with Surveyor 3 about 150 m from the target; a precision landing; walk to Surveyor 3, inspect, photograph and retrieve its TV camera), Apollo 15 (Hadley–Apennine on foot: a geology station on Hadley Rille's rim, two different samples, Hadley Delta on camera, a seismometer); historical briefings with sources, dramatized synthetic radio calls, its own save and results | — | cabe279 |
 | OCEAN RECOVERY (optional epilogue after a successful splashdown): WATCH RECOVERY on MISSION COMPLETE and in the debrief; the recovery helicopter, two swimmers, the flotation collar wrapped round and inflated, the life raft, the hatch opening and the three astronauts climbing out, the rescue-basket hoist, the carrier on the horizon, WELCOME HOME; SKIP RECOVERY; the results recorded at splashdown untouched | — | 9bffe22 |
+| COUNTDOWN TO LAUNCH (optional pre-launch experience): PRE-LAUNCH EXPERIENCE on the startup screen; the suit room (launch pressure suits, SUIT CHECK, COMMUNICATIONS CHECK, CREW READY, the final briefing); LV-001 and its tower at the pad; the elevator, the crew access arm and the white room; boarding; the command module interior with inspectable panels; the six-item launch checklist; the hatch closing; the final count from T-45 into the original launch film at T-15, launched once; SKIP PRE-LAUNCH | — | 8eff6a5 |
+
+## Try COUNTDOWN TO LAUNCH on the iPhone
+
+Not yet tried on a physical iPhone; the checks below were run in a desktop browser.
+1. Open LUNAVIA, landscape. The startup screen is as before (THE ROAD TO THE MOON, LAUNCH SEQUENCE
+   — INITIATE); under the main button, smaller: **PRE-LAUNCH EXPERIENCE**. Wait a while: nothing
+   starts by itself. (On this screen the line PRESS TO BEGIN · … gives its place to the new button.)
+2. Tap **PRE-LAUNCH EXPERIENCE**. The suit room: three crew in white launch suits, helmets up.
+   Tap **SUIT CHECK** (the helmets come down and lock), then **COMMUNICATIONS CHECK** (Houston and
+   the crew), then **CREW READY**; each is locked until the one before it is done. The final crew
+   briefing follows (its card top right), then **TO THE LAUNCH PAD**.
+3. The pad: LV-001 beside its tower; a dip to black, then the ride up the tower in the elevator.
+4. The crew access arm, first person: you walk on by yourself; it stops twice (the view, then the
+   white room). **Drag** to look around (the view is limited, as from a helmet); **CONTINUE** walks
+   on. At the white room, the command module's open hatch: **BOARD THE SPACECRAFT**.
+5. The command module, from the commander's couch: drag to look; tap a panel (or its name at the
+   bottom) to inspect it, **BACK** to return. The **LAUNCH CHECKLIST** (top right): tap the items in
+   order (CABIN PRESSURE, GUIDANCE, COMMUNICATIONS, CREW RESTRAINTS, HATCH, LAUNCH CONTROL); an item
+   out of order cannot be tapped. On HATCH the view turns up to the hatch as it swings shut.
+6. **CREW READY FOR LAUNCH** → **BEGIN FINAL COUNT**: T-45, T-30, T-20, "Guidance is internal", and
+   at T-15 the usual launch film takes over with its own count, ignition and liftoff (once). From
+   there the mission is exactly as before.
+7. **SKIP PRE-LAUNCH** (bottom right) at any point: straight into the launch film.
+8. With a mission saved (RESUME MISSION on the startup screen): PRE-LAUNCH EXPERIENCE first asks
+   START A NEW MISSION?; CANCEL keeps the saved mission.
+9. Sound on: the suit room's air, the pad's wind and the rocket's venting, footsteps on the grating,
+   switch clicks, the hatch; dramatized calls with subtitles (sound off: every call has its
+   subtitle and every stage its caption).
 
 ## Try OCEAN RECOVERY on the iPhone
 
@@ -277,6 +309,8 @@ project) the moment it is reached; it does not depend on the app being closed cl
 
 ## How this bundle was made and checked
 
+- **Built from the clean tree at 8eff6a5** with `yarn ios:sync` (`ios:verify`: 230 checks, now including COUNTDOWN TO LAUNCH: PRE-LAUNCH EXPERIENCE on the startup screen and its label, SKIP PRE-LAUNCH, the suit room's steps, the LAUNCH CHECKLIST, CREW READY FOR LAUNCH, the final count, the dramatized calls, Portuguese; all 510 voice clips bundled, 38 of them new). The build is reproducible: the label carries the commit's own time.
+- **This release is COUNTDOWN TO LAUNCH** over BUILD 9bffe22. Web game only: the Xcode project, Capacitor and the Swift package are unchanged; the save format is unchanged. The launch film, its count, ignition, timing, physics and staging are untouched: the pre-launch hands over to it through the same one launch call as LAUNCH SEQUENCE — INITIATE, at the film's own T-15 (the launch complex gains an option, used only by the pre-launch, to leave out the tower's crew arm; the film draws it as before). The lunar EVA suit's file gained the launch-suit variant; the EVA suit itself is unchanged (the dev preview at Tranquility and at Hadley's ladder matches the previous build to within 0.13% of pixels, timing noise). Browser checks (Chromium with software rendering, an iPhone-sized landscape window; not an iPhone): the whole pre-launch in English and Portuguese (19/19 each: the startup screen with nothing starting by itself, the button smaller and under LAUNCH SEQUENCE — INITIATE, the suit steps in order, helmets locked, the elevator, the walk to the white room (37.9 m), a panel inspected, the checklist refusing an item out of order, all six items, the hatch shut, the count, the launch film started once with its clock never restarted, the pre-launch layer gone, liftoff once, no page errors), SKIP PRE-LAUNCH (11/11), the same three on the packaged files offline (19/19, 19/19, 11/11; the startup screen's decorative backdrop photo, remote since the baseline, is the only request that leaves the app), the direct launch and the saved mission (14/14: the original film with no pre-launch layer, on to lunar orbit and the title; RESUME MISSION offered, PRE-LAUNCH EXPERIENCE asking START A NEW MISSION?, CANCEL keeping the save byte-for-byte, RESUME resuming), Ocean Recovery from a saved reentry through splashdown and WATCH RECOVERY (5/5), the startup screen at 667 × 375, 844 × 390 and 932 × 430 and with a saved mission, and the unit tests (786/786). Software rendering (only the ratio means anything): 2.5–5.6 fps through the pre-launch against 2.2–2.5 fps for the launch film itself; at most 113 draw calls and 110k triangles (the pad); one canvas at any time (each scene released before the next) and the film after the handover as fast as when launched directly. Not run on a physical iPhone.
 - **Built from the clean tree at 9bffe22** with `yarn ios:sync` (`ios:verify`: 221 checks, now including OCEAN RECOVERY: WATCH RECOVERY on MISSION COMPLETE and in the debrief, SKIP RECOVERY, the collar stage, the helicopter's markings, the dramatized radio note and calls, WELCOME HOME, MISSION ACCOMPLISHED, Portuguese; all 472 voice clips bundled, 18 of them new). The build is reproducible: the label carries the commit's own time.
 - **This release is OCEAN RECOVERY** over BUILD cabe279. Web game only: the Xcode project, Capacitor and the Swift package are unchanged; the save format is unchanged. The reentry, parachutes, clouds, sea, splashdown and its cameras are untouched (the recovery is a separate layer mounted only while it plays). Browser checks (Chromium with software rendering, an iPhone-sized landscape window; not an iPhone): the whole recovery in English and Portuguese and from the debrief (13/13: every stage, all three crew aboard, back to the results, records, log, achievements and save byte-identical, the recovery's geometries and textures released and no growth on a second playback, MAIN MENU, a new mission begins), SKIP RECOVERY (10/10), the browser killed in the middle of it and reopened (6/6: no result lost or counted twice, no stale RESUME), the same recovery on the packaged files offline (13/13), regressions (a full Sea of Tranquility mission to splashdown 12/12, 949 points GOLD; the Hadley EVA 28/28; the Tycho cabin 35/35), and the unit tests (769/769). Software rendering (only the ratio means anything): 7–10 fps through the recovery against 7.2 fps for the splashdown scene alone; at most 123 draw calls and 64k triangles (the hoist shot). Not run on a physical iPhone.
 - **5273da7** was built from the clean tree at 5273da7 with `yarn ios:sync` (`ios:verify`: 196 checks, now including the LM cabin: ENTER CABIN on the results and the ascent preparation, the cabin scene, its stations and hotspots, both checklists, BEGIN EVA and CONTINUE TO ASCENT from inside, Portuguese, the four new voice calls, the resume in the cabin; all 392 voice clips bundled). The build is reproducible: the label carries the commit's own time.
