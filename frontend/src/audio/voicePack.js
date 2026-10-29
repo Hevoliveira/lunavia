@@ -16,6 +16,7 @@ export function createVoicePack({ base = BASE, fetchImpl = (u) => fetch(u) } = {
   const bytes = new Map(); // file -> Promise<ArrayBuffer|null>
   const decoded = new Map(); // file -> AudioBuffer (insertion order = LRU)
   const fetchErrors = new Map(); // file -> why its last load failed (diagnostics)
+  const fetchStatus = new Map(); // file -> HTTP status of its last load (0 in the iPhone app)
 
   function loadManifest() {
     if (!manifestP) {
@@ -37,7 +38,12 @@ export function createVoicePack({ base = BASE, fetchImpl = (u) => fetch(u) } = {
     if (!bytes.has(file)) {
       const p = fetchImpl(`${base}/${file}`)
         .then((r) => {
-          if (r.ok) return r.arrayBuffer();
+          fetchStatus.set(file, r.status);
+          // The iPhone app's file server (Capacitor WebViewAssetHandler) answers media files such as
+          // .mp3 with a bare URLResponse, which has no HTTP status: fetch() then reports status 0 and
+          // ok = false although the file and its bytes are there. Status 0 with bytes is a found file
+          // (a missing one makes fetch() reject; an empty one is caught below).
+          if (r.ok || r.status === 0) return r.arrayBuffer();
           fetchErrors.set(file, `http-${r.status}`);
           return null;
         })
@@ -116,13 +122,13 @@ export function createVoicePack({ base = BASE, fetchImpl = (u) => fetch(u) } = {
         return { buffer: b, file: clip.f, cached: true };
       }
       const data = await fetchBytes(clip.f);
-      if (!data) return { error: fetchErrors.get(clip.f) || "fetch-failed", file: clip.f };
+      if (!data) return { error: fetchErrors.get(clip.f) || "fetch-failed", file: clip.f, status: fetchStatus.get(clip.f) };
       const bytesLen = data.byteLength;
       const r = await decode(ctx, data);
       if (!r.buffer) return { error: r.error, file: clip.f, bytes: bytesLen };
       decoded.set(clip.f, r.buffer);
       while (decoded.size > DECODED_MAX) decoded.delete(decoded.keys().next().value);
-      return { buffer: r.buffer, file: clip.f, bytes: bytesLen, cached: false };
+      return { buffer: r.buffer, file: clip.f, bytes: bytesLen, status: fetchStatus.get(clip.f), cached: false };
     },
     /** Decoded AudioBuffer for a line, or null when the pack has no such clip. */
     async buffer(ctx, lang, id, variant = 0) {

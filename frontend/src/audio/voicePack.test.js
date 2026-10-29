@@ -27,3 +27,15 @@ test("each failure has its own reason", async () => {
   const none = createVoicePack({ base: "/voice", fetchImpl: () => Promise.resolve(res(false, 404)) });
   expect((await none.load(ctx(true), "en", "launch.liftoff")).error).toBe("pack-unavailable");
 });
+
+test("the iPhone app's file server: an .mp3 answered with status 0 (no HTTP status) but with its bytes is found", async () => {
+  // Capacitor's WebViewAssetHandler sends media files as a bare URLResponse: fetch() sees status 0, ok false.
+  const pack = createVoicePack({
+    base: "/voice",
+    fetchImpl: (u) => Promise.resolve(u.endsWith("manifest.json") ? res(true, 200, manifest) : res(false, 0, new ArrayBuffer(23328))),
+  });
+  const r = await pack.load(ctx(true), "en", "launch.liftoff");
+  expect(r.error).toBeUndefined();
+  expect(r).toMatchObject({ file: "en/launch.liftoff.0.mp3", bytes: 23328, status: 0 });
+  expect(r.buffer.duration).toBe(3.8);
+});

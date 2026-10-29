@@ -228,7 +228,7 @@ export function runHoustonTest({ id = HOUSTON_TEST_ID } = {}) {
       return run;
     }
     run.detail.file = r.file;
-    run.ev("FILE FOUND", `${r.cached ? "already decoded" : `${r.bytes} bytes`}`);
+    run.ev("FILE FOUND", `${r.cached ? "already decoded" : `${r.bytes} bytes, status ${r.status}`}`);
     run.ev("DECODE OK", `${r2(r.buffer.duration)} s, ${r.buffer.sampleRate} Hz, ${r.buffer.numberOfChannels} ch`);
     if (!(await waitRunning(run, e))) return run;
     let started = false;
