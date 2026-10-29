@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { WORLD_X } from "@/data/touchdownFx";
 import { FOOT_RADIUS } from "@/data/landingSites";
 import { buildTerrain, hazardStrip, rockInstances, skyDirection } from "@/data/terrainMesh";
+import { moonDetailNormalTexture, moonDetailTexture } from "@/components/planets/planetMaterials";
 
 /*
  * A landing site, drawn from the same data the physics flies
@@ -173,19 +174,49 @@ const NEAR_NORMAL = /* glsl */ `
     normal = lvPerturb( - vViewPosition, normal, dH, faceDirection );
   }
 `;
+// Craters below the terrain mesh's resolution, from the Moon globe's own crater field
+// (components/planets): a ~490 m tile and a ~1.7 km one (scene units are 2 m), as albedo and as a
+// relief normal the low Sun picks out. Shading only: the mesh, its collision and the sites' rocks
+// are unchanged, and the relief fades out at the astronaut's feet (the ground there is the mesh).
+const CRATER_FRAG = /* glsl */ `
+uniform sampler2D uCrater;
+uniform sampler2D uCraterN;
+`;
+const CRATER_COLOR = /* glsl */ `
+  {
+    float kA = texture2D( uCrater, vXZ * 0.0041 + 0.13 ).r;
+    float kB = texture2D( uCrater, vXZ.yx * 0.00117 + 0.71 ).r;
+    diffuseColor.rgb *= ( 0.8 + 0.4 * kA ) * ( 0.78 + 0.44 * kB );
+    // regolith is close to neutral grey: keep each site's tone, lose most of the sepia cast
+    float lum = dot( diffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
+    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( lum ), 0.32 );
+  }
+`;
+const CRATER_NORMAL = /* glsl */ `
+  {
+    vec2 pA = texture2D( uCraterN, vXZ * 0.0041 + 0.13 ).xy * 2.0 - 1.0;
+    vec2 pB = texture2D( uCraterN, vXZ.yx * 0.00117 + 0.71 ).yx * 2.0 - 1.0;
+    float far = smoothstep( 6.0, 28.0, length( vViewPosition ) );
+    vec2 pc = ( pA * 0.22 + pB * 0.38 ) * 0.5 * far;
+    normal = normalize( normal + ( viewMatrix * vec4( pc.x, 0.0, pc.y, 0.0 ) ).xyz );
+  }
+`;
 function terrainMaterial(tex, near = null) {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uDetail = { value: tex };
+    sh.uniforms.uCrater = { value: moonDetailTexture() };
+    sh.uniforms.uCraterN = { value: moonDetailNormalTexture() };
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float sunVis;\nvarying float vSunVis;\nvarying vec2 vXZ;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvSunVis = sunVis;\n\tvXZ = position.xz;");
     sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform sampler2D uDetail;\nvarying float vSunVis;\nvarying vec2 vXZ;" + (near ? NEAR_FRAG : ""))
+      .replace("#include <common>", "#include <common>\nuniform sampler2D uDetail;\nvarying float vSunVis;\nvarying vec2 vXZ;" + CRATER_FRAG + (near ? NEAR_FRAG : ""))
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\n\tfloat dA = texture2D( uDetail, vXZ * 0.21 ).r;\n\tfloat dB = texture2D( uDetail, vXZ * 0.037 + 0.37 ).r;\n\tdiffuseColor.rgb *= ( 0.5 + 0.68 * dA ) * ( 0.66 + 0.5 * dB );" + (near ? NEAR_COLOR : "")
+        "#include <color_fragment>\n\tfloat dA = texture2D( uDetail, vXZ * 0.21 ).r;\n\tfloat dB = texture2D( uDetail, vXZ * 0.037 + 0.37 ).r;\n\tdiffuseColor.rgb *= ( 0.5 + 0.68 * dA ) * ( 0.66 + 0.5 * dB );" + CRATER_COLOR + (near ? NEAR_COLOR : "")
       )
+      .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + CRATER_NORMAL)
       .replace("#include <lights_fragment_begin>", SUNLIT);
     if (near) {
       sh.uniforms.uNear = { value: near.tex };
@@ -195,21 +226,43 @@ function terrainMaterial(tex, near = null) {
       sh.fragmentShader = sh.fragmentShader.replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + NEAR_NORMAL);
     }
   };
-  m.customProgramCacheKey = () => (near ? "lv-terrain-near" : "lv-terrain");
+  m.customProgramCacheKey = () => (near ? "lv-terrain-near-2" : "lv-terrain-2");
   return m;
 }
 
+// Rock: breccia and basalt are never one flat tone. A mottle and speckle in the rock's own
+// frame (it stays put on the stone), a little darker low down where dust and shadow collect.
+const ROCK_COLOR = /* glsl */ `
+  {
+    vec3 q = vRockP * 4.0 + vRockSeed;
+    vec3 iq = floor( q ); vec3 fq = fract( q ); fq = fq * fq * ( 3.0 - 2.0 * fq );
+    float n000 = fract( sin( dot( iq, vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n100 = fract( sin( dot( iq + vec3( 1, 0, 0 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n010 = fract( sin( dot( iq + vec3( 0, 1, 0 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n110 = fract( sin( dot( iq + vec3( 1, 1, 0 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n001 = fract( sin( dot( iq + vec3( 0, 0, 1 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n101 = fract( sin( dot( iq + vec3( 1, 0, 1 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n011 = fract( sin( dot( iq + vec3( 0, 1, 1 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float n111 = fract( sin( dot( iq + vec3( 1, 1, 1 ), vec3( 127.1, 311.7, 74.7 ) ) ) * 43758.5453 );
+    float nz0 = mix( mix( n000, n100, fq.x ), mix( n010, n110, fq.x ), fq.y );
+    float nz1 = mix( mix( n001, n101, fq.x ), mix( n011, n111, fq.x ), fq.y );
+    float mott = mix( nz0, nz1, fq.z );
+    float speck = fract( sin( dot( floor( vRockP * 23.0 + vRockSeed ), vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+    diffuseColor.rgb *= ( 0.78 + 0.34 * mott ) * ( 0.94 + 0.12 * step( 0.86, speck ) ) * ( 0.8 + 0.2 * smoothstep( 0.0, 0.45, vRockP.y ) );
+  }
+`;
 function rockMaterial() {
   const m = new THREE.MeshLambertMaterial({ color: "#ffffff", flatShading: true });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float aSunVis;\nvarying float vSunVis;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvSunVis = aSunVis;");
+      .replace("#include <common>", "#include <common>\nattribute float aSunVis;\nvarying float vSunVis;\nvarying vec3 vRockP;\nvarying float vRockSeed;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvSunVis = aSunVis;\n\tvRockP = position;\n#ifdef USE_INSTANCING\n\tvRockSeed = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.11;\n#else\n\tvRockSeed = 0.0;\n#endif");
     sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vSunVis;")
+      .replace("#include <common>", "#include <common>\nvarying float vSunVis;\nvarying vec3 vRockP;\nvarying float vRockSeed;")
+      .replace("#include <color_fragment>", "#include <color_fragment>\n" + ROCK_COLOR)
       .replace("#include <lights_fragment_begin>", SUNLIT);
   };
-  m.customProgramCacheKey = () => "lv-rock";
+  m.customProgramCacheKey = () => "lv-rock-2";
   return m;
 }
 
@@ -313,12 +366,31 @@ export function Horizon({ site }) {
   const geometry = useMemo(() => {
     if (!site.horizon || !site.horizon.length) return null;
     const D = 1500;
-    const seg = 1.5; // degrees per column
-    const rows = 6;
-    // silhouette height (deg) across a feature, u in [-1, 1], with a ragged crest
+    const seg = 0.5; // degrees per column
+    const rows = 12;
+    // deterministic value noise and its fractal sum (for the crest and the flanks)
+    const hash = (x, y) => {
+      const t = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+      return t - Math.floor(t);
+    };
+    const vnoise = (x, y) => {
+      const ix = Math.floor(x);
+      const iy = Math.floor(y);
+      const fx = x - ix;
+      const fy = y - iy;
+      const sx = fx * fx * (3 - 2 * fx);
+      const sy = fy * fy * (3 - 2 * fy);
+      const a = hash(ix, iy);
+      const b = hash(ix + 1, iy);
+      const c = hash(ix, iy + 1);
+      const d = hash(ix + 1, iy + 1);
+      return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+    };
+    const fbm = (x, y) => 0.5 * vnoise(x, y) + 0.27 * vnoise(x * 2.1, y * 2.1) + 0.15 * vnoise(x * 4.3, y * 4.3) + 0.08 * vnoise(x * 8.7, y * 8.7);
+    // silhouette height (deg) across a feature, u in [-1, 1], with a ragged crest at several scales
     const crest = (h, u) => {
       const a = Math.abs(u);
-      const rag = 1 + 0.06 * Math.sin(u * 37 + h.az) + 0.04 * Math.sin(u * 91 + 2 * h.az);
+      const rag = 1 + 0.06 * Math.sin(u * 37 + h.az) + 0.04 * Math.sin(u * 91 + 2 * h.az) + 0.07 * (fbm(u * 6 + h.az, h.el) - 0.5);
       if (h.kind === "peak") return h.el * Math.pow(Math.max(0, 1 - a), 1.3) * rag;
       if (h.kind === "rim") return h.el * (a < 0.75 ? 1 - 0.06 * Math.sin(u * 19) : Math.max(0, 1 - (a - 0.75) / 0.25)) * rag;
       if (h.kind === "front" || h.kind === "ridge") return h.el * (1 - a * a) * rag;
@@ -330,27 +402,40 @@ export function Horizon({ site }) {
     const nrm = [];
     const col = [];
     const idx = [];
+    const nn = new THREE.Vector3();
     for (const h of site.horizon) {
-      const n = Math.max(6, Math.ceil(h.w / seg));
+      const n = Math.max(12, Math.ceil(h.w / seg));
       const base = pos.length / 3;
       for (let i = 0; i <= n; i++) {
         const u = (i / n) * 2 - 1;
-        const az = ((h.az + (u * h.w) / 2) * Math.PI) / 180;
+        const azDeg = h.az + (u * h.w) / 2;
+        const az = (azDeg * Math.PI) / 180;
         const el = (crest(h, u) * Math.PI) / 180;
         const dx = Math.cos(az);
         const dz = -Math.sin(az);
-        // the face looks back towards the site and up its own slope
-        const steep = 0.55;
-        const nn = new THREE.Vector3(-dx * Math.cos(steep), Math.sin(steep), -dz * Math.cos(steep)).normalize();
-        // lambert from the site's Sun plus a little fill; brighter towards the crest
-        const lit = 0.25 + 0.95 * Math.max(0, nn.dot(sun));
+        const tx = -Math.sin(az); // along the range, with increasing azimuth
+        const tz = -Math.cos(az);
+        // each flank turns towards its own side of the summit (rounded massifs, not a flat card)
+        const e = 0.02;
+        const dcdu = (crest(h, Math.min(1, u + e)) - crest(h, Math.max(-1, u - e))) / (2 * e) / Math.max(0.5, h.el);
         for (let r = 0; r <= rows; r++) {
           const f = r / rows; // 0 at the foot, 1 at the crest
           const y = -90 + (D * Math.tan(el) - 6 + 90) * f;
           const rr = D - 120 * f; // the crest leans back a little
           pos.push(dx * rr, y, dz * rr);
+          // downslope gullies and spurs (ridged noise along the range), steeper towards the foot
+          const g0 = fbm(azDeg * 0.9, f * 3.2 + azDeg * 0.07);
+          const g1 = fbm(azDeg * 0.9 + 0.4, f * 3.2 + azDeg * 0.07);
+          const gully = (g1 - g0) * 6.0;
+          const steep = 0.42 + 0.3 * (1 - f);
+          const lat = Math.max(-0.85, Math.min(0.85, -dcdu * 0.32 + gully * 0.55));
+          nn.set(-dx * Math.cos(steep) + tx * lat, Math.sin(steep), -dz * Math.cos(steep) + tz * lat).normalize();
           nrm.push(nn.x, nn.y, nn.z);
-          const k = lit * (0.7 + 0.3 * f);
+          const lit = 0.16 + 1.0 * Math.max(0, nn.dot(sun));
+          // albedo: broad patches, faint layering, a few darker blocks of exposed rock
+          const patch = 0.84 + 0.32 * fbm(azDeg * 0.25, f * 1.4 + 7.0);
+          const layer = 0.96 + 0.06 * Math.sin(f * 23 + azDeg * 0.3);
+          const k = lit * patch * layer * (0.78 + 0.22 * f);
           col.push(albedo.r * k, albedo.g * k, albedo.b * k);
         }
       }

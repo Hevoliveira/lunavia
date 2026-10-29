@@ -227,6 +227,10 @@ const FEATURES = [
   ["Countdown to Launch: all six cabin panels inspectable (entry monitor, electrical power)", "ENTRY MONITOR"],
   ["Countdown to Launch: the WHITE ROOM over the arm's doorway", "COMMAND MODULE ACCESS"],
   ["Countdown to Launch: the arm's safety placards", "CLOSEOUT TEAM ONLY"],
+  ["NASA visual upgrade: the raised launch hardstand, flame trench, deflector and site", "lvSiteDetail"],
+  ["NASA visual upgrade: NASA cloud systems on the Earth (globe and launch film)", "float cloudCover(float d)"],
+  ["NASA visual upgrade: Moon albedo contrast and crater relief", "uDetailNormal"],
+  ["NASA visual upgrade: lunar terrain crater relief and mottled rocks", "lv-terrain-2"],
 ];
 
 // Removed on purpose (the direct cut from TLI cutoff to lunar orbit): the translunar

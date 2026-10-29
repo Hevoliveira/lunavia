@@ -115,7 +115,10 @@ const PAD_SHOTS = {
   // The rocket sits in the right third, clear of the caption (lower left) and the countdown.
   payload: (u) => ({ pos: [-1.24 + 0.1 * u, 3.05 - 0.02 * u, 1.0 - 0.08 * u], look: [-0.22, 2.96 + 0.02 * u, -0.26], fov: 40 }),
   engines: (u) => ({ pos: [0.3 - 0.02 * u, -0.06, 0.31 - 0.02 * u], look: [-0.04, 0.04 + 0.03 * u, -0.04], fov: 64, shake: 1 }),
-  trench: (u, c) => ({ pos: [2.9 - 0.2 * u, 0.7 + 0.1 * u, 7.6 - 0.4 * u], look: [0.15, Math.max(1.5, c.baseY + 1.3), -0.8], fov: 40, shake: 0.5 }),
+  // From above the land west of the pad, looking down the flame trench (it runs west, cut
+  // through the hardstand) towards the deck: the shot named FLAME TRENCH shows the trench, the
+  // exhaust leaving it and the vehicle climbing above.
+  trench: (u, c) => ({ pos: [-9.4 + 0.3 * u, 1.5 + 0.1 * u, 3.4 - 0.3 * u], look: [-1.6, Math.max(1.3, c.baseY + 1.2), -0.2], fov: 40, shake: 0.5 }),
   tower: (u, c) => ({ pos: [2.2, 1.25, 0.8], look: [c.lagX, c.lagY + 1.5, 0], fov: 60, shake: 0.35 }),
   wideAscent: (u, c) => ({ pos: [13.5, 1.0, 18.5], look: [c.lagX, c.lagY + 0.2, 0], fov: 21 - 2 * u }),
 };
@@ -834,29 +837,6 @@ function emitParticles(t, dt, pools, S, rigRef, rocketGroupRef) {
 
 /* ------------------------------------------------------------------ */
 
-function GroundSkirt() {
-  // Scrub and wetland around the complex, blending into the planet-scale ground
-  const tex = useMemo(() => {
-    const c = document.createElement("canvas");
-    c.width = c.height = 128;
-    const ctx = c.getContext("2d");
-    const g = ctx.createRadialGradient(64, 64, 20, 64, 64, 64);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.7, "rgba(255,255,255,0.8)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 128, 128);
-    return new THREE.CanvasTexture(c);
-  }, []);
-  useEffect(() => () => tex.dispose(), [tex]);
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} renderOrder={-1}>
-      <ringGeometry args={[20, 160, 48, 1]} />
-      <meshStandardMaterial color="#56604a" roughness={1} transparent alphaMap={tex} depthWrite={false} />
-    </mesh>
-  );
-}
-
 function PadShadowSetup({ lightRef }) {
   useEffect(() => {
     const l = lightRef.current;
@@ -930,9 +910,6 @@ function Scene({ hooks }) {
       <hemisphereLight ref={fillRefs.hemi} args={["#bcd3f0", "#5a5040", 0.25]} />
       <pointLight ref={padLightRef} color="#ffae66" intensity={0} distance={16} decay={1.6} />
       <LaunchComplex progRef={padProg} anisotropy={anisotropy} />
-      <PadVisible padProg={padProg}>
-        <GroundSkirt />
-      </PadVisible>
       <group ref={rocketGroupRef}>
         <RocketModel scale={ROCKET_SCALE} rigRef={rigRef} ctrlRef={ctrlRef} />
       </group>
@@ -956,14 +933,6 @@ function Scene({ hooks }) {
       />
     </>
   );
-}
-
-function PadVisible({ padProg, children }) {
-  const ref = useRef();
-  useFrame(() => {
-    if (ref.current) ref.current.visible = padProg.current < 0.5;
-  });
-  return <group ref={ref}>{children}</group>;
 }
 
 /* ------------------------------------------------------------------ */

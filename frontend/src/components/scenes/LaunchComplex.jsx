@@ -2,6 +2,7 @@ import { useMemo, useRef, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { buildSite } from "./launchSite";
 
 /*
  * LC-39-style launch complex for LV-001 (scene units; the vehicle stands at
@@ -11,8 +12,9 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
  * dozen draw calls: mobile launcher deck over a flame hole, umbilical tower
  * with braced bays, grated floors, swing arms with umbilical hoses and a crew
  * access arm, hammerhead crane, tail service masts, hold-down arms, deluge
- * ring, concrete hardstand, crawlerway, propellant spheres with pipe runs,
- * water tower, lightning masts with catenary wires, lights and scale cues.
+ * ring, lightning masts with catenary wires, lights and scale cues. The ground
+ * around it (the raised hardstand, the flame trench and deflector, the land,
+ * roads, propellant farms, buildings and the coast) is launchSite.js.
  */
 
 const DECK_TOP = 0.18;
@@ -20,7 +22,6 @@ const TOWER_X = 1.55;
 const TOWER_HALF = 0.25;
 const TOWER_TOP = 4.7;
 const BAY = 0.32;
-const HOLE_R = 0.36; // flame hole in the hardstand under the engines
 
 function rng(seed) {
   let s = seed;
@@ -93,17 +94,23 @@ function makeTextures() {
       ctx.fillStyle = `rgba(${v},${v - 2},${v - 6},0.12)`;
       ctx.fillRect(r() * W, r() * H, 2 + r() * 10, 2 + r() * 10);
     }
-    // Large poured slabs with soft, low-contrast joints
-    ctx.strokeStyle = "rgba(60,58,54,0.22)";
-    ctx.lineWidth = 1.5;
-    for (let i = 0; i <= 6; i++) {
+    // Poured slabs (about 7 m) with sawn joints, a few slabs a shade darker
+    for (let i = 0; i < 160; i++) {
+      const sx = Math.floor(r() * 52);
+      const sy = Math.floor(r() * 52);
+      ctx.fillStyle = `rgba(${r() < 0.5 ? "60,58,52" : "150,146,138"},0.07)`;
+      ctx.fillRect((sx * W) / 52, (sy * H) / 52, W / 52, H / 52);
+    }
+    ctx.strokeStyle = "rgba(52,50,46,0.28)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 52; i++) {
       ctx.beginPath();
-      ctx.moveTo((i * W) / 6, 0);
-      ctx.lineTo((i * W) / 6, H);
+      ctx.moveTo((i * W) / 52, 0);
+      ctx.lineTo((i * W) / 52, H);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(0, (i * H) / 6);
-      ctx.lineTo(W, (i * H) / 6);
+      ctx.moveTo(0, (i * H) / 52);
+      ctx.lineTo(W, (i * H) / 52);
       ctx.stroke();
     }
     for (let i = 0; i < 70; i++) {
@@ -159,16 +166,7 @@ function makeTextures() {
       ctx.fillRect(r() * W, r() * H, 1 + r() * 6, 1 + r() * 18);
     }
   }, { srgb: false, repeat: [4, 4] });
-  const gravel = canvasTex(256, 256, (ctx, W, H) => {
-    ctx.fillStyle = "#6c675c";
-    ctx.fillRect(0, 0, W, H);
-    for (let i = 0; i < 5000; i++) {
-      const v = 80 + Math.floor(r() * 90);
-      ctx.fillStyle = `rgb(${v},${v - 4},${v - 12})`;
-      ctx.fillRect(r() * W, r() * H, 1 + r() * 2, 1 + r() * 2);
-    }
-  }, { repeat: [1, 12] });
-  return { concrete, deck, grate, steelRough, gravel };
+  return { concrete, deck, grate, steelRough };
 }
 
 /* ----------------------------- geometry ----------------------------- */
@@ -183,10 +181,7 @@ function buildComplex({ hideCrewArm = false } = {}) {
   const hoses = [];
   const orange = [];
   const white = [];
-  const tank = [];
   const lamp = [];
-  const trench = [];
-  const gravel = [];
 
   /* Mobile launcher deck: frame around a flame hole, on pedestals */
   const HOLE = 0.36;
@@ -195,26 +190,20 @@ function buildComplex({ hideCrewArm = false } = {}) {
   deck.push(box(2.1 - HOLE, 0.14, 2.4, HOLE + (2.1 - HOLE) / 2, D0 + 0.07, 0));
   deck.push(box(HOLE * 2, 0.14, 1.2 - HOLE, 0, D0 + 0.07, HOLE + (1.2 - HOLE) / 2));
   deck.push(box(HOLE * 2, 0.14, 1.2 - HOLE, 0, D0 + 0.07, -(HOLE + (1.2 - HOLE) / 2)));
-  // Flame hole walls and the trench below
-  // Flame pit under the hole: four walls and a floor facing inward, open at the top
-  const PIT_D = 0.8;
-  const wall = (ry, x, z) => {
-    const g = new THREE.PlaneGeometry(HOLE * 2, PIT_D);
-    g.rotateY(ry);
-    g.translate(x, DECK_TOP - PIT_D / 2, z);
-    return g;
-  };
-  trench.push(wall(0, 0, -HOLE), wall(Math.PI, 0, HOLE), wall(Math.PI / 2, -HOLE, 0), wall(-Math.PI / 2, HOLE, 0));
-  const floor = new THREE.PlaneGeometry(HOLE * 2, HOLE * 2);
-  floor.rotateX(-Math.PI / 2);
-  floor.translate(0, DECK_TOP - PIT_D, 0);
-  trench.push(floor);
-  // Flame trench runs west (−X) from the pit, across the camera side of the pad
-  trench.push(box(3.6, 0.02, 0.9, -2.2, 0.012, 0));
   // Pedestals and girder edge
-  [[-1.2, -1.1], [-1.2, 1.1], [2.0, -1.1], [2.0, 1.1], [0.4, -1.1], [0.4, 1.1]].forEach(([x, z]) =>
-    steelDark.push(box(0.22, D0, 0.22, x, D0 / 2, z))
-  );
+  [[-1.2, -1.1], [-1.2, 1.1], [2.0, -1.1], [2.0, 1.1], [0.4, -1.1], [0.4, 1.1]].forEach(([x, z]) => {
+    steelDark.push(box(0.22, D0, 0.22, x, D0 / 2, z));
+    white.push(box(0.34, 0.012, 0.34, x, 0.006, z)); // the pad's mount footing
+  });
+  // The launcher's base seen from the side: two storeys of plated girders, doors and vents
+  [1.2, -1.2].forEach((z) => {
+    for (let x = -1.2; x <= 2.0; x += 0.2) steelDark.push(box(0.016, 0.13, 0.01, x, D0 + 0.07, z + Math.sign(z) * 0.004));
+    steelDark.push(box(3.4, 0.012, 0.012, 0.4, D0 + 0.072, z + Math.sign(z) * 0.006));
+    [-0.7, 0.9, 1.6].forEach((x) => white.push(box(0.07, 0.045, 0.006, x, D0 + 0.035, z + Math.sign(z) * 0.006)));
+  });
+  [-1.3, 2.1].forEach((x) => {
+    for (let z = -1.0; z <= 1.0; z += 0.25) steelDark.push(box(0.01, 0.13, 0.016, x + Math.sign(x - 0.4) * 0.004, D0 + 0.07, z));
+  });
   steelDark.push(box(3.4, 0.05, 0.06, 0.4, D0 + 0.02, 1.2));
   steelDark.push(box(3.4, 0.05, 0.06, 0.4, D0 + 0.02, -1.2));
   // Deck handrails (posts + rail) on the long edges
@@ -232,11 +221,17 @@ function buildComplex({ hideCrewArm = false } = {}) {
   // Hold-down arms (4) gripping the aft skirt
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    const x = Math.cos(a) * 0.36;
-    const z = Math.sin(a) * 0.36;
-    steelDark.push(box(0.12, 0.1, 0.09, x * 1.12, DECK_TOP + 0.05, z * 1.12, -a));
-    steel.push(box(0.05, 0.05, 0.06, x * 0.92, DECK_TOP + 0.11, z * 0.92, -a));
-    orange.push(box(0.02, 0.1, 0.092, x * 1.29, DECK_TOP + 0.05, z * 1.29, -a));
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    const at = (r, y) => [c * r, DECK_TOP + y, s * r];
+    // base casting bolted to the deck, the hinged arm leaning in, and the clamp over the skirt
+    steelDark.push(box(0.15, 0.045, 0.12, c * 0.45, DECK_TOP + 0.022, s * 0.45, -a));
+    steelDark.push(box(0.1, 0.07, 0.085, c * 0.42, DECK_TOP + 0.08, s * 0.42, -a));
+    steel.push(strut(at(0.46, 0.05), at(0.35, 0.13), 0.022, 6));
+    steel.push(strut(at(0.47, 0.06), at(0.38, 0.15), 0.01, 5));
+    steelDark.push(box(0.06, 0.04, 0.07, c * 0.335, DECK_TOP + 0.135, s * 0.335, -a));
+    steelDark.push(box(0.016, 0.06, 0.088, c * 0.505, DECK_TOP + 0.05, s * 0.505, -a));
+    hoses.push(hose([c * 0.5, DECK_TOP + 0.02, s * 0.5 + 0.03], [c * 0.4, DECK_TOP + 0.1, s * 0.4 + 0.03], 0.02, 0.006));
   }
   // Tail service masts with umbilical carriers
   [[0.52, 0.5], [0.52, -0.5]].forEach(([x, z]) => {
@@ -284,6 +279,28 @@ function buildComplex({ hideCrewArm = false } = {}) {
       });
     }
   });
+  // Service piping up the tower's back corner (away from the vehicle), clamped at every floor
+  const PX = TOWER_X + TOWER_HALF + 0.035;
+  [[0, 0.018], [0.045, 0.014], [0.085, 0.012]].forEach(([dz, r]) => {
+    steel.push(cyl(r, r, TOWER_TOP - 0.3 - T0, PX, (TOWER_TOP - 0.3 + T0) / 2, -TOWER_HALF + 0.02 + dz, 8));
+  });
+  levels.forEach((y) => steelDark.push(box(0.05, 0.012, 0.13, PX - 0.01, y + 0.05, -TOWER_HALF + 0.065)));
+  // the cable tray up the other back corner
+  steelDark.push(box(0.012, TOWER_TOP - T0 - 0.2, 0.06, PX - 0.02, (TOWER_TOP - 0.2 + T0) / 2, TOWER_HALF - 0.02));
+  // equipment rooms on some floors (back half of the floor, clear of the swing arms' face)
+  [3, 5, 7, 11].forEach((li) => {
+    const y = levels[li];
+    if (y === undefined) return;
+    white.push(box(0.2, 0.16, 0.26, TOWER_X + 0.12, y + 0.09, -0.06));
+    steelDark.push(box(0.21, 0.012, 0.27, TOWER_X + 0.12, y + 0.176, -0.06));
+  });
+  // stair flights zig-zagging up the north face
+  for (let li = 0; li < levels.length - 1; li++) {
+    const y = levels[li];
+    const dir = li % 2 ? 1 : -1;
+    steel.push(strut([TOWER_X - dir * 0.18, y + 0.01, -TOWER_HALF - 0.045], [TOWER_X + dir * 0.18, y + BAY - 0.01, -TOWER_HALF - 0.045], 0.012, 4));
+    steel.push(strut([TOWER_X - dir * 0.18, y + 0.06, -TOWER_HALF - 0.075], [TOWER_X + dir * 0.18, y + BAY + 0.05, -TOWER_HALF - 0.075], 0.003, 3));
+  }
   // Elevator shaft + machine house, accent band, lightning mast
   steelDark.push(box(0.16, TOWER_TOP - T0, 0.16, TOWER_X + 0.1, (TOWER_TOP + T0) / 2, 0.08));
   steelDark.push(box(0.6, 0.22, 0.6, TOWER_X, TOWER_TOP + 0.11, 0));
@@ -335,37 +352,7 @@ function buildComplex({ hideCrewArm = false } = {}) {
     orange.push(box(0.008, 0.02, 0.122, 0.62, cy + 0.03, 0));
   }
 
-  /* Ground: hardstand, crawlerway, pipe runs, propellant farm, water tower */
-  gravel.push(box(0.55, 0.01, 22, -0.55, 0.006, -11.2));
-  gravel.push(box(0.55, 0.01, 22, 0.55, 0.006, -11.2));
-  // Propellant spheres on leg supports + insulated pipe runs to the pad
-  [[3.9, -3.4, 0.6], [4.8, -2.1, 0.48]].forEach(([x, z, rr]) => {
-    const g = new THREE.SphereGeometry(rr, 28, 20);
-    g.translate(x, rr + 0.32, z);
-    tank.push(g);
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      steelDark.push(strut([x + Math.cos(a) * rr * 0.92, rr * 0.75 + 0.32, z + Math.sin(a) * rr * 0.92], [x + Math.cos(a) * rr * 1.05, 0, z + Math.sin(a) * rr * 1.05], 0.018, 5));
-    }
-    steel.push(new THREE.TorusGeometry(rr * 0.96, 0.012, 6, 32).rotateX(Math.PI / 2).translate(x, rr * 0.75 + 0.32, z));
-    steel.push(strut([x - rr, 0.08, z], [0.9, 0.08, -0.9], 0.03, 8));
-  });
-  // Water tower with braced legs
-  const W = [-4.2, -3.6];
-  const legs = [[0.38, 0.38], [-0.38, 0.38], [-0.38, -0.38], [0.38, -0.38]];
-  legs.forEach(([dx, dz], i) => {
-    steelDark.push(strut([W[0] + dx, 0, W[1] + dz], [W[0] + dx * 0.7, 1.45, W[1] + dz * 0.7], 0.03, 5));
-    const [ex, ez] = legs[(i + 1) % 4];
-    steel.push(strut([W[0] + dx * 0.9, 0.45, W[1] + dz * 0.9], [W[0] + ex * 0.8, 1.0, W[1] + ez * 0.8], 0.01));
-    steel.push(strut([W[0] + ex * 0.9, 0.45, W[1] + ez * 0.9], [W[0] + dx * 0.8, 1.0, W[1] + dz * 0.8], 0.01));
-  });
-  const wt = new THREE.SphereGeometry(0.75, 28, 20);
-  wt.scale(1, 0.8, 1);
-  wt.translate(W[0], 1.95, W[1]);
-  tank.push(wt);
-  // Service buildings and vehicles (scale cues)
-  steelDark.push(box(1.4, 0.45, 0.8, -3.6, 0.225, 2.6));
-  white.push(box(1.42, 0.03, 0.82, -3.6, 0.46, 2.6));
+  /* On the hardstand: service vehicles (scale cues). Everything at grade is launchSite.js. */
   [[-2.4, 1.6, 0.3], [2.8, 1.4, -0.4]].forEach(([x, z, ry]) => {
     white.push(box(0.16, 0.13, 0.14, x, 0.085, z, ry));
     steelDark.push(box(0.36, 0.12, 0.15, x - Math.cos(ry) * 0.27, 0.08, z + Math.sin(ry) * 0.27, ry));
@@ -392,16 +379,12 @@ function buildComplex({ hideCrewArm = false } = {}) {
     hoses: merge(hoses),
     orange: merge(orange),
     white: merge(white),
-    tank: merge(tank),
     lamp: merge(lamp),
-    trench: merge(trench),
-    gravel: merge(gravel),
   };
 }
 
 export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = false }) {
   const rootRef = useRef();
-  const groundRef = useRef();
   const res = useMemo(() => {
     const tex = makeTextures();
     const geo = buildComplex({ hideCrewArm });
@@ -413,14 +396,32 @@ export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = f
       hoses: new THREE.MeshStandardMaterial({ color: "#151516", roughness: 0.75, metalness: 0.05 }),
       orange: new THREE.MeshStandardMaterial({ color: "#FF3B00", roughness: 0.5, metalness: 0.15 }),
       white: new THREE.MeshStandardMaterial({ color: "#e6e5e0", roughness: 0.55, metalness: 0.1 }),
-      tank: new THREE.MeshStandardMaterial({ color: "#cfd2d4", roughness: 0.5, roughnessMap: tex.steelRough, metalness: 0.35 }),
       lamp: new THREE.MeshStandardMaterial({ color: "#fff6dc", emissive: "#fff2c8", emissiveIntensity: 1.4 }),
-      trench: new THREE.MeshStandardMaterial({ color: "#100e0c", roughness: 1 }),
-      gravel: new THREE.MeshStandardMaterial({ map: tex.gravel, roughness: 1 }),
       concrete: new THREE.MeshStandardMaterial({ map: tex.concrete, roughness: 0.92 }),
-      ground: new THREE.MeshStandardMaterial({ color: "#3a3628", roughness: 1, transparent: true }),
     };
-    return { tex, geo, mat };
+    tex.concrete.wrapS = tex.concrete.wrapT = THREE.RepeatWrapping;
+    const site = buildSite();
+    // The site's steelwork, roofs, deflector, lamps and pipes share the complex's own materials:
+    // one draw call per material for the whole installation
+    const fold = (key, ...parts) => {
+      const list = [geo[key], ...parts.map((k) => site.geo[k])].map((g) => {
+        const n = g.index ? g.toNonIndexed() : g;
+        ["color", "uv1", "uv2", "tangent"].forEach((a) => n.attributes[a] && n.deleteAttribute(a));
+        return n;
+      });
+      const merged = mergeGeometries(list, false);
+      [geo[key], ...parts.map((k) => site.geo[k])].forEach((g) => g.dispose());
+      parts.forEach((k) => delete site.geo[k]);
+      geo[key] = merged;
+    };
+    fold("steel", "gSteel");
+    fold("steelDark", "gSteelDark", "gRoof", "deflector");
+    fold("lamp", "gLamp");
+    fold("white", "gPipes");
+    Object.entries(site.tex).forEach(([k, t]) => (tex[`site_${k}`] = t));
+    Object.entries(site.geo).forEach(([k, g]) => (geo[`site_${k}`] = g));
+    Object.entries(site.mat).forEach(([k, m]) => (mat[`site_${k}`] = m));
+    return { tex, geo, mat, scrub: site.scrub };
   }, [hideCrewArm]);
 
   useEffect(() => {
@@ -435,6 +436,11 @@ export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = f
       Object.values(res.geo).forEach((g) => g.dispose());
       Object.values(res.mat).forEach((m) => m.dispose());
       Object.values(res.tex).forEach((t) => t.dispose());
+      res.scrub.forEach((m) => {
+        m.geometry.dispose();
+        m.dispose();
+      });
+      res.scrub[0].material.dispose();
     },
     [res]
   );
@@ -444,22 +450,30 @@ export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = f
     // Pad structures stay behind once the vehicle is high — cut them so they
     // don't float over the planet limb.
     if (rootRef.current) rootRef.current.visible = p < 0.3;
-    if (groundRef.current) groundRef.current.opacity = 1 - THREE.MathUtils.smoothstep(p, 0.05, 0.16);
   });
 
   const { geo, mat } = res;
-  groundRef.current = mat.ground;
   const caster = (g, m) => <mesh geometry={g} material={m} castShadow receiveShadow />;
+  const ground = (k, extra = {}) => <mesh geometry={geo[`site_${k}`]} material={mat[`site_${k}`]} receiveShadow {...extra} />;
   return (
     <group ref={rootRef}>
-      {/* Surrounding terrain (fades as the curved planet takes over) and hardstand */}
-      {/* Both open over the flame hole, so the engine bells hang into the pit */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0, 0]} material={mat.ground} receiveShadow>
-        <ringGeometry args={[HOLE_R, 26, 48, 1]} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, 0]} material={mat.concrete} receiveShadow>
-        <ringGeometry args={[HOLE_R, 6.2, 8, 1]} />
-      </mesh>
+      {/* The raised hardstand (the flame trench cut through it, open under the engines), its
+          embankments and ramps, the land, roads, coast and support facilities: launchSite.js */}
+      <mesh geometry={geo.site_top} material={mat.concrete} receiveShadow />
+      {ground("slope")}
+      {ground("misc")}
+      {ground("trench")}
+      {ground("land")}
+      {ground("landFade", { renderOrder: -2, receiveShadow: false })}
+      {ground("sea", { receiveShadow: false })}
+      {ground("roads")}
+      {/* at grade, far outside the shadow camera: they receive, but cast no shadow */}
+      {ground("gTank")}
+      {ground("gWhite")}
+      <mesh geometry={geo.site_vab} material={mat.site_vab} />
+      {res.scrub.map((m, i) => (
+        <primitive key={i} object={m} />
+      ))}
       {caster(geo.deck, mat.deck)}
       {caster(geo.steel, mat.steel)}
       {caster(geo.steelDark, mat.steelDark)}
@@ -467,10 +481,7 @@ export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = f
       {caster(geo.hoses, mat.hoses)}
       {caster(geo.orange, mat.orange)}
       {caster(geo.white, mat.white)}
-      {caster(geo.tank, mat.tank)}
       <mesh geometry={geo.lamp} material={mat.lamp} />
-      <mesh geometry={geo.trench} material={mat.trench} />
-      <mesh geometry={geo.gravel} material={mat.gravel} receiveShadow />
     </group>
   );
 }

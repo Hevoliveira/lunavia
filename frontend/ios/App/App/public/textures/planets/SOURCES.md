@@ -29,3 +29,13 @@ github.com/nasa/NASA-3D-Resources (Apollo views of the full Moon and of the Eart
 
 The previous textures (`earth_atmos_2048.jpg`, `earth_normal_2048.jpg`, `earth_specular_2048.jpg`,
 `earth_clouds_1024.png`, `moon_1024.jpg`, from the three.js examples) are no longer used and were removed.
+
+**How the cloud channel is shown.** The NASA cloud map in `earth_aux_4k.jpg` B stores most cloud
+systems faintly (median 0.04, 90th percentile 0.53). Both Earth renderers (the globe and the launch
+film's Earth) read it through one cover curve (`CLOUD_COVER_GLSL` in
+`components/planets/planetMaterials.js`), so the real fronts, storm belts and tropical clusters
+show as opaque cloud. The image data itself is unchanged, and no cloud is generated.
+
+**The Moon's fine detail** close to the surface (lunar orbit, descent, EVA) is a procedural crater
+field generated in code (not NASA data), used only below the NASA maps' resolution (2.7 km per
+texel). The global colour and relief remain the NASA maps above.
