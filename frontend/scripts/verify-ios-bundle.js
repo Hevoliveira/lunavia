@@ -228,7 +228,7 @@ const FEATURES = [
   ["NASA visual upgrade: the raised launch hardstand, flame trench, deflector and site", "lvSiteDetail"],
   ["Houston radio: TEST RADIO in the audio settings, with its result", "audio-radio-result"],
   ["Houston radio: a stopped audio context is resumed before each call (reason recorded otherwise)", "no-gesture-yet"],
-  ["Houston radio: TEST RADIO in Portuguese", "TESTAR RÁDIO"],
+  ["Houston radio: TEST RADIO in Portuguese", "TRANSMITINDO"],
   ["NASA visual upgrade: NASA cloud systems on the Earth (globe and launch film)", "float cloudCover(float d)"],
   ["NASA visual upgrade: Moon albedo contrast and crater relief", "uDetailNormal"],
   ["NASA visual upgrade: lunar terrain crater relief and mottled rocks", "lv-terrain-2"],
