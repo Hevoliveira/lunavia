@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import comms from "@/audio/comms";
-import { getAudioSettings, subscribeAudioSettings } from "@/audio/audioSettings";
+import { getEngine, installAudioUnlock, resumeEngine } from "@/audio/audioEngine";
 
 /**
  * useMissionAudio — mission sound effects (Web Audio) and the
@@ -8,11 +8,11 @@ import { getAudioSettings, subscribeAudioSettings } from "@/audio/audioSettings"
  * a live radio chain, scheduled by priority).
  *
  * Mix: every effect goes to an SFX bus (SFX VOLUME), voices to a voice bus
- * (VOICE VOLUME). While someone is speaking the SFX bus is ducked by a few dB,
- * never silenced.
+ * (VOICE VOLUME), both on the app's one audio engine (src/audio/audioEngine). While someone is
+ * speaking the SFX bus is ducked by a few dB, never silenced.
  *
  * Exposes:
- *  - init()          initialize AudioContext on first user gesture
+ *  - init()          enable the mission's sounds (the engine itself starts on the first gesture)
  *  - say(id, opts)   mission-control call from src/audio/commsLines.json
  *  - commsFlush() / commsReset()   drop pending calls (abort, retry)
  *  - setBlackout(on) / setEarthLink(on) / setRadioLink(q) / setVerbosity(level)
@@ -38,7 +38,6 @@ export default function useMissionAudio() {
   const rumbleRef = useRef(null); // { gain, source, filter }
   const enabledRef = useRef(false);
   const noiseBufferRef = useRef(null);
-  const speechPrimedRef = useRef(false);
   const roarRef = useRef(null);
   const crackleRef = useRef(null);
   const ambRef = useRef(null);
@@ -46,45 +45,16 @@ export default function useMissionAudio() {
   const recRef = useRef(null); // OCEAN RECOVERY: { g, sea, rotor, nodes }
   const preRef = useRef(null); // COUNTDOWN TO LAUNCH: the current place's bed { kind, g, nodes }
   const busRef = useRef(null); // { sfx, duck, voice }
-  const relockRef = useRef(null);
 
+  // The app's one engine (created inside the first gesture; init() runs inside one too). A
+  // stopped context (iOS: suspended / interrupted) is asked to resume whenever a sound starts.
   const ensureCtx = () => {
-    if (!ctxRef.current) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      const ctx = new AC();
-      ctxRef.current = ctx;
-      const st = getAudioSettings();
-      const sfx = ctx.createGain();
-      sfx.gain.value = st.sfxVolume;
-      const duck = ctx.createGain();
-      const voice = ctx.createGain();
-      voice.gain.value = st.voiceVolume;
-      sfx.connect(duck).connect(ctx.destination);
-      voice.connect(ctx.destination);
-      busRef.current = { sfx, duck, voice };
-      comms.attach({
-        ctx,
-        out: voice,
-        duck(on, depth = 0.6) {
-          const now = ctx.currentTime;
-          duck.gain.cancelScheduledValues(now);
-          duck.gain.setValueAtTime(duck.gain.value, now);
-          if (on) duck.gain.setTargetAtTime(depth, now, 0.04);
-          else duck.gain.setTargetAtTime(1, now + 0.15, 0.25);
-        },
-      });
-      // A phone call, Siri or an alarm interrupts the session; WebKit may need
-      // a fresh tap before it plays again, so listen for one.
-      ctx.onstatechange = () => {
-        if (ctx.state !== "running" && ctx.state !== "closed" && relockRef.current) relockRef.current();
-      };
-    }
-    // "suspended" (autoplay policy) or "interrupted" (iOS call, Siri, app switch).
-    if (ctxRef.current.state !== "running" && ctxRef.current.state !== "closed") {
-      ctxRef.current.resume().catch(() => {});
-    }
-    return ctxRef.current;
+    const e = getEngine({ create: true });
+    if (!e) return null;
+    ctxRef.current = e.ctx;
+    busRef.current = e;
+    if (e.ctx.state !== "running") resumeEngine();
+    return e.ctx;
   };
 
   const sfxOut = (ctx) => (busRef.current ? busRef.current.sfx : ctx.destination);
@@ -861,57 +831,18 @@ export default function useMissionAudio() {
   const setVerbosity = useCallback((v) => comms.setVerbosity(v), []);
 
   /*
-   * iOS / WebKit only lets audio start inside a user gesture, but the engine
-   * rumble and comms are fired later from timers (e.g. after the countdown).
-   * So the first tap or key press anywhere unlocks the AudioContext and primes
-   * speech synthesis; sounds still stay silent until init() enables them.
+   * iOS / WebKit only lets audio start inside a user gesture, but the engine rumble and the
+   * calls are fired later from timers (e.g. after the countdown). The engine is created by the
+   * first tap or key press anywhere and resumed by any later one (audioEngine
+   * installAudioUnlock); sounds still stay silent until init() enables them. The engine lives on
+   * when the page goes: only this page's sounds and queued calls end with it.
    */
   useEffect(() => {
-    try {
-      // Play mission audio even when the iPhone's silent switch is on (iOS 17+).
-      if (navigator.audioSession) navigator.audioSession.type = "playback";
-    } catch (e) {}
-    const events = ["touchend", "click", "keydown"];
-    const listen = () => events.forEach((ev) => window.addEventListener(ev, unlock, true));
-    relockRef.current = listen;
-    const unlock = () => {
-      const ctx = ensureCtx();
-      if (ctx) {
-        const src = ctx.createBufferSource();
-        src.buffer = ctx.createBuffer(1, 1, 22050);
-        src.connect(ctx.destination);
-        src.start(0);
-      }
-      if (window.speechSynthesis && !speechPrimedRef.current) {
-        speechPrimedRef.current = true;
-        const u = new SpeechSynthesisUtterance(" ");
-        u.volume = 0;
-        window.speechSynthesis.speak(u);
-      }
-      if (ctx && ctx.state === "running") events.forEach((ev) => window.removeEventListener(ev, unlock, true));
-    };
-    listen();
-    const offSettings = subscribeAudioSettings((st) => {
-      const b = busRef.current;
-      const ctx = ctxRef.current;
-      if (!b || !ctx) return;
-      b.sfx.gain.setTargetAtTime(st.sfxVolume, ctx.currentTime, 0.05);
-      b.voice.gain.setTargetAtTime(st.voiceVolume, ctx.currentTime, 0.05);
-    });
-    // Returning to the app after a call or app switch: resume the context.
-    const onVisible = () => {
-      if (document.visibilityState === "visible" && ctxRef.current && ctxRef.current.state !== "running" && ctxRef.current.state !== "closed") {
-        ctxRef.current.resume().catch(() => {});
-      }
-    };
-    document.addEventListener("visibilitychange", onVisible);
+    installAudioUnlock();
+    comms.attach();
     return () => {
-      events.forEach((ev) => window.removeEventListener(ev, unlock, true));
-      document.removeEventListener("visibilitychange", onVisible);
-      offSettings();
-      relockRef.current = null;
       try {
-        comms.detach(ctxRef.current);
+        comms.detach();
         stopRumble();
         roarStop(0.05);
         ambienceStop(0.05);
@@ -919,15 +850,9 @@ export default function useMissionAudio() {
         recoveryStop(0.05);
         prelaunchStop(0.05);
         if (window.speechSynthesis) window.speechSynthesis.cancel();
-        if (ctxRef.current) {
-          ctxRef.current.onstatechange = null;
-          ctxRef.current.close();
-        }
       } catch (e) {}
       ctxRef.current = null;
       busRef.current = null;
-      noiseBufferRef.current = null;
-      crackleRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopRumble, roarStop, ambienceStop, padStop, recoveryStop, prelaunchStop]);
