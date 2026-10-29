@@ -1,65 +1,38 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 8011010**: the revised review build of COUNTDOWN TO LAUNCH. It is on
-the branch `claude/countdown-to-launch` (download that branch's ZIP); the release branch
-`claude/ios-release` stays on BUILD 8eff6a5 until this build is approved on the iPhone.
+This folder installs **BUILD 830164e**: COUNTDOWN TO LAUNCH, simplified. It is on the branch
+`claude/simplified-countdown` (download that branch's ZIP), built on the NASA visual upgrade
+(BUILD 1317851, branch `claude/nasa-visual-upgrade`). The release branch `claude/ios-release` is
+unchanged until a build is approved on the iPhone.
 
 The startup screen (THE ROAD TO THE MOON) does not show the build. Tap **TRAINING** in the top bar:
 the FLIGHT TRAINING CENTER shows, at the top right under ATTEMPTS · SUCCESSFUL · COMPLETED:
 
-> **LUNAVIA iOS · BUILD 8011010 · 2026-10-28 18:31 UTC**
+> **LUNAVIA iOS · BUILD 830164e · 2026-10-29 17:57 UTC**
 
-(The same line is at the top of APOLLO LEGACY. Earlier notes put it on the first screen or on HOME;
-neither shows it in this game.)
+(The same line is at the top of APOLLO LEGACY.)
 
-What changed since BUILD 8eff6a5 (the first COUNTDOWN TO LAUNCH build), all in the pre-launch:
-- **Suit room:** the clear helmets now read as glass domes over the heads; before SUIT CHECK a suit
-  technician behind each astronaut holds the helmet over the head, lowers it onto the neck ring and
-  checks the lock, and "Helmets are locked" is heard only once the third helmet is locked. New
-  technicians (white coveralls, skull cap, headset, gloves), each astronaut on the hoses of a
-  portable ventilator, varied stances, faces, soft shadows; lockers with the crew's name plates, a
-  door, the suit-loop supply panel, better light; solid, high-contrast step buttons.
-- **Crew access arm:** a steel grating with yellow safety lines and diamond-plate edges, ribbed wall
-  panels, heavier portal frames every few bays, solid bays with a fire extinguisher cabinet and a
-  junction box, cable tray and conduits, caged lamps, ARM STA numbers and safety placards, a joint
-  half-way, and at the end a hazard-striped doorway under a WHITE ROOM sign, brighter inside.
-- **Tower (pre-launch only):** worn paint and grime on its steel, decks and tanks up close; its
-  shape, LV-001 and the launch film are unchanged.
-- **Command module:** a dark bar that ran through the other couches (the console's edge drawn the
-  wrong way round) is gone; the audio panel sits higher, above the crew; braces hold the console;
-  the hatch has its inner face (window, bolts, latch); **all six panels** can now be inspected
-  (ENTRY MONITOR and ELECTRICAL POWER were drawn but could not be inspected before); compact panel
-  buttons; CREW READY FOR LAUNCH and the count no longer overlap the checklist or SKIP.
-- **Cabin layout:** the checklist fits its rows in Portuguese, and in the cabin the subtitles sit
-  left of the checklist under the title.
-- **Startup screen:** PRE-LAUNCH EXPERIENCE no longer touches the telemetry strip: under the main
-  button on most iPhones; on 375-point-tall iPhones (SE, 8) at the right under RANGE · GO, or under
-  the saved-mission card when there is one. THE ROAD TO THE MOON and its button are unchanged.
-- **Offline:** the startup screen's background photo (a mission-control panel, Unsplash photo
-  1652145595413-0a79398e5888, free to bundle under the Unsplash License) is still loaded from the
-  internet: it could not be downloaded in the build environment (its network policy blocks
-  images.unsplash.com). Offline, the startup screen shows its grid and gradient without the photo
-  and works normally; nothing else in the game needs a connection.
-
-It is **COUNTDOWN TO LAUNCH**: an optional, dramatized pre-launch experience before the existing
-LV-001 launch (English and Portuguese). Nothing after the launch changed.
-- On the startup screen, under **LAUNCH SEQUENCE — INITIATE** (unchanged, still the main button),
-  a smaller **PRE-LAUNCH EXPERIENCE** (PT: EXPERIÊNCIA PRÉ-LANÇAMENTO). Nothing starts by itself.
-  With an unfinished mission saved, it asks START A NEW MISSION? first, like the main button.
-- The sequence: the suit room (three crew in launch pressure suits, SUIT CHECK → COMMUNICATIONS
-  CHECK → CREW READY, then the final crew briefing) → the pad at Launch Complex 39 with LV-001 and
-  its tower → the elevator up the tower → a first-person walk along the crew access arm (stop and
-  look around) → the white room at the command module's hatch → boarding → the commander's couch in
-  the command module (drag to look, tap a panel to inspect it) → the six-item LAUNCH CHECKLIST →
-  the hatch closing → CREW READY FOR LAUNCH → BEGIN FINAL COUNT (T-45 to T-15) → the original
-  launch film takes over at T-15 with its own count, ignition and liftoff, exactly once.
-- **SKIP PRE-LAUNCH** (bottom right) at any moment goes straight to the launch.
-- The calls are dramatized with synthetic voices (Launch Control, a suit technician, CAPCOM,
-  Guidance, the crew), with subtitles; the room, pad, arm and cabin sounds are generated in the
-  game. No music, no archival audio. The checklist is simplified, not a historical procedure.
-The rest of the game is as in BUILD 9bffe22.
+What changed since BUILD 1317851, all in the optional pre-launch experience:
+- **The sequence is now:** LAUNCH COMPLEX → COMMAND MODULE → LAUNCH CHECKLIST → FINAL COUNT → the
+  original launch film (from T-15, launched once).
+- **Removed:** the suit room (SUIT CHECK, COMMUNICATIONS CHECK, CREW READY, the crew briefing), the
+  elevator ride, the walk along the crew access arm, the white room and BOARD THE SPACECRAFT. There
+  is no replacement boarding animation.
+- **Launch complex:** LV-001 on its pad at Launch Complex 39 with its tower (the crew access arm
+  stays, as part of the tower), from the hardstand, over Mission Control's final briefing ("weather
+  is go, the range is go, LV-001 is fuelled and stable"). After about nine seconds — or sooner with
+  **TO THE COMMAND MODULE** — a short dip to black and the commander's couch.
+- **Command module:** unchanged — drag to look, the six panels to inspect, the six-item checklist,
+  the hatch closing, CREW READY FOR LAUNCH, BEGIN FINAL COUNT (T-45 to T-15).
+- **SKIP PRE-LAUNCH** at any moment (the pad, the cabin, the checklist, the count) goes straight to
+  the launch, once.
+- LAUNCH SEQUENCE — INITIATE, the startup screen, the launch film and everything after the launch
+  are unchanged; nothing in the pre-launch is saved, so saved missions are unaffected.
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **1317851** is the NASA visual upgrade review build: the longer pre-launch (suit room, tower,
+  crew access arm, white room, boarding);
+- **8011010** is the revised COUNTDOWN TO LAUNCH review build (before the NASA visual upgrade);
 - **8eff6a5** is the first COUNTDOWN TO LAUNCH build (the release branch until this one is
   approved): bare-looking heads under near-invisible helmets, the plain arm, four inspectable panels;
 - **9bffe22** is the previous release: OCEAN RECOVERY, but no PRE-LAUNCH EXPERIENCE on the startup
@@ -194,7 +167,7 @@ Every finished LUNAVIA feature, in the order it was built. The release branch `c
 | Interactive lunar module cabin: ENTER CABIN after the landing and on the ascent preparation (RETURN TO CABIN after the EVA), five seated stations with a limited drag-to-look, the real landing site through the exterior's two windows at every destination, panel hotspots read from the mission, EVA and ascent preparation checklists, BEGIN EVA / CONTINUE TO ASCENT from inside, resume in the cabin, crew and CAPCOM calls (Houston silent on the far side) | — | 5273da7 |
 | APOLLO LEGACY (historical missions, separate from the campaign): Apollo 11 (the final descent at the Sea of Tranquility, first steps, the contingency sample, a photograph of Eagle, the laser retroreflector), Apollo 12 (its own Ocean of Storms site with Surveyor 3 about 150 m from the target; a precision landing; walk to Surveyor 3, inspect, photograph and retrieve its TV camera), Apollo 15 (Hadley–Apennine on foot: a geology station on Hadley Rille's rim, two different samples, Hadley Delta on camera, a seismometer); historical briefings with sources, dramatized synthetic radio calls, its own save and results | — | cabe279 |
 | OCEAN RECOVERY (optional epilogue after a successful splashdown): WATCH RECOVERY on MISSION COMPLETE and in the debrief; the recovery helicopter, two swimmers, the flotation collar wrapped round and inflated, the life raft, the hatch opening and the three astronauts climbing out, the rescue-basket hoist, the carrier on the horizon, WELCOME HOME; SKIP RECOVERY; the results recorded at splashdown untouched | — | 9bffe22 |
-| COUNTDOWN TO LAUNCH (optional pre-launch experience): PRE-LAUNCH EXPERIENCE on the startup screen; the suit room (launch pressure suits, SUIT CHECK, COMMUNICATIONS CHECK, CREW READY, the final briefing); LV-001 and its tower at the pad; the elevator, the crew access arm and the white room; boarding; the command module interior with inspectable panels; the six-item launch checklist; the hatch closing; the final count from T-45 into the original launch film at T-15, launched once; SKIP PRE-LAUNCH | — | 8eff6a5, 8011010 |
+| COUNTDOWN TO LAUNCH (optional pre-launch experience): PRE-LAUNCH EXPERIENCE on the startup screen; LV-001 and its tower at the pad, then a cut into the command module (simplified in 830164e: the suit room, the elevator, the crew access arm walk, the white room and boarding removed); the command module interior with inspectable panels; the six-item launch checklist; the hatch closing; the final count from T-45 into the original launch film at T-15, launched once; SKIP PRE-LAUNCH | — | 8eff6a5, 8011010, 830164e |
 
 ## Try COUNTDOWN TO LAUNCH on the iPhone
 
