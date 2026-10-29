@@ -401,10 +401,27 @@ export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = f
     };
     tex.concrete.wrapS = tex.concrete.wrapT = THREE.RepeatWrapping;
     const site = buildSite();
+    // The site's steelwork, roofs, deflector, lamps and pipes share the complex's own materials:
+    // one draw call per material for the whole installation
+    const fold = (key, ...parts) => {
+      const list = [geo[key], ...parts.map((k) => site.geo[k])].map((g) => {
+        const n = g.index ? g.toNonIndexed() : g;
+        ["color", "uv1", "uv2", "tangent"].forEach((a) => n.attributes[a] && n.deleteAttribute(a));
+        return n;
+      });
+      const merged = mergeGeometries(list, false);
+      [geo[key], ...parts.map((k) => site.geo[k])].forEach((g) => g.dispose());
+      parts.forEach((k) => delete site.geo[k]);
+      geo[key] = merged;
+    };
+    fold("steel", "gSteel");
+    fold("steelDark", "gSteelDark", "gRoof", "deflector");
+    fold("lamp", "gLamp");
+    fold("white", "gPipes");
     Object.entries(site.tex).forEach(([k, t]) => (tex[`site_${k}`] = t));
     Object.entries(site.geo).forEach(([k, g]) => (geo[`site_${k}`] = g));
     Object.entries(site.mat).forEach(([k, m]) => (mat[`site_${k}`] = m));
-    return { tex, geo, mat, scrub: site.inst };
+    return { tex, geo, mat, scrub: site.scrub };
   }, [hideCrewArm]);
 
   useEffect(() => {
@@ -419,9 +436,11 @@ export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = f
       Object.values(res.geo).forEach((g) => g.dispose());
       Object.values(res.mat).forEach((m) => m.dispose());
       Object.values(res.tex).forEach((t) => t.dispose());
-      res.scrub.geometry.dispose();
-      res.scrub.material.dispose();
-      res.scrub.dispose();
+      res.scrub.forEach((m) => {
+        m.geometry.dispose();
+        m.dispose();
+      });
+      res.scrub[0].material.dispose();
     },
     [res]
   );
@@ -442,26 +461,19 @@ export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = f
           embankments and ramps, the land, roads, coast and support facilities: launchSite.js */}
       <mesh geometry={geo.site_top} material={mat.concrete} receiveShadow />
       {ground("slope")}
-      {ground("ramp")}
-      {ground("retain")}
+      {ground("misc")}
       {ground("trench")}
-      {ground("trenchFloor")}
-      {caster(geo.site_deflector, mat.site_deflector)}
       {ground("land")}
       {ground("landFade", { renderOrder: -2, receiveShadow: false })}
-      {ground("sea")}
-      {ground("surf")}
-      {ground("crawlerway")}
+      {ground("sea", { receiveShadow: false })}
       {ground("roads")}
-      {caster(geo.site_gTank, mat.site_gTank)}
-      {caster(geo.site_gSteelDark, mat.site_gSteelDark)}
-      {caster(geo.site_gSteel, mat.site_gSteel)}
-      {caster(geo.site_gWhite, mat.site_gWhite)}
-      {caster(geo.site_gRoof, mat.site_gRoof)}
-      {caster(geo.site_gPipes, mat.site_gPipes)}
-      <mesh geometry={geo.site_gLamp} material={mat.site_gLamp} />
+      {/* at grade, far outside the shadow camera: they receive, but cast no shadow */}
+      {ground("gTank")}
+      {ground("gWhite")}
       <mesh geometry={geo.site_vab} material={mat.site_vab} />
-      <primitive object={res.scrub} />
+      {res.scrub.map((m, i) => (
+        <primitive key={i} object={m} />
+      ))}
       {caster(geo.deck, mat.deck)}
       {caster(geo.steel, mat.steel)}
       {caster(geo.steelDark, mat.steelDark)}

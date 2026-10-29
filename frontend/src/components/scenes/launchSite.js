@@ -772,26 +772,45 @@ export function buildSite() {
     m.customProgramCacheKey = () => `lvSiteDetail${scale}`;
     return m;
   };
+  // Ramps, retaining walls and curbs, the surf line and the crawlerway lanes: one mesh, one
+  // material, their tones as vertex colours
+  const tint = (g, hex) => {
+    const col = new THREE.Color(hex); // set from hex: already in the linear working space
+    const n = g.attributes.position.count;
+    const a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) a.set([col.r, col.g, col.b], i * 3);
+    g.setAttribute("color", new THREE.Float32BufferAttribute(a, 3));
+    return g;
+  };
+  const keepColor = (g) => (g.index ? g.toNonIndexed() : g);
+  out.misc = mergeGeometries(
+    [
+      tint(keepColor(out.ramp), "#9b978c"),
+      tint(keepColor(out.retain), "#8f8b82"),
+      tint(keepColor(out.surf), "#dfe6e4"),
+      tint(keepColor(out.crawlerway), "#b3ab98"),
+    ].map((g) => {
+      ["uv1", "uv2", "tangent"].forEach((k) => g.attributes[k] && g.deleteAttribute(k));
+      return g;
+    }),
+    false
+  );
+  // the trench's walls and floor, one mesh (the floor a shade darker)
+  out.trench = mergeGeometries([tint(keepColor(out.trench), "#ffffff"), tint(keepColor(out.trenchFloor), "#8a857c")], false);
+  ["ramp", "retain", "surf", "crawlerway", "trenchFloor"].forEach((k) => {
+    out[k].dispose();
+    delete out[k];
+  });
   const mat = {
     land: detailed(new THREE.MeshStandardMaterial({ map: tex.site, roughness: 1, metalness: 0 }), 520),
     landFade: detailed(new THREE.MeshStandardMaterial({ map: tex.site, roughness: 1, metalness: 0, transparent: true, vertexColors: true, depthWrite: false }), 520),
     slope: new THREE.MeshStandardMaterial({ map: tex.berm, roughness: 1 }),
-    ramp: new THREE.MeshStandardMaterial({ color: "#9b978c", roughness: 0.95 }),
-    retain: new THREE.MeshStandardMaterial({ color: "#8f8b82", roughness: 0.9 }),
-    trench: new THREE.MeshStandardMaterial({ map: tex.trench, roughness: 0.95 }),
-    trenchFloor: new THREE.MeshStandardMaterial({ map: tex.trench, color: "#8a857c", roughness: 1 }),
-    deflector: new THREE.MeshStandardMaterial({ color: "#4a4744", roughness: 0.55, metalness: 0.7 }),
+    misc: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
+    trench: new THREE.MeshStandardMaterial({ map: tex.trench, vertexColors: true, roughness: 0.95 }),
     sea: new THREE.MeshStandardMaterial({ color: "#1f4d61", roughness: 0.16, metalness: 0.0 }),
-    surf: new THREE.MeshStandardMaterial({ color: "#dfe6e4", roughness: 0.9 }),
-    crawlerway: new THREE.MeshStandardMaterial({ color: "#b3ab98", roughness: 1 }),
     roads: new THREE.MeshStandardMaterial({ map: tex.asphalt, roughness: 0.9 }),
     gTank: new THREE.MeshStandardMaterial({ color: "#e4e5e2", roughness: 0.45, metalness: 0.25 }),
-    gSteelDark: new THREE.MeshStandardMaterial({ color: "#575c60", roughness: 0.6, metalness: 0.5 }),
-    gSteel: new THREE.MeshStandardMaterial({ color: "#9ca1a5", roughness: 0.55, metalness: 0.6 }),
     gWhite: new THREE.MeshStandardMaterial({ map: tex.building, roughness: 0.8 }),
-    gRoof: new THREE.MeshStandardMaterial({ color: "#6d6e6b", roughness: 0.85 }),
-    gLamp: new THREE.MeshStandardMaterial({ color: "#fff6dc", emissive: "#fff2c8", emissiveIntensity: 1.2 }),
-    gPipes: new THREE.MeshStandardMaterial({ color: "#c9cbc6", roughness: 0.4, metalness: 0.55 }),
     vab: new THREE.MeshStandardMaterial({ map: tex.vab, roughness: 0.85 }),
   };
   tex.trench.repeat.set(1, 1);
@@ -812,8 +831,17 @@ export function buildSite() {
     }
     clumpGeo.computeVertexNormals();
   }
-  const N = 2300;
-  const inst = new THREE.InstancedMesh(clumpGeo, new THREE.MeshStandardMaterial({ roughness: 1 }), N);
+  // Near clumps (to 1.3 km) keep the 20-triangle shape; far ones, a few pixels across, an
+  // 8-triangle one. One shared material; two draw calls.
+  const farGeo = new THREE.OctahedronGeometry(1, 0).deleteAttribute("uv");
+  farGeo.scale(1, 0.7, 1);
+  farGeo.translate(0, -0.05, 0);
+  const scrubMat = new THREE.MeshStandardMaterial({ roughness: 1 });
+  const NEAR = 1000;
+  const FAR = 800;
+  const R_NEAR = 45;
+  const near = new THREE.InstancedMesh(clumpGeo, scrubMat, NEAR);
+  const far = new THREE.InstancedMesh(farGeo, scrubMat, FAR);
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const e = new THREE.Euler();
@@ -830,31 +858,34 @@ export function buildSite() {
     if (Math.abs(z) < 0.8 && x > 10) return false;
     return true;
   };
-  let k = 0;
-  let guard = 0;
-  while (k < N && guard++ < N * 20) {
-    // denser near the pad (scale cue), thinner far away
-    const rr = 12.5 + Math.pow(r(), 1.6) * 128;
-    const a = r() * Math.PI * 2;
-    const x = rr * Math.cos(a);
-    const z = rr * Math.sin(a);
-    if (!clear(x, z)) continue;
-    const tree = r() < 0.18;
-    const sxz = tree ? 0.1 + r() * 0.1 : 0.05 + r() * 0.08;
-    const sy = tree ? 0.12 + r() * 0.14 : 0.03 + r() * 0.05;
-    e.set(0, r() * Math.PI, 0);
-    q.setFromEuler(e);
-    m4.compose(new THREE.Vector3(x, G + sy * 0.55, z), q, new THREE.Vector3(sxz * (0.8 + r() * 0.5), sy, sxz));
-    inst.setMatrixAt(k, m4);
-    inst.setColorAt(k, c.set(palette[Math.floor(r() * palette.length)]).multiplyScalar(0.85 + r() * 0.3));
-    k++;
-  }
-  inst.count = k;
-  inst.instanceMatrix.needsUpdate = true;
-  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-  inst.frustumCulled = false;
+  const fill = (mesh, n, r0, r1, pw) => {
+    let k = 0;
+    let guard = 0;
+    while (k < n && guard++ < n * 30) {
+      const rr = r0 + Math.pow(r(), pw) * (r1 - r0);
+      const a = r() * Math.PI * 2;
+      const x = rr * Math.cos(a);
+      const z = rr * Math.sin(a);
+      if (!clear(x, z)) continue;
+      const tree = r() < 0.18;
+      const sxz = tree ? 0.1 + r() * 0.1 : 0.05 + r() * 0.08;
+      const sy = tree ? 0.12 + r() * 0.14 : 0.03 + r() * 0.05;
+      e.set(0, r() * Math.PI, 0);
+      q.setFromEuler(e);
+      m4.compose(new THREE.Vector3(x, G + sy * 0.55, z), q, new THREE.Vector3(sxz * (0.8 + r() * 0.5), sy, sxz));
+      mesh.setMatrixAt(k, m4);
+      mesh.setColorAt(k, c.set(palette[Math.floor(r() * palette.length)]).multiplyScalar(0.85 + r() * 0.3));
+      k++;
+    }
+    mesh.count = k;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.frustumCulled = false;
+  };
+  fill(near, NEAR, 12.5, R_NEAR, 1.3);
+  fill(far, FAR, R_NEAR, 140, 1.2);
 
-  return { geo: out, tex, mat, inst };
+  return { geo: out, tex, mat, scrub: [near, far] };
 }
 
 /** The hardstand's height (y) at (x, z): 0 on top, GRADE beyond the foot of its slope (approx.). */
