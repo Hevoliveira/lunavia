@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Headphones, X, Radio } from "lucide-react";
 import { useAudioSettings, setAudioSettings } from "@/audio/audioSettings";
 import comms from "@/audio/comms";
+import { radioCheckMessage } from "@/audio/radioCheckText";
 
 /*
  * AUDIO panel (navigation bar): mission-control voice, languages, subtitles,
@@ -82,6 +83,11 @@ function Volume({ value, onChange, testId, label }) {
 export default function AudioSettings() {
   const st = useAudioSettings();
   const [open, setOpen] = useState(false);
+  const [check, setCheck] = useState(null); // { busy } | TEST RADIO's result
+  const runCheck = () => {
+    setCheck({ busy: true });
+    comms.radioCheck().then((r) => setCheck(r));
+  };
   const set = (patch) => setAudioSettings(patch);
 
   useEffect(() => {
@@ -144,12 +150,22 @@ export default function AudioSettings() {
             </Row>
             </div>
             <button
-              onClick={() => comms.radioCheck()}
+              onClick={runCheck}
+              disabled={!!(check && check.busy)}
               data-testid="audio-radio-check"
               className="mt-3 short:mt-1.5 w-full min-h-[44px] border border-white/20 hover:border-[#FF3B00] text-zinc-300 hover:text-white font-mono text-[10px] tracking-[0.3em] flex items-center justify-center gap-2"
             >
-              <Radio size={13} /> RADIO CHECK
+              <Radio size={13} /> {check && check.busy ? (st.subLang === "pt" ? "TRANSMITINDO…" : "TRANSMITTING…") : st.subLang === "pt" ? "TESTAR RÁDIO" : "TEST RADIO"}
             </button>
+            {check && !check.busy && (() => {
+              const m = radioCheckMessage(check, st.subLang);
+              return (
+                <div data-testid="audio-radio-result" data-voiced={check.voiced ? "1" : "0"} data-reason={check.reason} className={`mt-1.5 font-mono text-[9px] tracking-[0.18em] leading-snug ${m.ok ? "text-[#4fd1c5]" : "text-[#ffb08a]"}`}>
+                  {m.ok ? "✓ " : "! "}
+                  {m.text}
+                </div>
+              );
+            })()}
           </div>
         </>,
         document.body
