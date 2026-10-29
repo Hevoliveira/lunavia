@@ -15,6 +15,9 @@ import { useCompact } from "@/hooks/useMediaQuery";
 // Development only (stripped from production builds): the lunar EVA on its own, for checking the
 // astronaut and the scene without flying a mission to it.
 const EvaPreview = process.env.NODE_ENV === "development" ? lazy(() => import("@/pages/EvaPreview")) : null;
+// Development only: LV-001 as it is against the Blender prototype (art/lv001), side by side in the
+// game's renderer. Its GLB is imported only from this chunk, so it never reaches a production build.
+const Lv001Compare = process.env.NODE_ENV === "development" ? lazy(() => import("@/dev/lv001/Lv001Compare")) : null;
 
 function App() {
   // Landscape phones: mission toasts go bottom-left and narrow, clear of the
@@ -43,6 +46,16 @@ function App() {
               element={
                 <Suspense fallback={null}>
                   <EvaPreview />
+                </Suspense>
+              }
+            />
+          )}
+          {Lv001Compare && (
+            <Route
+              path="/dev/lv001"
+              element={
+                <Suspense fallback={null}>
+                  <Lv001Compare />
                 </Suspense>
               }
             />

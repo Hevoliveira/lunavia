@@ -1,0 +1,4 @@
+build/*
+!build/lv001_prototype.blend
+!build/textures/
+build/textures/*_tubeao.png
