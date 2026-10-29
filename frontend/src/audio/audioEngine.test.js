@@ -22,6 +22,8 @@ jest.mock("./voicePack", () => ({
       duration: () => 0.05,
       prefetch: () => Promise.resolve(),
       buffer: (ctx, lang, id) => Promise.resolve(state.missing.has(id) ? null : { duration: 0.05 }),
+      load: (ctx, lang, id) => Promise.resolve(state.missing.has(id) ? { error: "clip-missing", file: null } : { buffer: { duration: 0.05 }, file: `${lang}/${id}.0.mp3` }),
+      file: (lang, id) => `${lang}/${id}.0.mp3`,
       trim() {},
     };
   },

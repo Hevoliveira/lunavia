@@ -16,12 +16,13 @@
  * silent and the subtitles carry the call.
  */
 import { getAudioSettings, subscribeAudioSettings } from "./audioSettings";
+import { applyWebAudioSession, installAudioSessionPolicy } from "./nativeAudio";
 
 let engine = null; // { ctx, master, sfx, duck, voice, leveller }
 const stateListeners = new Set();
 let installed = false;
 let retryTimer = null;
-const stats = { created: 0, resumes: 0, resumeFailures: 0, interruptions: 0, lastState: null };
+const stats = { created: 0, resumes: 0, resumeFailures: 0, interruptions: 0, lastState: null, gestures: 0, createdBy: null };
 
 const AC = () => (typeof window !== "undefined" ? window.AudioContext || window.webkitAudioContext : null);
 
@@ -39,10 +40,9 @@ function emitState() {
 function build() {
   const Ctor = AC();
   if (!Ctor) return null;
-  try {
-    // Play mission audio as an app's media (iOS 17+ WebKit Audio Session API, where available).
-    if (navigator.audioSession) navigator.audioSession.type = "playback";
-  } catch (e) {}
+  // The player's SILENT MODE choice, through WebKit's Audio Session API where the web view has it
+  // (the app's own session is set natively: nativeAudio.js).
+  applyWebAudioSession();
   let ctx;
   try {
     ctx = new Ctor({ latencyHint: "interactive" });
@@ -181,8 +181,12 @@ function scheduleRetry() {
 export function installAudioUnlock() {
   if (installed || typeof window === "undefined") return;
   installed = true;
-  const onGesture = () => {
+  installAudioSessionPolicy();
+  const onGesture = (ev) => {
+    stats.gestures += 1;
+    const had = !!engine;
     const e = getEngine({ create: true });
+    if (e && !had) stats.createdBy = ev && ev.type;
     if (!e) return;
     if (e.ctx.state !== "running") {
       resumeEngine();
@@ -236,5 +240,5 @@ export function _resetEngineForTests() {
   if (retryTimer) clearTimeout(retryTimer);
   retryTimer = null;
   stateListeners.clear();
-  Object.assign(stats, { created: 0, resumes: 0, resumeFailures: 0, interruptions: 0, lastState: null });
+  Object.assign(stats, { created: 0, resumes: 0, resumeFailures: 0, interruptions: 0, lastState: null, gestures: 0, createdBy: null });
 }

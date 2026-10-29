@@ -1,35 +1,41 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 830164e**: COUNTDOWN TO LAUNCH, simplified. It is on the branch
-`claude/simplified-countdown` (download that branch's ZIP), built on the NASA visual upgrade
-(BUILD 1317851, branch `claude/nasa-visual-upgrade`). The release branch `claude/ios-release` is
-unchanged until a build is approved on the iPhone.
+This folder installs **BUILD ec7769e**: the **AUDIO DIAGNOSTICS** review build. It is on the branch
+`claude/iphone-audio-diagnostics` — download **that branch's** ZIP:
 
-The startup screen (THE ROAD TO THE MOON) does not show the build. Tap **TRAINING** in the top bar:
-the FLIGHT TRAINING CENTER shows, at the top right under ATTEMPTS · SUCCESSFUL · COMPLETED:
+`https://github.com/Hevoliveira/lunavia/archive/refs/heads/claude/iphone-audio-diagnostics.zip`
 
-> **LUNAVIA iOS · BUILD 830164e · 2026-10-29 17:57 UTC**
+(The unpacked folder is called `lunavia-claude-iphone-audio-diagnostics`.) The release branch
+`claude/ios-release` (BUILD 8eff6a5) is unchanged and does **not** contain any of the Houston audio
+work: if you install from the ios-release link in INSTALL_ON_IPHONE.md, you get the old audio.
 
-(The same line is at the top of APOLLO LEGACY.)
+Check the build: tap **TRAINING** (startup menu or top bar). At the top right, under ATTEMPTS ·
+SUCCESSFUL · COMPLETED:
 
-What changed since BUILD 1317851, all in the optional pre-launch experience:
-- **The sequence is now:** LAUNCH COMPLEX → COMMAND MODULE → LAUNCH CHECKLIST → FINAL COUNT → the
-  original launch film (from T-15, launched once).
-- **Removed:** the suit room (SUIT CHECK, COMMUNICATIONS CHECK, CREW READY, the crew briefing), the
-  elevator ride, the walk along the crew access arm, the white room and BOARD THE SPACECRAFT. There
-  is no replacement boarding animation.
-- **Launch complex:** LV-001 on its pad at Launch Complex 39 with its tower (the crew access arm
-  stays, as part of the tower), from the hardstand, over Mission Control's final briefing ("weather
-  is go, the range is go, LV-001 is fuelled and stable"). After about nine seconds — or sooner with
-  **TO THE COMMAND MODULE** — a short dip to black and the commander's couch.
-- **Command module:** unchanged — drag to look, the six panels to inspect, the six-item checklist,
-  the hatch closing, CREW READY FOR LAUNCH, BEGIN FINAL COUNT (T-45 to T-15).
-- **SKIP PRE-LAUNCH** at any moment (the pad, the cabin, the checklist, the count) goes straight to
-  the launch, once.
-- LAUNCH SEQUENCE — INITIATE, the startup screen, the launch film and everything after the launch
-  are unchanged; nothing in the pre-launch is saved, so saved missions are unaffected.
+> **LUNAVIA iOS · BUILD ec7769e · 2026-10-29 22:19 UTC**
+
+Directly under it there is **AUDIO DIAGNOSTICS** (also in the top bar: **AUDIO → AUDIO DIAGNOSTICS**).
+
+What this build adds (an audio bug-fix build; nothing else in the game changes):
+- **The Houston voice fix:** the iPhone app's file server sends the voice recordings (.mp3) without an
+  HTTP status, and the game took that as "file not found", so every Houston call was shown as a
+  subtitle only. The recordings now load (AUDIO DIAGNOSTICS: FILE FOUND … status 0).
+- **AUDIO DIAGNOSTICS**: PLAY TEST TONE, PLAY SOUND EFFECT, PLAY HOUSTON VOICE (the bundled liftoff
+  call through the mission radio), an extra comparison through the iPhone's media player, the audio
+  engine's status (context state, volumes, the iPhone's audio session, media volume, output route),
+  the Houston radio calls of the session, and **COPY DIAGNOSTICS**.
+- **SILENT MODE** (AUDIO panel and diagnostics): **PLAY** (default) — LUNAVIA's sound plays even with
+  the iPhone's Silent Mode on; **FOLLOW** — it is muted while the iPhone is silenced. The volume
+  buttons always set the level. The app now sets its iOS audio session itself (native code), as well
+  as through WebKit.
+- Everything from BUILD 37b3847 (Houston radio repair) and 830164e (simplified Countdown to Launch).
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **2ae3aed** is the first AUDIO DIAGNOSTICS build: PLAY HOUSTON VOICE shows FILE NOT FOUND (http-0);
+- **37b3847** is the Houston radio repair review build (`claude/houston-radio-voice`): TEST RADIO, but
+  no AUDIO DIAGNOSTICS and no SILENT MODE setting;
+- **830164e** is the simplified COUNTDOWN TO LAUNCH review build (`claude/simplified-countdown`), with
+  the earlier audio code;
 - **1317851** is the NASA visual upgrade review build: the longer pre-launch (suit room, tower,
   crew access arm, white room, boarding);
 - **8011010** is the revised COUNTDOWN TO LAUNCH review build (before the NASA visual upgrade);

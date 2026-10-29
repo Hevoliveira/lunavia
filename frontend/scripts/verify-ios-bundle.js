@@ -229,6 +229,11 @@ const FEATURES = [
   ["Houston radio: TEST RADIO in the audio settings, with its result", "audio-radio-result"],
   ["Houston radio: a stopped audio context is resumed before each call (reason recorded otherwise)", "no-gesture-yet"],
   ["Houston radio: TEST RADIO in Portuguese", "TRANSMITINDO"],
+  ["Audio diagnostics: the AUDIO DIAGNOSTICS page and its three playback tests", "diag-houston"],
+  ["Audio diagnostics: COPY DIAGNOSTICS report", "LUNAVIA AUDIO DIAGNOSTICS"],
+  ["Audio diagnostics: honest playback labels (no 'audible' claim)", "AUDIO CONTEXT RUNNING"],
+  ["Audio diagnostics: the Houston radio trace of the session", "HOUSTON RADIO THIS SESSION"],
+  ["Audio: the SILENT MODE choice applied to the iPhone audio session", "LunaviaAudio"],
   ["NASA visual upgrade: NASA cloud systems on the Earth (globe and launch film)", "float cloudCover(float d)"],
   ["NASA visual upgrade: Moon albedo contrast and crater relief", "uDetailNormal"],
   ["NASA visual upgrade: lunar terrain crater relief and mottled rocks", "lv-terrain-2"],
@@ -342,6 +347,16 @@ try {
   /MissionSaveStore\.swift in Sources/.test(sources) && /jsName = "LunaviaSave"/.test(store) && /options: \.atomic/.test(store) && /registerPluginInstance\(LunaviaSavePlugin\(\)\)/.test(scene)
     ? ok("the mission checkpoint store (MissionSaveStore.swift) is compiled into the app and registered")
     : fail("MissionSaveStore.swift is missing, not in the App target's Sources, or not registered in SceneDelegate.swift");
+  // the audio session (Silent Mode policy, media volume and route for AUDIO DIAGNOSTICS)
+  let audioSession = "";
+  try {
+    audioSession = read(path.join(ios, "App/LunaviaAudioSession.swift"));
+  } catch {
+    // reported below
+  }
+  /LunaviaAudioSession\.swift in Sources/.test(sources) && /jsName = "LunaviaAudio"/.test(audioSession) && /setCategory\(\.playback/.test(audioSession) && /registerPluginInstance\(LunaviaAudioPlugin\(\)\)/.test(scene)
+    ? ok("the audio session plugin (LunaviaAudioSession.swift) is compiled into the app and registered")
+    : fail("LunaviaAudioSession.swift is missing, not in the App target's Sources, or not registered in SceneDelegate.swift");
   const ids = [...new Set([...pbx.matchAll(/PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/g)].map((m) => m[1]))];
   ids.length === 1 ? ok(`one bundle identifier: ${ids[0]}`) : fail(`several bundle identifiers: ${ids.join(", ")}`);
 } catch {

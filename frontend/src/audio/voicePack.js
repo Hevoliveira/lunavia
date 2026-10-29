@@ -15,6 +15,8 @@ export function createVoicePack({ base = BASE, fetchImpl = (u) => fetch(u) } = {
   let manifestP = null;
   const bytes = new Map(); // file -> Promise<ArrayBuffer|null>
   const decoded = new Map(); // file -> AudioBuffer (insertion order = LRU)
+  const fetchErrors = new Map(); // file -> why its last load failed (diagnostics)
+  const fetchStatus = new Map(); // file -> HTTP status of its last load (0 in the iPhone app)
 
   function loadManifest() {
     if (!manifestP) {
@@ -35,9 +37,25 @@ export function createVoicePack({ base = BASE, fetchImpl = (u) => fetch(u) } = {
   function fetchBytes(file) {
     if (!bytes.has(file)) {
       const p = fetchImpl(`${base}/${file}`)
-        .then((r) => (r.ok ? r.arrayBuffer() : null))
-        .catch(() => null)
+        .then((r) => {
+          fetchStatus.set(file, r.status);
+          // The iPhone app's file server (Capacitor WebViewAssetHandler) answers media files such as
+          // .mp3 with a bare URLResponse, which has no HTTP status: fetch() then reports status 0 and
+          // ok = false although the file and its bytes are there. Status 0 with bytes is a found file
+          // (a missing one makes fetch() reject; an empty one is caught below).
+          if (r.ok || r.status === 0) return r.arrayBuffer();
+          fetchErrors.set(file, `http-${r.status}`);
+          return null;
+        })
+        .catch((e) => {
+          fetchErrors.set(file, `fetch-error:${(e && e.message) || e}`);
+          return null;
+        })
         .then((data) => {
+          if (data && !data.byteLength) {
+            fetchErrors.set(file, "empty-file");
+            data = null;
+          }
           // A failed load is not remembered: the next request tries again.
           if (!data && bytes.get(file) === p) bytes.delete(file);
           return data;
@@ -47,14 +65,18 @@ export function createVoicePack({ base = BASE, fetchImpl = (u) => fetch(u) } = {
     return bytes.get(file);
   }
 
+  // Resolves { buffer } or { error }. Callback form: older WebKit has no promise-returning
+  // decodeAudioData. Decodes a copy: WebKit detaches the bytes it is given.
   const decode = (ctx, data) =>
     new Promise((resolve) => {
-      // Callback form: older WebKit has no promise-returning decodeAudioData.
+      let done = false;
+      const ok = (b) => !done && ((done = true), resolve(b ? { buffer: b } : { error: "decode-failed:empty" }));
+      const fail = (e) => !done && ((done = true), resolve({ error: `decode-failed:${(e && (e.message || e.name)) || "error"}` }));
       try {
-        const p = ctx.decodeAudioData(data.slice(0), resolve, () => resolve(null));
-        if (p && p.catch) p.catch(() => resolve(null));
+        const p = ctx.decodeAudioData(data.slice(0), ok, fail);
+        if (p && p.catch) p.catch(fail);
       } catch (e) {
-        resolve(null);
+        fail(e);
       }
     });
 
@@ -75,26 +97,46 @@ export function createVoicePack({ base = BASE, fetchImpl = (u) => fetch(u) } = {
       if (!l) return;
       for (const id of Object.keys(l.clips)) for (const c of l.clips[id]) await fetchBytes(c.f);
     },
-    /** Decoded AudioBuffer for a line, or null when the pack has no such clip. */
-    async buffer(ctx, lang, id, variant = 0) {
-      await loadManifest();
+    /** The bundled file of a line ("en/launch.liftoff.0.mp3"), or null. */
+    file(lang, id, variant = 0) {
       const c = clips(lang, id);
       const clip = c && (c[variant] || c[0]);
-      if (!clip) return null;
+      return clip ? clip.f : null;
+    },
+    /**
+     * Load and decode a line, saying what happened at each step:
+     * { buffer, file, bytes, cached } or { error, file } with error one of
+     * "pack-unavailable" (no manifest), "clip-missing" (no such line), "http-404" / "fetch-error:…"
+     * / "empty-file" (the file), "decode-failed:…" (the format).
+     */
+    async load(ctx, lang, id, variant = 0) {
+      await loadManifest();
+      if (!manifest) return { error: "pack-unavailable", file: null };
+      const c = clips(lang, id);
+      const clip = c && (c[variant] || c[0]);
+      if (!clip) return { error: "clip-missing", file: null };
       if (decoded.has(clip.f)) {
         const b = decoded.get(clip.f);
         decoded.delete(clip.f);
         decoded.set(clip.f, b);
-        return b;
+        return { buffer: b, file: clip.f, cached: true };
       }
       const data = await fetchBytes(clip.f);
-      if (!data) return null;
-      const b = await decode(ctx, data);
-      if (!b) return null;
-      decoded.set(clip.f, b);
+      if (!data) return { error: fetchErrors.get(clip.f) || "fetch-failed", file: clip.f, status: fetchStatus.get(clip.f) };
+      const bytesLen = data.byteLength;
+      const r = await decode(ctx, data);
+      if (!r.buffer) return { error: r.error, file: clip.f, bytes: bytesLen };
+      decoded.set(clip.f, r.buffer);
       while (decoded.size > DECODED_MAX) decoded.delete(decoded.keys().next().value);
-      return b;
+      return { buffer: r.buffer, file: clip.f, bytes: bytesLen, status: fetchStatus.get(clip.f), cached: false };
     },
+    /** Decoded AudioBuffer for a line, or null when the pack has no such clip. */
+    async buffer(ctx, lang, id, variant = 0) {
+      const r = await this.load(ctx, lang, id, variant);
+      return r.buffer || null;
+    },
+    /** The URL the pack loads its files from (diagnostics). */
+    base,
     /** Drop decoded audio (memory warning, leaving the mission). */
     trim() {
       decoded.clear();

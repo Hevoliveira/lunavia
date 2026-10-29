@@ -12,6 +12,10 @@ import { useSyncExternalStore } from "react";
  *   voiceVolume  0..1
  *   sfxVolume    0..1          engines, separations, ambience, tones
  *   radioFx      radio processing (band-limit, static, squelch, quindar)
+ *   silentMode   "play"   game audio plays with the iPhone's Silent Mode on (the default: LUNAVIA
+ *                         is a narrated experience, like a video)
+ *                "follow" game audio follows the Silent Mode switch (muted while silenced)
+ *                (applied by src/audio/nativeAudio.js; the media volume is always the iPhone's)
  */
 const KEY = "lunavia.audio.v1";
 
@@ -31,6 +35,7 @@ export const DEFAULTS = Object.freeze({
   voiceVolume: 0.9,
   sfxVolume: 0.8,
   radioFx: true,
+  silentMode: "play",
 });
 
 const LANGS = ["en", "pt"];
@@ -47,6 +52,7 @@ function sanitize(raw) {
     voiceVolume: clamp01(r.voiceVolume, DEFAULTS.voiceVolume),
     sfxVolume: clamp01(r.sfxVolume, DEFAULTS.sfxVolume),
     radioFx: typeof r.radioFx === "boolean" ? r.radioFx : DEFAULTS.radioFx,
+    silentMode: r.silentMode === "follow" ? "follow" : DEFAULTS.silentMode,
   };
 }
 

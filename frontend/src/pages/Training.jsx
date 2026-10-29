@@ -379,6 +379,11 @@ export default function Training() {
                     <Stat label="COMPLETED" value={`${sum.completed}/${TOTAL_SLOTS}`} />
                   </div>
                   {!discipline && <BuildBadge className="!py-0 !min-h-0 !text-[9.5px] !text-zinc-400 mt-1" />}
+                  {!discipline && (
+                    <Link to="/audio-diagnostics" data-testid="training-audio-diagnostics" className="font-mono text-[9.5px] tracking-[0.2em] text-[#FF3B00] hover:text-white py-1 touch:min-h-[36px] flex items-center">
+                      AUDIO DIAGNOSTICS
+                    </Link>
+                  )}
                 </div>
               </div>
 

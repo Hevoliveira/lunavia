@@ -7,6 +7,8 @@ import Training from "@/pages/Training";
 import ApolloLegacy from "@/pages/ApolloLegacy";
 import Manifesto from "@/pages/Manifesto";
 import Records from "@/pages/Records";
+import AudioDiagnostics from "@/pages/AudioDiagnostics";
+import { installAudioUnlock } from "@/audio/audioEngine";
 import Navbar from "@/components/Navbar";
 import CommsSubtitles from "@/components/CommsSubtitles";
 import { Toaster } from "sonner";
@@ -15,6 +17,10 @@ import { useCompact } from "@/hooks/useMediaQuery";
 // Development only (stripped from production builds): the lunar EVA on its own, for checking the
 // astronaut and the scene without flying a mission to it.
 const EvaPreview = process.env.NODE_ENV === "development" ? lazy(() => import("@/pages/EvaPreview")) : null;
+
+// The audio engine starts on the player's first tap anywhere in the app (iOS lets audio start only
+// inside a gesture), whichever page that is.
+installAudioUnlock();
 
 function App() {
   // Landscape phones: mission toasts go bottom-left and narrow, clear of the
@@ -37,6 +43,7 @@ function App() {
           <Route path="/legacy" element={<ApolloLegacy />} />
           <Route path="/manifesto" element={<Manifesto />} />
           <Route path="/records" element={<Records />} />
+          <Route path="/audio-diagnostics" element={<AudioDiagnostics />} />
           {EvaPreview && (
             <Route
               path="/dev/eva"
