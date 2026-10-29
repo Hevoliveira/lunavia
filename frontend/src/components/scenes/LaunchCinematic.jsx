@@ -115,7 +115,10 @@ const PAD_SHOTS = {
   // The rocket sits in the right third, clear of the caption (lower left) and the countdown.
   payload: (u) => ({ pos: [-1.24 + 0.1 * u, 3.05 - 0.02 * u, 1.0 - 0.08 * u], look: [-0.22, 2.96 + 0.02 * u, -0.26], fov: 40 }),
   engines: (u) => ({ pos: [0.3 - 0.02 * u, -0.06, 0.31 - 0.02 * u], look: [-0.04, 0.04 + 0.03 * u, -0.04], fov: 64, shake: 1 }),
-  trench: (u, c) => ({ pos: [2.9 - 0.2 * u, 0.7 + 0.1 * u, 7.6 - 0.4 * u], look: [0.15, Math.max(1.5, c.baseY + 1.3), -0.8], fov: 40, shake: 0.5 }),
+  // From above the land west of the pad, looking down the flame trench (it runs west, cut
+  // through the hardstand) towards the deck: the shot named FLAME TRENCH shows the trench, the
+  // exhaust leaving it and the vehicle climbing above.
+  trench: (u, c) => ({ pos: [-9.4 + 0.3 * u, 1.5 + 0.1 * u, 3.4 - 0.3 * u], look: [-1.6, Math.max(1.3, c.baseY + 1.2), -0.2], fov: 40, shake: 0.5 }),
   tower: (u, c) => ({ pos: [2.2, 1.25, 0.8], look: [c.lagX, c.lagY + 1.5, 0], fov: 60, shake: 0.35 }),
   wideAscent: (u, c) => ({ pos: [13.5, 1.0, 18.5], look: [c.lagX, c.lagY + 0.2, 0], fov: 21 - 2 * u }),
 };
