@@ -171,9 +171,7 @@ function makeTextures() {
 
 /* ----------------------------- geometry ----------------------------- */
 
-// hideCrewArm (COUNTDOWN TO LAUNCH's walk only): leave out the crew access arm and the bracing of the
-// tower face it passes through, where the pre-launch scene draws them at human scale instead
-function buildComplex({ hideCrewArm = false } = {}) {
+function buildComplex() {
   const steel = [];
   const steelDark = [];
   const grate = [];
@@ -261,10 +259,8 @@ function buildComplex({ hideCrewArm = false } = {}) {
     for (let i = 0; i < 4; i++) {
       const [x0, z0] = corners[i];
       const [x1, z1] = corners[(i + 1) % 4];
-      // the face towards the rocket (i = 3), at the arm's floor and the bay above it: open for the arm
-      const atArm = hideCrewArm && i === 3 && y <= ARM_Y && li < levels.length - 1 && levels[li + 1] > ARM_Y;
-      if (!(atArm && Math.abs(y - ARM_Y) < 0.1)) steel.push(strut([x0, y, z0], [x1, y, z1], 0.012));
-      if (li < levels.length - 1 && !atArm) {
+      steel.push(strut([x0, y, z0], [x1, y, z1], 0.012));
+      if (li < levels.length - 1) {
         const y1 = levels[li + 1];
         steel.push(strut([x0, y, z0], [x1, y1, z1], 0.007));
         steel.push(strut([x1, y, z1], [x0, y1, z0], 0.007));
@@ -345,12 +341,10 @@ function buildComplex({ hideCrewArm = false } = {}) {
   });
   // Crew access arm + white room at the spacecraft hatch
   const cy = ARM_Y;
-  if (!hideCrewArm) {
-    steel.push(box(faceX - 0.36, 0.015, 0.14, (faceX + 0.36) / 2, cy - 0.065, 0));
-    white.push(box(faceX - 0.4, 0.11, 0.12, (faceX + 0.4) / 2 + 0.02, cy, 0));
-    white.push(box(0.16, 0.16, 0.18, 0.3, cy + 0.01, 0));
-    orange.push(box(0.008, 0.02, 0.122, 0.62, cy + 0.03, 0));
-  }
+  steel.push(box(faceX - 0.36, 0.015, 0.14, (faceX + 0.36) / 2, cy - 0.065, 0));
+  white.push(box(faceX - 0.4, 0.11, 0.12, (faceX + 0.4) / 2 + 0.02, cy, 0));
+  white.push(box(0.16, 0.16, 0.18, 0.3, cy + 0.01, 0));
+  orange.push(box(0.008, 0.02, 0.122, 0.62, cy + 0.03, 0));
 
   /* On the hardstand: service vehicles (scale cues). Everything at grade is launchSite.js. */
   [[-2.4, 1.6, 0.3], [2.8, 1.4, -0.4]].forEach(([x, z, ry]) => {
@@ -383,11 +377,11 @@ function buildComplex({ hideCrewArm = false } = {}) {
   };
 }
 
-export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = false }) {
+export default function LaunchComplex({ progRef, anisotropy = 1 }) {
   const rootRef = useRef();
   const res = useMemo(() => {
     const tex = makeTextures();
-    const geo = buildComplex({ hideCrewArm });
+    const geo = buildComplex();
     const mat = {
       steel: new THREE.MeshStandardMaterial({ color: "#9aa0a6", roughness: 0.55, roughnessMap: tex.steelRough, metalness: 0.65 }),
       steelDark: new THREE.MeshStandardMaterial({ color: "#4d5257", roughness: 0.6, roughnessMap: tex.steelRough, metalness: 0.55 }),
@@ -422,7 +416,7 @@ export default function LaunchComplex({ progRef, anisotropy = 1, hideCrewArm = f
     Object.entries(site.geo).forEach(([k, g]) => (geo[`site_${k}`] = g));
     Object.entries(site.mat).forEach(([k, m]) => (mat[`site_${k}`] = m));
     return { tex, geo, mat, scrub: site.scrub };
-  }, [hideCrewArm]);
+  }, []);
 
   useEffect(() => {
     Object.values(res.tex).forEach((t) => {

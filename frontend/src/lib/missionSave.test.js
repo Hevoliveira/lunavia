@@ -224,6 +224,26 @@ describe("the two-slot store (A/B alternating, newest valid wins)", () => {
     expect(s2.fallback).toBe(true);
   });
 
+  test("a copy naming a pre-launch place (the suit room, the walk: never a checkpoint) is set aside, the real save kept", () => {
+    // nothing in COUNTDOWN TO LAUNCH writes the save; a copy that names one of its places can only be
+    // foreign or tampered, and must neither crash the load nor replace the mission it sits beside
+    const local = memLocal();
+    const store = createSaveStore({ local });
+    store.load();
+    const sc = flightTo(CP.LANDING_COMPLETE);
+    store.write(docOf(CP.LANDING_COMPLETE, sc));
+    const good = local.get(SLOT_KEYS.a);
+    for (const stale of ["suit", "tower", "walkway", "PRELAUNCH", "SUIT_ROOM", "WHITE_ROOM_BOARDING"]) {
+      local.set(SLOT_KEYS.b, sealEnvelope({ ...validateSave(docOf(CP.LANDING_COMPLETE, sc)).save, checkpoint: stale }, 99));
+      expect(openEnvelope(local.get(SLOT_KEYS.b)).reason).toBe("invalid");
+      let s;
+      expect(() => (s = createSaveStore({ local }).load())).not.toThrow();
+      expect(s.status).toBe("active");
+      expect(s.save.checkpoint).toBe(CP.LANDING_COMPLETE);
+      expect(canResume(s)).toBe(true);
+      expect(local.get(SLOT_KEYS.a)).toBe(good); // the mission's own copy is untouched
+    }
+  });
   test("a damaged copy of the older slot is no fallback; the newest slot lost everywhere is", async () => {
     const local = memLocal();
     const native = memNative();

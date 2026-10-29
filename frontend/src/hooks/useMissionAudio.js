@@ -687,11 +687,9 @@ export default function useMissionAudio() {
 
   /*
    * COUNTDOWN TO LAUNCH's sound (procedural, no recordings). prelaunchBed(kind) crossfades to the
-   * place's bed: "room" (the suit room's air handling), "pad" (wind and the vehicle's venting),
-   * "arm" (the wind 90 m up, the arm's creaks), "cabin" (the cabin's fans and the suit loops).
-   * prelaunchCue(kind, dur) plays a one-shot on it: "step" (a boot on the arm's steel floor),
-   * "elevator" (the car's motor for dur s), "helmet" (the neck ring's lock and the oxygen's hiss),
-   * "switch", "hatch" (the latch's clank and the door's thump). prelaunchStop() fades all out.
+   * place's bed: "pad" (wind and the vehicle's venting), "cabin" (the cabin's fans and the suit
+   * loops). prelaunchCue(kind) plays a one-shot on it: "switch", "hatch" (the latch's clank and the
+   * door's thump). prelaunchStop() fades all out.
    */
   const prelaunchStop = useCallback((fade = 1.0) => {
     const r = preRef.current;
@@ -753,17 +751,10 @@ export default function useMissionAudio() {
         o.start();
         nodes.push(o);
       };
-      if (kind === "room") {
-        noise("lowpass", 260, 0.7, 0.05);
-        tone(60, 0.008);
-        tone(120, 0.004);
-      } else if (kind === "pad") {
+      if (kind === "pad") {
         lfo(noise("lowpass", 380, 0.6, 0.05), 0.13, 0.03);
         lfo(noise("bandpass", 2600, 1.4, 0.012), 0.31, 0.008); // the venting
         tone(48, 0.006, "triangle");
-      } else if (kind === "arm") {
-        lfo(noise("lowpass", 520, 0.6, 0.075), 0.17, 0.05);
-        lfo(noise("bandpass", 1500, 3, 0.01), 0.07, 0.008);
       } else if (kind === "cabin") {
         noise("bandpass", 900, 0.8, 0.025);
         noise("lowpass", 180, 0.7, 0.03);
@@ -774,7 +765,7 @@ export default function useMissionAudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [prelaunchStop]
   );
-  const prelaunchCue = useCallback((kind, dur = 3) => {
+  const prelaunchCue = useCallback((kind) => {
     const r = preRef.current;
     const ctx = ctxRef.current;
     if (!r || !ctx) return;
@@ -806,39 +797,13 @@ export default function useMissionAudio() {
       o.start(now + at);
       o.stop(now + at + len + 0.05);
     };
-    if (kind === "step") {
-      thump(0, 90, 55, 0.16, 0.09);
-      burst(0.005, 0.07, "bandpass", 1900, 2.5, 0.05);
-    } else if (kind === "switch") {
+    if (kind === "switch") {
       burst(0, 0.03, "bandpass", 3200, 4, 0.12);
-    } else if (kind === "helmet") {
-      burst(0, 0.05, "bandpass", 2400, 4, 0.14);
-      burst(0.12, 0.05, "bandpass", 2100, 4, 0.12);
-      burst(0.25, 1.4, "highpass", 3000, 0.7, 0.03);
     } else if (kind === "hatch") {
       thump(0, 110, 50, 0.5, 0.2);
       burst(0.4, 0.06, "bandpass", 2200, 4, 0.16);
       burst(0.62, 0.06, "bandpass", 2000, 4, 0.16);
       thump(0.9, 70, 45, 0.35, 0.12);
-    } else if (kind === "elevator") {
-      const o = ctx.createOscillator();
-      o.type = "sawtooth";
-      o.frequency.setValueAtTime(70, now);
-      o.frequency.linearRampToValueAtTime(95, now + 1.2);
-      o.frequency.setValueAtTime(95, now + Math.max(1.2, dur - 1.2));
-      o.frequency.linearRampToValueAtTime(65, now + dur);
-      const lp = ctx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.value = 320;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0, now);
-      g.gain.linearRampToValueAtTime(0.05, now + 0.8);
-      g.gain.setValueAtTime(0.05, now + Math.max(0.8, dur - 0.8));
-      g.gain.linearRampToValueAtTime(0, now + dur);
-      o.connect(lp).connect(g).connect(r.g);
-      o.start(now);
-      o.stop(now + dur + 0.05);
-      thump(dur - 0.3, 80, 50, 0.4, 0.08); // the car settling at the landing
     }
   }, []);
 

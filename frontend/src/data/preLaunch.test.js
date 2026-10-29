@@ -1,151 +1,101 @@
 import {
-  ARM,
-  BOARD,
   CABIN_LOOK,
   CABIN_PANELS,
   CHECKLIST,
-  CM_ON_PAD,
   COUNT,
   COUNT_DUR,
-  EYE,
+  PAD_SHOT,
   PRELAUNCH_TEXT,
   ROCKET_SCALE,
   STAGES,
-  SUIT_STEPS,
-  TOWER,
-  TOWER_RIDE,
-  WALK,
-  WALK_LEN,
-  WHITE_ROOM,
   advance,
-  boardEye,
   checklistComplete,
   confirmItem,
   countAt,
   createChecklist,
   createPreLaunch,
-  doSuitStep,
   dueCalls,
-  footfallsBetween,
   hatchClosedAt,
-  helmetAt,
   nextItem,
+  normalizeStage,
+  padCameraAt,
   requestLaunch,
-  towerCameraAt,
-  walkEye,
 } from "./preLaunch";
+import * as PRE from "./preLaunch";
 import { LIFTOFF_T, UNIT_M } from "./launchTimeline";
 import comms from "../audio/commsLines.json";
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-describe("the pad at the launch film's scale", () => {
-  test("the command module's hatch is at the crew access arm of the launch complex (≈ 93 m)", () => {
-    // components/scenes/LaunchComplex: the crew access arm at y = 3.12 units
-    expect(Math.abs(CM_ON_PAD.hatch.y - 3.12 * UNIT_M)).toBeLessThan(1.2);
-    expect(CM_ON_PAD.hatch.r).toBeGreaterThan(1.3);
-    expect(CM_ON_PAD.hatch.r).toBeLessThan(1.6);
-    expect(18 / ROCKET_SCALE).toBeCloseTo(UNIT_M, 6); // 18 m per model unit drawn at 0.6: 30 m per scene unit
+describe("the simplified sequence: launch complex, command module, count", () => {
+  test("three stages, starting at the launch complex — no suit room, no walk, no boarding", () => {
+    expect(STAGES).toEqual(["pad", "cabin", "count"]);
+    const st = createPreLaunch();
+    expect(st).toEqual({ stage: "pad", launched: false });
+    // nothing of the removed places is left in the experience's data
+    for (const gone of ["SUIT_STEPS", "BRIEFING", "helmetAt", "doSuitStep", "TOWER_RIDE", "towerCameraAt", "WALK", "walkEye", "BOARD", "boardEye", "WHITE_ROOM", "ARM", "footfallsBetween"]) {
+      expect([gone, PRE[gone]]).toEqual([gone, undefined]);
+    }
+    for (const l of ["en", "pt"]) {
+      expect(PRELAUNCH_TEXT[l].suit).toBeUndefined();
+      expect(PRELAUNCH_TEXT[l].walk).toBeUndefined();
+      expect(Object.keys(PRELAUNCH_TEXT[l].stages)).toEqual(STAGES);
+    }
   });
-  test("the arm runs from the tower to the white room, its floor under the hatch's sill", () => {
-    expect(ARM.start).toBeGreaterThan(TOWER.face);
-    expect(ARM.end).toBeLessThan(TOWER.face);
-    const sill = CM_ON_PAD.hatch.y - CM_ON_PAD.hatch.h / 2;
-    expect(sill - ARM.floor).toBeGreaterThan(0.4);
-    expect(sill - ARM.floor).toBeLessThan(0.9);
-    expect(WHITE_ROOM.x0).toBeGreaterThan(CM_ON_PAD.hatch.r); // the white room stands off the hull
-    expect(ARM.height).toBeGreaterThan(EYE + 0.4); // head room in a suit and helmet
-  });
-});
-
-describe("the suit room", () => {
-  test("SUIT CHECK, COMMUNICATIONS CHECK, CREW READY, in that order, then the briefing", () => {
+  test("pad → cabin directly (no prerequisite), the count only once the checklist is complete", () => {
     let st = createPreLaunch();
-    expect(st.stage).toBe("suit");
-    expect(doSuitStep(st, "crewReady")).toBe(st); // out of order: nothing
-    for (const s of SUIT_STEPS) st = doSuitStep(st, s.id);
-    expect(st.suitDone).toEqual(["suitCheck", "commCheck", "crewReady"]);
-    expect(st.briefing).toBe(true);
-  });
-  test("the helmets go on one after the other during SUIT CHECK and stay locked", () => {
-    expect(helmetAt(0, null)).toBe(0);
-    expect(helmetAt(0, 3)).toBe(1);
-    expect(helmetAt(2, 3)).toBeLessThan(0.5);
-    expect(helmetAt(2, SUIT_STEPS[0].dur)).toBe(1);
-    // the call that says the helmets are locked comes after the last one is down and locked
-    const lockedCall = SUIT_STEPS[0].calls.find((c) => c.id === "prelaunch.suitCheck");
-    expect(helmetAt(2, lockedCall.at)).toBe(1);
-    expect(helmetAt(2, lockedCall.at - 0.5)).toBe(1);
-  });
-});
-
-describe("the stages follow each other and never go back", () => {
-  test("the tower only after the crew is ready; the count only once the checklist is complete", () => {
-    let st = createPreLaunch();
-    expect(advance(st, "tower")).toBe(st);
-    for (const s of SUIT_STEPS) st = doSuitStep(st, s.id);
-    st = advance(st, "tower");
-    expect(st.stage).toBe("tower");
-    expect(advance(st, "suit")).toBe(st);
-    st = advance(advance(st, "walkway"), "cabin");
+    expect(advance(st, "count", { checklistDone: true }).stage).toBe("count"); // a skip ahead is allowed by order…
+    st = advance(st, "cabin");
     expect(st.stage).toBe("cabin");
-    expect(advance(st, "count")).toBe(st);
+    expect(advance(st, "pad")).toBe(st); // never back
+    expect(advance(st, "count")).toBe(st); // …but never without the checklist
     expect(advance(st, "count", { checklistDone: true }).stage).toBe("count");
-    expect(STAGES).toEqual(["suit", "tower", "walkway", "cabin", "count"]);
   });
   test("the launch is requested exactly once, whatever asks for it (the count, SKIP, twice)", () => {
-    let st = createPreLaunch();
-    const a = requestLaunch(st);
-    expect(a.launch).toBe(true);
-    st = a.state;
-    expect(requestLaunch(st).launch).toBe(false);
-    expect(requestLaunch(requestLaunch(st).state).launch).toBe(false);
-    expect(advance(st, "count", { checklistDone: true })).toBe(st); // nothing moves once launched
+    for (const stage of STAGES) {
+      let st = createPreLaunch(stage);
+      const a = requestLaunch(st);
+      expect(a.launch).toBe(true);
+      st = a.state;
+      expect(requestLaunch(st).launch).toBe(false);
+      expect(requestLaunch(requestLaunch(st).state).launch).toBe(false);
+      expect(advance(st, "count", { checklistDone: true })).toBe(st); // nothing moves once launched
+      expect(advance(st, "cabin")).toBe(st);
+    }
+  });
+  test("stage names of the earlier experience are handled safely", () => {
+    expect(normalizeStage("suit")).toBe("pad");
+    expect(normalizeStage("tower")).toBe("pad");
+    expect(normalizeStage("walkway")).toBe("cabin");
+    expect(normalizeStage("cabin")).toBe("cabin");
+    for (const junk of [undefined, null, "", "whiteRoom", 42, "constructor"]) expect(normalizeStage(junk)).toBe(null);
+    expect(createPreLaunch("suit").stage).toBe("pad");
+    expect(createPreLaunch("walkway").stage).toBe("cabin");
+    expect(createPreLaunch("nonsense").stage).toBe("pad");
+    // a state carrying an unknown stage never advances into a broken place
+    const odd = { stage: "walkway", launched: false };
+    expect(advance(odd, "cabin")).toBe(odd);
+    expect(requestLaunch(odd).launch).toBe(true);
   });
 });
 
-describe("the tower ride", () => {
-  test("arrival low on the hardstand, then the elevator rising smoothly to the arm's level", () => {
-    const a = towerCameraAt(0);
-    expect(a.pos[1] * UNIT_M).toBeLessThan(4);
-    const end = towerCameraAt(TOWER_RIDE.dur);
-    expect(Math.abs(end.pos[1] * UNIT_M - (ARM.floor + EYE))).toBeLessThan(0.05);
-    let prev = towerCameraAt(0);
-    for (let t = 1 / 30; t <= TOWER_RIDE.dur; t += 1 / 30) {
-      const c = towerCameraAt(t);
-      // < 14 m/s: a push and an elevator, never a swoop; the one cut is hidden in the dip to black
-      if (c.shot === prev.shot) expect(dist(c.pos, prev.pos) * UNIT_M * 30).toBeLessThan(14);
-      else expect(c.dip).toBeGreaterThan(0.9);
+describe("the launch complex shot", () => {
+  test("a slow push in on LV-001 from the hardstand, then the cut into the cabin", () => {
+    expect(18 / ROCKET_SCALE).toBeCloseTo(UNIT_M, 6); // 18 m per model unit drawn at 0.6: 30 m per scene unit
+    const a = padCameraAt(0);
+    const b = padCameraAt(PAD_SHOT.dur);
+    expect(a.pos[1] * UNIT_M).toBeLessThan(4); // eye height on the hardstand
+    expect(b.pos[1] * UNIT_M).toBeLessThan(4);
+    expect(dist(a.pos, b.pos)).toBeGreaterThan(0.5); // it moves in
+    let prev = a;
+    for (let t = 1 / 30; t <= PAD_SHOT.dur; t += 1 / 30) {
+      const c = padCameraAt(t);
+      expect(dist(c.pos, prev.pos) * UNIT_M * 30).toBeLessThan(14); // a push, never a swoop
       prev = c;
     }
-  });
-  test("the elevator ends at the tower, where the walk begins (no jump between them)", () => {
-    const end = towerCameraAt(TOWER_RIDE.dur);
-    const start = walkEye(0);
-    expect(Math.abs(end.pos[1] * UNIT_M - start[1])).toBeLessThan(0.1);
-    expect(Math.abs(end.pos[0] * UNIT_M - start[0])).toBeLessThan(0.01);
-    expect(Math.abs(end.pos[2] * UNIT_M - start[2])).toBeLessThan(0.01);
-  });
-});
-
-describe("the walk and the boarding", () => {
-  test("along the arm to the white room, pausing at the view and at the hatch", () => {
-    expect(walkEye(0)[0]).toBeCloseTo(ARM.start, 5);
-    expect(walkEye(WALK_LEN)[0]).toBeCloseTo(WALK.stops[1].x, 5);
-    expect(walkEye(1e9)[0]).toBeCloseTo(WALK.stops[1].x, 5);
-    expect(WALK.stops[0].x).toBeLessThan(ARM.start);
-    expect(WALK.stops[0].x).toBeGreaterThan(ARM.end);
-    expect(WALK.stops[1].x).toBeLessThan(WHITE_ROOM.x1);
-    expect(WALK_LEN / WALK.speed).toBeLessThan(40); // a walk, not a trek
-    expect(footfallsBetween(0, 7.2)).toBe(10);
-  });
-  test("boarding goes to the hatch, never through the hull, and dips before the cabin takes over", () => {
-    const h = CM_ON_PAD.hatch;
-    for (let t = 0; t <= BOARD.dur; t += 0.1) {
-      const e = boardEye(t);
-      expect(e.pos[0]).toBeGreaterThan(h.r);
-    }
-    expect(BOARD.dip[1]).toBe(BOARD.dur);
+    expect(PAD_SHOT.dur).toBeLessThan(12); // short: the cabin is where the player acts
+    expect(PAD_SHOT.cta).toBeLessThan(PAD_SHOT.dur);
+    expect(PAD_SHOT.call.at).toBeLessThan(PAD_SHOT.dur);
   });
 });
 
@@ -213,10 +163,7 @@ describe("words and voices", () => {
   test("every line the experience says is in the catalogue, in English and Portuguese", () => {
     const ids = new Set(comms.lines.map((l) => l.id));
     const wanted = [
-      ...SUIT_STEPS.flatMap((s) => s.calls.map((c) => c.id)),
-      "prelaunch.briefing",
-      ...WALK.stops.map((s) => s.call),
-      "prelaunch.elevator",
+      PAD_SHOT.call.id,
       ...CHECKLIST.map((c) => c.call),
       "prelaunch.crewReadyLaunch",
       ...COUNT.calls.map((c) => c.id),
@@ -228,6 +175,12 @@ describe("words and voices", () => {
         expect(v.en).toBeTruthy();
         expect(v.pt).toBeTruthy();
       }
+    }
+  });
+  test("the removed scenes' lines are gone from the catalogue", () => {
+    const ids = new Set(comms.lines.map((l) => l.id));
+    for (const id of ["prelaunch.suitCheck", "prelaunch.commHouston", "prelaunch.commCrew", "prelaunch.crewReady", "prelaunch.elevator", "prelaunch.armView", "prelaunch.whiteRoom"]) {
+      expect([id, ids.has(id)]).toEqual([id, false]);
     }
   });
   test("English and Portuguese have the same words on screen", () => {

@@ -2,12 +2,11 @@
  * LUNAVIA — COUNTDOWN TO LAUNCH: the optional pre-launch experience (pure; unit-tested).
  *
  * From the startup screen, PRE-LAUNCH EXPERIENCE (beside, and below, LAUNCH SEQUENCE — INITIATE)
- * plays the last hours before LV-001's launch, compressed into a few minutes:
+ * plays the last minutes before LV-001's launch:
  *
- *   suit     the suit room: SUIT CHECK, COMMUNICATIONS CHECK, CREW READY, the final briefing
- *   tower    arrival at the pad, then the elevator up the umbilical tower to the crew access level
- *   walkway  first person along the crew access arm to the white room (look around by touch)
- *   cabin    aboard the command module: the couches, the main display console, four panels to
+ *   pad      LV-001 on Launch Complex 39, seen from the hardstand (a short exterior shot), then a
+ *            cut to the cabin — no boarding is played
+ *   cabin    aboard the command module: the couches, the main display console, six panels to
  *            inspect, the six-item launch checklist, the hatch closed
  *   count    the terminal count from T-45 to T-15 inside the cabin
  *
@@ -17,14 +16,24 @@
  * PRE-LAUNCH, at any moment, hands over in the same way. The checklist is a simplified LUNAVIA
  * gameplay checklist, not a historical Apollo procedure; the radio is dramatized (synthetic voices).
  *
- * Units: metres, in the pad's frame (the rocket's axis at x = z = 0, the hardstand at y = 0, the
- * tower on +x), except where the launch scene's units are named (1 unit = UNIT_M = 30 m).
+ * The pad shot is in the launch scene's units (1 unit = 30 m; the rocket's axis at x = z = 0, the
+ * hardstand at y = 0, the tower on +x).
  */
-import { LIFTOFF_T, UNIT_M } from "./launchTimeline";
-import { CM_PROFILE } from "./csmDesign";
-import { CSM_MATED, ROCKET_M_PER_UNIT, UPPER_STAGE } from "./payloadDesign";
+import { LIFTOFF_T } from "./launchTimeline";
 
-export const STAGES = ["suit", "tower", "walkway", "cabin", "count"];
+export const STAGES = ["pad", "cabin", "count"];
+/**
+ * Stage names of the earlier, longer experience (suit room, tower ride, crew access arm), mapped to
+ * the stage that now stands in their place: anything before the cabin is the pad, the arm the cabin.
+ * Nothing stores a pre-launch stage (the mission's save starts at lunar descent), so this only
+ * keeps older tooling and any stale value harmless.
+ */
+const LEGACY_STAGE = { suit: "pad", tower: "pad", walkway: "cabin" };
+export function normalizeStage(stage) {
+  if (typeof stage !== "string") return null;
+  if (STAGES.includes(stage)) return stage;
+  return Object.prototype.hasOwnProperty.call(LEGACY_STAGE, stage) ? LEGACY_STAGE[stage] : null;
+}
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, u) => a + (b - a) * u;
@@ -37,50 +46,17 @@ const lerp3 = (a, b, u) => [lerp(a[0], b[0], u), lerp(a[1], b[1], u), lerp(a[2],
 /* ---- the pad, at the launch film's scale ----------------------------------------------------- */
 /** The rocket in the launch scene: drawn at 0.6 of its model, 18 m per model unit → 30 m per unit. */
 export const ROCKET_SCALE = 0.6;
-/** The command module on the pad (m): its base (the CM / SM interface) and its hatch. */
-export const CM_ON_PAD = (() => {
-  const base = (UPPER_STAGE.topUnits + CSM_MATED.y / ROCKET_M_PER_UNIT) * ROCKET_SCALE * UNIT_M;
-  // the hatch: centred 1.0 m up the CM's cone, on the side facing the tower (+x)
-  const hatchY = 1.0;
-  const [a, b] = [CM_PROFILE[1], CM_PROFILE[2]];
-  const r = a[0] + ((b[0] - a[0]) * (hatchY - a[1])) / (b[1] - a[1]);
-  return { base, hatch: { y: base + hatchY, r, w: 0.92, h: 0.82 }, coneSlope: Math.atan2(a[0] - b[0], b[1] - a[1]) };
-})();
-/** The umbilical tower's face (m from the axis) and the crew access arm (components/scenes/LaunchComplex). */
-export const TOWER = { face: 1.3 * UNIT_M, half: 0.25 * UNIT_M, top: 4.7 * UNIT_M };
-/** The crew access arm (m): its floor, width, inner height, and the white room at its end round the hatch. */
-export const ARM = {
-  floor: (0.18 + 0.32 * 9 + 0.0075) * UNIT_M, // the tower's grated floor at that level (LaunchComplex), 92.0 m: the hatch's sill ≈ 0.5 m above
-  width: 1.6,
-  height: 2.35,
-  start: TOWER.face + 1.4, // the elevator landing inside the tower
-  end: 3.4, // the arm meets the white room
-  windowEvery: 2.4, // the arm's side windows, a pane every 2.4 m
-};
-export const WHITE_ROOM = { x0: CM_ON_PAD.hatch.r + 0.3, x1: ARM.end, width: 3.2, height: 2.7 };
-export const EYE = 1.66; // eye height in the suit (m over the floor)
 
 /* ---- the words (EN / PT) ----------------------------------------------------------------------- */
 export const PRELAUNCH_TEXT = {
   en: {
     entry: "PRE-LAUNCH EXPERIENCE",
-    entrySub: "SUIT-UP · LAUNCH TOWER · CREW ACCESS ARM · COMMAND MODULE · FINAL COUNT",
+    entrySub: "LAUNCH COMPLEX · COMMAND MODULE · FINAL COUNT",
     skip: "SKIP PRE-LAUNCH",
     title: "COUNTDOWN TO LAUNCH",
     dramatized: "DRAMATIZED · SIMPLIFIED LUNAVIA PROCEDURES",
-    stages: { suit: "SUIT ROOM", tower: "LAUNCH COMPLEX 39", walkway: "CREW ACCESS ARM", cabin: "COMMAND MODULE", count: "TERMINAL COUNT" },
-    suit: {
-      suitCheck: "SUIT CHECK",
-      commCheck: "COMMUNICATIONS CHECK",
-      crewReady: "CREW READY",
-      done: { suitCheck: "SUITS PRESSURISED · HELMETS LOCKED", commCheck: "COMMUNICATIONS LOUD AND CLEAR", crewReady: "CREW READY" },
-      hint: "PREPARE THE CREW",
-      briefing: "FINAL CREW BRIEFING",
-      briefingItems: ["WEATHER · GO", "RANGE · GO", "LV-001 FUELLED · STABLE", "LAUNCH WINDOW · ON TIME", "RECOVERY FORCES · ON STATION"],
-      toPad: "TO THE LAUNCH PAD",
-    },
-    tower: { arrival: "ARRIVAL AT THE PAD · LV-001 ON LAUNCH COMPLEX 39", elevator: "ELEVATOR TO THE CREW ACCESS LEVEL · 92 M" },
-    walk: { look: "DRAG TO LOOK AROUND", walking: "CREW ACCESS ARM · 92 M ABOVE THE PAD", pause: "LOOK AROUND", go: "CONTINUE", whiteRoom: "THE WHITE ROOM · COMMAND MODULE HATCH", board: "BOARD THE SPACECRAFT" },
+    stages: { pad: "LAUNCH COMPLEX 39", cabin: "COMMAND MODULE", count: "TERMINAL COUNT" },
+    pad: { arrival: "LV-001 ON LAUNCH COMPLEX 39 · CREW ABOARD", toCabin: "TO THE COMMAND MODULE" },
     cabin: {
       seat: "COMMANDER'S COUCH · LEFT SEAT",
       look: "DRAG TO LOOK · TAP A PANEL TO INSPECT",
@@ -94,23 +70,12 @@ export const PRELAUNCH_TEXT = {
   },
   pt: {
     entry: "EXPERIÊNCIA PRÉ-LANÇAMENTO",
-    entrySub: "TRAJES · TORRE DE LANÇAMENTO · BRAÇO DE ACESSO · MÓDULO DE COMANDO · CONTAGEM FINAL",
+    entrySub: "COMPLEXO DE LANÇAMENTO · MÓDULO DE COMANDO · CONTAGEM FINAL",
     skip: "PULAR PRÉ-LANÇAMENTO",
     title: "CONTAGEM PARA O LANÇAMENTO",
     dramatized: "DRAMATIZADO · PROCEDIMENTOS SIMPLIFICADOS DO LUNAVIA",
-    stages: { suit: "SALA DE TRAJES", tower: "COMPLEXO DE LANÇAMENTO 39", walkway: "BRAÇO DE ACESSO DA TRIPULAÇÃO", cabin: "MÓDULO DE COMANDO", count: "CONTAGEM FINAL" },
-    suit: {
-      suitCheck: "VERIFICAR TRAJES",
-      commCheck: "VERIFICAR COMUNICAÇÕES",
-      crewReady: "TRIPULAÇÃO PRONTA",
-      done: { suitCheck: "TRAJES PRESSURIZADOS · CAPACETES TRAVADOS", commCheck: "COMUNICAÇÕES ALTO E CLARO", crewReady: "TRIPULAÇÃO PRONTA" },
-      hint: "PREPARE A TRIPULAÇÃO",
-      briefing: "BRIEFING FINAL DA TRIPULAÇÃO",
-      briefingItems: ["TEMPO · GO", "CAMPO DE LANÇAMENTO · GO", "LV-001 ABASTECIDO · ESTÁVEL", "JANELA DE LANÇAMENTO · NO HORÁRIO", "EQUIPES DE RESGATE · EM POSIÇÃO"],
-      toPad: "PARA A PLATAFORMA",
-    },
-    tower: { arrival: "CHEGADA À PLATAFORMA · LV-001 NO COMPLEXO 39", elevator: "ELEVADOR ATÉ O NÍVEL DE ACESSO · 92 M" },
-    walk: { look: "ARRASTE PARA OLHAR EM VOLTA", walking: "BRAÇO DE ACESSO DA TRIPULAÇÃO · 92 M ACIMA DA PLATAFORMA", pause: "OLHE EM VOLTA", go: "CONTINUAR", whiteRoom: "A SALA BRANCA · ESCOTILHA DO MÓDULO DE COMANDO", board: "EMBARCAR NA NAVE" },
+    stages: { pad: "COMPLEXO DE LANÇAMENTO 39", cabin: "MÓDULO DE COMANDO", count: "CONTAGEM FINAL" },
+    pad: { arrival: "LV-001 NO COMPLEXO DE LANÇAMENTO 39 · TRIPULAÇÃO A BORDO", toCabin: "PARA O MÓDULO DE COMANDO" },
     cabin: {
       seat: "ASSENTO DO COMANDANTE · LADO ESQUERDO",
       look: "ARRASTE PARA OLHAR · TOQUE NUM PAINEL PARA EXAMINAR",
@@ -125,83 +90,17 @@ export const PRELAUNCH_TEXT = {
 };
 export const prelaunchText = (lang) => PRELAUNCH_TEXT[lang === "pt" ? "pt" : "en"];
 
-/* ---- the suit room ------------------------------------------------------------------------------- */
-/** The three preparations, in order; each plays its calls and its moment, then the next is offered. */
-export const SUIT_STEPS = [
-  // "Helmets are locked" only once the last helmet is down and locked (helmetAt(2) = 1 at 6.0 s)
-  { id: "suitCheck", dur: 9.8, calls: [{ at: 6.6, id: "prelaunch.suitCheck" }] },
-  { id: "commCheck", dur: 7.5, calls: [{ at: 0.3, id: "prelaunch.commHouston" }, { at: 3.6, id: "prelaunch.commCrew" }] },
-  { id: "crewReady", dur: 4.0, calls: [{ at: 0.3, id: "prelaunch.crewReady" }] },
-];
-/** The final briefing from Mission Control, after CREW READY (s), its items appearing one by one. */
-export const BRIEFING = { dur: 13, call: { at: 0.4, id: "prelaunch.briefing" }, itemEvery: 1.6, itemFrom: 1.2 };
-/** The helmet lowered onto each astronaut during SUIT CHECK (0 raised .. 1 locked), crew i in turn. */
-export const HELMET = { from: 0.8, every: 1.8, dur: 1.6 };
-export function helmetAt(i, t) {
-  // t: seconds since SUIT CHECK began (null before it)
-  if (t == null) return 0;
-  const from = HELMET.from + i * HELMET.every;
-  return smooth((t - from) / HELMET.dur);
-}
-
-/* ---- the tower: arrival and the elevator (launch-scene units) --------------------------------- */
-export const TOWER_RIDE = { dur: 17, arrival: [0, 7.5], elevator: [7.5, 17], dip: 0.45 };
+/* ---- the launch complex: one exterior shot (launch-scene units, 1 = 30 m) ---------------------- */
 /**
- * The camera in the launch scene's units (1 = 30 m): a low push in at the pad, a short dip to black,
- * then the ride up inside the tower in the elevator at the arm's landing, the rocket beside it the
- * whole way, stopping at the arm's level exactly where the walk begins. `dip` 0..1 (the cut).
+ * LV-001 on its pad from the hardstand by the crawlerway: a slow push in towards the vehicle and
+ * its tower over Mission Control's final briefing (`call`), then a dip to black and a cut into the
+ * cabin. TO THE COMMAND MODULE is offered after `cta` s.
  */
-export function towerCameraAt(t) {
-  const [a0, a1] = TOWER_RIDE.arrival;
-  const [e0, e1] = TOWER_RIDE.elevator;
-  const d = TOWER_RIDE.dip;
-  const dip = Math.max(0, 1 - Math.abs(t - e0) / d);
-  if (t < e0) {
-    // on the hardstand by the crawlerway, looking up at LV-001 and its tower
-    const k = smooth((t - a0) / (a1 - a0));
-    return { pos: lerp3([-1.7, 0.07, 5.8], [-1.25, 0.08, 4.6], k), look: lerp3([0.3, 1.8, 0], [0.45, 2.2, 0], k), fov: 46, shot: "arrival", dip };
-  }
-  const u = clamp((t - e0) / (e1 - e0), 0, 1);
-  // an elevator's ride: a gentle start, a steady climb, a gentle stop
-  const A = 0.15;
-  const c = 1 / (1 - A); // the steady climb's rate, so that the ramps meet it without a kink
-  const k = u < A ? (c * u * u) / (2 * A) : u > 1 - A ? 1 - (c * (1 - u) * (1 - u)) / (2 * A) : c * (u - A / 2);
-  const yU = lerp(0.3, (ARM.floor + EYE) / UNIT_M, clamp(k, 0, 1));
-  const x = ARM.start / UNIT_M;
-  // looking out at the rocket, a little up while low (its height), level at the top
-  const lookY = yU + 0.9 * (1 - smooth(u / 0.9));
-  return { pos: [x, yU, 0], look: [0, lookY, 0], fov: lerp(52, 62, smooth(u)), shot: "elevator", dip };
+export const PAD_SHOT = { dur: 9, cta: 3, call: { at: 0.6, id: "prelaunch.briefing" } };
+export function padCameraAt(t) {
+  const k = smooth(t / PAD_SHOT.dur);
+  return { pos: lerp3([-1.7, 0.07, 5.8], [-1.25, 0.08, 4.6], k), look: lerp3([0.3, 1.8, 0], [0.45, 2.2, 0], k), fov: 46 };
 }
-
-/* ---- the crew access arm, walked (metres) ------------------------------------------------------- */
-/** The places the walk pauses (x along the arm, m from the rocket's axis) and what is said there. */
-export const WALK = {
-  speed: 1.35, // m/s, a measured pace in a pressure suit
-  stops: [
-    { x: 20, id: "view", call: "prelaunch.armView" },
-    { x: WHITE_ROOM.x1 - 0.9, id: "whiteRoom", call: "prelaunch.whiteRoom" },
-  ],
-  pauseMax: 9, // s: the walk resumes by itself
-};
-export const WALK_LEN = ARM.start - WALK.stops[1].x;
-/** The walker's eye (m) at a distance s walked from the elevator landing; the arm runs along −x. */
-export function walkEye(s) {
-  const x = ARM.start - clamp(s, 0, WALK_LEN);
-  // a slight sway with the steps (a suit's gait), none when standing
-  return [x, ARM.floor + EYE, 0];
-}
-export const stepBob = (s) => 0.022 * Math.abs(Math.sin((s / 0.72) * Math.PI));
-/** Boarding (s since BOARD): to the hatch and in, the view lowered to the sill, a dip as the cabin takes over. */
-export const BOARD = { dur: 3.2, dip: [2.3, 3.2] };
-export function boardEye(t) {
-  const k = smooth(t / BOARD.dur);
-  const h = CM_ON_PAD.hatch;
-  const from = walkEye(WALK_LEN);
-  const to = [h.r + 0.25, h.y + 0.05, 0];
-  return { pos: lerp3(from, to, k), look: [h.r - 2, h.y - 0.1 * k, 0] };
-}
-/** Drag-to-look limits (rad) on the walk: the view turns freely enough to see the rocket and the drop. */
-export const WALK_LOOK = { yaw: [-2.0, 2.0], pitch: [-0.95, 0.75] };
 export const clampLook = ({ yaw, pitch }, lim) => ({ yaw: clamp(yaw, lim.yaw[0], lim.yaw[1]), pitch: clamp(pitch, lim.pitch[0], lim.pitch[1]) });
 
 /* ---- the command module's cabin ------------------------------------------------------------------ */
@@ -310,24 +209,16 @@ export const dueCalls = (elapsed, said) => COUNT.calls.filter((c) => COUNT.from 
 /* ---- the whole experience ------------------------------------------------------------------------ */
 /**
  * The experience's state (React holds it; this decides what may follow what):
- * { stage, suitDone: [], briefing: bool, launched: bool }. The launch is requested once only:
+ * { stage, launched: bool }. The launch is requested once only:
  * requestLaunch() returns { state, launch } with launch true the first time and never again.
  */
-export function createPreLaunch() {
-  return { stage: "suit", suitDone: [], briefing: false, launched: false };
+export function createPreLaunch(stage = "pad") {
+  return { stage: normalizeStage(stage) || "pad", launched: false };
 }
-export const nextSuitStep = (st) => SUIT_STEPS.find((s) => !st.suitDone.includes(s.id)) || null;
-export function doSuitStep(st, id) {
-  const n = nextSuitStep(st);
-  if (st.stage !== "suit" || !n || n.id !== id) return st;
-  const suitDone = [...st.suitDone, id];
-  return { ...st, suitDone, briefing: suitDone.length === SUIT_STEPS.length };
-}
-const ORDER = { suit: 0, tower: 1, walkway: 2, cabin: 3, count: 4 };
+const ORDER = { pad: 0, cabin: 1, count: 2 };
 /** Move on to a later stage (never back; the count only once the checklist is complete). */
 export function advance(st, stage, { checklistDone = false } = {}) {
-  if (st.launched || !(stage in ORDER) || ORDER[stage] <= ORDER[st.stage]) return st;
-  if (stage === "tower" && st.suitDone.length < SUIT_STEPS.length) return st;
+  if (st.launched || !(stage in ORDER) || !(st.stage in ORDER) || ORDER[stage] <= ORDER[st.stage]) return st;
   if (stage === "count" && !checklistDone) return st;
   return { ...st, stage };
 }
@@ -335,7 +226,3 @@ export function requestLaunch(st) {
   if (st.launched) return { state: st, launch: false };
   return { state: { ...st, launched: true }, launch: true };
 }
-
-/* ---- sound cues on the walk (procedural, hooks/useMissionAudio prelaunchCue) ------------------- */
-/** Footfalls on the arm's grating: one per step while walking (0.72 m a step). */
-export const footfallsBetween = (s0, s1) => Math.max(0, Math.floor(s1 / 0.72) - Math.floor(s0 / 0.72));

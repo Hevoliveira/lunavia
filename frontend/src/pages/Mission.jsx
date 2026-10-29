@@ -101,7 +101,7 @@ import { MissionSaveNotice, NewMissionConfirm } from "@/components/missions/Miss
  */
 const STATES = {
   CONTROL: "control",          // startup: THE ROAD TO THE MOON, waiting for LAUNCH SEQUENCE — INITIATE
-  PRELAUNCH: "prelaunch",      // COUNTDOWN TO LAUNCH (optional, PRE-LAUNCH EXPERIENCE): suit room, tower, arm, cabin, count to T-15
+  PRELAUNCH: "prelaunch",      // COUNTDOWN TO LAUNCH (optional, PRE-LAUNCH EXPERIENCE): launch complex, command module, checklist, count to T-15
   LAUNCH: "launch",            // LV-001 from the pad to TLI
   MENU: "menu",                // after START MISSIONS: MISSIONS or TRAINING
   SELECT: "select",            // MISSIONS: destination, then pilot difficulty

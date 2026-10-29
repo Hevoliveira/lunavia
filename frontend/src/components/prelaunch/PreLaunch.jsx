@@ -2,14 +2,11 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import {
-  BRIEFING,
   CABIN_LOOK,
   CABIN_PANELS,
   CHECKLIST,
   HATCH_CLOSE,
-  SUIT_STEPS,
-  TOWER_RIDE,
-  WALK_LOOK,
+  PAD_SHOT,
   advance,
   checklistComplete,
   clampLook,
@@ -17,21 +14,19 @@ import {
   countAt,
   createChecklist,
   createPreLaunch,
-  doSuitStep,
   dueCalls,
-  helmetAt,
   nextItem,
-  nextSuitStep,
+  normalizeStage,
   prelaunchText,
   requestLaunch,
 } from "@/data/preLaunch";
 import { setSubtitlePlacement } from "@/components/CommsSubtitles";
-import SuitRoom from "./SuitRoom";
 import PadScene from "./PadScene";
 import CmCabin from "./CmCabin";
 
 /*
- * COUNTDOWN TO LAUNCH — the optional pre-launch experience (data/preLaunch): its scenes, its
+ * COUNTDOWN TO LAUNCH — the optional pre-launch experience (data/preLaunch): the launch complex,
+ * a cut into the command module, the checklist and the terminal count. Its scenes, its
  * screen layer (stage, the few controls, captions that read with the sound off), its sound and
  * radio, and the one way out: the launch, requested once (the count reaching T-15, or SKIP
  * PRE-LAUNCH at any moment), which the mission turns into the existing launch film.
@@ -45,39 +40,33 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
   const L = prelaunchText(lang);
   const pt = lang === "pt";
   // validation tooling may open the experience at a later place (window.__lvPrelaunchJump =
-  // "tower" | "walkway" | "cabin", read once): the earlier places are taken as done
+  // "pad" | "cabin", read once; older names map through normalizeStage)
   const jump = useRef(undefined);
   if (jump.current === undefined) {
-    jump.current = typeof window !== "undefined" && ["tower", "walkway", "cabin"].includes(window.__lvPrelaunchJump) ? window.__lvPrelaunchJump : null;
+    const j = typeof window !== "undefined" ? normalizeStage(window.__lvPrelaunchJump) : null;
+    jump.current = j === "cabin" ? "cabin" : null;
     if (typeof window !== "undefined") window.__lvPrelaunchJump = null;
   }
-  const [st, setSt] = useState(() => {
-    const s0 = createPreLaunch();
-    if (!jump.current) return s0;
-    return { ...s0, suitDone: SUIT_STEPS.map((x) => x.id), briefing: true, stage: jump.current };
-  });
+  const [st, setSt] = useState(() => createPreLaunch(jump.current || "pad"));
   const stRef = useRef(st);
   stRef.current = st;
   const [, setTick] = useState(0);
   const [fade, setFade] = useState(1); // the dip to black between places (1 black .. 0 clear)
-  const [scene, setScene] = useState(() => (jump.current === "cabin" ? "cabin" : jump.current ? "pad" : "suit")); // the canvas on screen: suit | pad | cabin
+  const [scene, setScene] = useState(() => (jump.current === "cabin" ? "cabin" : "pad")); // the canvas on screen: pad | cabin
   const said = useRef(new Set());
   const say = (id) => {
     if (said.current.has(id)) return;
     said.current.add(id);
     if (audio && audio.say) audio.say(id);
   };
-  const cue = (k, d) => audio && audio.prelaunchCue && audio.prelaunchCue(k, d);
+  const cue = (k) => audio && audio.prelaunchCue && audio.prelaunchCue(k);
   const bed = (k) => audio && audio.prelaunchBed && audio.prelaunchBed(k);
 
   // what the scenes read (and, for the pad, advance)
-  const suitCtl = useRef({ step: null, stepT: 0, done: [], briefing: false, briefingT: 0 });
-  const padCtl = useRef({ stage: jump.current === "walkway" ? "walkway" : "tower", towerT: 0, s: 0, stop: -1, paused: false, pauseT: 0, resume: false, boardT: null, look: { yaw: 0, pitch: 0 }, steps: 0, events: [], dip: 0, toWalk: null, onBoarded: null });
+  const padCtl = useRef({ t: 0, onDone: null });
   const cabCtl = useRef({ look: { ...CABIN_LOOK.rest }, focus: null, ck: createChecklist(), now: 0, pick: null, counting: false });
   const countT = useRef(null);
   const last = useRef(performance.now());
-  const stepsHeard = useRef(0);
-  const elevatorCued = useRef(false);
   const launchedRef = useRef(false);
 
   const launch = useCallback(() => {
@@ -102,7 +91,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
 
   useEffect(() => {
     if (audio && audio.init) audio.init();
-    bed("room");
+    bed(jump.current === "cabin" ? "cabin" : "pad");
     const t0 = setTimeout(() => setFade(0), 200);
     return () => {
       clearTimeout(t0);
@@ -111,7 +100,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // the experience's clock: steps, calls, cues and the count (the pad's walk keeps its own, per frame)
+  // the experience's clock: the count and its calls (the pad shot keeps its own, per frame)
   useEffect(() => {
     const id = setInterval(() => {
       const now = performance.now();
@@ -119,39 +108,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
       last.current = now;
       const s = stRef.current;
       if (s.launched) return;
-      const sc = suitCtl.current;
-      if (s.stage === "suit") {
-        if (sc.step) {
-          sc.stepT += dt;
-          const step = SUIT_STEPS.find((x) => x.id === sc.step);
-          for (const c of step.calls) if (sc.stepT >= c.at) say(c.id);
-          if (sc.step === "suitCheck") for (let i = 0; i < 3; i++) if (helmetAt(i, sc.stepT) >= 0.98) (said.current.has(`helmet${i}`) ? null : (said.current.add(`helmet${i}`), cue("helmet")));
-          if (sc.stepT >= step.dur) {
-            sc.done = [...sc.done, sc.step];
-            sc.step = null;
-            if (sc.done.length === SUIT_STEPS.length) sc.briefing = true;
-          }
-        } else if (sc.briefing) {
-          sc.briefingT += dt;
-          if (sc.briefingT >= BRIEFING.call.at) say(BRIEFING.call.id);
-        }
-      }
-      const pc = padCtl.current;
-      if (s.stage === "tower" && !elevatorCued.current && pc.towerT >= TOWER_RIDE.elevator[0] + 0.2) {
-        elevatorCued.current = true;
-        cue("elevator", TOWER_RIDE.elevator[1] - TOWER_RIDE.elevator[0] - 0.2);
-        say("prelaunch.elevator");
-      }
-      if (s.stage === "walkway") {
-        while (stepsHeard.current < pc.steps) {
-          stepsHeard.current += 1;
-          cue("step");
-        }
-        while (pc.events.length) {
-          const e = pc.events.shift();
-          if (e.call) say(e.call);
-        }
-      }
+      if (s.stage === "pad" && padCtl.current.t >= PAD_SHOT.call.at) say(PAD_SHOT.call.id);
       if (s.stage === "count" && countT.current != null) {
         countT.current += dt;
         for (const c of dueCalls(countT.current, said.current)) say(c.id);
@@ -164,53 +121,19 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [launch]);
 
-  // the pad's own transitions (from its frame loop)
-  padCtl.current.toWalk = () => {
-    if (stRef.current.stage !== "tower") return;
-    const n = advance(stRef.current, "walkway");
+  /* ---- the cut from the launch complex into the cabin (no boarding is played) ---- */
+  const toCabin = () => {
+    if (stRef.current.stage !== "pad") return;
+    const n = advance(stRef.current, "cabin");
+    if (n === stRef.current) return;
     stRef.current = n;
     setSt(n);
-    padCtl.current.stage = "walkway";
-    bed("arm");
+    padCtl.current.onDone = null;
+    goTo("cabin", () => bed("cabin"));
   };
-  padCtl.current.onBoarded = padCtl.current.onBoarded || null;
+  padCtl.current.onDone = stRef.current.stage === "pad" ? toCabin : null;
 
   /* ---- the player's actions ---- */
-  const suitStep = (id) => {
-    const sc = suitCtl.current;
-    if (sc.step) return;
-    const n = doSuitStep(stRef.current, id);
-    if (n === stRef.current) return;
-    stRef.current = n;
-    setSt(n);
-    sc.step = id;
-    sc.stepT = 0;
-    cue("switch");
-  };
-  const toPad = () => {
-    const n = advance(stRef.current, "tower");
-    if (n === stRef.current) return;
-    stRef.current = n;
-    setSt(n);
-    goTo("pad", () => bed("pad"));
-  };
-  const walkContinue = () => {
-    padCtl.current.resume = true;
-  };
-  const board = () => {
-    const pc = padCtl.current;
-    if (pc.boardT != null) return;
-    pc.boardT = 0;
-    pc.onBoarded = () => {
-      const n = advance(stRef.current, "cabin");
-      stRef.current = n;
-      setSt(n);
-      setScene("cabin");
-      setFade(1);
-      setTimeout(() => setFade(0), 350);
-      bed("cabin");
-    };
-  };
   const check = (id) => {
     const cc = cabCtl.current;
     const ck = confirmItem(cc.ck, id, cc.now);
@@ -238,7 +161,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
     setTick((x) => x + 1);
   };
 
-  /* ---- touch: drag to look (the arm, the cabin), tap a panel ---- */
+  /* ---- touch: drag to look (the cabin), tap a panel ---- */
   const drag = useRef(null);
   const onDown = (e) => {
     drag.current = { x: e.clientX, y: e.clientY, moved: 0 };
@@ -252,10 +175,7 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
     d.y = e.clientY;
     d.moved += Math.abs(dx) + Math.abs(dy);
     const k = 0.006;
-    if (stRef.current.stage === "walkway") {
-      const p = padCtl.current;
-      p.look = clampLook({ yaw: p.look.yaw + dx * k, pitch: p.look.pitch + dy * k }, WALK_LOOK);
-    } else if (stRef.current.stage === "cabin" || stRef.current.stage === "count") {
+    if (stRef.current.stage === "cabin" || stRef.current.stage === "count") {
       const c = cabCtl.current;
       if (c.focus) return;
       c.look = clampLook({ yaw: c.look.yaw + dx * k, pitch: c.look.pitch + dy * k }, CABIN_LOOK);
@@ -273,11 +193,9 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
   };
 
   /* ---- what is on screen ---- */
-  const sc = suitCtl.current;
   const pc = padCtl.current;
   const cc = cabCtl.current;
   const stage = st.stage;
-  const next = nextSuitStep(st);
   const nextCk = nextItem(cc.ck);
   const ckDone = checklistComplete(cc.ck);
   // in the cabin the subtitles keep to the left of the checklist; everywhere else, as always
@@ -286,27 +204,17 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
     setSubtitlePlacement(subSide ? "side" : "default");
   }, [subSide]);
   useEffect(() => () => setSubtitlePlacement("default"), []);
-  const briefDone = sc.briefing && sc.briefingT >= BRIEFING.dur;
   const panel = cc.focus ? CABIN_PANELS.find((p) => p.id === cc.focus) : null;
   const count = stage === "count" && countT.current != null ? countAt(countT.current) : null;
-  const dip = Math.max(fade, stage === "tower" || stage === "walkway" ? pc.dip || 0 : 0, count ? count.dip : 0);
-  const towerCap = stage === "tower" ? (pc.towerT < TOWER_RIDE.elevator[0] ? L.tower.arrival : L.tower.elevator) : null;
-  const atStop = stage === "walkway" && pc.paused && pc.boardT == null ? pc.stop : -1;
+  const dip = Math.max(fade, count ? count.dip : 0);
 
   const btn = "pointer-events-auto font-mono text-[11px] short:text-[10px] tracking-[0.22em] px-4 py-2.5 touch:min-h-[44px] border transition-colors";
   return (
     <div className="absolute inset-0 bg-black overflow-hidden" data-testid="prelaunch-root" data-stage={stage} data-scene={scene}>
       {/* the scene of the moment (each built for its place, released when it is left) */}
       <div className="absolute inset-0" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => (drag.current = null)} style={{ touchAction: "none" }}>
-        {scene === "suit" && (
-          <Canvas key="suit" dpr={[1, 2]} camera={{ fov: 50, near: 0.05, far: 60 }} gl={GL} onCreated={({ gl }) => gl.setClearColor("#000000")}>
-            <Suspense fallback={null}>
-              <SuitRoom ctl={suitCtl} />
-            </Suspense>
-          </Canvas>
-        )}
         {scene === "pad" && (
-          <Canvas key="pad" dpr={[1, 2]} shadows camera={{ fov: 44, near: 0.0008, far: 300 }} gl={GL} onCreated={({ gl }) => gl.setClearColor("#000000")}>
+          <Canvas key="pad" dpr={[1, 2]} shadows camera={{ fov: 46, near: 0.01, far: 300 }} gl={GL} onCreated={({ gl }) => gl.setClearColor("#000000")}>
             <Suspense fallback={null}>
               <PadScene ctl={padCtl} />
             </Suspense>
@@ -336,81 +244,15 @@ export default function PreLaunch({ audio = null, lang = "en", onLaunch }) {
         {L.skip} ›
       </button>
 
-      {/* the suit room: the three preparations, then the briefing */}
-      {stage === "suit" && !sc.briefing && (
-        <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb flex flex-col gap-2 short:gap-1.5 z-20 bg-black/70 border border-white/15 p-2.5 short:p-2 max-w-[calc(100vw-var(--sal)-var(--sar)-18.5rem)]" data-testid="suit-steps">
-          <div className="font-mono text-[10px] tracking-[0.3em] text-zinc-200">{L.suit.hint}</div>
-          <div className="flex flex-wrap gap-2">
-            {SUIT_STEPS.map((s) => {
-              const done = sc.done.includes(s.id);
-              const playing = sc.step === s.id;
-              const ready = !sc.step && next && next.id === s.id;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  disabled={!ready}
-                  onClick={() => suitStep(s.id)}
-                  data-testid={`suit-step-${s.id}`}
-                  data-state={done ? "done" : playing ? "playing" : ready ? "ready" : "locked"}
-                  className={`${btn} ${done ? "border-[#4fd1c5] text-[#7ff0e4] bg-[#0f2a28]" : playing ? "border-white text-white bg-white/15" : ready ? "border-[#FF3B00] text-white bg-[#FF3B00]/85 hover:bg-[#FF3B00]" : "border-white/30 text-zinc-300 bg-black/60"}`}
-                >
-                  {done ? "✓ " : playing ? "● " : ""}
-                  {L.suit[s.id]}
-                </button>
-              );
-            })}
-          </div>
-          {sc.step && (
-            <div className="font-mono text-[10px] tracking-[0.22em] text-white px-1 border-l-2 border-[#4fd1c5]" data-testid="suit-caption">
-              {L.suit[sc.step]} …
-            </div>
-          )}
-          {!sc.step && sc.done.length > 0 && (
-            <div className="font-mono text-[10px] tracking-[0.22em] text-[#7ff0e4] px-1 border-l-2 border-[#4fd1c5]">✓ {L.suit.done[sc.done[sc.done.length - 1]]}</div>
-          )}
-        </div>
-      )}
-      {stage === "suit" && sc.briefing && (
-        <div className="absolute top-[calc(var(--hud-top)+0.25rem)] right-6 md:right-10 safe-mr z-20 pointer-events-none">
-          <div className="bg-black/60 backdrop-blur-sm border border-white/15 px-5 py-4 short:px-4 short:py-3 w-[300px] short:w-[260px]" data-testid="prelaunch-briefing">
-            <div className="font-mono text-[10px] tracking-[0.35em] text-[#FF3B00] mb-2">● {L.suit.briefing}</div>
-            {L.suit.briefingItems.map((it, i) =>
-              sc.briefingT >= BRIEFING.itemFrom + i * BRIEFING.itemEvery ? (
-                <div key={it} className="font-mono text-[10px] short:text-[9px] tracking-[0.22em] text-white py-1 border-b border-white/10 scan-in">
-                  {it}
-                </div>
-              ) : null
-            )}
-            {briefDone && (
-              <button type="button" onClick={toPad} data-testid="prelaunch-topad" className={`${btn} mt-3 w-full border-[#FF3B00] text-white bg-[#FF3B00]/15 hover:bg-[#FF3B00]`}>
-                {L.suit.toPad} ›
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* the tower and the walk: captions, CONTINUE at the view, BOARD at the hatch */}
-      {towerCap && (
-        <div className="absolute bottom-6 short:bottom-3 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb max-w-[calc(100vw-var(--sal)-var(--sar)-18.5rem)] bg-black/70 border-l-2 border-[#4fd1c5] px-3 py-1.5 font-mono text-[10px] tracking-[0.25em] text-white pointer-events-none" data-testid="prelaunch-caption">
-          {towerCap}
-        </div>
-      )}
-      {stage === "walkway" && (
+      {/* the launch complex: the caption, and the way into the cabin (it also follows by itself) */}
+      {stage === "pad" && (
         <div className="absolute bottom-6 short:bottom-2 left-[calc(var(--sal)+1rem)] md:left-[calc(var(--sal)+2rem)] safe-mb flex flex-col items-start gap-2 z-20 max-w-[calc(100vw-var(--sal)-var(--sar)-18.5rem)]">
           <div className="bg-black/70 border-l-2 border-[#4fd1c5] px-3 py-1.5 font-mono text-[10px] tracking-[0.25em] text-white pointer-events-none" data-testid="prelaunch-caption">
-            {atStop === 1 ? L.walk.whiteRoom : L.walk.walking}
-            <div className="text-[9px] tracking-[0.25em] text-zinc-300 mt-0.5">{L.walk.look}</div>
+            {L.pad.arrival}
           </div>
-          {atStop === 0 && (
-            <button type="button" onClick={walkContinue} data-testid="walk-continue" className={`${btn} self-start border-[#FF3B00] text-white bg-[#FF3B00]/15 hover:bg-[#FF3B00]`}>
-              {L.walk.go} ›
-            </button>
-          )}
-          {atStop === 1 && (
-            <button type="button" onClick={board} data-testid="walk-board" className={`${btn} self-start border-[#FF3B00] text-white bg-[#FF3B00]/15 hover:bg-[#FF3B00]`}>
-              {L.walk.board} ›
+          {pc.t >= PAD_SHOT.cta && (
+            <button type="button" onClick={toCabin} data-testid="pad-to-cabin" className={`${btn} self-start border-[#FF3B00] text-white bg-[#FF3B00]/15 hover:bg-[#FF3B00]`}>
+              {L.pad.toCabin} ›
             </button>
           )}
         </div>
