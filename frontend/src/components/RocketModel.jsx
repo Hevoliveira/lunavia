@@ -59,12 +59,12 @@ function makePanelTextures(seed, { rows, cols, label, soot = 0 }) {
   c.height = H;
   const ctx = c.getContext("2d");
   const r = rng(seed);
-  ctx.fillStyle = "#efede6";
+  ctx.fillStyle = "#ebe9e2";
   ctx.fillRect(0, 0, W, H);
-  // Panel tone variation: painted panels never match exactly
+  // Panel tone variation, kept small: at the distances the vehicle is seen a stronger one reads as a grid
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
-      const v = 230 + Math.floor(r() * 14);
+      const v = 233 + Math.floor(r() * 6);
       ctx.fillStyle = `rgb(${v},${v - 1},${v - 5})`;
       ctx.fillRect((x * W) / cols + 1, (y * H) / rows + 1, W / cols - 2, H / rows - 2);
     }
@@ -81,27 +81,27 @@ function makePanelTextures(seed, { rows, cols, label, soot = 0 }) {
     ctx.fillStyle = g;
     ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
   }
-  // Longitudinal seams: thin and faint, a hairline of shadow beside a hairline of light
+  // Longitudinal seams: hairlines, barely there (a tank skin shows its welds only up close)
   for (let x = 0; x <= cols; x++) {
     const px = Math.round((x * W) / cols) + 0.5;
-    ctx.strokeStyle = `rgba(110,108,102,${0.18 + r() * 0.12})`;
+    ctx.strokeStyle = `rgba(110,108,102,${0.05 + r() * 0.05})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(px, 0);
     ctx.lineTo(px, H);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
     ctx.beginPath();
     ctx.moveTo(px + 1, 0);
     ctx.lineTo(px + 1, H);
     ctx.stroke();
   }
-  // Circumferential welds: every other one a heavier weld land with its rivet rows
+  // Circumferential welds: only the structural frames (every fourth) show as a line; the rest are faint
   for (let y = 0; y <= rows; y++) {
     const py = Math.round((y * H) / rows) + 0.5;
-    const heavy = y % 2 === 0;
-    ctx.strokeStyle = heavy ? "rgba(96,94,88,0.62)" : "rgba(118,116,110,0.32)";
-    ctx.lineWidth = heavy ? 2.5 : 1.2;
+    const heavy = y % 4 === 0;
+    ctx.strokeStyle = heavy ? "rgba(96,94,88,0.5)" : "rgba(118,116,110,0.1)";
+    ctx.lineWidth = heavy ? 2.5 : 1;
     ctx.beginPath();
     ctx.moveTo(0, py);
     ctx.lineTo(W, py);
@@ -214,16 +214,19 @@ function makePanelTextures(seed, { rows, cols, label, soot = 0 }) {
       bctx.fillRect((x * 512) / cols, (y * 1024) / rows, 512 / cols, 1024 / rows);
     }
   }
-  bctx.strokeStyle = "#404040";
-  bctx.lineWidth = 2;
+  // Seams in the bump: hairline longitudinal ones, and only the structural frames (every fourth
+  // weld) as a real groove, so the skin does not read as a grid at viewing distance
+  bctx.strokeStyle = "#a6a6a6";
+  bctx.lineWidth = 1;
   for (let x = 0; x <= cols; x++) {
     bctx.beginPath();
     bctx.moveTo((x * 512) / cols, 0);
     bctx.lineTo((x * 512) / cols, 1024);
     bctx.stroke();
   }
+  bctx.strokeStyle = "#5a5a5a";
   bctx.lineWidth = 3;
-  for (let y = 0; y <= rows; y++) {
+  for (let y = 0; y <= rows; y += 4) {
     bctx.beginPath();
     bctx.moveTo(0, (y * 1024) / rows);
     bctx.lineTo(512, (y * 1024) / rows);
@@ -231,7 +234,7 @@ function makePanelTextures(seed, { rows, cols, label, soot = 0 }) {
   }
   // Rivet rows either side of the circumferential welds
   bctx.fillStyle = "#e8e8e8";
-  for (let y = 0; y <= rows; y++) {
+  for (let y = 0; y <= rows; y += 4) {
     for (let x = 0; x < 512; x += 8) {
       bctx.fillRect(x, (y * 1024) / rows - 6, 2, 2);
       bctx.fillRect(x + 4, (y * 1024) / rows + 5, 2, 2);
@@ -563,7 +566,15 @@ function buildBatches(geo) {
   [0.9, 1.5, 2.1].forEach((y) => white1.push(put(new THREE.CylinderGeometry(0.384, 0.384, 0.022, 32), m4([0, y, 0]))));
   // Systems raceway (cable tunnel) up the booster with clamp straps
   const RW = Math.PI / 6;
-  white1.push(put(new THREE.BoxGeometry(0.05, 1.66, 0.028), m4([Math.cos(RW) * 0.392, 1.47, Math.sin(RW) * 0.392], [0, -RW, 0])));
+  const tunnel1 = [put(new THREE.CylinderGeometry(0.034, 0.034, 1.66, 12, 1, true, -Math.PI / 2, Math.PI), m4([Math.cos(RW) * 0.384, 1.47, Math.sin(RW) * 0.384], [0, -RW + Math.PI / 2, 0]))];
+  [-1, 1].forEach((sd) => {
+    const a = RW + sd * 0.085;
+    hw1.push(put(new THREE.BoxGeometry(0.008, 1.66, 0.012), m4([Math.cos(a) * 0.387, 1.47, Math.sin(a) * 0.387], [0, -a, 0])));
+  });
+  // Access and umbilical panels, darker, large enough to read at the distances the vehicle is seen
+  [[0.85, 2.0, 0.07, 0.1], [1.25, 4.1, 0.06, 0.08], [1.95, 1.2, 0.06, 0.07], [2.35, 3.0, 0.05, 0.09], [0.7, 5.3, 0.05, 0.06]].forEach(([y, a, w, h]) => {
+    tunnel1.push(put(new THREE.BoxGeometry(0.008, h, w), m4([Math.cos(a) * 0.386, y, Math.sin(a) * 0.386], [0, -a, 0])));
+  });
   for (let y = 0.7; y < 2.3; y += 0.2) {
     hw1.push(put(new THREE.BoxGeometry(0.062, 0.012, 0.034), m4([Math.cos(RW) * 0.393, y, Math.sin(RW) * 0.393], [0, -RW, 0])));
   }
@@ -683,6 +694,7 @@ function buildBatches(geo) {
     inner1: merge(inner1),
     hw1: merge(hw1),
     white1: merge(white1),
+    tunnel1: merge(tunnel1),
     orange1: merge(orange1),
     cavity1: merge(cavity1),
     heat1: merge(heat1),
@@ -722,10 +734,12 @@ function shared() {
     },
     batch: null,
     mat: {
-      paint1: new THREE.MeshStandardMaterial({ map: s1.map, roughnessMap: s1.rough, bumpMap: s1.bump, bumpScale: 0.6, roughness: 0.62, metalness: 0.08 }),
-      paint2: new THREE.MeshStandardMaterial({ map: s2.map, roughnessMap: s2.rough, bumpMap: s2.bump, bumpScale: 0.6, roughness: 0.6, metalness: 0.08 }),
+      // Painted aluminium: a satin paint with a light clearcoat, so each stage shows a broad sheen
+      // along its length (its curvature) instead of clipping to a flat white in sunlight
+      paint1: new THREE.MeshPhysicalMaterial({ map: s1.map, roughnessMap: s1.rough, bumpMap: s1.bump, bumpScale: 0.45, roughness: 0.55, metalness: 0.05, clearcoat: 0.3, clearcoatRoughness: 0.32 }),
+      paint2: new THREE.MeshPhysicalMaterial({ map: s2.map, roughnessMap: s2.rough, bumpMap: s2.bump, bumpScale: 0.45, roughness: 0.55, metalness: 0.05, clearcoat: 0.3, clearcoatRoughness: 0.32 }),
       heat: new THREE.MeshStandardMaterial({ color: "#4a4744", roughness: 0.92, metalness: 0.05, bumpMap: makeQuiltBump(), bumpScale: 1.5, side: THREE.DoubleSide }),
-      white: new THREE.MeshStandardMaterial({ color: "#eeede8", roughness: 0.5, metalness: 0.12 }),
+      white: new THREE.MeshPhysicalMaterial({ color: "#e4e2db", roughness: 0.52, metalness: 0.08, clearcoat: 0.3, clearcoatRoughness: 0.32 }),
       orange: new THREE.MeshStandardMaterial({ color: "#FF3B00", roughness: 0.52, metalness: 0.1 }),
       black: new THREE.MeshStandardMaterial({ color: "#16171a", roughness: 0.62, metalness: 0.25, bumpMap: corrugation, bumpScale: 1.2 }),
       structure: new THREE.MeshStandardMaterial({ color: "#8e939a", roughness: 0.42, metalness: 0.72, bumpMap: stringers, bumpScale: 0.8 }),
@@ -965,6 +979,7 @@ export default function RocketModel({ scale = 1, rigRef = null, ctrlRef = null }
         <mesh geometry={S.batch.cavity1} material={S.mat.cavity} />
         <mesh geometry={S.batch.heat1} material={S.mat.heat} />
         <mesh geometry={S.batch.white1} material={S.mat.white} />
+        <mesh geometry={S.batch.tunnel1} material={S.mat.structure} />
         <mesh geometry={S.batch.orange1} material={S.mat.orange} />
 
         {/* Thrust-section skirt (flared, ribbed, open aft) */}
