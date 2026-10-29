@@ -39,9 +39,21 @@ const emit = (e) => listeners.forEach((fn) => fn(e));
 export const DUCK = { normal: 0.35, critical: 0.25 };
 const estimate = (text) => Math.max(0.8, text.split(/\s+/).length * 0.36 + 0.3);
 
+// Every radio event of this session (queued, started, voiced or silent and why, cut, dropped,
+// ended), kept in a small ring for AUDIO DIAGNOSTICS: after a launch the player can copy it.
+const TRACE_MAX = 400;
+const trace = [];
 function log(e) {
-  if (typeof window !== "undefined" && window.__lvCommsLog) window.__lvCommsLog.push({ ...e, wall: Date.now() });
+  const eng = getEngine();
+  const rec = { ...e, wall: Date.now(), ctx: eng ? eng.ctx.state : "none", page: typeof location !== "undefined" ? location.pathname : "" };
+  trace.push(rec);
+  if (trace.length > TRACE_MAX) trace.splice(0, trace.length - TRACE_MAX);
+  if (typeof window !== "undefined" && window.__lvCommsLog) window.__lvCommsLog.push({ ...e, wall: rec.wall });
 }
+export const getRadioTrace = () => trace.slice();
+export const clearRadioTrace = () => trace.splice(0, trace.length);
+/** The voice pack the radio plays from (AUDIO DIAGNOSTICS loads its test clip through it). */
+export const voicePack = pack;
 
 const FALLBACK_RESPELL = { en: [[/\bLUNAVIA\b/g, "Lunavia"]], pt: [[/\bLUNAVIA\b/g, "Lunavia"], [/\bTLI\b/g, "tê éle i"]] };
 
@@ -93,6 +105,7 @@ function transmit({ id, line, variant, keyed }, done) {
   let ducked = false;
   let handle = null;
   let stopped = false;
+  let file = null;
   const begin = (dur) => {
     if (voiced) {
       // Effects dip under Houston (-9 dB, -12 dB for a critical call) so the voice stays clear of
@@ -128,7 +141,7 @@ function transmit({ id, line, variant, keyed }, done) {
     lastOutcome = { id, voiced: false, reason, at: Date.now() };
     const dur = pack.duration(lang, id, variant) || estimate(text[lang]);
     begin(dur);
-    log({ type: "silent", id, lang, reason });
+    log({ type: "silent", id, lang, reason, file: file || pack.file(lang, id, variant) });
     const t = setTimeout(end, dur * 1000 + 250);
     handle = { stop: () => clearTimeout(t) };
   };
@@ -160,30 +173,37 @@ function transmit({ id, line, variant, keyed }, done) {
   });
 
   function voice(engine) {
-    pack.buffer(engine.ctx, lang, id, variant).then((buffer) => {
+    log({ type: "request", id, lang, file: pack.file(lang, id, variant) });
+    pack.load(engine.ctx, lang, id, variant).then((r) => {
       if (stopped || ended) return;
-      if (!buffer) {
-        // Clip missing or undecodable: the call is carried by its subtitle (recorded).
-        silent(pack.loaded ? "clip-missing" : "pack-unavailable");
+      file = r.file;
+      if (!r.buffer) {
+        // Clip missing, file not found or undecodable: the call is carried by its subtitle (recorded).
+        silent(r.error || "clip-missing");
         return;
       }
+      const buffer = r.buffer;
       voiced = true;
       lastOutcome = { id, voiced: true, reason: "played", at: Date.now() };
-      handle = playTransmission(engine.ctx, engine.out, {
-        buffer,
-        profile: role.radio,
-        critical: line.priority === "CRITICAL",
-        fx: s.radioFx,
-        link: role.radio === "onboard" ? 1 : link,
-        keyed,
-        quindar: line.role === "CAPCOM" && (line.priority === "NORMAL" || line.priority === "AMBIENT"),
-        gain: line.role === "COMPUTER" ? 0.75 : 1,
-        onStart: () => {
-          begin(buffer.duration);
-          log({ type: "voice", id, lang });
-        },
-        onEnd: end,
-      });
+      try {
+        handle = playTransmission(engine.ctx, engine.out, {
+          buffer,
+          profile: role.radio,
+          critical: line.priority === "CRITICAL",
+          fx: s.radioFx,
+          link: role.radio === "onboard" ? 1 : link,
+          keyed,
+          quindar: line.role === "CAPCOM" && (line.priority === "NORMAL" || line.priority === "AMBIENT"),
+          gain: line.role === "COMPUTER" ? 0.75 : 1,
+          onStart: () => {
+            begin(buffer.duration);
+            log({ type: "voice", id, lang, file, dur: Math.round(buffer.duration * 100) / 100, t: engine.ctx.currentTime });
+          },
+          onEnd: end,
+        });
+      } catch (e) {
+        silent(`play-error:${(e && (e.message || e.name)) || e}`);
+      }
     });
   }
   return api;

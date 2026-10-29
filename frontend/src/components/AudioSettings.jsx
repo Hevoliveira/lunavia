@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { Headphones, X, Radio } from "lucide-react";
 import { useAudioSettings, setAudioSettings } from "@/audio/audioSettings";
@@ -148,6 +149,25 @@ export default function AudioSettings() {
             <Row label="RADIO EFFECTS" hint="Band-limited radio, static, squelch, Quindar tones">
               <Toggle on={st.radioFx} onChange={(v) => set({ radioFx: v })} testId="audio-radio-fx" label="Radio effects" />
             </Row>
+            <Row label="SILENT MODE" hint={st.silentMode === "follow" ? "Muted while the iPhone is silenced" : "Game audio plays with Silent Mode on"}>
+              <div className="flex" role="radiogroup" aria-label="Silent mode" data-testid="audio-silent-mode">
+                {[
+                  ["play", "PLAY"],
+                  ["follow", "FOLLOW"],
+                ].map(([k, l]) => (
+                  <button
+                    key={k}
+                    role="radio"
+                    aria-checked={st.silentMode === k}
+                    data-testid={`audio-silent-mode-${k}`}
+                    onClick={() => set({ silentMode: k })}
+                    className={`min-h-[44px] min-w-[44px] px-3 short:px-2 border font-mono text-[10px] tracking-[0.2em] -ml-px first:ml-0 ${st.silentMode === k ? "border-[#FF3B00] text-white bg-[#FF3B00]/15 relative z-10" : "border-white/20 text-zinc-500"}`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </Row>
             </div>
             <button
               onClick={runCheck}
@@ -166,6 +186,14 @@ export default function AudioSettings() {
                 </div>
               );
             })()}
+            <Link
+              to="/audio-diagnostics"
+              onClick={() => setOpen(false)}
+              data-testid="audio-diagnostics-link"
+              className="mt-1.5 w-full min-h-[44px] border border-white/10 hover:border-[#FF3B00] text-zinc-500 hover:text-white font-mono text-[10px] tracking-[0.3em] flex items-center justify-center"
+            >
+              AUDIO DIAGNOSTICS
+            </Link>
           </div>
         </>,
         document.body

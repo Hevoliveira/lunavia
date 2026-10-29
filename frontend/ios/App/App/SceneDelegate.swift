@@ -41,6 +41,10 @@ class LunaviaViewController: CAPBridgeViewController {
         // The mission checkpoint store (MissionSaveStore.swift), registered before the
         // web view loads so the game finds it on its first frame.
         bridge?.registerPluginInstance(LunaviaSavePlugin())
+        // The audio session (LunaviaAudioSession.swift): game audio plays in Silent Mode until the
+        // web side applies the player's AUDIO choice (SILENT MODE: PLAY SOUND / FOLLOW IPHONE).
+        LunaviaAudioPlugin.apply(playInSilentMode: true)
+        bridge?.registerPluginInstance(LunaviaAudioPlugin())
         view.backgroundColor = UIColor(red: 5 / 255, green: 5 / 255, blue: 5 / 255, alpha: 1)
         if let webView = webView {
             webView.isOpaque = false
