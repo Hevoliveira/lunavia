@@ -366,12 +366,31 @@ export function Horizon({ site }) {
   const geometry = useMemo(() => {
     if (!site.horizon || !site.horizon.length) return null;
     const D = 1500;
-    const seg = 1.5; // degrees per column
-    const rows = 6;
-    // silhouette height (deg) across a feature, u in [-1, 1], with a ragged crest
+    const seg = 0.5; // degrees per column
+    const rows = 12;
+    // deterministic value noise and its fractal sum (for the crest and the flanks)
+    const hash = (x, y) => {
+      const t = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+      return t - Math.floor(t);
+    };
+    const vnoise = (x, y) => {
+      const ix = Math.floor(x);
+      const iy = Math.floor(y);
+      const fx = x - ix;
+      const fy = y - iy;
+      const sx = fx * fx * (3 - 2 * fx);
+      const sy = fy * fy * (3 - 2 * fy);
+      const a = hash(ix, iy);
+      const b = hash(ix + 1, iy);
+      const c = hash(ix, iy + 1);
+      const d = hash(ix + 1, iy + 1);
+      return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+    };
+    const fbm = (x, y) => 0.5 * vnoise(x, y) + 0.27 * vnoise(x * 2.1, y * 2.1) + 0.15 * vnoise(x * 4.3, y * 4.3) + 0.08 * vnoise(x * 8.7, y * 8.7);
+    // silhouette height (deg) across a feature, u in [-1, 1], with a ragged crest at several scales
     const crest = (h, u) => {
       const a = Math.abs(u);
-      const rag = 1 + 0.06 * Math.sin(u * 37 + h.az) + 0.04 * Math.sin(u * 91 + 2 * h.az);
+      const rag = 1 + 0.06 * Math.sin(u * 37 + h.az) + 0.04 * Math.sin(u * 91 + 2 * h.az) + 0.07 * (fbm(u * 6 + h.az, h.el) - 0.5);
       if (h.kind === "peak") return h.el * Math.pow(Math.max(0, 1 - a), 1.3) * rag;
       if (h.kind === "rim") return h.el * (a < 0.75 ? 1 - 0.06 * Math.sin(u * 19) : Math.max(0, 1 - (a - 0.75) / 0.25)) * rag;
       if (h.kind === "front" || h.kind === "ridge") return h.el * (1 - a * a) * rag;
@@ -383,27 +402,40 @@ export function Horizon({ site }) {
     const nrm = [];
     const col = [];
     const idx = [];
+    const nn = new THREE.Vector3();
     for (const h of site.horizon) {
-      const n = Math.max(6, Math.ceil(h.w / seg));
+      const n = Math.max(12, Math.ceil(h.w / seg));
       const base = pos.length / 3;
       for (let i = 0; i <= n; i++) {
         const u = (i / n) * 2 - 1;
-        const az = ((h.az + (u * h.w) / 2) * Math.PI) / 180;
+        const azDeg = h.az + (u * h.w) / 2;
+        const az = (azDeg * Math.PI) / 180;
         const el = (crest(h, u) * Math.PI) / 180;
         const dx = Math.cos(az);
         const dz = -Math.sin(az);
-        // the face looks back towards the site and up its own slope
-        const steep = 0.55;
-        const nn = new THREE.Vector3(-dx * Math.cos(steep), Math.sin(steep), -dz * Math.cos(steep)).normalize();
-        // lambert from the site's Sun plus a little fill; brighter towards the crest
-        const lit = 0.25 + 0.95 * Math.max(0, nn.dot(sun));
+        const tx = -Math.sin(az); // along the range, with increasing azimuth
+        const tz = -Math.cos(az);
+        // each flank turns towards its own side of the summit (rounded massifs, not a flat card)
+        const e = 0.02;
+        const dcdu = (crest(h, Math.min(1, u + e)) - crest(h, Math.max(-1, u - e))) / (2 * e) / Math.max(0.5, h.el);
         for (let r = 0; r <= rows; r++) {
           const f = r / rows; // 0 at the foot, 1 at the crest
           const y = -90 + (D * Math.tan(el) - 6 + 90) * f;
           const rr = D - 120 * f; // the crest leans back a little
           pos.push(dx * rr, y, dz * rr);
+          // downslope gullies and spurs (ridged noise along the range), steeper towards the foot
+          const g0 = fbm(azDeg * 0.9, f * 3.2 + azDeg * 0.07);
+          const g1 = fbm(azDeg * 0.9 + 0.4, f * 3.2 + azDeg * 0.07);
+          const gully = (g1 - g0) * 6.0;
+          const steep = 0.42 + 0.3 * (1 - f);
+          const lat = Math.max(-0.85, Math.min(0.85, -dcdu * 0.32 + gully * 0.55));
+          nn.set(-dx * Math.cos(steep) + tx * lat, Math.sin(steep), -dz * Math.cos(steep) + tz * lat).normalize();
           nrm.push(nn.x, nn.y, nn.z);
-          const k = lit * (0.7 + 0.3 * f);
+          const lit = 0.16 + 1.0 * Math.max(0, nn.dot(sun));
+          // albedo: broad patches, faint layering, a few darker blocks of exposed rock
+          const patch = 0.84 + 0.32 * fbm(azDeg * 0.25, f * 1.4 + 7.0);
+          const layer = 0.96 + 0.06 * Math.sin(f * 23 + azDeg * 0.3);
+          const k = lit * patch * layer * (0.78 + 0.22 * f);
           col.push(albedo.r * k, albedo.g * k, albedo.b * k);
         }
       }
