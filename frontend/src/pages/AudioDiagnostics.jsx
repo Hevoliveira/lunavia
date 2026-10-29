@@ -74,8 +74,8 @@ export default function AudioDiagnostics() {
   const textRef = useRef(null);
 
   useEffect(() => {
+    // Nothing is started here: the engine starts inside the player's first tap (iOS rule).
     installAudioUnlock();
-    audio.init();
     voicePack.ready(); // the media-player test then knows its file inside the tap
     refreshNative().then(() => setStatus(audioStatus()));
     const iv = setInterval(() => setStatus(audioStatus()), 500);
@@ -175,7 +175,14 @@ export default function AudioDiagnostics() {
             hint="The launch hold-down release (clank), through the sound-effects channel."
             busy={busy === "sfx"}
             run={results.sfx}
-            onClick={() => start("sfx", () => runSfxTest(() => audio.clank(0.7)))}
+            onClick={() =>
+              start("sfx", () =>
+                runSfxTest(() => {
+                  audio.init();
+                  audio.clank(0.7);
+                })
+              )
+            }
           />
           <TestButton
             testId="diag-houston"
