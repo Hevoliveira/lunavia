@@ -27,7 +27,7 @@ The iPhone version with every finished feature is on the branch **claude/ios-rel
    > **Review builds.** When a message asks you to test a review build, download **that** branch
    > instead, with the same link pattern: `https://github.com/Hevoliveira/lunavia/archive/refs/heads/<branch>.zip`.
    > For the current audio test: `https://github.com/Hevoliveira/lunavia/archive/refs/heads/claude/iphone-audio-diagnostics.zip`
-   > (folder `lunavia-claude-iphone-audio-diagnostics`, **BUILD 2ae3aed**). The ios-release download
+   > (folder `lunavia-claude-iphone-audio-diagnostics`, **BUILD ec7769e**). The ios-release download
    > does not contain review-build fixes.
 2. Open your **Downloads** folder and **double-click the ZIP file** to unpack it. You now have a folder called `lunavia-claude-ios-release`.
 3. Open **IPHONE_VERSION.md** in that folder: it names the **BUILD** this download installs and the features in it.
@@ -85,7 +85,7 @@ If the iPhone shows **"Untrusted Developer"** instead of opening the game:
 ## Playing
 
 - Turn the iPhone **sideways** — LUNAVIA runs in landscape.
-- **Sound starts after your first tap.** If you hear nothing, check the volume buttons, then open **AUDIO → AUDIO DIAGNOSTICS** (review builds from 2ae3aed on).
+- **Sound starts after your first tap.** If you hear nothing, check the volume buttons, then open **AUDIO → AUDIO DIAGNOSTICS** (review builds from ec7769e on).
 - All flight controls are on-screen buttons: **press and hold** them (you can hold two at once, e.g. throttle and a side thruster).
 - The game does **not** need an internet connection once installed.
 

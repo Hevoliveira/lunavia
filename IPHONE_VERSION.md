@@ -1,6 +1,6 @@
 # LUNAVIA for iPhone: this download
 
-This folder installs **BUILD 2ae3aed**: the **AUDIO DIAGNOSTICS** review build. It is on the branch
+This folder installs **BUILD ec7769e**: the **AUDIO DIAGNOSTICS** review build. It is on the branch
 `claude/iphone-audio-diagnostics` — download **that branch's** ZIP:
 
 `https://github.com/Hevoliveira/lunavia/archive/refs/heads/claude/iphone-audio-diagnostics.zip`
@@ -12,11 +12,14 @@ work: if you install from the ios-release link in INSTALL_ON_IPHONE.md, you get 
 Check the build: tap **TRAINING** (startup menu or top bar). At the top right, under ATTEMPTS ·
 SUCCESSFUL · COMPLETED:
 
-> **LUNAVIA iOS · BUILD 2ae3aed · 2026-10-29 22:04 UTC**
+> **LUNAVIA iOS · BUILD ec7769e · 2026-10-29 22:19 UTC**
 
 Directly under it there is **AUDIO DIAGNOSTICS** (also in the top bar: **AUDIO → AUDIO DIAGNOSTICS**).
 
 What this build adds (an audio bug-fix build; nothing else in the game changes):
+- **The Houston voice fix:** the iPhone app's file server sends the voice recordings (.mp3) without an
+  HTTP status, and the game took that as "file not found", so every Houston call was shown as a
+  subtitle only. The recordings now load (AUDIO DIAGNOSTICS: FILE FOUND … status 0).
 - **AUDIO DIAGNOSTICS**: PLAY TEST TONE, PLAY SOUND EFFECT, PLAY HOUSTON VOICE (the bundled liftoff
   call through the mission radio), an extra comparison through the iPhone's media player, the audio
   engine's status (context state, volumes, the iPhone's audio session, media volume, output route),
@@ -28,6 +31,7 @@ What this build adds (an audio bug-fix build; nothing else in the game changes):
 - Everything from BUILD 37b3847 (Houston radio repair) and 830164e (simplified Countdown to Launch).
 
 If your iPhone shows any other BUILD, it is not running this download. For example:
+- **2ae3aed** is the first AUDIO DIAGNOSTICS build: PLAY HOUSTON VOICE shows FILE NOT FOUND (http-0);
 - **37b3847** is the Houston radio repair review build (`claude/houston-radio-voice`): TEST RADIO, but
   no AUDIO DIAGNOSTICS and no SILENT MODE setting;
 - **830164e** is the simplified COUNTDOWN TO LAUNCH review build (`claude/simplified-countdown`), with
